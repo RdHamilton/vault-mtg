@@ -18,11 +18,11 @@ func TestScoreColorCompatibility(t *testing.T) {
 		maxScore     float64
 	}{
 		{
-			name:         "Colorless card fits any deck",
+			name:         "Colorless card is neutral (not preferred over matching colors)",
 			card:         &cards.Card{Colors: []string{}},
 			seedAnalysis: &SeedCardAnalysis{Colors: []string{"W", "U"}},
-			minScore:     1.0,
-			maxScore:     1.0,
+			minScore:     0.5,
+			maxScore:     0.5,
 		},
 		{
 			name:         "Exact color match",
@@ -60,11 +60,11 @@ func TestScoreColorCompatibility(t *testing.T) {
 			maxScore:     0.4, // 1/2 * 0.7 = 0.35
 		},
 		{
-			name:         "Colorless seed - any color works",
+			name:         "Colorless seed - colored cards acceptable but not preferred",
 			card:         &cards.Card{Colors: []string{"B"}},
 			seedAnalysis: &SeedCardAnalysis{Colors: []string{}},
-			minScore:     0.8,
-			maxScore:     0.8,
+			minScore:     0.6,
+			maxScore:     0.6,
 		},
 	}
 

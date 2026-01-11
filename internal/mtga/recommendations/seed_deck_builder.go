@@ -643,13 +643,15 @@ func (s *SeedDeckBuilder) scoreCardForSeed(card *cards.Card, seedAnalysis *SeedC
 // scoreColorCompatibility scores how well a card's colors match the seed.
 func (s *SeedDeckBuilder) scoreColorCompatibility(card *cards.Card, seedAnalysis *SeedCardAnalysis) float64 {
 	if len(card.Colors) == 0 {
-		// Colorless cards fit any deck
-		return 1.0
+		// Colorless cards are acceptable but shouldn't be preferred over cards
+		// that share the deck's colors. Score them as "neutral" (0.5) so colored
+		// cards that match get priority.
+		return 0.5
 	}
 
 	if len(seedAnalysis.Colors) == 0 {
-		// Seed is colorless - any color works
-		return 0.8
+		// Seed is colorless - any color works, but colorless cards still preferred
+		return 0.6
 	}
 
 	// Check how many card colors match seed colors
@@ -1404,11 +1406,15 @@ func (s *SeedDeckBuilder) scoreCardForDeck(card *cards.Card, deckAnalysis *Colle
 // scoreColorForDeck scores color compatibility against the deck's established colors.
 func (s *SeedDeckBuilder) scoreColorForDeck(card *cards.Card, deckAnalysis *CollectiveDeckAnalysis) float64 {
 	if len(card.Colors) == 0 {
-		return 1.0 // Colorless fits any deck
+		// Colorless cards are acceptable but shouldn't be preferred over cards
+		// that share the deck's colors. Score them as "neutral" (0.5) so colored
+		// cards that match get priority.
+		return 0.5
 	}
 
 	if len(deckAnalysis.Colors) == 0 {
-		return 0.8 // Deck is colorless, any color is fine
+		// Deck is colorless - any color works, but colorless cards still preferred
+		return 0.6
 	}
 
 	// Check how many card colors match deck colors
