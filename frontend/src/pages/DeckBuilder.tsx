@@ -629,9 +629,9 @@ export default function DeckBuilder() {
     saveSnapshot(cards);
 
     try {
-      // Clear existing cards first
+      // Clear existing cards first (use removeAllCopies to remove all copies of each card)
       for (const card of cards) {
-        await decks.removeCard({
+        await decks.removeAllCopies({
           deck_id: deck.ID,
           arena_id: card.CardID,
           zone: card.Board,
