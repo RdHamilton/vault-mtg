@@ -638,20 +638,19 @@ export default function DeckBuilder() {
         });
       }
 
-      // Add suggested cards (4 copies each, up to 36 total cards)
-      // 60 card deck - 24 lands = 36 spell slots, so max 9 unique cards × 4 copies = 36
-      let cardsAdded = 0;
+      // Add suggested cards with quantities from backend
+      // Backend calculates correct quantities based on archetype and deck composition
       for (const card of suggestions) {
-        if (cardsAdded >= 36) break; // Leave room for lands
-        const quantity = Math.min(4, 36 - cardsAdded);
-        await decks.addCard({
-          deck_id: deck.ID,
-          arena_id: card.cardID,
-          quantity,
-          zone: 'main',
-          is_sideboard: false,
-        });
-        cardsAdded += quantity;
+        const quantity = card.recommendedCopies || 4;
+        if (quantity > 0) {
+          await decks.addCard({
+            deck_id: deck.ID,
+            arena_id: card.cardID,
+            quantity,
+            zone: 'main',
+            is_sideboard: false,
+          });
+        }
       }
 
       // Add lands
