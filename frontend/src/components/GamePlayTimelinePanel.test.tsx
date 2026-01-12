@@ -277,6 +277,115 @@ describe('GamePlayTimelinePanel', () => {
         expect(screen.getByText('Attack')).toBeInTheDocument();
       });
     });
+
+    it('formats life_change with damage amount', async () => {
+      const lifeChangePlay: GamePlay = {
+        id: 10,
+        game_id: 1,
+        match_id: 'match-123',
+        turn_number: 3,
+        phase: 'Combat',
+        player_type: 'opponent',
+        action_type: 'life_change',
+        timestamp: '2025-01-09T12:00:05Z',
+        sequence_number: 10,
+        life_from: 18,
+        life_to: 15,
+      };
+
+      const timelineWithLifeChange: PlayTimelineEntry[] = [
+        {
+          turn: 3,
+          active_player: 'player',
+          player_plays: [],
+          opponent_plays: [lifeChangePlay],
+          snapshot: mockSnapshot,
+        },
+      ];
+
+      mockGetMatchTimeline.mockResolvedValue(timelineWithLifeChange);
+
+      render(<GamePlayTimelinePanel matchId="match-123" isExpanded={true} onToggle={() => {}} />);
+
+      await waitFor(() => {
+        expect(screen.getByText('Life Change')).toBeInTheDocument();
+        expect(screen.getByText(/18 → 15/)).toBeInTheDocument();
+        expect(screen.getByText(/\(-3\)/)).toBeInTheDocument();
+      });
+    });
+
+    it('formats life_change with heal amount', async () => {
+      const lifeHealPlay: GamePlay = {
+        id: 11,
+        game_id: 1,
+        match_id: 'match-123',
+        turn_number: 4,
+        phase: 'Main1',
+        player_type: 'player',
+        action_type: 'life_change',
+        timestamp: '2025-01-09T12:00:06Z',
+        sequence_number: 11,
+        life_from: 15,
+        life_to: 18,
+      };
+
+      const timelineWithHeal: PlayTimelineEntry[] = [
+        {
+          turn: 4,
+          active_player: 'player',
+          player_plays: [lifeHealPlay],
+          opponent_plays: [],
+          snapshot: mockSnapshot,
+        },
+      ];
+
+      mockGetMatchTimeline.mockResolvedValue(timelineWithHeal);
+
+      render(<GamePlayTimelinePanel matchId="match-123" isExpanded={true} onToggle={() => {}} />);
+
+      await waitFor(() => {
+        expect(screen.getByText('Life Change')).toBeInTheDocument();
+        expect(screen.getByText(/15 → 18/)).toBeInTheDocument();
+        expect(screen.getByText(/\(\+3\)/)).toBeInTheDocument();
+      });
+    });
+
+    it('formats cast_spell action', async () => {
+      const castSpellPlay: GamePlay = {
+        id: 12,
+        game_id: 1,
+        match_id: 'match-123',
+        turn_number: 5,
+        phase: 'Main1',
+        player_type: 'player',
+        action_type: 'cast_spell',
+        card_id: 789,
+        card_name: 'Counterspell',
+        zone_from: 'hand',
+        zone_to: 'stack',
+        timestamp: '2025-01-09T12:00:07Z',
+        sequence_number: 12,
+      };
+
+      const timelineWithCast: PlayTimelineEntry[] = [
+        {
+          turn: 5,
+          active_player: 'player',
+          player_plays: [castSpellPlay],
+          opponent_plays: [],
+          snapshot: mockSnapshot,
+        },
+      ];
+
+      mockGetMatchTimeline.mockResolvedValue(timelineWithCast);
+
+      render(<GamePlayTimelinePanel matchId="match-123" isExpanded={true} onToggle={() => {}} />);
+
+      await waitFor(() => {
+        expect(screen.getByText('Cast')).toBeInTheDocument();
+        expect(screen.getByText('Counterspell')).toBeInTheDocument();
+      });
+    });
   });
 
   describe('unmount behavior', () => {

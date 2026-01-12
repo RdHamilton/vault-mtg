@@ -12,8 +12,17 @@ type GREGameStateMessage struct {
 	TurnInfo      *GRETurnInfo
 	Players       []GREPlayerState
 	GameObjects   []GREGameObject
+	Zones         map[int]*GREZone     // Zone ID to zone info mapping
 	PrevGameState *GREGameStateMessage // For comparing state changes
 	Timestamp     time.Time
+}
+
+// GREZone represents a zone in the game.
+type GREZone struct {
+	ZoneID      int
+	Type        string // e.g., "ZoneType_Hand", "ZoneType_Battlefield"
+	Visibility  string
+	OwnerSeatID int // 0 if shared zone (battlefield, stack, etc.)
 }
 
 // GRETurnInfo contains information about the current turn.
@@ -72,11 +81,13 @@ type GamePlayEvent struct {
 	Phase          string
 	Step           string
 	PlayerType     string // "player" or "opponent"
-	ActionType     string // "play_card", "attack", "block", "land_drop", "mulligan"
+	ActionType     string // "play_card", "attack", "block", "land_drop", "life_change", etc.
 	CardID         int    // Arena card ID (GRPId)
 	CardName       string // Will be populated later from card database
 	ZoneFrom       string
 	ZoneTo         string
+	LifeFrom       int // Previous life total (for life_change events)
+	LifeTo         int // New life total (for life_change events)
 	Timestamp      time.Time
 	SequenceNumber int
 }
@@ -90,13 +101,20 @@ type GREConnection struct {
 
 // GetPlayerSeatID extracts the player's seat ID from connectResp messages.
 // This is used to identify which objects belong to the player vs opponent.
+// If playerScreenName is provided, it matches by name; otherwise falls back to connectResp.
 func GetPlayerSeatID(entries []*LogEntry) *GREConnection {
+	return GetPlayerSeatIDByName(entries, "")
+}
+
+// GetPlayerSeatIDByName extracts the player's seat ID, matching by screen name if provided.
+// This ensures correct player identification even when player order varies in reservedPlayers.
+func GetPlayerSeatIDByName(entries []*LogEntry, playerScreenName string) *GREConnection {
 	for _, entry := range entries {
 		if !entry.IsJSON {
 			continue
 		}
 
-		// Look for connectResp
+		// Look for connectResp - this is reliable as it's sent directly to the player
 		if connectResp, ok := entry.JSON["connectResp"]; ok {
 			connMap, ok := connectResp.(map[string]interface{})
 			if !ok {
@@ -105,11 +123,11 @@ func GetPlayerSeatID(entries []*LogEntry) *GREConnection {
 
 			conn := &GREConnection{}
 
-			// Get system seat IDs
+			// Get system seat IDs from connectResp - this is always the player's seat
 			if seatIDs, ok := connMap["systemSeatIds"].([]interface{}); ok && len(seatIDs) > 0 {
 				if seatID, ok := seatIDs[0].(float64); ok {
 					conn.SystemSeatID = int(seatID)
-					conn.SeatID = int(seatID) // Usually the same
+					conn.SeatID = int(seatID)
 				}
 			}
 
@@ -123,7 +141,7 @@ func GetPlayerSeatID(entries []*LogEntry) *GREConnection {
 			}
 		}
 
-		// Also look for matchCreated/matchGameRoomStateChangedEvent for seat info
+		// Also look for matchGameRoomStateChangedEvent for seat info
 		if matchEvent, ok := entry.JSON["matchGameRoomStateChangedEvent"]; ok {
 			eventMap, ok := matchEvent.(map[string]interface{})
 			if !ok {
@@ -145,14 +163,22 @@ func GetPlayerSeatID(entries []*LogEntry) *GREConnection {
 				continue
 			}
 
-			// The first player in the list is usually the logged-in player
-			// But we need to match by screen name to be sure
-			if len(reservedPlayers) > 0 {
-				player, ok := reservedPlayers[0].(map[string]interface{})
+			// Search through all players to find the matching one
+			for _, p := range reservedPlayers {
+				player, ok := p.(map[string]interface{})
 				if !ok {
 					continue
 				}
 
+				// If we have a screen name, match by playerName
+				if playerScreenName != "" {
+					pName, hasName := player["playerName"].(string)
+					if !hasName || pName != playerScreenName {
+						continue // Not a match, try next player
+					}
+				}
+
+				// Extract connection info
 				conn := &GREConnection{}
 				if seatID, ok := player["systemSeatId"].(float64); ok {
 					conn.SystemSeatID = int(seatID)
@@ -162,9 +188,14 @@ func GetPlayerSeatID(entries []*LogEntry) *GREConnection {
 					conn.TeamID = int(teamID)
 				}
 
-				if conn.SeatID != 0 || conn.SystemSeatID != 0 {
+				// If matching by name, return this player's seat
+				if playerScreenName != "" && (conn.SeatID != 0 || conn.SystemSeatID != 0) {
 					return conn
 				}
+
+				// Without screen name, we can't reliably pick - skip matchGameRoomStateChangedEvent
+				// and hope connectResp is found instead
+				break
 			}
 		}
 	}
@@ -228,12 +259,27 @@ func ParseGREMessages(entries []*LogEntry) ([]*GREGameStateMessage, error) {
 func parseGameStateMessage(msgMap map[string]interface{}, timestamp time.Time) *GREGameStateMessage {
 	msg := &GREGameStateMessage{
 		Timestamp: timestamp,
+		Zones:     make(map[int]*GREZone),
 	}
 
 	// Get game state info
 	gameStateMsg, ok := msgMap["gameStateMessage"].(map[string]interface{})
 	if !ok {
 		return nil
+	}
+
+	// Parse zones first so we can use them when parsing game objects
+	if zones, ok := gameStateMsg["zones"].([]interface{}); ok {
+		for _, zoneData := range zones {
+			zoneMap, ok := zoneData.(map[string]interface{})
+			if !ok {
+				continue
+			}
+			zone := parseZone(zoneMap)
+			if zone != nil {
+				msg.Zones[zone.ZoneID] = zone
+			}
+		}
 	}
 
 	// Parse turn info
@@ -253,14 +299,14 @@ func parseGameStateMessage(msgMap map[string]interface{}, timestamp time.Time) *
 		}
 	}
 
-	// Parse game objects
+	// Parse game objects (using zones map for name resolution)
 	if gameObjects, ok := gameStateMsg["gameObjects"].([]interface{}); ok {
 		for _, objData := range gameObjects {
 			objMap, ok := objData.(map[string]interface{})
 			if !ok {
 				continue
 			}
-			obj := parseGameObject(objMap)
+			obj := parseGameObjectWithZones(objMap, msg.Zones)
 			msg.GameObjects = append(msg.GameObjects, obj)
 		}
 	}
@@ -276,6 +322,29 @@ func parseGameStateMessage(msgMap map[string]interface{}, timestamp time.Time) *
 	}
 
 	return msg
+}
+
+// parseZone parses a zone from the game state.
+func parseZone(zoneMap map[string]interface{}) *GREZone {
+	zone := &GREZone{}
+
+	if zoneID, ok := zoneMap["zoneId"].(float64); ok {
+		zone.ZoneID = int(zoneID)
+	} else {
+		return nil // Zone ID is required
+	}
+
+	if zoneType, ok := zoneMap["type"].(string); ok {
+		zone.Type = zoneType
+	}
+	if visibility, ok := zoneMap["visibility"].(string); ok {
+		zone.Visibility = visibility
+	}
+	if ownerSeatID, ok := zoneMap["ownerSeatId"].(float64); ok {
+		zone.OwnerSeatID = int(ownerSeatID)
+	}
+
+	return zone
 }
 
 // parseTurnInfo parses turn information from the game state.
@@ -339,8 +408,13 @@ func parsePlayerState(playerMap map[string]interface{}) GREPlayerState {
 	return ps
 }
 
-// parseGameObject parses a game object from the game state.
+// parseGameObject parses a game object from the game state (legacy, no zones map).
 func parseGameObject(objMap map[string]interface{}) GREGameObject {
+	return parseGameObjectWithZones(objMap, nil)
+}
+
+// parseGameObjectWithZones parses a game object using the zones map for name resolution.
+func parseGameObjectWithZones(objMap map[string]interface{}, zones map[int]*GREZone) GREGameObject {
 	obj := GREGameObject{
 		Counters: make(map[string]int),
 	}
@@ -359,7 +433,7 @@ func parseGameObject(objMap map[string]interface{}) GREGameObject {
 	}
 	if zoneID, ok := objMap["zoneId"].(float64); ok {
 		obj.ZoneID = int(zoneID)
-		obj.ZoneName = zoneIDToName(int(zoneID))
+		obj.ZoneName = zoneIDToNameWithMap(int(zoneID), zones)
 	}
 
 	// Parse card types
@@ -410,16 +484,58 @@ func parseGameObject(objMap map[string]interface{}) GREGameObject {
 	return obj
 }
 
-// zoneIDToName maps zone IDs to readable zone names.
-// Zone IDs in MTGA are player-specific (different IDs for each player's zones).
-func zoneIDToName(zoneID int) string {
-	// These mappings are based on typical MTGA zone IDs
-	// Zone IDs 1-10 are typically player 1's zones, 11-20 are player 2's
-	// This is a rough mapping - actual zone detection requires tracking
-	// the zone structure from earlier messages
+// zoneIDToNameWithMap maps zone IDs to readable zone names using the zones map.
+func zoneIDToNameWithMap(zoneID int, zones map[int]*GREZone) string {
+	if zones != nil {
+		if zone, ok := zones[zoneID]; ok {
+			return zoneTypeToReadableName(zone.Type)
+		}
+	}
+	// Fallback to legacy method if zones map is not available
+	return zoneIDToName(zoneID)
+}
 
-	// Common pattern:
-	// zoneID % 10 gives the zone type
+// zoneTypeToReadableName converts MTGA zone type to readable name.
+func zoneTypeToReadableName(zoneType string) string {
+	switch zoneType {
+	case "ZoneType_Hand":
+		return "hand"
+	case "ZoneType_Library":
+		return "library"
+	case "ZoneType_Battlefield":
+		return "battlefield"
+	case "ZoneType_Graveyard":
+		return "graveyard"
+	case "ZoneType_Exile":
+		return "exile"
+	case "ZoneType_Stack":
+		return "stack"
+	case "ZoneType_Command":
+		return "command"
+	case "ZoneType_Sideboard":
+		return "sideboard"
+	case "ZoneType_Revealed":
+		return "revealed"
+	case "ZoneType_Limbo":
+		return "limbo"
+	case "ZoneType_Pending":
+		return "pending"
+	case "ZoneType_Suppressed":
+		return "suppressed"
+	default:
+		// Strip "ZoneType_" prefix if present
+		if len(zoneType) > 9 && zoneType[:9] == "ZoneType_" {
+			return zoneType[9:]
+		}
+		return zoneType
+	}
+}
+
+// zoneIDToName maps zone IDs to readable zone names using legacy modulo method.
+// This is a fallback when the zones array is not available.
+func zoneIDToName(zoneID int) string {
+	// This legacy method uses modulo patterns that don't work reliably
+	// for all MTGA zone IDs. Use zoneIDToNameWithMap when zones are available.
 	zoneType := zoneID % 10
 	switch zoneType {
 	case 1:
@@ -452,6 +568,21 @@ func ParseGamePlays(entries []*LogEntry, playerConn *GREConnection) ([]*GamePlay
 		return nil, nil
 	}
 
+	// Build a cumulative zones map from all messages
+	// The zones are typically defined in the first full game state message
+	cumulativeZones := make(map[int]*GREZone)
+	for _, msg := range messages {
+		for zoneID, zone := range msg.Zones {
+			cumulativeZones[zoneID] = zone
+		}
+	}
+
+	// Track all game objects across all messages for proper zone transition detection
+	allObjects := make(map[int]*trackedObject)
+
+	// Track life totals for life change detection
+	lifeTotals := make(map[int]int) // seatID -> life total
+
 	var plays []*GamePlayEvent
 	sequenceNum := 0
 
@@ -460,8 +591,16 @@ func ParseGamePlays(entries []*LogEntry, playerConn *GREConnection) ([]*GamePlay
 		prev := messages[i-1]
 		curr := messages[i]
 
-		// Detect zone changes
-		zoneChanges := detectZoneChanges(prev, curr, playerConn)
+		// Detect life changes
+		lifeChanges := detectLifeChanges(prev, curr, playerConn, lifeTotals)
+		for _, change := range lifeChanges {
+			change.SequenceNumber = sequenceNum
+			sequenceNum++
+			plays = append(plays, change)
+		}
+
+		// Detect zone changes using cumulative zones map
+		zoneChanges := detectZoneChangesWithZones(prev, curr, playerConn, cumulativeZones, allObjects)
 		for _, change := range zoneChanges {
 			change.SequenceNumber = sequenceNum
 			sequenceNum++
@@ -483,68 +622,56 @@ func ParseGamePlays(entries []*LogEntry, playerConn *GREConnection) ([]*GamePlay
 			sequenceNum++
 			plays = append(plays, block)
 		}
+
+		// Update tracked objects from current state
+		for _, obj := range curr.GameObjects {
+			allObjects[obj.InstanceID] = &trackedObject{
+				instanceID:   obj.InstanceID,
+				grpID:        obj.GRPId,
+				zoneID:       obj.ZoneID,
+				controllerID: obj.ControllerSeatID,
+			}
+		}
+
+		// Update life totals from current state
+		for _, player := range curr.Players {
+			lifeTotals[player.SeatID] = player.LifeTotal
+		}
 	}
 
 	return plays, nil
 }
 
-// detectZoneChanges finds objects that moved between zones.
-func detectZoneChanges(prev, curr *GREGameStateMessage, playerConn *GREConnection) []*GamePlayEvent {
+// detectLifeChanges finds changes in player life totals.
+func detectLifeChanges(prev, curr *GREGameStateMessage, playerConn *GREConnection, lifeTotals map[int]int) []*GamePlayEvent {
 	var events []*GamePlayEvent
 
 	if curr.TurnInfo == nil {
 		return events
 	}
 
-	// Build maps of objects by instance ID
-	prevObjects := make(map[int]GREGameObject)
-	for _, obj := range prev.GameObjects {
-		prevObjects[obj.InstanceID] = obj
-	}
-
-	currObjects := make(map[int]GREGameObject)
-	for _, obj := range curr.GameObjects {
-		currObjects[obj.InstanceID] = obj
-	}
-
-	// Check for objects that changed zones
-	for instanceID, currObj := range currObjects {
-		prevObj, existed := prevObjects[instanceID]
-
-		// New object or zone change
-		if !existed || prevObj.ZoneID != currObj.ZoneID {
-			// Determine player type
-			playerType := "opponent"
-			if playerConn != nil && currObj.ControllerSeatID == playerConn.SeatID {
-				playerType = "player"
-			}
-
-			// Determine action type based on zone transition
-			actionType := "play_card"
-			fromZone := "unknown"
-			if existed {
-				fromZone = prevObj.ZoneName
-			}
-			toZone := currObj.ZoneName
-
-			// Hand to battlefield = play or land drop
-			if fromZone == "hand" && toZone == "battlefield" {
-				// Check if it's a land
-				for _, cardType := range currObj.CardTypes {
-					if cardType == "CardType_Land" {
-						actionType = "land_drop"
-						break
-					}
+	for _, player := range curr.Players {
+		prevLife, existed := lifeTotals[player.SeatID]
+		if !existed {
+			// First time seeing this player, check prev message
+			for _, prevPlayer := range prev.Players {
+				if prevPlayer.SeatID == player.SeatID {
+					prevLife = prevPlayer.LifeTotal
+					existed = true
+					break
 				}
-			} else if fromZone == "library" && toZone == "hand" {
-				// Draw - skip, not a "play"
+			}
+		}
+
+		if existed && prevLife != player.LifeTotal {
+			// Skip mulligan-related life changes (turn 0 or very early)
+			if curr.TurnInfo.TurnNumber < 1 {
 				continue
-			} else if toZone == "graveyard" {
-				// Something died or was discarded - track for opponent cards
-				actionType = "play_card" // Could be more specific
-			} else if fromZone == "unknown" && toZone == "hand" {
-				// Mulligan or game start
-				continue
+			}
+
+			playerType := "opponent"
+			if playerConn != nil && player.SeatID == playerConn.SeatID {
+				playerType = "player"
 			}
 
 			event := &GamePlayEvent{
@@ -554,10 +681,9 @@ func detectZoneChanges(prev, curr *GREGameStateMessage, playerConn *GREConnectio
 				Phase:      normalizePhase(curr.TurnInfo.Phase),
 				Step:       normalizeStep(curr.TurnInfo.Step),
 				PlayerType: playerType,
-				ActionType: actionType,
-				CardID:     currObj.GRPId,
-				ZoneFrom:   fromZone,
-				ZoneTo:     toZone,
+				ActionType: "life_change",
+				LifeFrom:   prevLife,
+				LifeTo:     player.LifeTotal,
 				Timestamp:  curr.Timestamp,
 			}
 			events = append(events, event)
@@ -565,6 +691,142 @@ func detectZoneChanges(prev, curr *GREGameStateMessage, playerConn *GREConnectio
 	}
 
 	return events
+}
+
+// trackedObject tracks an object's state across game state messages.
+type trackedObject struct {
+	instanceID   int
+	grpID        int
+	zoneID       int
+	controllerID int
+}
+
+// detectZoneChangesWithZones finds objects that moved between zones using the cumulative zones map.
+func detectZoneChangesWithZones(prev, curr *GREGameStateMessage, playerConn *GREConnection, zones map[int]*GREZone, trackedObjs map[int]*trackedObject) []*GamePlayEvent {
+	var events []*GamePlayEvent
+
+	if curr.TurnInfo == nil {
+		return events
+	}
+
+	// Build map of previous objects from both the prev message and our tracked state
+	prevObjects := make(map[int]*trackedObject)
+
+	// First, use previously tracked objects
+	for id, obj := range trackedObjs {
+		prevObjects[id] = obj
+	}
+
+	// Then overlay with objects from the previous message (more recent state)
+	for _, obj := range prev.GameObjects {
+		prevObjects[obj.InstanceID] = &trackedObject{
+			instanceID:   obj.InstanceID,
+			grpID:        obj.GRPId,
+			zoneID:       obj.ZoneID,
+			controllerID: obj.ControllerSeatID,
+		}
+	}
+
+	// Check current objects for zone changes
+	for _, currObj := range curr.GameObjects {
+		prevObj, existed := prevObjects[currObj.InstanceID]
+
+		// Get zone names using the cumulative zones map
+		currZoneName := getZoneName(currObj.ZoneID, zones)
+		prevZoneName := ""
+		if existed {
+			prevZoneName = getZoneName(prevObj.zoneID, zones)
+		}
+
+		// Skip if zone hasn't changed
+		if existed && prevObj.zoneID == currObj.ZoneID {
+			continue
+		}
+
+		// Determine player type
+		playerType := "opponent"
+		if playerConn != nil && currObj.ControllerSeatID == playerConn.SeatID {
+			playerType = "player"
+		}
+
+		// Determine action type based on zone transition
+		actionType := determineActionType(prevZoneName, currZoneName, currObj.CardTypes)
+
+		// Skip draw events (library to hand) - not interesting plays
+		if actionType == "draw" {
+			continue
+		}
+
+		// Skip mulligan/game start events
+		if prevZoneName == "" && currZoneName == "hand" {
+			continue
+		}
+
+		event := &GamePlayEvent{
+			MatchID:    curr.MatchID,
+			GameNumber: curr.GameNumber,
+			TurnNumber: curr.TurnInfo.TurnNumber,
+			Phase:      normalizePhase(curr.TurnInfo.Phase),
+			Step:       normalizeStep(curr.TurnInfo.Step),
+			PlayerType: playerType,
+			ActionType: actionType,
+			CardID:     currObj.GRPId,
+			ZoneFrom:   prevZoneName,
+			ZoneTo:     currZoneName,
+			Timestamp:  curr.Timestamp,
+		}
+		events = append(events, event)
+	}
+
+	return events
+}
+
+// getZoneName returns the readable zone name for a zone ID using the zones map.
+// Falls back to legacy modulo-based mapping if zones map doesn't have the zone.
+func getZoneName(zoneID int, zones map[int]*GREZone) string {
+	if zones != nil {
+		if zone, ok := zones[zoneID]; ok {
+			return zoneTypeToReadableName(zone.Type)
+		}
+	}
+	// Fallback to legacy method for test compatibility and edge cases
+	return zoneIDToName(zoneID)
+}
+
+// determineActionType determines the action type based on zone transition.
+func determineActionType(fromZone, toZone string, cardTypes []string) string {
+	// Check if it's a land
+	isLand := false
+	for _, ct := range cardTypes {
+		if ct == "CardType_Land" {
+			isLand = true
+			break
+		}
+	}
+
+	switch {
+	case fromZone == "hand" && toZone == "battlefield":
+		if isLand {
+			return "land_drop"
+		}
+		return "play_card"
+	case fromZone == "hand" && toZone == "stack":
+		return "cast_spell"
+	case fromZone == "stack" && toZone == "battlefield":
+		return "resolve_spell"
+	case fromZone == "library" && toZone == "hand":
+		return "draw"
+	case toZone == "graveyard":
+		return "to_graveyard"
+	case toZone == "exile":
+		return "exile"
+	case toZone == "battlefield":
+		return "enter_battlefield"
+	case toZone == "stack":
+		return "cast_spell"
+	default:
+		return "zone_change"
+	}
 }
 
 // detectAttacks finds creatures that started attacking.

@@ -233,6 +233,32 @@
   color: #666666;
 }
 
+/* Life Change Display */
+.play-life-change {
+  font-size: 12px;
+  font-weight: 500;
+  margin-left: auto;
+  padding: 2px 8px;
+  border-radius: 4px;
+  background-color: #333333;
+}
+
+.play-life-change.damage {
+  color: #ff6b6b;
+  background-color: rgba(255, 77, 77, 0.15);
+}
+
+.play-life-change.heal {
+  color: #7dff7d;
+  background-color: rgba(125, 255, 125, 0.15);
+}
+
+.life-delta {
+  margin-left: 4px;
+  font-size: 11px;
+  opacity: 0.8;
+}
+
 /* States */
 .empty-state {
   text-align: center;

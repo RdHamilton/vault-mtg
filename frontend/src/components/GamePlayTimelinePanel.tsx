@@ -77,6 +77,20 @@ const GamePlayTimelinePanel = ({
         return 'Block';
       case 'mulligan':
         return 'Mulligan';
+      case 'life_change':
+        return 'Life Change';
+      case 'cast_spell':
+        return 'Cast';
+      case 'resolve_spell':
+        return 'Resolved';
+      case 'enter_battlefield':
+        return 'Enter Battlefield';
+      case 'to_graveyard':
+        return 'To Graveyard';
+      case 'exile':
+        return 'Exile';
+      case 'zone_change':
+        return 'Moved';
       default:
         return actionType;
     }
@@ -94,12 +108,30 @@ const GamePlayTimelinePanel = ({
         return '🛡️';
       case 'mulligan':
         return '🔄';
+      case 'life_change':
+        return '❤️';
+      case 'cast_spell':
+        return '✨';
+      case 'resolve_spell':
+        return '✅';
+      case 'enter_battlefield':
+        return '📥';
+      case 'to_graveyard':
+        return '💀';
+      case 'exile':
+        return '🚫';
+      case 'zone_change':
+        return '➡️';
       default:
         return '•';
     }
   };
 
   const renderPlay = (play: GamePlay) => {
+    const lifeChange =
+      play.life_from != null && play.life_to != null ? play.life_to - play.life_from : null;
+    const lifeChangeClass = lifeChange != null ? (lifeChange < 0 ? 'damage' : 'heal') : '';
+
     return (
       <div key={play.id} className={`play-item ${play.player_type}`}>
         <span className="play-icon">{getActionIcon(play.action_type)}</span>
@@ -108,6 +140,17 @@ const GamePlayTimelinePanel = ({
         {play.zone_from && play.zone_to && (
           <span className="play-zones">
             {play.zone_from} → {play.zone_to}
+          </span>
+        )}
+        {play.action_type === 'life_change' && play.life_from != null && play.life_to != null && (
+          <span className={`play-life-change ${lifeChangeClass}`}>
+            {play.life_from} → {play.life_to}
+            {lifeChange != null && (
+              <span className="life-delta">
+                ({lifeChange > 0 ? '+' : ''}
+                {lifeChange})
+              </span>
+            )}
           </span>
         )}
       </div>

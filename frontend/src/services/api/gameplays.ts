@@ -17,11 +17,25 @@ export interface GamePlay {
   phase: string;
   step?: string;
   player_type: 'player' | 'opponent';
-  action_type: 'play_card' | 'attack' | 'block' | 'land_drop' | 'mulligan';
+  action_type:
+    | 'play_card'
+    | 'attack'
+    | 'block'
+    | 'land_drop'
+    | 'mulligan'
+    | 'life_change'
+    | 'cast_spell'
+    | 'resolve_spell'
+    | 'enter_battlefield'
+    | 'to_graveyard'
+    | 'exile'
+    | 'zone_change';
   card_id?: number;
   card_name?: string;
   zone_from?: string;
   zone_to?: string;
+  life_from?: number;
+  life_to?: number;
   timestamp: string;
   sequence_number: number;
   created_at?: string;
@@ -154,6 +168,13 @@ export const ActionType = {
   Block: 'block',
   LandDrop: 'land_drop',
   Mulligan: 'mulligan',
+  LifeChange: 'life_change',
+  CastSpell: 'cast_spell',
+  ResolveSpell: 'resolve_spell',
+  EnterBattlefield: 'enter_battlefield',
+  ToGraveyard: 'to_graveyard',
+  Exile: 'exile',
+  ZoneChange: 'zone_change',
 } as const;
 
 /**

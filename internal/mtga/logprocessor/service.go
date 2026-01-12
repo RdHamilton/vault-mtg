@@ -20,6 +20,13 @@ type Service struct {
 	storage    *storage.Service
 	dryRun     bool // When true, parse entries but don't store to database (for replay testing)
 	replayMode bool // When true, keep draft sessions as "in_progress" for UI testing
+
+	// GRE message accumulation for play tracking
+	// These are accumulated across batches during an active match
+	activeMatchID       string                   // Current match being tracked
+	accumulatedGRECalls []*logreader.LogEntry    // GRE entries accumulated for current match
+	playerConnection    *logreader.GREConnection // Cached player connection info
+	playerScreenName    string                   // Cached player screen name for seat ID matching
 }
 
 // NewService creates a new log processor service.
@@ -1362,51 +1369,184 @@ func (s *Service) inferSetCodeFromCardID(cardID string) string {
 
 // processGamePlays parses GRE messages and stores game play data (in-game actions).
 // This includes card plays, attacks, blocks, land drops, and turn snapshots.
+//
+// IMPORTANT: GRE messages are accumulated across batches during an active match.
+// This is necessary because the daemon processes log entries in small batches (~5-10 entries),
+// but play detection requires comparing consecutive game states which need many GRE messages.
+// Plays are processed and stored when a match completes (detected by result.MatchesStored > 0).
 func (s *Service) processGamePlays(ctx context.Context, entries []*logreader.LogEntry, result *ProcessResult) error {
 	if s.dryRun {
 		log.Println("[DRY RUN] Would process game plays but skipping in dry run mode")
 		return nil
 	}
 
-	// Get player seat ID from connectResp
-	playerConn := logreader.GetPlayerSeatID(entries)
-	if playerConn == nil {
-		// No player connection info found - no game in progress
-		return nil
+	// Extract player screen name from authenticateResponse if not already cached
+	if s.playerScreenName == "" {
+		for _, entry := range entries {
+			if entry.IsJSON {
+				if authResp, ok := entry.JSON["authenticateResponse"]; ok {
+					if authMap, ok := authResp.(map[string]interface{}); ok {
+						if screenName, ok := authMap["screenName"].(string); ok && screenName != "" {
+							s.playerScreenName = screenName
+							log.Printf("[PlayTracking] Found player screen name: %s", screenName)
+							break
+						}
+					}
+				}
+			}
+		}
 	}
 
-	log.Printf("Found player connection: seat=%d", playerConn.SystemSeatID)
+	// Check for player connection info in this batch using screen name for matching
+	playerConn := logreader.GetPlayerSeatIDByName(entries, s.playerScreenName)
+	if playerConn != nil {
+		// New match starting - reset accumulation
+		if s.playerConnection == nil || s.playerConnection.SeatID != playerConn.SeatID {
+			log.Printf("[PlayTracking] Found player connection: seat=%d (matched by name: %s)", playerConn.SystemSeatID, s.playerScreenName)
+			s.playerConnection = playerConn
+			s.accumulatedGRECalls = nil // Clear old entries
+		}
+	}
 
-	// Parse game plays (zone changes, attacks, blocks, etc.)
-	gamePlays, err := logreader.ParseGamePlays(entries, playerConn)
+	// Detect match start from matchGameRoomStateChangedEvent
+	matchID := s.detectMatchIDFromEntries(entries)
+	if matchID != "" && matchID != s.activeMatchID {
+		log.Printf("[PlayTracking] New match detected: %s", matchID)
+		s.activeMatchID = matchID
+		s.accumulatedGRECalls = nil // Clear entries from previous match
+	}
+
+	// Accumulate GRE-related entries for play tracking
+	for _, entry := range entries {
+		if entry.IsJSON {
+			// Check if this entry contains GRE data
+			if _, hasGRE := entry.JSON["greToClientEvent"]; hasGRE {
+				s.accumulatedGRECalls = append(s.accumulatedGRECalls, entry)
+			}
+			// Also accumulate connectResp for player identification
+			if _, hasConn := entry.JSON["connectResp"]; hasConn {
+				s.accumulatedGRECalls = append(s.accumulatedGRECalls, entry)
+			}
+			// Accumulate matchGameRoomStateChangedEvent for match/player info
+			if _, hasRoom := entry.JSON["matchGameRoomStateChangedEvent"]; hasRoom {
+				s.accumulatedGRECalls = append(s.accumulatedGRECalls, entry)
+			}
+		}
+	}
+
+	// Process snapshots from current batch (these work with small batches)
+	if s.playerConnection != nil {
+		snapshots, err := logreader.ExtractGameSnapshots(entries, s.playerConnection)
+		if err != nil {
+			log.Printf("Warning: Failed to extract game snapshots: %v", err)
+		} else if len(snapshots) > 0 {
+			// Use activeMatchID for snapshots if they don't have match IDs
+			s.storeGameSnapshots(ctx, snapshots, s.activeMatchID, result)
+		}
+	}
+
+	// If a match was just stored, process all accumulated GRE entries for play tracking
+	if result.MatchesStored > 0 && len(s.accumulatedGRECalls) > 0 {
+		log.Printf("[PlayTracking] Match completed, processing %d accumulated GRE entries", len(s.accumulatedGRECalls))
+		s.processAccumulatedPlays(ctx, result)
+
+		// Clear accumulation for next match
+		s.accumulatedGRECalls = nil
+		s.activeMatchID = ""
+	}
+
+	return nil
+}
+
+// detectMatchIDFromEntries extracts match ID from log entries.
+func (s *Service) detectMatchIDFromEntries(entries []*logreader.LogEntry) string {
+	for _, entry := range entries {
+		if !entry.IsJSON {
+			continue
+		}
+
+		// Check greToClientEvent for match ID
+		if greEvent, ok := entry.JSON["greToClientEvent"].(map[string]interface{}); ok {
+			if msgs, ok := greEvent["greToClientMessages"].([]interface{}); ok {
+				for _, msgData := range msgs {
+					if msgMap, ok := msgData.(map[string]interface{}); ok {
+						if gsm, ok := msgMap["gameStateMessage"].(map[string]interface{}); ok {
+							if gameInfo, ok := gsm["gameInfo"].(map[string]interface{}); ok {
+								if matchID, ok := gameInfo["matchID"].(string); ok && matchID != "" {
+									return matchID
+								}
+							}
+						}
+					}
+				}
+			}
+		}
+
+		// Check matchGameRoomStateChangedEvent for match ID
+		if matchEvent, ok := entry.JSON["matchGameRoomStateChangedEvent"].(map[string]interface{}); ok {
+			if gameRoomInfo, ok := matchEvent["gameRoomInfo"].(map[string]interface{}); ok {
+				if gameRoomConfig, ok := gameRoomInfo["gameRoomConfig"].(map[string]interface{}); ok {
+					if matchID, ok := gameRoomConfig["matchId"].(string); ok && matchID != "" {
+						return matchID
+					}
+				}
+			}
+		}
+	}
+	return ""
+}
+
+// processAccumulatedPlays processes all accumulated GRE entries to extract plays.
+func (s *Service) processAccumulatedPlays(ctx context.Context, result *ProcessResult) {
+	if s.playerConnection == nil {
+		// Try to get player connection from accumulated entries using screen name
+		s.playerConnection = logreader.GetPlayerSeatIDByName(s.accumulatedGRECalls, s.playerScreenName)
+		if s.playerConnection == nil {
+			log.Printf("[PlayTracking] No player connection found in accumulated entries (screenName: %s)", s.playerScreenName)
+			return
+		}
+		log.Printf("[PlayTracking] Found player connection from accumulated entries: seat=%d", s.playerConnection.SeatID)
+	}
+
+	// Parse game plays from ALL accumulated entries
+	gamePlays, err := logreader.ParseGamePlays(s.accumulatedGRECalls, s.playerConnection)
 	if err != nil {
 		log.Printf("Warning: Failed to parse game plays: %v", err)
-		return err
+		return
 	}
 
-	// Extract opponent cards observed
-	opponentCards, err := logreader.ExtractOpponentCards(entries, playerConn)
+	// Extract opponent cards from ALL accumulated entries
+	opponentCards, err := logreader.ExtractOpponentCards(s.accumulatedGRECalls, s.playerConnection)
 	if err != nil {
 		log.Printf("Warning: Failed to extract opponent cards: %v", err)
-		// Continue - opponent cards are optional
 	}
 
-	// Extract game snapshots
-	snapshots, err := logreader.ExtractGameSnapshots(entries, playerConn)
-	if err != nil {
-		log.Printf("Warning: Failed to extract game snapshots: %v", err)
-		// Continue - snapshots are optional
+	// Determine match ID - use activeMatchID as fallback since GRE messages may not always include it
+	matchID := s.activeMatchID
+	if matchID == "" && len(gamePlays) > 0 && gamePlays[0].MatchID != "" {
+		matchID = gamePlays[0].MatchID
+	}
+
+	if matchID == "" {
+		log.Printf("[PlayTracking] No match ID available, cannot store plays")
+		return
 	}
 
 	// Store game plays
 	if len(gamePlays) > 0 {
-		// Convert GamePlayEvent to models.GamePlay
 		modelPlays := make([]*models.GamePlay, 0, len(gamePlays))
 		for _, play := range gamePlays {
+			// Use tracked matchID since individual plays may not have it
+			playMatchID := play.MatchID
+			if playMatchID == "" {
+				playMatchID = matchID
+			}
 			modelPlay := &models.GamePlay{
-				MatchID:        play.MatchID,
+				GameID:         play.GameNumber, // Link play to specific game within match
+				MatchID:        playMatchID,
 				TurnNumber:     play.TurnNumber,
 				Phase:          play.Phase,
+				Step:           play.Step, // Include step for more precise tracking
 				PlayerType:     play.PlayerType,
 				ActionType:     play.ActionType,
 				Timestamp:      play.Timestamp,
@@ -1424,26 +1564,22 @@ func (s *Service) processGamePlays(ctx context.Context, entries []*logreader.Log
 				zoneTo := play.ZoneTo
 				modelPlay.ZoneTo = &zoneTo
 			}
+			// Always include life values for life_change events, even if one is 0
+			if play.ActionType == "life_change" || play.LifeFrom != 0 || play.LifeTo != 0 {
+				lifeFrom := play.LifeFrom
+				lifeTo := play.LifeTo
+				modelPlay.LifeFrom = &lifeFrom
+				modelPlay.LifeTo = &lifeTo
+			}
 			modelPlays = append(modelPlays, modelPlay)
 		}
 
-		// Use batch insert for efficiency
 		if err := s.storage.GamePlayRepo().CreatePlays(ctx, modelPlays); err != nil {
 			log.Printf("Warning: Failed to store game plays: %v", err)
 		} else {
 			result.GamePlaysStored = len(modelPlays)
-			if len(gamePlays) > 0 {
-				log.Printf("✓ Stored %d game play(s) for match %s", len(modelPlays), gamePlays[0].MatchID)
-			}
+			log.Printf("✓ Stored %d game play(s) for match %s", len(modelPlays), matchID)
 		}
-	}
-
-	// Get matchID from the first game play or snapshot for opponent cards
-	var matchID string
-	if len(gamePlays) > 0 {
-		matchID = gamePlays[0].MatchID
-	} else if len(snapshots) > 0 {
-		matchID = snapshots[0].MatchID
 	}
 
 	// Store opponent cards
@@ -1470,50 +1606,63 @@ func (s *Service) processGamePlays(ctx context.Context, entries []*logreader.Log
 			log.Printf("✓ Recorded %d opponent card(s) for match %s", result.OpponentCardsStored, matchID)
 		}
 	}
+}
 
-	// Store game snapshots
-	if len(snapshots) > 0 {
-		for _, snap := range snapshots {
-			modelSnap := &models.GameStateSnapshot{
-				MatchID:      snap.MatchID,
-				TurnNumber:   snap.TurnNumber,
-				ActivePlayer: snap.ActivePlayer,
-				Timestamp:    snap.Timestamp,
-			}
-			if snap.PlayerLife != 0 {
-				life := snap.PlayerLife
-				modelSnap.PlayerLife = &life
-			}
-			if snap.OpponentLife != 0 {
-				life := snap.OpponentLife
-				modelSnap.OpponentLife = &life
-			}
-			if snap.PlayerCardsInHand != 0 {
-				cards := snap.PlayerCardsInHand
-				modelSnap.PlayerCardsInHand = &cards
-			}
-			if snap.OpponentCardsInHand != 0 {
-				cards := snap.OpponentCardsInHand
-				modelSnap.OpponentCardsInHand = &cards
-			}
-			if snap.PlayerLandsInPlay != 0 {
-				lands := snap.PlayerLandsInPlay
-				modelSnap.PlayerLandsInPlay = &lands
-			}
-			if snap.OpponentLandsInPlay != 0 {
-				lands := snap.OpponentLandsInPlay
-				modelSnap.OpponentLandsInPlay = &lands
-			}
-			if err := s.storage.GamePlayRepo().CreateSnapshot(ctx, modelSnap); err != nil {
-				log.Printf("Warning: Failed to store game snapshot: %v", err)
-			} else {
-				result.GameSnapshotsStored++
-			}
+// storeGameSnapshots stores game state snapshots.
+func (s *Service) storeGameSnapshots(ctx context.Context, snapshots []*logreader.GameSnapshot, fallbackMatchID string, result *ProcessResult) {
+	for _, snap := range snapshots {
+		// Use fallback match ID if snapshot doesn't have one
+		snapshotMatchID := snap.MatchID
+		if snapshotMatchID == "" {
+			snapshotMatchID = fallbackMatchID
 		}
-		if result.GameSnapshotsStored > 0 && len(snapshots) > 0 {
-			log.Printf("✓ Stored %d game snapshot(s) for match %s", result.GameSnapshotsStored, snapshots[0].MatchID)
+		if snapshotMatchID == "" {
+			// Skip snapshots without match ID
+			continue
+		}
+		modelSnap := &models.GameStateSnapshot{
+			GameID:       snap.GameNumber, // Link snapshot to specific game within match
+			MatchID:      snapshotMatchID,
+			TurnNumber:   snap.TurnNumber,
+			ActivePlayer: snap.ActivePlayer,
+			Timestamp:    snap.Timestamp,
+		}
+		if snap.PlayerLife != 0 {
+			life := snap.PlayerLife
+			modelSnap.PlayerLife = &life
+		}
+		if snap.OpponentLife != 0 {
+			life := snap.OpponentLife
+			modelSnap.OpponentLife = &life
+		}
+		if snap.PlayerCardsInHand != 0 {
+			cards := snap.PlayerCardsInHand
+			modelSnap.PlayerCardsInHand = &cards
+		}
+		if snap.OpponentCardsInHand != 0 {
+			cards := snap.OpponentCardsInHand
+			modelSnap.OpponentCardsInHand = &cards
+		}
+		if snap.PlayerLandsInPlay != 0 {
+			lands := snap.PlayerLandsInPlay
+			modelSnap.PlayerLandsInPlay = &lands
+		}
+		if snap.OpponentLandsInPlay != 0 {
+			lands := snap.OpponentLandsInPlay
+			modelSnap.OpponentLandsInPlay = &lands
+		}
+		if err := s.storage.GamePlayRepo().CreateSnapshot(ctx, modelSnap); err != nil {
+			log.Printf("Warning: Failed to store game snapshot: %v", err)
+		} else {
+			result.GameSnapshotsStored++
 		}
 	}
-
-	return nil
+	if result.GameSnapshotsStored > 0 {
+		// Use first stored snapshot's match ID for logging, or fallback
+		logMatchID := fallbackMatchID
+		if len(snapshots) > 0 && snapshots[0].MatchID != "" {
+			logMatchID = snapshots[0].MatchID
+		}
+		log.Printf("✓ Stored %d game snapshot(s) for match %s", result.GameSnapshotsStored, logMatchID)
+	}
 }

@@ -72,8 +72,8 @@ func (r *gamePlayRepository) CreatePlay(ctx context.Context, play *models.GamePl
 	query := `
 		INSERT INTO game_plays (
 			game_id, match_id, turn_number, phase, step, player_type, action_type,
-			card_id, card_name, zone_from, zone_to, timestamp, sequence_number
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+			card_id, card_name, zone_from, zone_to, life_from, life_to, timestamp, sequence_number
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 	`
 
 	timestampStr := play.Timestamp.UTC().Format("2006-01-02 15:04:05.999999")
@@ -90,6 +90,8 @@ func (r *gamePlayRepository) CreatePlay(ctx context.Context, play *models.GamePl
 		play.CardName,
 		play.ZoneFrom,
 		play.ZoneTo,
+		play.LifeFrom,
+		play.LifeTo,
 		timestampStr,
 		play.SequenceNumber,
 	)
@@ -123,8 +125,8 @@ func (r *gamePlayRepository) CreatePlays(ctx context.Context, plays []*models.Ga
 	query := `
 		INSERT INTO game_plays (
 			game_id, match_id, turn_number, phase, step, player_type, action_type,
-			card_id, card_name, zone_from, zone_to, timestamp, sequence_number
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+			card_id, card_name, zone_from, zone_to, life_from, life_to, timestamp, sequence_number
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 	`
 
 	stmt, err := tx.PrepareContext(ctx, query)
@@ -149,6 +151,8 @@ func (r *gamePlayRepository) CreatePlays(ctx context.Context, plays []*models.Ga
 			play.CardName,
 			play.ZoneFrom,
 			play.ZoneTo,
+			play.LifeFrom,
+			play.LifeTo,
 			timestampStr,
 			play.SequenceNumber,
 		)
@@ -342,13 +346,18 @@ func (r *gamePlayRepository) RecordOpponentCard(ctx context.Context, card *model
 }
 
 // GetPlaysByMatch retrieves all plays for a match, ordered by sequence number.
+// Card names are resolved by joining with set_cards table using arena_id.
 func (r *gamePlayRepository) GetPlaysByMatch(ctx context.Context, matchID string) ([]*models.GamePlay, error) {
 	query := `
-		SELECT id, game_id, match_id, turn_number, phase, step, player_type, action_type,
-		       card_id, card_name, zone_from, zone_to, timestamp, sequence_number, created_at
-		FROM game_plays
-		WHERE match_id = ?
-		ORDER BY sequence_number ASC
+		SELECT gp.id, gp.game_id, gp.match_id, gp.turn_number, gp.phase, gp.step,
+		       gp.player_type, gp.action_type, gp.card_id,
+		       COALESCE(gp.card_name, sc.name) as card_name,
+		       gp.zone_from, gp.zone_to, gp.life_from, gp.life_to,
+		       gp.timestamp, gp.sequence_number, gp.created_at
+		FROM game_plays gp
+		LEFT JOIN set_cards sc ON CAST(gp.card_id AS TEXT) = sc.arena_id
+		WHERE gp.match_id = ?
+		ORDER BY gp.sequence_number ASC
 	`
 
 	rows, err := r.db.QueryContext(ctx, query, matchID)
@@ -363,13 +372,18 @@ func (r *gamePlayRepository) GetPlaysByMatch(ctx context.Context, matchID string
 }
 
 // GetPlaysByGame retrieves all plays for a specific game within a match.
+// Card names are resolved by joining with set_cards table using arena_id.
 func (r *gamePlayRepository) GetPlaysByGame(ctx context.Context, gameID int) ([]*models.GamePlay, error) {
 	query := `
-		SELECT id, game_id, match_id, turn_number, phase, step, player_type, action_type,
-		       card_id, card_name, zone_from, zone_to, timestamp, sequence_number, created_at
-		FROM game_plays
-		WHERE game_id = ?
-		ORDER BY sequence_number ASC
+		SELECT gp.id, gp.game_id, gp.match_id, gp.turn_number, gp.phase, gp.step,
+		       gp.player_type, gp.action_type, gp.card_id,
+		       COALESCE(gp.card_name, sc.name) as card_name,
+		       gp.zone_from, gp.zone_to, gp.life_from, gp.life_to,
+		       gp.timestamp, gp.sequence_number, gp.created_at
+		FROM game_plays gp
+		LEFT JOIN set_cards sc ON CAST(gp.card_id AS TEXT) = sc.arena_id
+		WHERE gp.game_id = ?
+		ORDER BY gp.sequence_number ASC
 	`
 
 	rows, err := r.db.QueryContext(ctx, query, gameID)
@@ -662,6 +676,8 @@ func (r *gamePlayRepository) scanPlays(rows *sql.Rows) ([]*models.GamePlay, erro
 			&play.CardName,
 			&play.ZoneFrom,
 			&play.ZoneTo,
+			&play.LifeFrom,
+			&play.LifeTo,
 			&play.Timestamp,
 			&play.SequenceNumber,
 			&play.CreatedAt,

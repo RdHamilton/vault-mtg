@@ -64,6 +64,8 @@ func setupGamePlayTestDB(t *testing.T) *sql.DB {
 			card_name TEXT,
 			zone_from TEXT,
 			zone_to TEXT,
+			life_from INTEGER,
+			life_to INTEGER,
 			timestamp TIMESTAMP NOT NULL,
 			sequence_number INTEGER NOT NULL,
 			created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
@@ -99,6 +101,20 @@ func setupGamePlayTestDB(t *testing.T) *sql.DB {
 			times_seen INTEGER DEFAULT 1,
 			FOREIGN KEY (game_id) REFERENCES games(id) ON DELETE CASCADE,
 			UNIQUE(game_id, card_id)
+		);
+
+		CREATE TABLE set_cards (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			set_code TEXT NOT NULL,
+			arena_id TEXT NOT NULL,
+			scryfall_id TEXT,
+			name TEXT NOT NULL,
+			mana_cost TEXT,
+			cmc INTEGER,
+			types TEXT,
+			colors TEXT,
+			rarity TEXT,
+			UNIQUE(set_code, arena_id)
 		);
 
 		CREATE INDEX idx_game_plays_game_id ON game_plays(game_id);
@@ -421,6 +437,57 @@ func TestGamePlayRepository_GetPlaysByMatch(t *testing.T) {
 		if play.SequenceNumber != i+1 {
 			t.Errorf("Expected sequence number %d, got %d", i+1, play.SequenceNumber)
 		}
+	}
+}
+
+func TestGamePlayRepository_GetPlaysByMatch_CardNameResolution(t *testing.T) {
+	db := setupGamePlayTestDB(t)
+	defer func() { _ = db.Close() }()
+
+	gameID := createTestMatch(t, db, "match-card-resolution")
+	repo := NewGamePlayRepository(db)
+	ctx := context.Background()
+
+	// Insert a card into set_cards table
+	_, err := db.Exec(`INSERT INTO set_cards (set_code, arena_id, name) VALUES (?, ?, ?)`, "DSK", "12345", "Lightning Bolt")
+	if err != nil {
+		t.Fatalf("failed to insert test card: %v", err)
+	}
+
+	// Create a play with card_id matching the arena_id but NO card_name stored
+	cardID := 12345
+	play := &models.GamePlay{
+		GameID:         gameID,
+		MatchID:        "match-card-resolution",
+		TurnNumber:     1,
+		Phase:          "Main1",
+		PlayerType:     "player",
+		ActionType:     "play_card",
+		CardID:         &cardID,
+		CardName:       nil, // No card name stored - should be resolved via join
+		Timestamp:      time.Now(),
+		SequenceNumber: 1,
+	}
+
+	err = repo.CreatePlay(ctx, play)
+	if err != nil {
+		t.Fatalf("CreatePlay failed: %v", err)
+	}
+
+	// Get plays and verify card name is resolved from set_cards
+	plays, err := repo.GetPlaysByMatch(ctx, "match-card-resolution")
+	if err != nil {
+		t.Fatalf("GetPlaysByMatch failed: %v", err)
+	}
+
+	if len(plays) != 1 {
+		t.Fatalf("Expected 1 play, got %d", len(plays))
+	}
+
+	if plays[0].CardName == nil {
+		t.Error("Expected card name to be resolved from set_cards join")
+	} else if *plays[0].CardName != "Lightning Bolt" {
+		t.Errorf("Expected card name 'Lightning Bolt', got '%s'", *plays[0].CardName)
 	}
 }
 

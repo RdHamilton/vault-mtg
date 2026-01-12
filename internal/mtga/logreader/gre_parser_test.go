@@ -53,7 +53,9 @@ func TestGetPlayerSeatID_FromMatchEvent(t *testing.T) {
 		},
 	}
 
-	conn := GetPlayerSeatID(entries)
+	// Without screen name, GetPlayerSeatID won't match from matchGameRoomStateChangedEvent
+	// (to avoid picking wrong player). Use GetPlayerSeatIDByName instead.
+	conn := GetPlayerSeatIDByName(entries, "TestPlayer")
 
 	if conn == nil {
 		t.Fatal("Expected connection info to be non-nil")
@@ -63,6 +65,49 @@ func TestGetPlayerSeatID_FromMatchEvent(t *testing.T) {
 	}
 	if conn.TeamID != 1 {
 		t.Errorf("Expected TeamID 1, got %d", conn.TeamID)
+	}
+}
+
+func TestGetPlayerSeatIDByName_MatchesCorrectPlayer(t *testing.T) {
+	// Test that GetPlayerSeatIDByName correctly matches by player name when
+	// there are multiple players in reservedPlayers
+	entries := []*LogEntry{
+		{
+			IsJSON: true,
+			JSON: map[string]interface{}{
+				"matchGameRoomStateChangedEvent": map[string]interface{}{
+					"gameRoomInfo": map[string]interface{}{
+						"gameRoomConfig": map[string]interface{}{
+							"reservedPlayers": []interface{}{
+								map[string]interface{}{
+									"systemSeatId": float64(1),
+									"teamId":       float64(1),
+									"playerName":   "Opponent",
+								},
+								map[string]interface{}{
+									"systemSeatId": float64(2),
+									"teamId":       float64(2),
+									"playerName":   "MyPlayer",
+								},
+							},
+						},
+					},
+				},
+			},
+		},
+	}
+
+	// Match by name - should get seat 2 (MyPlayer), not seat 1 (Opponent)
+	conn := GetPlayerSeatIDByName(entries, "MyPlayer")
+
+	if conn == nil {
+		t.Fatal("Expected connection info to be non-nil")
+	}
+	if conn.SystemSeatID != 2 {
+		t.Errorf("Expected SystemSeatID 2 (MyPlayer), got %d", conn.SystemSeatID)
+	}
+	if conn.TeamID != 2 {
+		t.Errorf("Expected TeamID 2, got %d", conn.TeamID)
 	}
 }
 
@@ -831,6 +876,141 @@ func TestParseGameObject(t *testing.T) {
 	}
 	if obj.Counters["+1/+1"] != 2 {
 		t.Errorf("Expected 2 +1/+1 counters, got %d", obj.Counters["+1/+1"])
+	}
+}
+
+func TestZoneIDToNameWithMap(t *testing.T) {
+	// Create a zones map similar to what MTGA sends
+	zones := map[int]*GREZone{
+		28: {ZoneID: 28, Type: "ZoneType_Battlefield", Visibility: "Visibility_Public"},
+		30: {ZoneID: 30, Type: "ZoneType_Limbo", Visibility: "Visibility_Public"},
+		31: {ZoneID: 31, Type: "ZoneType_Hand", OwnerSeatID: 1, Visibility: "Visibility_Private"},
+		32: {ZoneID: 32, Type: "ZoneType_Library", OwnerSeatID: 1, Visibility: "Visibility_Hidden"},
+		33: {ZoneID: 33, Type: "ZoneType_Graveyard", OwnerSeatID: 1, Visibility: "Visibility_Public"},
+		27: {ZoneID: 27, Type: "ZoneType_Stack", Visibility: "Visibility_Public"},
+		29: {ZoneID: 29, Type: "ZoneType_Exile", Visibility: "Visibility_Public"},
+	}
+
+	tests := []struct {
+		zoneID   int
+		expected string
+	}{
+		{28, "battlefield"},
+		{30, "limbo"},
+		{31, "hand"},
+		{32, "library"},
+		{33, "graveyard"},
+		{27, "stack"},
+		{29, "exile"},
+		{99, "zone_99"}, // Unknown zone, falls back to legacy
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.expected, func(t *testing.T) {
+			result := zoneIDToNameWithMap(tt.zoneID, zones)
+			if result != tt.expected {
+				t.Errorf("zoneIDToNameWithMap(%d) = %q, want %q", tt.zoneID, result, tt.expected)
+			}
+		})
+	}
+
+	// Test with nil zones map (should fall back to legacy)
+	result := zoneIDToNameWithMap(31, nil)
+	if result != "hand" {
+		t.Errorf("zoneIDToNameWithMap(31, nil) = %q, want 'hand'", result)
+	}
+}
+
+func TestZoneTypeToReadableName(t *testing.T) {
+	tests := []struct {
+		zoneType string
+		expected string
+	}{
+		{"ZoneType_Hand", "hand"},
+		{"ZoneType_Library", "library"},
+		{"ZoneType_Battlefield", "battlefield"},
+		{"ZoneType_Graveyard", "graveyard"},
+		{"ZoneType_Exile", "exile"},
+		{"ZoneType_Stack", "stack"},
+		{"ZoneType_Command", "command"},
+		{"ZoneType_Sideboard", "sideboard"},
+		{"ZoneType_Revealed", "revealed"},
+		{"ZoneType_Limbo", "limbo"},
+		{"ZoneType_Pending", "pending"},
+		{"ZoneType_Suppressed", "suppressed"},
+		{"ZoneType_NewType", "NewType"},    // Unknown type, strips prefix
+		{"SomethingElse", "SomethingElse"}, // No prefix
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.zoneType, func(t *testing.T) {
+			result := zoneTypeToReadableName(tt.zoneType)
+			if result != tt.expected {
+				t.Errorf("zoneTypeToReadableName(%q) = %q, want %q", tt.zoneType, result, tt.expected)
+			}
+		})
+	}
+}
+
+func TestParseZone(t *testing.T) {
+	zoneMap := map[string]interface{}{
+		"zoneId":      float64(28),
+		"type":        "ZoneType_Battlefield",
+		"visibility":  "Visibility_Public",
+		"ownerSeatId": float64(1),
+	}
+
+	zone := parseZone(zoneMap)
+
+	if zone == nil {
+		t.Fatal("Expected zone to be non-nil")
+	}
+	if zone.ZoneID != 28 {
+		t.Errorf("Expected ZoneID 28, got %d", zone.ZoneID)
+	}
+	if zone.Type != "ZoneType_Battlefield" {
+		t.Errorf("Expected Type 'ZoneType_Battlefield', got '%s'", zone.Type)
+	}
+	if zone.Visibility != "Visibility_Public" {
+		t.Errorf("Expected Visibility 'Visibility_Public', got '%s'", zone.Visibility)
+	}
+	if zone.OwnerSeatID != 1 {
+		t.Errorf("Expected OwnerSeatID 1, got %d", zone.OwnerSeatID)
+	}
+}
+
+func TestParseZone_MissingZoneID(t *testing.T) {
+	zoneMap := map[string]interface{}{
+		"type":       "ZoneType_Battlefield",
+		"visibility": "Visibility_Public",
+	}
+
+	zone := parseZone(zoneMap)
+	if zone != nil {
+		t.Error("Expected nil zone when zoneId is missing")
+	}
+}
+
+func TestParseGameObjectWithZones(t *testing.T) {
+	// Create a zones map similar to what MTGA sends
+	zones := map[int]*GREZone{
+		28: {ZoneID: 28, Type: "ZoneType_Battlefield", Visibility: "Visibility_Public"},
+	}
+
+	objMap := map[string]interface{}{
+		"instanceId":       float64(42),
+		"grpId":            float64(12345),
+		"controllerSeatId": float64(1),
+		"zoneId":           float64(28),
+	}
+
+	obj := parseGameObjectWithZones(objMap, zones)
+
+	if obj.ZoneID != 28 {
+		t.Errorf("Expected ZoneID 28, got %d", obj.ZoneID)
+	}
+	if obj.ZoneName != "battlefield" {
+		t.Errorf("Expected ZoneName 'battlefield', got '%s'", obj.ZoneName)
 	}
 }
 

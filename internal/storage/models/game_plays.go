@@ -17,6 +17,8 @@ type GamePlay struct {
 	CardName       *string   `json:"card_name,omitempty" db:"card_name"` // Card name for display (nullable)
 	ZoneFrom       *string   `json:"zone_from,omitempty" db:"zone_from"` // Source zone (hand, library, graveyard, etc.)
 	ZoneTo         *string   `json:"zone_to,omitempty" db:"zone_to"`     // Destination zone (battlefield, graveyard, etc.)
+	LifeFrom       *int      `json:"life_from,omitempty" db:"life_from"` // Previous life total (for life_change events)
+	LifeTo         *int      `json:"life_to,omitempty" db:"life_to"`     // New life total (for life_change events)
 	Timestamp      time.Time `json:"timestamp" db:"timestamp"`
 	SequenceNumber int       `json:"sequence_number" db:"sequence_number"` // Order within the game
 	CreatedAt      time.Time `json:"created_at,omitempty" db:"created_at"`
@@ -90,11 +92,12 @@ const (
 
 // Constants for action types.
 const (
-	ActionTypePlayCard = "play_card"
-	ActionTypeAttack   = "attack"
-	ActionTypeBlock    = "block"
-	ActionTypeLandDrop = "land_drop"
-	ActionTypeMulligan = "mulligan"
+	ActionTypePlayCard   = "play_card"
+	ActionTypeAttack     = "attack"
+	ActionTypeBlock      = "block"
+	ActionTypeLandDrop   = "land_drop"
+	ActionTypeMulligan   = "mulligan"
+	ActionTypeLifeChange = "life_change"
 )
 
 // Constants for game phases.
