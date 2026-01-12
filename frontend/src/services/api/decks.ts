@@ -350,8 +350,8 @@ export interface ScoreBreakdown {
  * Synergy detail describing a specific synergy between a card and the deck.
  */
 export interface SynergyDetail {
-  type: 'keyword' | 'theme' | 'creature_type';
-  name: string;        // e.g., "flying", "tokens", "Elf"
+  type: 'keyword' | 'theme' | 'creature_type' | 'package';
+  name: string;        // e.g., "flying", "tokens", "Elf", "Spellslinger"
   description: string; // e.g., "Matches 3 other flying creatures"
 }
 

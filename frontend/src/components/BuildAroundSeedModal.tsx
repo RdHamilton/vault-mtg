@@ -112,6 +112,9 @@ export default function BuildAroundSeedModal({
   // Ref to track if we've already attempted initial fetch (prevent infinite loops)
   const hasAttemptedFetch = useRef(false);
 
+  // Ref to track if we've just performed a fetch in a handler (prevent double-fetch from useEffect)
+  const justFetchedInHandler = useRef(false);
+
   // Track which card IDs we've already fetched names for
   const fetchedCardIdsRef = useRef<Set<number>>(new Set());
 
@@ -176,6 +179,7 @@ export default function BuildAroundSeedModal({
     setCardNameMap(new Map());
     setError(null);
     hasAttemptedFetch.current = false; // Reset for next open
+    justFetchedInHandler.current = false; // Reset double-fetch prevention
     fetchedCardIdsRef.current = new Set(); // Reset fetched card IDs
     // Reset complete deck generation state
     setShowArchetypeSelector(false);
@@ -239,6 +243,11 @@ export default function BuildAroundSeedModal({
     if (!iterativeMode) return;
     // Need either seed card or deck cards mode
     if (!seedCardId && !useDeckCardsAsSeed) return;
+    // Skip if we just fetched in a handler (prevents double-fetch)
+    if (justFetchedInHandler.current) {
+      justFetchedInHandler.current = false;
+      return;
+    }
 
     const timer = setTimeout(fetchIterativeSuggestions, 300);
     return () => clearTimeout(timer);
@@ -261,6 +270,8 @@ export default function BuildAroundSeedModal({
   // Start iterative mode from mode selector
   const handleStartIterativeFromSelector = async () => {
     setShowModeSelector(false);
+    // Mark that we're fetching in this handler to prevent double-fetch from useEffect
+    justFetchedInHandler.current = true;
     setIterativeMode(true);
     setLoading(true);
     setError(null);
@@ -371,6 +382,8 @@ export default function BuildAroundSeedModal({
   const handleStartBuilding = async () => {
     if (!selectedCard) return;
 
+    // Mark that we're fetching in this handler to prevent double-fetch from useEffect
+    justFetchedInHandler.current = true;
     setSeedCardId(selectedCard.arenaID);
     setIterativeMode(true);
     setLoading(true);
