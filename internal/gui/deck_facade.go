@@ -372,6 +372,32 @@ func (d *DeckFacade) DeleteDeck(ctx context.Context, deckID string) error {
 	return nil
 }
 
+// isBasicLand checks if a card is a basic land by looking up its type in the database.
+// Basic lands have unlimited copies allowed in decks (no 4-copy limit).
+func (d *DeckFacade) isBasicLand(ctx context.Context, cardID int) bool {
+	// Try to get the card from the database
+	setCard, err := d.services.Storage.SetCardRepo().GetCardByArenaID(ctx, fmt.Sprintf("%d", cardID))
+	if err != nil || setCard == nil {
+		// If we can't find the card, check by common basic land names as fallback
+		// This handles edge cases where the card isn't in our database yet
+		return false
+	}
+
+	// Check if the card has both "Basic" and "Land" in its types
+	hasBasic := false
+	hasLand := false
+	for _, t := range setCard.Types {
+		if t == "Basic" {
+			hasBasic = true
+		}
+		if t == "Land" {
+			hasLand = true
+		}
+	}
+
+	return hasBasic && hasLand
+}
+
 // AddCard adds a card to a deck.
 func (d *DeckFacade) AddCard(ctx context.Context, deckID string, cardID, quantity int, board string, fromDraft bool) error {
 	if d.services.Storage == nil {
@@ -398,18 +424,13 @@ func (d *DeckFacade) AddCard(ctx context.Context, deckID string, cardID, quantit
 	}
 
 	// Check if this is a basic land (basic lands have no quantity limits)
-	basicLandIDs := map[int]bool{
-		81716: true, // Plains
-		81717: true, // Island
-		81718: true, // Swamp
-		81719: true, // Mountain
-		81720: true, // Forest
-	}
+	// Uses database lookup to handle all basic land Arena IDs across sets
+	isBasicLandCard := d.isBasicLand(ctx, cardID)
 
 	// If this is a draft deck, validate that the card is from the draft
 	// Exception: Basic lands are always allowed (they have unlimited availability)
 	if deck.Source == "draft" && deck.DraftEventID != nil {
-		if !basicLandIDs[cardID] {
+		if !isBasicLandCard {
 			// Not a basic land, so validate it's in the draft pool
 			var draftCards []int
 			err = storage.RetryOnBusy(func() error {
@@ -437,7 +458,7 @@ func (d *DeckFacade) AddCard(ctx context.Context, deckID string, cardID, quantit
 	}
 
 	// Enforce 4-card limit (unless basic land)
-	if !basicLandIDs[cardID] {
+	if !isBasicLandCard {
 		var deckCards []*models.DeckCard
 		err = storage.RetryOnBusy(func() error {
 			var err error
@@ -1537,20 +1558,11 @@ func (d *DeckFacade) calculateDeckStats(ctx context.Context, deckCards []*models
 		"Plains": true, "Island": true, "Swamp": true, "Mountain": true, "Forest": true, "Wastes": true,
 	}
 
-	// Basic land IDs (for when metadata is unavailable)
-	basicLandIDs := map[int]string{
-		81716: "Plains",
-		81717: "Island",
-		81718: "Swamp",
-		81719: "Mountain",
-		81720: "Forest",
-	}
-
 	for _, deckCard := range deckCards {
 		quantity := deckCard.Quantity
 
-		// Check if this is a basic land by ID (handle even without metadata)
-		if _, isBasicLand := basicLandIDs[deckCard.CardID]; isBasicLand {
+		// Check if this is a basic land using database lookup (handles all Arena IDs across sets)
+		if d.isBasicLand(ctx, deckCard.CardID) {
 			stats.TotalCards += quantity
 			stats.Lands.Total += quantity
 			stats.Lands.Basic += quantity

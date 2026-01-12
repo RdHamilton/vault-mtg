@@ -76,19 +76,40 @@ var synergyPackages = []SynergyPackage{
 			{
 				Name:        "prowess_creature",
 				DisplayName: "Prowess Creature",
-				Patterns:    []string{"prowess", "whenever you cast a noncreature spell", "magecraft"},
+				Patterns:    []string{"prowess", "whenever you cast a noncreature spell", "magecraft", "whenever you cast your first", "gets +1/+1 until end of turn"},
 				Required:    true,
 			},
 			{
 				Name:        "cheap_spell",
-				DisplayName: "Cheap Spell",
+				DisplayName: "Cheap Spell (CMC ≤2)",
 				TypeLines:   []string{"Instant", "Sorcery"},
 				Required:    true,
 			},
 			{
+				Name:        "cantrip",
+				DisplayName: "Cantrip",
+				Patterns:    []string{"draw a card", "draw two cards", "scry.*draw"},
+				TypeLines:   []string{"Instant", "Sorcery"},
+				Required:    false,
+			},
+			{
+				Name:        "combat_trick",
+				DisplayName: "Combat Trick",
+				Patterns:    []string{"target creature gets +", "gains first strike", "gains double strike", "gains trample", "can't be blocked"},
+				TypeLines:   []string{"Instant"},
+				Required:    false,
+			},
+			{
+				Name:        "burn",
+				DisplayName: "Burn Spell",
+				Patterns:    []string{"deals.*damage to any target", "deals.*damage to target", "damage to each opponent"},
+				TypeLines:   []string{"Instant", "Sorcery"},
+				Required:    false,
+			},
+			{
 				Name:        "spell_payoff",
 				DisplayName: "Spell Payoff",
-				Patterns:    []string{"whenever you cast an instant or sorcery", "instant or sorcery.*from your graveyard"},
+				Patterns:    []string{"whenever you cast an instant or sorcery", "instant or sorcery.*from your graveyard", "copy target instant", "cast this spell without paying"},
 				Required:    false,
 			},
 		},
@@ -323,21 +344,52 @@ func GetCardRoles(card *cards.Card) []CardRoleMatch {
 
 // matchesRole checks if a card matches a specific role.
 func matchesRole(oracleText, typeLine string, card *cards.Card, role *PackageRole) bool {
-	// Check oracle text patterns
-	for _, pattern := range role.Patterns {
-		if containsPattern(oracleText, pattern) {
-			return true
+	// For roles with BOTH patterns and type lines, require both to match
+	// (e.g., cantrip must be an Instant/Sorcery that draws cards)
+	if len(role.Patterns) > 0 && len(role.TypeLines) > 0 {
+		hasPatternMatch := false
+		for _, pattern := range role.Patterns {
+			if containsPattern(oracleText, pattern) {
+				hasPatternMatch = true
+				break
+			}
+		}
+
+		hasTypeMatch := false
+		for _, typePattern := range role.TypeLines {
+			if strings.Contains(typeLine, strings.ToLower(typePattern)) {
+				hasTypeMatch = true
+				break
+			}
+		}
+
+		// For cheap_spell, also require CMC <= 2
+		if role.Name == "cheap_spell" {
+			return hasPatternMatch && hasTypeMatch && card.CMC <= 2
+		}
+
+		return hasPatternMatch && hasTypeMatch
+	}
+
+	// Check oracle text patterns only (no type restriction)
+	if len(role.Patterns) > 0 && len(role.TypeLines) == 0 {
+		for _, pattern := range role.Patterns {
+			if containsPattern(oracleText, pattern) {
+				return true
+			}
 		}
 	}
 
-	// Check type line patterns
-	for _, typePattern := range role.TypeLines {
-		if strings.Contains(typeLine, strings.ToLower(typePattern)) {
-			// For "cheap_spell" role, also check CMC
-			if role.Name == "cheap_spell" && card.CMC <= 2 {
-				return true
-			} else if role.Name != "cheap_spell" {
-				return true
+	// Check type line patterns only (no pattern restriction)
+	if len(role.TypeLines) > 0 && len(role.Patterns) == 0 {
+		for _, typePattern := range role.TypeLines {
+			if strings.Contains(typeLine, strings.ToLower(typePattern)) {
+				// For "cheap_spell" role, also check CMC
+				if role.Name == "cheap_spell" && card.CMC <= 2 {
+					return true
+				} else if role.Name != "cheap_spell" {
+					return true
+				}
 			}
 		}
 	}

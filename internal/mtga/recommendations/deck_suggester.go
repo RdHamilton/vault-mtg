@@ -128,16 +128,16 @@ var allColorCombinations = []ColorCombination{
 	{Colors: []string{"G", "U", "R"}, Name: "Temur"},
 }
 
-// Basic land Arena IDs.
+// Basic land Arena IDs (from Foundation/FDN set).
 var basicLandsByColor = map[string]struct {
 	ArenaID int
 	Name    string
 }{
-	"W": {ArenaID: 81716, Name: "Plains"},
-	"U": {ArenaID: 81717, Name: "Island"},
-	"B": {ArenaID: 81718, Name: "Swamp"},
-	"R": {ArenaID: 81719, Name: "Mountain"},
-	"G": {ArenaID: 81720, Name: "Forest"},
+	"W": {ArenaID: 95191, Name: "Plains"},
+	"U": {ArenaID: 95193, Name: "Island"},
+	"B": {ArenaID: 95195, Name: "Swamp"},
+	"R": {ArenaID: 95197, Name: "Mountain"},
+	"G": {ArenaID: 95199, Name: "Forest"},
 }
 
 // scoredCard holds a card with its calculated score.

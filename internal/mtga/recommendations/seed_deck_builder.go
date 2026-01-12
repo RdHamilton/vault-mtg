@@ -4,9 +4,11 @@ import (
 	"context"
 	"fmt"
 	"sort"
+	"strconv"
 	"strings"
 
 	"github.com/ramonehamilton/MTGA-Companion/internal/mtga/cards"
+	"github.com/ramonehamilton/MTGA-Companion/internal/storage/models"
 	"github.com/ramonehamilton/MTGA-Companion/internal/storage/repository"
 )
 
@@ -143,12 +145,14 @@ type LiveDeckAnalysis struct {
 
 // CollectiveDeckAnalysis aggregates analysis across all cards in the deck.
 type CollectiveDeckAnalysis struct {
-	Colors        map[string]int
-	Keywords      []KeywordInfo
-	Themes        map[string]int
-	CreatureTypes map[string]int
-	ManaCurve     map[int]int
-	TotalCards    int
+	Colors          map[string]int
+	Keywords        []KeywordInfo
+	Themes          map[string]int
+	CreatureTypes   map[string]int
+	ManaCurve       map[int]int
+	TotalCards      int
+	DeckCards       []*cards.Card     // Actual card objects for package analysis
+	PackageAnalyses []PackageAnalysis // Active synergy packages in the deck
 }
 
 // ArchetypeProfile defines the build parameters for a deck archetype.
@@ -353,11 +357,26 @@ func (s *SeedDeckBuilder) BuildAroundSeed(ctx context.Context, req *SeedDeckBuil
 
 // analyzeSeedCard extracts key information from the seed card.
 func (s *SeedDeckBuilder) analyzeSeedCard(ctx context.Context, cardID int) (*SeedCardAnalysis, error) {
-	// Get card from card service
-	card, err := s.cardService.GetCard(cardID)
-	if err != nil {
-		return nil, fmt.Errorf("failed to get seed card: %w", err)
+	var card *cards.Card
+
+	// First try to get from setCardRepo (where Arena cards are stored)
+	if s.setCardRepo != nil {
+		arenaIDStr := strconv.Itoa(cardID)
+		setCard, err := s.setCardRepo.GetCardByArenaID(ctx, arenaIDStr)
+		if err == nil && setCard != nil {
+			card = convertSetCardToCard(setCard)
+		}
 	}
+
+	// Fall back to card service if not found
+	if card == nil && s.cardService != nil {
+		var err error
+		card, err = s.cardService.GetCard(cardID)
+		if err != nil {
+			return nil, fmt.Errorf("failed to get seed card: %w", err)
+		}
+	}
+
 	if card == nil {
 		return nil, fmt.Errorf("seed card not found: %d", cardID)
 	}
@@ -398,6 +417,58 @@ func (s *SeedDeckBuilder) analyzeSeedCard(ctx context.Context, cardID int) (*See
 	}
 
 	return analysis, nil
+}
+
+// convertSetCardToCard converts a models.SetCard to a cards.Card.
+func convertSetCardToCard(sc *models.SetCard) *cards.Card {
+	if sc == nil {
+		return nil
+	}
+
+	arenaID, _ := strconv.Atoi(sc.ArenaID)
+
+	// Build type line from Types slice
+	typeLine := strings.Join(sc.Types, " ")
+
+	// Handle optional fields
+	var manaCost *string
+	if sc.ManaCost != "" {
+		manaCost = &sc.ManaCost
+	}
+
+	var oracleText *string
+	if sc.Text != "" {
+		oracleText = &sc.Text
+	}
+
+	var power, toughness *string
+	if sc.Power != "" {
+		power = &sc.Power
+	}
+	if sc.Toughness != "" {
+		toughness = &sc.Toughness
+	}
+
+	var imageURI *string
+	if sc.ImageURL != "" {
+		imageURI = &sc.ImageURL
+	}
+
+	return &cards.Card{
+		ArenaID:    arenaID,
+		ScryfallID: sc.ScryfallID,
+		Name:       sc.Name,
+		TypeLine:   typeLine,
+		SetCode:    sc.SetCode,
+		ManaCost:   manaCost,
+		CMC:        float64(sc.CMC),
+		Colors:     sc.Colors,
+		Rarity:     sc.Rarity,
+		Power:      power,
+		Toughness:  toughness,
+		OracleText: oracleText,
+		ImageURI:   imageURI,
+	}
 }
 
 // getCandidates retrieves candidate cards based on request filters.
@@ -574,13 +645,15 @@ func (s *SeedDeckBuilder) scoreCardForSeed(card *cards.Card, seedAnalysis *SeedC
 // scoreColorCompatibility scores how well a card's colors match the seed.
 func (s *SeedDeckBuilder) scoreColorCompatibility(card *cards.Card, seedAnalysis *SeedCardAnalysis) float64 {
 	if len(card.Colors) == 0 {
-		// Colorless cards fit any deck
-		return 1.0
+		// Colorless cards are acceptable but shouldn't be preferred over cards
+		// that share the deck's colors. Score them as "neutral" (0.5) so colored
+		// cards that match get priority.
+		return 0.5
 	}
 
 	if len(seedAnalysis.Colors) == 0 {
-		// Seed is colorless - any color works
-		return 0.8
+		// Seed is colorless - any color works, but colorless cards still preferred
+		return 0.6
 	}
 
 	// Check how many card colors match seed colors
@@ -1105,6 +1178,7 @@ func (s *SeedDeckBuilder) analyzeDeckCards(ctx context.Context, cardIDs []int) (
 		CreatureTypes: make(map[string]int),
 		ManaCurve:     make(map[int]int),
 		TotalCards:    len(cardIDs),
+		DeckCards:     make([]*cards.Card, 0, len(cardIDs)),
 	}
 
 	for _, cardID := range cardIDs {
@@ -1112,6 +1186,9 @@ func (s *SeedDeckBuilder) analyzeDeckCards(ctx context.Context, cardIDs []int) (
 		if err != nil || card == nil {
 			continue
 		}
+
+		// Store the card object for package analysis
+		analysis.DeckCards = append(analysis.DeckCards, card)
 
 		// Aggregate colors
 		for _, color := range card.Colors {
@@ -1142,6 +1219,10 @@ func (s *SeedDeckBuilder) analyzeDeckCards(ctx context.Context, cardIDs []int) (
 			}
 		}
 	}
+
+	// Analyze synergy packages present in the deck (e.g., Spellslinger, Aristocrats)
+	// This enables bonus scoring for cards that complete or strengthen active packages
+	analysis.PackageAnalyses = AnalyzeDeckPackages(analysis.DeckCards)
 
 	return analysis, nil
 }
@@ -1264,26 +1345,45 @@ func (s *SeedDeckBuilder) scoreCardForDeck(card *cards.Card, deckAnalysis *Colle
 	reasons := make([]string, 0)
 	synergyDetails := make([]SynergyDetail, 0)
 
-	// Factor 1: Color Compatibility (25%)
+	// Factor 1: Color Compatibility (20%) - reduced to prioritize synergy
 	colorScore := s.scoreColorForDeck(card, deckAnalysis)
 	if colorScore >= 0.8 {
 		reasons = append(reasons, "matches deck colors")
 	}
 
-	// Factor 2: Mana Curve Gap Filling (20%)
+	// Factor 2: Mana Curve Gap Filling (15%) - reduced to prioritize synergy
 	curveScore := s.scoreCurveGapFilling(card, deckAnalysis)
 	if curveScore >= 0.7 {
 		reasons = append(reasons, fmt.Sprintf("fills curve gap at %d CMC", int(card.CMC)))
 	}
 
-	// Factor 3: Synergy with Deck (30%) - now captures synergy details
+	// Factor 3: Synergy with Deck (40%) - INCREASED: synergy is most important
+	// This includes keyword/theme matching
 	synergyScore, cardSynergyDetails := s.scoreSynergyWithDeckDetailed(card, deckAnalysis)
 	synergyDetails = append(synergyDetails, cardSynergyDetails...)
+
+	// Factor 3b: Package-based synergy bonus - cards that complete synergy packages
+	// (e.g., cheap instants for Spellslinger/prowess decks)
+	packageBonus, packageReasons := ScoreCardForPackages(card, deckAnalysis.PackageAnalyses)
+	if packageBonus > 0 {
+		synergyScore += packageBonus
+		if synergyScore > 1.0 {
+			synergyScore = 1.0 // Cap at 1.0
+		}
+		for _, reason := range packageReasons {
+			reasons = append(reasons, reason)
+			synergyDetails = append(synergyDetails, SynergyDetail{
+				Type:        "package",
+				Name:        "Synergy Package",
+				Description: reason,
+			})
+		}
+	}
 	if synergyScore >= 0.7 {
 		reasons = append(reasons, "synergizes with deck strategy")
 	}
 
-	// Factor 4: Card Quality (15%)
+	// Factor 4: Card Quality (15%) - standalone card power
 	qualityScore := s.scoreCardQuality(card)
 	if qualityScore >= 0.7 {
 		reasons = append(reasons, "high-quality card")
@@ -1295,10 +1395,10 @@ func (s *SeedDeckBuilder) scoreCardForDeck(card *cards.Card, deckAnalysis *Colle
 	// Factor 6: Playability (5%)
 	playabilityScore := 0.8
 
-	// Calculate weighted score
-	score := (colorScore * 0.25) +
-		(curveScore * 0.20) +
-		(synergyScore * 0.30) +
+	// Calculate weighted score - synergy now weighted highest (40%)
+	score := (colorScore * 0.20) +
+		(curveScore * 0.15) +
+		(synergyScore * 0.40) +
 		(qualityScore * 0.15) +
 		(legalityScore * 0.05) +
 		(playabilityScore * 0.05)
@@ -1335,11 +1435,15 @@ func (s *SeedDeckBuilder) scoreCardForDeck(card *cards.Card, deckAnalysis *Colle
 // scoreColorForDeck scores color compatibility against the deck's established colors.
 func (s *SeedDeckBuilder) scoreColorForDeck(card *cards.Card, deckAnalysis *CollectiveDeckAnalysis) float64 {
 	if len(card.Colors) == 0 {
-		return 1.0 // Colorless fits any deck
+		// Colorless cards are acceptable but shouldn't be preferred over cards
+		// that share the deck's colors. Score them as "neutral" (0.5) so colored
+		// cards that match get priority.
+		return 0.5
 	}
 
 	if len(deckAnalysis.Colors) == 0 {
-		return 0.8 // Deck is colorless, any color is fine
+		// Deck is colorless - any color works, but colorless cards still preferred
+		return 0.6
 	}
 
 	// Check how many card colors match deck colors

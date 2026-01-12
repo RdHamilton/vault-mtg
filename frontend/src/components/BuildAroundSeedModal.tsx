@@ -112,6 +112,9 @@ export default function BuildAroundSeedModal({
   // Ref to track if we've already attempted initial fetch (prevent infinite loops)
   const hasAttemptedFetch = useRef(false);
 
+  // Ref to track if we've just performed a fetch in a handler (prevent double-fetch from useEffect)
+  const justFetchedInHandler = useRef(false);
+
   // Track which card IDs we've already fetched names for
   const fetchedCardIdsRef = useRef<Set<number>>(new Set());
 
@@ -176,12 +179,14 @@ export default function BuildAroundSeedModal({
     setCardNameMap(new Map());
     setError(null);
     hasAttemptedFetch.current = false; // Reset for next open
+    justFetchedInHandler.current = false; // Reset double-fetch prevention
     fetchedCardIdsRef.current = new Set(); // Reset fetched card IDs
     // Reset complete deck generation state
     setShowArchetypeSelector(false);
     setSelectedArchetype(null);
     setGeneratedDeck(null);
     setGenerating(false);
+    setShowModeSelector(false); // Reset mode selector
     onClose();
   }, [onClose]);
 
@@ -238,48 +243,74 @@ export default function BuildAroundSeedModal({
     if (!iterativeMode) return;
     // Need either seed card or deck cards mode
     if (!seedCardId && !useDeckCardsAsSeed) return;
+    // Skip if we just fetched in a handler (prevents double-fetch)
+    if (justFetchedInHandler.current) {
+      justFetchedInHandler.current = false;
+      return;
+    }
 
     const timer = setTimeout(fetchIterativeSuggestions, 300);
     return () => clearTimeout(timer);
   }, [currentDeckCards, iterativeMode, seedCardId, useDeckCardsAsSeed, fetchIterativeSuggestions]);
 
-  // Auto-start iterative mode when useDeckCardsAsSeed is true and modal opens
+  // Mode selection state for when useDeckCardsAsSeed is true
+  const [showModeSelector, setShowModeSelector] = useState(false);
+
+  // Show mode selector when useDeckCardsAsSeed is true and modal opens
   useEffect(() => {
     if (!isOpen || !useDeckCardsAsSeed || currentDeckCards.length === 0) return;
-    if (iterativeMode) return; // Already in iterative mode
-    if (hasAttemptedFetch.current) return; // Already attempted, don't retry on error
+    if (iterativeMode || showArchetypeSelector || showModeSelector) return; // Already in a mode
+    if (hasAttemptedFetch.current) return; // Already attempted
 
-    // Mark that we've attempted the fetch
+    // Show mode selector instead of auto-entering iterative mode
+    setShowModeSelector(true);
     hasAttemptedFetch.current = true;
+  }, [isOpen, useDeckCardsAsSeed, currentDeckCards, iterativeMode, showArchetypeSelector, showModeSelector]);
 
-    // No seed card needed - the API analyzes ALL deck cards collectively
+  // Start iterative mode from mode selector
+  const handleStartIterativeFromSelector = async () => {
+    setShowModeSelector(false);
+    // Mark that we're fetching in this handler to prevent double-fetch from useEffect
+    justFetchedInHandler.current = true;
     setIterativeMode(true);
     setLoading(true);
     setError(null);
 
     // Fetch suggestions based on collective analysis of all deck cards
-    const fetchSuggestions = async () => {
+    try {
+      const response = await decks.suggestNextCards({
+        deck_card_ids: currentDeckCards,
+        max_results: 15,
+        budget_mode: budgetMode,
+      });
+
+      setIterativeSuggestions(response.suggestions);
+      setDeckAnalysis(response.deckAnalysis);
+      setSlotsRemaining(response.slotsRemaining);
+      setLandSuggestions(response.landSuggestions);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to get suggestions');
+      setIterativeMode(false);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Show archetype selector from mode selector (for Quick Generate)
+  const handleQuickGenerateFromSelector = async () => {
+    setShowModeSelector(false);
+    setShowArchetypeSelector(true);
+    setError(null);
+    // Fetch archetype profiles if not already loaded
+    if (!archetypeProfiles) {
       try {
-        const response = await decks.suggestNextCards({
-          deck_card_ids: currentDeckCards,
-          max_results: 15,
-          budget_mode: budgetMode,
-        });
-
-        setIterativeSuggestions(response.suggestions);
-        setDeckAnalysis(response.deckAnalysis);
-        setSlotsRemaining(response.slotsRemaining);
-        setLandSuggestions(response.landSuggestions);
+        const profiles = await decks.getArchetypeProfiles();
+        setArchetypeProfiles(profiles);
       } catch (err) {
-        setError(err instanceof Error ? err.message : 'Failed to get suggestions');
-        setIterativeMode(false);
-      } finally {
-        setLoading(false);
+        setError(err instanceof Error ? err.message : 'Failed to load archetypes');
       }
-    };
-
-    fetchSuggestions();
-  }, [isOpen, useDeckCardsAsSeed, currentDeckCards, budgetMode, iterativeMode]);
+    }
+  };
 
   // Filtered search results - derived from raw results and current filter state
   const searchResults = useMemo(() => {
@@ -351,6 +382,8 @@ export default function BuildAroundSeedModal({
   const handleStartBuilding = async () => {
     if (!selectedCard) return;
 
+    // Mark that we're fetching in this handler to prevent double-fetch from useEffect
+    justFetchedInHandler.current = true;
     setSeedCardId(selectedCard.arenaID);
     setIterativeMode(true);
     setLoading(true);
@@ -494,7 +527,8 @@ export default function BuildAroundSeedModal({
 
   // Generate complete deck with selected archetype
   const handleGenerateCompleteDeck = async (archetype: ArchetypeKey) => {
-    if (!selectedCard) return;
+    // Need either a selected card OR deck cards to use as seed
+    if (!selectedCard && (!useDeckCardsAsSeed || currentDeckCards.length === 0)) return;
 
     setSelectedArchetype(archetype);
     setGenerating(true);
@@ -506,7 +540,9 @@ export default function BuildAroundSeedModal({
     try {
       // Simulate progress stages since the API doesn't provide real-time progress
       setGenerationProgress(10);
-      setGenerationDetail('Analyzing seed card colors and themes...');
+      setGenerationDetail(selectedCard
+        ? 'Analyzing seed card colors and themes...'
+        : 'Analyzing deck colors and themes...');
 
       // Check for abort
       if (generationAbortRef.current) {
@@ -527,10 +563,13 @@ export default function BuildAroundSeedModal({
       setGenerationDetail('Evaluating card combinations...');
 
       // Perform the actual API call
+      // If using deck cards as seed, pass the first card and include all deck cards
+      const seedCardId = selectedCard?.arenaID || currentDeckCards[0];
       const responsePromise = decks.generateCompleteDeck({
-        seed_card_id: selectedCard.arenaID,
+        seed_card_id: seedCardId,
         archetype,
         budget_mode: budgetMode,
+        deck_card_ids: useDeckCardsAsSeed ? currentDeckCards : undefined,
       });
 
       // Continue showing progress while waiting
@@ -1070,7 +1109,8 @@ export default function BuildAroundSeedModal({
   }
 
   // Generated deck result view (Issue #774)
-  if (generatedDeck && selectedCard) {
+  // When useDeckCardsAsSeed is true, we don't have a selectedCard but still need to show the deck
+  if (generatedDeck && (selectedCard || useDeckCardsAsSeed)) {
     return (
       <div className="build-around-overlay" onClick={handleClose}>
         <div
@@ -1277,8 +1317,119 @@ export default function BuildAroundSeedModal({
     );
   }
 
+  // Mode selector view (when using existing deck as seed)
+  if (showModeSelector && useDeckCardsAsSeed) {
+    return (
+      <div className="build-around-overlay" onClick={handleClose}>
+        <div
+          className="build-around-modal mode-selector-mode"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="mode-selector-title"
+          onClick={(e) => e.stopPropagation()}
+        >
+          <div className="build-around-header">
+            <h2 id="mode-selector-title">
+              Build Around Your Deck{' '}
+              <HelpIcon title="Build Around" position="bottom">
+                <p>Build around your current deck cards.</p>
+                <ul>
+                  <li><strong>Quick Generate</strong> - Select an archetype and generate a complete 60-card deck</li>
+                  <li><strong>Start Building</strong> - Add cards one at a time with suggestions</li>
+                </ul>
+              </HelpIcon>
+            </h2>
+            <button className="close-button" onClick={handleClose} aria-label="Close dialog">
+              &times;
+            </button>
+          </div>
+
+          <div className="build-around-content">
+            {/* Current Deck Summary */}
+            <div className="deck-summary-section">
+              <h3>Current Deck ({currentDeckCards.length} cards)</h3>
+              <div className="deck-cards-preview">
+                {deckCards
+                  .filter(card => card.Board === 'main')
+                  .slice(0, 8)
+                  .map(card => (
+                    <span key={card.CardID} className="deck-card-chip">
+                      {card.Quantity}x {cardNameMap.get(card.CardID) || `Card #${card.CardID}`}
+                    </span>
+                  ))}
+                {deckCards.filter(card => card.Board === 'main').length > 8 && (
+                  <span className="deck-card-chip more">+{deckCards.filter(card => card.Board === 'main').length - 8} more</span>
+                )}
+              </div>
+            </div>
+
+            {/* Error State */}
+            {error && (
+              <div className="build-around-error">
+                <p>{error}</p>
+              </div>
+            )}
+
+            {/* Mode Selection Buttons */}
+            <div className="mode-selection-options">
+              <p className="mode-instructions">Choose how you want to build your deck:</p>
+
+              <div className="mode-buttons">
+                {/* Quick Generate */}
+                <button
+                  className="mode-btn quick-generate"
+                  onClick={handleQuickGenerateFromSelector}
+                >
+                  <div className="mode-icon">🎴</div>
+                  <div className="mode-info">
+                    <h4>Quick Generate (60-Card Deck)</h4>
+                    <p>Select an archetype (Aggro, Midrange, Control) and generate a complete deck with lands.</p>
+                  </div>
+                </button>
+
+                {/* Start Building */}
+                <button
+                  className="mode-btn start-building"
+                  onClick={handleStartIterativeFromSelector}
+                >
+                  <div className="mode-icon">🔨</div>
+                  <div className="mode-info">
+                    <h4>Start Building (Pick Cards)</h4>
+                    <p>Add cards one at a time with live suggestions that update based on your choices.</p>
+                  </div>
+                </button>
+              </div>
+
+              {/* Budget Mode Toggle */}
+              <div className="mode-options-footer">
+                <label className="option-checkbox">
+                  <input
+                    type="checkbox"
+                    checked={budgetMode}
+                    onChange={(e) => setBudgetMode(e.target.checked)}
+                  />
+                  <span>Budget Mode (only cards in collection)</span>
+                </label>
+              </div>
+            </div>
+
+            {/* Cancel Button */}
+            <div className="suggestions-actions">
+              <button
+                className="action-btn cancel-btn"
+                onClick={handleClose}
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   // Archetype selector view (Issue #774)
-  if (showArchetypeSelector && selectedCard) {
+  if (showArchetypeSelector && (selectedCard || useDeckCardsAsSeed)) {
     return (
       <div className="build-around-overlay" onClick={handleClose}>
         <div
@@ -1307,11 +1458,32 @@ export default function BuildAroundSeedModal({
           </div>
 
           <div className="build-around-content">
-            {/* Selected Seed Card Preview */}
+            {/* Seed Preview - either single card or deck summary */}
             <div className="seed-card-preview">
-              <h3>Building around: {selectedCard.name}</h3>
-              {selectedCard.imageURI && (
-                <img src={selectedCard.imageURI} alt={selectedCard.name} className="seed-preview-image" />
+              {selectedCard ? (
+                <>
+                  <h3>Building around: {selectedCard.name}</h3>
+                  {selectedCard.imageURI && (
+                    <img src={selectedCard.imageURI} alt={selectedCard.name} className="seed-preview-image" />
+                  )}
+                </>
+              ) : useDeckCardsAsSeed && (
+                <>
+                  <h3>Building around your deck ({currentDeckCards.length} cards)</h3>
+                  <div className="deck-cards-preview compact">
+                    {deckCards
+                      .filter(card => card.Board === 'main')
+                      .slice(0, 6)
+                      .map(card => (
+                        <span key={card.CardID} className="deck-card-chip">
+                          {card.Quantity}x {cardNameMap.get(card.CardID) || `Card #${card.CardID}`}
+                        </span>
+                      ))}
+                    {deckCards.filter(card => card.Board === 'main').length > 6 && (
+                      <span className="deck-card-chip more">+{deckCards.filter(card => card.Board === 'main').length - 6} more</span>
+                    )}
+                  </div>
+                </>
               )}
             </div>
 
@@ -1409,10 +1581,14 @@ export default function BuildAroundSeedModal({
                 onClick={() => {
                   setShowArchetypeSelector(false);
                   setSelectedArchetype(null);
+                  // Go back to mode selector if using deck cards, otherwise to card selection
+                  if (useDeckCardsAsSeed) {
+                    setShowModeSelector(true);
+                  }
                 }}
                 disabled={generating}
               >
-                Back to Card Selection
+                {useDeckCardsAsSeed ? 'Back to Mode Selection' : 'Back to Card Selection'}
               </button>
             </div>
           </div>

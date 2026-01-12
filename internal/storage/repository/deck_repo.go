@@ -792,19 +792,34 @@ func (r *deckRepository) ValidateDraftDeck(ctx context.Context, deckID string) (
 		return false, fmt.Errorf("failed to get deck cards: %w", err)
 	}
 
-	// Basic lands that can be added to any deck (standard Arena IDs)
-	basicLands := map[int]bool{
-		81716: true, // Plains
-		81717: true, // Island
-		81718: true, // Swamp
-		81719: true, // Mountain
-		81720: true, // Forest
+	// Build set of basic land IDs by querying set_cards table for cards with Basic Land type
+	basicLandIDs := make(map[int]bool)
+	basicLandQuery := `
+		SELECT CAST(arena_id AS INTEGER)
+		FROM set_cards
+		WHERE types LIKE '%Basic%' AND types LIKE '%Land%'
+	`
+	basicRows, err := r.db.QueryContext(ctx, basicLandQuery)
+	if err != nil {
+		log.Printf("[ValidateDraftDeck] Warning: failed to query basic land IDs: %v", err)
+		// Continue with empty set - basic lands will fail validation
+	} else {
+		defer func() { _ = basicRows.Close() }()
+		for basicRows.Next() {
+			var arenaID int
+			if basicRows.Scan(&arenaID) == nil {
+				basicLandIDs[arenaID] = true
+			}
+		}
+		if err := basicRows.Err(); err != nil {
+			log.Printf("[ValidateDraftDeck] Warning: error iterating basic land rows: %v", err)
+		}
 	}
 
 	// Validate that all non-basic-land deck cards are in the draft
 	for _, card := range deckCards {
-		// Skip basic lands - they can always be added
-		if basicLands[card.CardID] {
+		// Skip basic lands - they can always be added to any draft deck
+		if basicLandIDs[card.CardID] {
 			continue
 		}
 		if !draftCardSet[card.CardID] {
