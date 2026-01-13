@@ -142,6 +142,7 @@ func setupAutoFetchTestDB(t *testing.T, collectionCards map[int]int, knownCards 
 			price_eur_foil REAL,
 			price_tix REAL,
 			prices_updated_at TIMESTAMP,
+			legalities TEXT,
 			UNIQUE(set_code, arena_id)
 		);
 

@@ -2,6 +2,7 @@ package setcache
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"log"
 	"regexp"
@@ -238,6 +239,12 @@ func convertScryfallCard(scryfallCard *scryfall.Card, setCode string, fetchedAt 
 		pricesUpdatedAt = &t
 	}
 
+	// Serialize legalities to JSON
+	legalities := ""
+	if legalitiesJSON, err := json.Marshal(scryfallCard.Legalities); err == nil {
+		legalities = string(legalitiesJSON)
+	}
+
 	return &models.SetCard{
 		SetCode:         setCode,
 		ArenaID:         arenaID,
@@ -261,6 +268,7 @@ func convertScryfallCard(scryfallCard *scryfall.Card, setCode string, fetchedAt 
 		PriceEURFoil:    priceEURFoil,
 		PriceTIX:        priceTIX,
 		PricesUpdatedAt: pricesUpdatedAt,
+		Legalities:      legalities,
 	}
 }
 

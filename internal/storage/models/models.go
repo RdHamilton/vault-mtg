@@ -400,6 +400,8 @@ type SetCard struct {
 	PriceEURFoil    *float64   // EUR foil price
 	PriceTIX        *float64   // MTGO tix price
 	PricesUpdatedAt *time.Time // When prices were last updated
+	// Legality info from Scryfall (JSON format: {"standard":"legal","historic":"banned",...})
+	Legalities string
 }
 
 // DeckPerformanceHistory records individual match results with deck state snapshots for ML training.
