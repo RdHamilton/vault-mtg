@@ -42,6 +42,7 @@ func setupSetCardTestDB(t *testing.T) *sql.DB {
 			price_eur_foil REAL,
 			price_tix REAL,
 			prices_updated_at TIMESTAMP,
+			legalities TEXT,
 			UNIQUE(set_code, arena_id)
 		);
 		CREATE INDEX IF NOT EXISTS idx_set_cards_arena_id ON set_cards(arena_id);
@@ -676,5 +677,75 @@ func TestSetCardRepository_SearchCards_EmptyResults(t *testing.T) {
 
 	if len(results) != 0 {
 		t.Errorf("expected 0 results, got %d", len(results))
+	}
+}
+
+func TestSetCardRepository_LegalitiesStorage(t *testing.T) {
+	db := setupSetCardTestDB(t)
+	defer func() {
+		if err := db.Close(); err != nil {
+			t.Errorf("Error closing database: %v", err)
+		}
+	}()
+
+	repo := NewSetCardRepository(db)
+	ctx := context.Background()
+
+	// Create a card with legalities
+	now := time.Now()
+	legalities := `{"standard":"legal","historic":"legal","explorer":"legal","pioneer":"not_legal","modern":"legal","legacy":"legal","vintage":"legal","brawl":"legal","commander":"legal"}`
+	card := &models.SetCard{
+		SetCode:    "WOE",
+		ArenaID:    "99999",
+		Name:       "The One Ring",
+		Types:      []string{"Legendary", "Artifact"},
+		Colors:     []string{},
+		Rarity:     "mythic",
+		Text:       "Indestructible. When The One Ring enters...",
+		FetchedAt:  now,
+		Legalities: legalities,
+	}
+
+	// Save the card
+	if err := repo.SaveCard(ctx, card); err != nil {
+		t.Fatalf("failed to save card with legalities: %v", err)
+	}
+
+	// Retrieve the card
+	retrieved, err := repo.GetCardByArenaID(ctx, "99999")
+	if err != nil {
+		t.Fatalf("failed to retrieve card: %v", err)
+	}
+	if retrieved == nil {
+		t.Fatal("card not found")
+	}
+
+	// Verify legalities were stored and retrieved correctly
+	if retrieved.Legalities != legalities {
+		t.Errorf("legalities mismatch:\nexpected: %s\ngot: %s", legalities, retrieved.Legalities)
+	}
+
+	// Test via SearchCards
+	searchResults, err := repo.SearchCards(ctx, "One Ring", nil, 10)
+	if err != nil {
+		t.Fatalf("failed to search cards: %v", err)
+	}
+	if len(searchResults) != 1 {
+		t.Fatalf("expected 1 search result, got %d", len(searchResults))
+	}
+	if searchResults[0].Legalities != legalities {
+		t.Errorf("legalities mismatch in search:\nexpected: %s\ngot: %s", legalities, searchResults[0].Legalities)
+	}
+
+	// Test via GetCardsBySet
+	setCards, err := repo.GetCardsBySet(ctx, "WOE")
+	if err != nil {
+		t.Fatalf("failed to get cards by set: %v", err)
+	}
+	if len(setCards) != 1 {
+		t.Fatalf("expected 1 card in set, got %d", len(setCards))
+	}
+	if setCards[0].Legalities != legalities {
+		t.Errorf("legalities mismatch in GetCardsBySet:\nexpected: %s\ngot: %s", legalities, setCards[0].Legalities)
 	}
 }

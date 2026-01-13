@@ -106,8 +106,8 @@ func (r *setCardRepository) SaveCard(ctx context.Context, card *models.SetCard) 
 		INSERT INTO set_cards (
 			set_code, arena_id, scryfall_id, name, mana_cost, cmc, types, colors,
 			rarity, text, power, toughness, image_url, image_url_small, image_url_art, fetched_at,
-			price_usd, price_usd_foil, price_eur, price_eur_foil, price_tix, prices_updated_at
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+			price_usd, price_usd_foil, price_eur, price_eur_foil, price_tix, prices_updated_at, legalities
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		ON CONFLICT(set_code, arena_id) DO UPDATE SET
 			scryfall_id = excluded.scryfall_id,
 			name = excluded.name,
@@ -128,7 +128,8 @@ func (r *setCardRepository) SaveCard(ctx context.Context, card *models.SetCard) 
 			price_eur = excluded.price_eur,
 			price_eur_foil = excluded.price_eur_foil,
 			price_tix = excluded.price_tix,
-			prices_updated_at = excluded.prices_updated_at
+			prices_updated_at = excluded.prices_updated_at,
+			legalities = excluded.legalities
 	`
 	result, err := r.db.ExecContext(ctx, query,
 		card.SetCode,
@@ -153,6 +154,7 @@ func (r *setCardRepository) SaveCard(ctx context.Context, card *models.SetCard) 
 		card.PriceEURFoil,
 		card.PriceTIX,
 		card.PricesUpdatedAt,
+		card.Legalities,
 	)
 	if err != nil {
 		return err
@@ -181,8 +183,8 @@ func (r *setCardRepository) SaveCards(ctx context.Context, cards []*models.SetCa
 		INSERT INTO set_cards (
 			set_code, arena_id, scryfall_id, name, mana_cost, cmc, types, colors,
 			rarity, text, power, toughness, image_url, image_url_small, image_url_art, fetched_at,
-			price_usd, price_usd_foil, price_eur, price_eur_foil, price_tix, prices_updated_at
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+			price_usd, price_usd_foil, price_eur, price_eur_foil, price_tix, prices_updated_at, legalities
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		ON CONFLICT(set_code, arena_id) DO UPDATE SET
 			scryfall_id = excluded.scryfall_id,
 			name = excluded.name,
@@ -203,7 +205,8 @@ func (r *setCardRepository) SaveCards(ctx context.Context, cards []*models.SetCa
 			price_eur = excluded.price_eur,
 			price_eur_foil = excluded.price_eur_foil,
 			price_tix = excluded.price_tix,
-			prices_updated_at = excluded.prices_updated_at
+			prices_updated_at = excluded.prices_updated_at,
+			legalities = excluded.legalities
 	`)
 	if err != nil {
 		return err
@@ -246,6 +249,7 @@ func (r *setCardRepository) SaveCards(ctx context.Context, cards []*models.SetCa
 			card.PriceEURFoil,
 			card.PriceTIX,
 			card.PricesUpdatedAt,
+			card.Legalities,
 		)
 		if err != nil {
 			return err
@@ -260,7 +264,7 @@ func (r *setCardRepository) GetCardByArenaID(ctx context.Context, arenaID string
 	query := `
 		SELECT id, set_code, arena_id, scryfall_id, name, mana_cost, cmc, types, colors,
 			   rarity, text, power, toughness, image_url, image_url_small, image_url_art, fetched_at,
-			   price_usd, price_usd_foil, price_eur, price_eur_foil, price_tix, prices_updated_at
+			   price_usd, price_usd_foil, price_eur, price_eur_foil, price_tix, prices_updated_at, legalities
 		FROM set_cards
 		WHERE arena_id = ?
 		LIMIT 1
@@ -269,6 +273,7 @@ func (r *setCardRepository) GetCardByArenaID(ctx context.Context, arenaID string
 
 	card := &models.SetCard{}
 	var typesJSON, colorsJSON string
+	var legalities sql.NullString
 
 	err := row.Scan(
 		&card.ID,
@@ -294,6 +299,7 @@ func (r *setCardRepository) GetCardByArenaID(ctx context.Context, arenaID string
 		&card.PriceEURFoil,
 		&card.PriceTIX,
 		&card.PricesUpdatedAt,
+		&legalities,
 	)
 	if err != nil {
 		if err == sql.ErrNoRows {
@@ -309,6 +315,9 @@ func (r *setCardRepository) GetCardByArenaID(ctx context.Context, arenaID string
 	if err := json.Unmarshal([]byte(colorsJSON), &card.Colors); err != nil {
 		return nil, err
 	}
+	if legalities.Valid {
+		card.Legalities = legalities.String
+	}
 
 	return card, nil
 }
@@ -318,7 +327,7 @@ func (r *setCardRepository) GetCardsBySet(ctx context.Context, setCode string) (
 	query := `
 		SELECT id, set_code, arena_id, scryfall_id, name, mana_cost, cmc, types, colors,
 			   rarity, text, power, toughness, image_url, image_url_small, image_url_art, fetched_at,
-			   price_usd, price_usd_foil, price_eur, price_eur_foil, price_tix, prices_updated_at
+			   price_usd, price_usd_foil, price_eur, price_eur_foil, price_tix, prices_updated_at, legalities
 		FROM set_cards
 		WHERE set_code = ?
 		ORDER BY name
@@ -335,6 +344,7 @@ func (r *setCardRepository) GetCardsBySet(ctx context.Context, setCode string) (
 	for rows.Next() {
 		card := &models.SetCard{}
 		var typesJSON, colorsJSON string
+		var legalities sql.NullString
 
 		err := rows.Scan(
 			&card.ID,
@@ -360,6 +370,7 @@ func (r *setCardRepository) GetCardsBySet(ctx context.Context, setCode string) (
 			&card.PriceEURFoil,
 			&card.PriceTIX,
 			&card.PricesUpdatedAt,
+			&legalities,
 		)
 		if err != nil {
 			return nil, err
@@ -371,6 +382,9 @@ func (r *setCardRepository) GetCardsBySet(ctx context.Context, setCode string) (
 		}
 		if err := json.Unmarshal([]byte(colorsJSON), &card.Colors); err != nil {
 			return nil, err
+		}
+		if legalities.Valid {
+			card.Legalities = legalities.String
 		}
 
 		cards = append(cards, card)
@@ -445,7 +459,7 @@ func (r *setCardRepository) SearchCards(ctx context.Context, query string, setCo
 		sqlQuery = `
 			SELECT id, set_code, arena_id, scryfall_id, name, mana_cost, cmc, types, colors,
 				   rarity, text, power, toughness, image_url, image_url_small, image_url_art, fetched_at,
-				   price_usd, price_usd_foil, price_eur, price_eur_foil, price_tix, prices_updated_at
+				   price_usd, price_usd_foil, price_eur, price_eur_foil, price_tix, prices_updated_at, legalities
 			FROM set_cards
 			WHERE (name LIKE ? OR text LIKE ?) AND set_code IN (` + joinStrings(placeholders, ",") + `)
 			ORDER BY
@@ -461,7 +475,7 @@ func (r *setCardRepository) SearchCards(ctx context.Context, query string, setCo
 		sqlQuery = `
 			SELECT id, set_code, arena_id, scryfall_id, name, mana_cost, cmc, types, colors,
 				   rarity, text, power, toughness, image_url, image_url_small, image_url_art, fetched_at,
-				   price_usd, price_usd_foil, price_eur, price_eur_foil, price_tix, prices_updated_at
+				   price_usd, price_usd_foil, price_eur, price_eur_foil, price_tix, prices_updated_at, legalities
 			FROM set_cards
 			WHERE name LIKE ? OR text LIKE ?
 			ORDER BY
@@ -484,6 +498,7 @@ func (r *setCardRepository) SearchCards(ctx context.Context, query string, setCo
 	for rows.Next() {
 		card := &models.SetCard{}
 		var typesJSON, colorsJSON string
+		var legalities sql.NullString
 
 		err := rows.Scan(
 			&card.ID,
@@ -509,6 +524,7 @@ func (r *setCardRepository) SearchCards(ctx context.Context, query string, setCo
 			&card.PriceEURFoil,
 			&card.PriceTIX,
 			&card.PricesUpdatedAt,
+			&legalities,
 		)
 		if err != nil {
 			return nil, err
@@ -520,6 +536,9 @@ func (r *setCardRepository) SearchCards(ctx context.Context, query string, setCo
 		}
 		if err := json.Unmarshal([]byte(colorsJSON), &card.Colors); err != nil {
 			return nil, err
+		}
+		if legalities.Valid {
+			card.Legalities = legalities.String
 		}
 
 		cards = append(cards, card)
