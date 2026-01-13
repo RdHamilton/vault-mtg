@@ -62,6 +62,10 @@ func (m *mockMatchRepository) GetGamesForMatch(ctx context.Context, matchID stri
 	return nil, nil
 }
 
+func (m *mockMatchRepository) GetGameIDByMatchAndNumber(ctx context.Context, matchID string, gameNumber int) (int, error) {
+	return 0, nil
+}
+
 func (m *mockMatchRepository) GetPerformanceMetrics(ctx context.Context, filter models.StatsFilter) (*models.PerformanceMetrics, error) {
 	return nil, nil
 }
