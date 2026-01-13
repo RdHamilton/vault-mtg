@@ -193,6 +193,33 @@ func TestMatchRepository_CreateGame(t *testing.T) {
 	if games[0].Result != "win" {
 		t.Errorf("expected result 'win', got '%s'", games[0].Result)
 	}
+
+	// Test GetGameIDByMatchAndNumber
+	gameID, err := repo.GetGameIDByMatchAndNumber(ctx, "match-1", 1)
+	if err != nil {
+		t.Fatalf("failed to get game ID by number: %v", err)
+	}
+	if gameID != games[0].ID {
+		t.Errorf("expected game ID %d, got %d", games[0].ID, gameID)
+	}
+
+	// Test non-existent game number
+	gameID, err = repo.GetGameIDByMatchAndNumber(ctx, "match-1", 99)
+	if err != nil {
+		t.Fatalf("unexpected error for non-existent game: %v", err)
+	}
+	if gameID != 0 {
+		t.Errorf("expected 0 for non-existent game, got %d", gameID)
+	}
+
+	// Test non-existent match
+	gameID, err = repo.GetGameIDByMatchAndNumber(ctx, "nonexistent", 1)
+	if err != nil {
+		t.Fatalf("unexpected error for non-existent match: %v", err)
+	}
+	if gameID != 0 {
+		t.Errorf("expected 0 for non-existent match, got %d", gameID)
+	}
 }
 
 func TestMatchRepository_GetByID(t *testing.T) {

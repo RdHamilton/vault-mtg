@@ -53,6 +53,10 @@ type MatchRepository interface {
 	// GetGamesForMatch retrieves all games for a specific match.
 	GetGamesForMatch(ctx context.Context, matchID string) ([]*models.Game, error)
 
+	// GetGameIDByMatchAndNumber retrieves the database ID for a game by match ID and game number.
+	// Returns 0 if not found.
+	GetGameIDByMatchAndNumber(ctx context.Context, matchID string, gameNumber int) (int, error)
+
 	// GetPerformanceMetrics calculates duration-based performance metrics.
 	GetPerformanceMetrics(ctx context.Context, filter models.StatsFilter) (*models.PerformanceMetrics, error)
 
@@ -1008,6 +1012,21 @@ func (r *matchRepository) GetGamesForMatch(ctx context.Context, matchID string) 
 	}
 
 	return games, nil
+}
+
+// GetGameIDByMatchAndNumber retrieves the database ID for a game by match ID and game number.
+// Returns 0 if not found.
+func (r *matchRepository) GetGameIDByMatchAndNumber(ctx context.Context, matchID string, gameNumber int) (int, error) {
+	query := `SELECT id FROM games WHERE match_id = ? AND game_number = ?`
+	var gameID int
+	err := r.db.QueryRowContext(ctx, query, matchID, gameNumber).Scan(&gameID)
+	if err == sql.ErrNoRows {
+		return 0, nil
+	}
+	if err != nil {
+		return 0, fmt.Errorf("failed to get game ID: %w", err)
+	}
+	return gameID, nil
 }
 
 // GetPerformanceMetrics calculates duration-based performance metrics.

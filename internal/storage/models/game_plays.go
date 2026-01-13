@@ -92,12 +92,15 @@ const (
 
 // Constants for action types.
 const (
-	ActionTypePlayCard   = "play_card"
-	ActionTypeAttack     = "attack"
-	ActionTypeBlock      = "block"
-	ActionTypeLandDrop   = "land_drop"
-	ActionTypeMulligan   = "mulligan"
-	ActionTypeLifeChange = "life_change"
+	ActionTypePlayCard     = "play_card"
+	ActionTypeAttack       = "attack"
+	ActionTypeBlock        = "block"
+	ActionTypeLandDrop     = "land_drop"
+	ActionTypeMulligan     = "mulligan"
+	ActionTypeLifeChange   = "life_change"
+	ActionTypeCastSpell    = "cast_spell"
+	ActionTypeResolveSpell = "resolve_spell"
+	ActionTypeDraw         = "draw"
 )
 
 // Constants for game phases.

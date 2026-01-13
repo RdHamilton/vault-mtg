@@ -1535,14 +1535,31 @@ func (s *Service) processAccumulatedPlays(ctx context.Context, result *ProcessRe
 	// Store game plays
 	if len(gamePlays) > 0 {
 		modelPlays := make([]*models.GamePlay, 0, len(gamePlays))
+		// Cache game ID lookups to avoid redundant queries
+		gameIDCache := make(map[int]int) // gameNumber -> databaseID
 		for _, play := range gamePlays {
 			// Use tracked matchID since individual plays may not have it
 			playMatchID := play.MatchID
 			if playMatchID == "" {
 				playMatchID = matchID
 			}
+			// Look up the actual game database ID (cached)
+			gameID, ok := gameIDCache[play.GameNumber]
+			if !ok {
+				var err error
+				gameID, err = s.storage.MatchRepo().GetGameIDByMatchAndNumber(ctx, playMatchID, play.GameNumber)
+				if err != nil {
+					log.Printf("Warning: Failed to look up game ID for match %s game %d: %v", playMatchID, play.GameNumber, err)
+					continue
+				}
+				if gameID == 0 {
+					log.Printf("Warning: Game not found for match %s game %d, skipping plays", playMatchID, play.GameNumber)
+					continue
+				}
+				gameIDCache[play.GameNumber] = gameID
+			}
 			modelPlay := &models.GamePlay{
-				GameID:         play.GameNumber, // Link play to specific game within match
+				GameID:         gameID, // Use actual database ID, not game number
 				MatchID:        playMatchID,
 				TurnNumber:     play.TurnNumber,
 				Phase:          play.Phase,
