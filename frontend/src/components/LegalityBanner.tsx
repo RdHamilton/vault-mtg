@@ -13,8 +13,8 @@ interface LegalityBannerProps {
 
 export function LegalityBanner({
   isLegal,
-  errors,
-  warnings,
+  errors = [],
+  warnings = [],
   format,
   onDismiss,
   compact = false,

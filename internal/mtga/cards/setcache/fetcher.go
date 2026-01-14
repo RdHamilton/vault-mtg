@@ -385,6 +385,14 @@ func (f *Fetcher) FetchCardByArenaID(ctx context.Context, arenaID int) (*models.
 			return f.fetchBasicLandByName(ctx, arenaID, basicLand.SetCode, basicLand.CardName)
 		}
 
+		// Fallback: Try to look up the card name and set from 17Lands ratings data
+		// This handles Arena-exclusive sets (like TLA) that aren't available via Scryfall's arena ID endpoint
+		cardName, setCode, lookupErr := f.ratingsRepo.GetCardNameAndSetByArenaID(ctx, arenaIDStr)
+		if lookupErr == nil && cardName != "" && setCode != "" {
+			log.Printf("[FetchCardByArenaID] Found card in ratings data: %s (%s), attempting name-based fetch", cardName, setCode)
+			return f.FetchCardByName(ctx, setCode, cardName, arenaIDStr)
+		}
+
 		return nil, fmt.Errorf("scryfall fetch failed: %w", err)
 	}
 

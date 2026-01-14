@@ -43,6 +43,7 @@ type DraftRatingsRepository interface {
 
 	// Lookup methods
 	GetSetCodeByArenaID(ctx context.Context, arenaID string) (string, error)
+	GetCardNameAndSetByArenaID(ctx context.Context, arenaID string) (name, setCode string, err error)
 
 	// Staleness tracking methods
 	GetStatisticsStaleness(ctx context.Context, staleAgeSeconds int) (*StatisticsStaleness, error)
@@ -727,6 +728,21 @@ func (r *draftRatingsRepository) GetSetCodeByArenaID(ctx context.Context, arenaI
 		return "", err
 	}
 	return setCode, nil
+}
+
+// GetCardNameAndSetByArenaID returns the card name and set code for a card by its Arena ID.
+// This is useful for fallback fetching when Scryfall's arena ID endpoint doesn't support the card.
+// Returns empty strings if not found.
+func (r *draftRatingsRepository) GetCardNameAndSetByArenaID(ctx context.Context, arenaID string) (name, setCode string, err error) {
+	query := `SELECT name, set_code FROM draft_card_ratings WHERE arena_id = ? LIMIT 1`
+	err = r.db.QueryRowContext(ctx, query, arenaID).Scan(&name, &setCode)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			return "", "", nil
+		}
+		return "", "", err
+	}
+	return name, setCode, nil
 }
 
 // GetStatisticsStaleness returns counts of fresh and stale draft statistics.

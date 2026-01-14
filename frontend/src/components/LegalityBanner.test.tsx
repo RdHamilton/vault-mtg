@@ -474,6 +474,64 @@ describe('LegalityBanner', () => {
     });
   });
 
+  describe('Undefined Props', () => {
+    it('handles undefined errors prop', () => {
+      const { container } = render(
+        <LegalityBanner
+          isLegal={true}
+          errors={undefined as unknown as ValidationError[]}
+          warnings={[]}
+          format="standard"
+        />
+      );
+
+      // Should not crash and not render (legal with no warnings)
+      expect(container.firstChild).toBeNull();
+    });
+
+    it('handles undefined warnings prop', () => {
+      const { container } = render(
+        <LegalityBanner
+          isLegal={true}
+          errors={[]}
+          warnings={undefined as unknown as ValidationWarning[]}
+          format="standard"
+        />
+      );
+
+      // Should not crash and not render (legal with no warnings)
+      expect(container.firstChild).toBeNull();
+    });
+
+    it('handles both errors and warnings undefined', () => {
+      const { container } = render(
+        <LegalityBanner
+          isLegal={true}
+          errors={undefined as unknown as ValidationError[]}
+          warnings={undefined as unknown as ValidationWarning[]}
+          format="standard"
+        />
+      );
+
+      // Should not crash and not render (legal with no warnings)
+      expect(container.firstChild).toBeNull();
+    });
+
+    it('handles undefined errors with illegal deck', () => {
+      const { container } = render(
+        <LegalityBanner
+          isLegal={false}
+          errors={undefined as unknown as ValidationError[]}
+          warnings={[]}
+          format="standard"
+        />
+      );
+
+      // Should render the banner for illegal deck even with no errors array
+      expect(container.querySelector('.legality-banner')).toBeInTheDocument();
+    });
+  });
+
   describe('Edge Cases', () => {
     it('handles cards without names', () => {
       const errorWithoutName: ValidationError[] = [

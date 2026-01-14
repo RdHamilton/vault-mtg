@@ -163,6 +163,14 @@ func (m *mockRatingsRepo) GetSetCodeByArenaID(ctx context.Context, arenaID strin
 	return "", nil
 }
 
+func (m *mockRatingsRepo) GetCardNameAndSetByArenaID(ctx context.Context, arenaID string) (string, string, error) {
+	return "", "", nil
+}
+
+func (m *mockRatingsRepo) GetSetsWithRatings(ctx context.Context) ([]string, error) {
+	return nil, nil
+}
+
 func (m *mockRatingsRepo) GetStatisticsStaleness(ctx context.Context, staleAgeSeconds int) (*struct {
 	Total     int
 	Fresh     int
