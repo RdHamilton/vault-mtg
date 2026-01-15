@@ -1,0 +1,175 @@
+.temporal-trends {
+  background-color: var(--bg-secondary, #1e1e1e);
+  border-radius: 8px;
+  padding: 16px;
+  margin-bottom: 16px;
+}
+
+.temporal-trends--loading,
+.temporal-trends--error,
+.temporal-trends--empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-height: 200px;
+  gap: 12px;
+  color: var(--color-text-secondary, #888);
+}
+
+.temporal-trends--error {
+  color: var(--color-error, #ff6b6b);
+}
+
+.temporal-trends--error button {
+  padding: 8px 16px;
+  background-color: var(--color-primary, #4a9eff);
+  border: none;
+  border-radius: 4px;
+  color: white;
+  cursor: pointer;
+}
+
+.temporal-trends__spinner {
+  width: 24px;
+  height: 24px;
+  border: 2px solid var(--color-text-secondary, #888);
+  border-top-color: var(--color-primary, #4a9eff);
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.temporal-trends__header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 16px;
+}
+
+.temporal-trends__header h3 {
+  margin: 0;
+  font-size: 1.1rem;
+  color: var(--color-text-primary, #fff);
+}
+
+.temporal-trends__controls {
+  display: flex;
+  gap: 8px;
+}
+
+.temporal-trends__select {
+  padding: 6px 12px;
+  background-color: var(--bg-tertiary, #2d2d2d);
+  border: 1px solid var(--border-color, #444);
+  border-radius: 4px;
+  color: var(--color-text-primary, #fff);
+  font-size: 0.875rem;
+  cursor: pointer;
+}
+
+.temporal-trends__refresh {
+  padding: 6px 12px;
+  background-color: transparent;
+  border: 1px solid var(--border-color, #444);
+  border-radius: 4px;
+  color: var(--color-text-secondary, #888);
+  font-size: 0.875rem;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.temporal-trends__refresh:hover {
+  background-color: var(--bg-tertiary, #2d2d2d);
+  color: var(--color-text-primary, #fff);
+}
+
+.temporal-trends__summary {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 16px;
+  margin-bottom: 20px;
+  padding: 16px;
+  background-color: var(--bg-tertiary, #2d2d2d);
+  border-radius: 6px;
+}
+
+@media (max-width: 768px) {
+  .temporal-trends__summary {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+.temporal-trends__stat {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+}
+
+.temporal-trends__stat-value {
+  font-size: 1.5rem;
+  font-weight: bold;
+  color: var(--color-primary, #4a9eff);
+}
+
+.temporal-trends__stat-label {
+  font-size: 0.75rem;
+  color: var(--color-text-secondary, #888);
+  margin-top: 4px;
+}
+
+.temporal-trends__chart {
+  margin-top: 20px;
+}
+
+.temporal-trends__chart h4 {
+  margin: 0 0 12px 0;
+  font-size: 0.95rem;
+  color: var(--color-text-primary, #fff);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.temporal-trends__mastered {
+  font-size: 0.75rem;
+  padding: 2px 8px;
+  background-color: var(--color-success, #82ca9d);
+  color: #000;
+  border-radius: 10px;
+  font-weight: normal;
+}
+
+.temporal-trends__learning-summary {
+  text-align: center;
+  margin-top: 8px;
+  font-size: 0.875rem;
+  color: var(--color-text-secondary, #888);
+}
+
+/* Custom tooltip styling for recharts */
+.recharts-tooltip-wrapper {
+  z-index: 1000;
+}
+
+.recharts-default-tooltip {
+  background-color: var(--bg-tertiary, #2d2d2d) !important;
+  border: 1px solid var(--border-color, #444) !important;
+  border-radius: 4px;
+}
+
+.recharts-tooltip-label {
+  color: var(--color-text-primary, #fff) !important;
+  font-weight: bold;
+  margin-bottom: 4px;
+}
+
+.recharts-tooltip-item {
+  color: var(--color-text-secondary, #888) !important;
+}

@@ -578,3 +578,52 @@ func (h *DraftHandler) GetExportableDrafts(w http.ResponseWriter, r *http.Reques
 
 	response.Success(w, drafts)
 }
+
+// TemporalTrendsRequest represents a request for temporal performance trends.
+type TemporalTrendsRequest struct {
+	PeriodType string  `json:"period_type"` // "weekly" or "monthly"
+	NumPeriods int     `json:"num_periods"` // Number of periods to return (default 12)
+	SetCode    *string `json:"set_code"`    // Optional: filter by set
+}
+
+// GetTemporalTrends returns temporal performance trends (win rate over time).
+func (h *DraftHandler) GetTemporalTrends(w http.ResponseWriter, r *http.Request) {
+	var req TemporalTrendsRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		response.BadRequest(w, errors.New("invalid request body"))
+		return
+	}
+
+	// Defaults
+	if req.PeriodType == "" {
+		req.PeriodType = "weekly"
+	}
+	if req.NumPeriods <= 0 {
+		req.NumPeriods = 12
+	}
+
+	trends, err := h.facade.GetTemporalTrends(r.Context(), req.PeriodType, req.NumPeriods, req.SetCode)
+	if err != nil {
+		response.InternalError(w, err)
+		return
+	}
+
+	response.Success(w, trends)
+}
+
+// GetLearningCurve returns the learning curve for a specific set.
+func (h *DraftHandler) GetLearningCurve(w http.ResponseWriter, r *http.Request) {
+	setCode := chi.URLParam(r, "setCode")
+	if setCode == "" {
+		response.BadRequest(w, errors.New("set code is required"))
+		return
+	}
+
+	curve, err := h.facade.GetLearningCurve(r.Context(), setCode)
+	if err != nil {
+		response.InternalError(w, err)
+		return
+	}
+
+	response.Success(w, curve)
+}

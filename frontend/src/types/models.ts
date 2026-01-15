@@ -3897,12 +3897,159 @@ export namespace storage {
 		    return a;
 		}
 	}
-	
+
 
 }
 
+export namespace analytics {
+	// Draft temporal trends types
+
+	export class TrendEntry {
+		periodStart: string;
+		periodEnd: string;
+		draftsCount: number;
+		matchesPlayed: number;
+		matchesWon: number;
+		winRate: number;
+		avgDraftGrade?: number;
+
+		static createFrom(source: any = {}) {
+			return new TrendEntry(source);
+		}
+
+		constructor(source: any = {}) {
+			if ('string' === typeof source) source = JSON.parse(source);
+			this.periodStart = source["periodStart"];
+			this.periodEnd = source["periodEnd"];
+			this.draftsCount = source["draftsCount"];
+			this.matchesPlayed = source["matchesPlayed"];
+			this.matchesWon = source["matchesWon"];
+			this.winRate = source["winRate"];
+			this.avgDraftGrade = source["avgDraftGrade"];
+		}
+	}
+
+	export class TrendSummary {
+		totalDrafts: number;
+		totalMatches: number;
+		totalWins: number;
+		overallWinRate: number;
+		bestPeriodWinRate: number;
+		worstPeriodWinRate: number;
+		winRateImprovement: number;
+
+		static createFrom(source: any = {}) {
+			return new TrendSummary(source);
+		}
+
+		constructor(source: any = {}) {
+			if ('string' === typeof source) source = JSON.parse(source);
+			this.totalDrafts = source["totalDrafts"];
+			this.totalMatches = source["totalMatches"];
+			this.totalWins = source["totalWins"];
+			this.overallWinRate = source["overallWinRate"];
+			this.bestPeriodWinRate = source["bestPeriodWinRate"];
+			this.worstPeriodWinRate = source["worstPeriodWinRate"];
+			this.winRateImprovement = source["winRateImprovement"];
+		}
+	}
+
+	export class TrendAnalysisResponse {
+		periodType: string;
+		setCode?: string;
+		trends: TrendEntry[];
+		direction: string;
+		summary: TrendSummary;
+
+		static createFrom(source: any = {}) {
+			return new TrendAnalysisResponse(source);
+		}
+
+		constructor(source: any = {}) {
+			if ('string' === typeof source) source = JSON.parse(source);
+			this.periodType = source["periodType"];
+			this.setCode = source["setCode"];
+			this.trends = this.convertValues(source["trends"], TrendEntry);
+			this.direction = source["direction"];
+			this.summary = this.convertValues(source["summary"], TrendSummary);
+		}
+
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+			if (!a) {
+				return a;
+			}
+			if (a.slice && a.map) {
+				return (a as any[]).map(elem => this.convertValues(elem, classs));
+			} else if ("object" === typeof a) {
+				if (asMap) {
+					for (const key of Object.keys(a)) {
+						a[key] = new classs(a[key]);
+					}
+					return a;
+				}
+				return new classs(a);
+			}
+			return a;
+		}
+	}
+
+	export class LearningPeriodEntry {
+		draftNumber: number;
+		winRate: number;
+		cumulative: number;
+
+		static createFrom(source: any = {}) {
+			return new LearningPeriodEntry(source);
+		}
+
+		constructor(source: any = {}) {
+			if ('string' === typeof source) source = JSON.parse(source);
+			this.draftNumber = source["draftNumber"];
+			this.winRate = source["winRate"];
+			this.cumulative = source["cumulative"];
+		}
+	}
+
+	export class LearningCurveResponse {
+		setCode: string;
+		periods: LearningPeriodEntry[];
+		improvement: number;
+		isMastered: boolean;
+
+		static createFrom(source: any = {}) {
+			return new LearningCurveResponse(source);
+		}
+
+		constructor(source: any = {}) {
+			if ('string' === typeof source) source = JSON.parse(source);
+			this.setCode = source["setCode"];
+			this.periods = this.convertValues(source["periods"], LearningPeriodEntry);
+			this.improvement = source["improvement"];
+			this.isMastered = source["isMastered"];
+		}
+
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+			if (!a) {
+				return a;
+			}
+			if (a.slice && a.map) {
+				return (a as any[]).map(elem => this.convertValues(elem, classs));
+			} else if ("object" === typeof a) {
+				if (asMap) {
+					for (const key of Object.keys(a)) {
+						a[key] = new classs(a[key]);
+					}
+					return a;
+				}
+				return new classs(a);
+			}
+			return a;
+		}
+	}
+}
+
 export namespace time {
-	
+
 	export class Time {
 	
 	

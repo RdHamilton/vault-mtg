@@ -76,6 +76,26 @@ export const mockDrafts = {
   fixDraftSessionStatuses: vi.fn(() => Promise.resolve(0)),
   resetDraftPerformanceMetrics: vi.fn(() => Promise.resolve()),
   getRecommendations: vi.fn(() => Promise.resolve({} as unknown)),
+  getTemporalTrends: vi.fn(() => Promise.resolve({
+    periodType: 'weekly',
+    direction: 'stable',
+    trends: [],
+    summary: {
+      totalDrafts: 0,
+      totalMatches: 0,
+      totalWins: 0,
+      overallWinRate: 0,
+      bestPeriodWinRate: 0,
+      worstPeriodWinRate: 0,
+      winRateImprovement: 0,
+    },
+  })),
+  getLearningCurve: vi.fn(() => Promise.resolve({
+    setCode: '',
+    improvement: 0,
+    isMastered: false,
+    periods: [],
+  })),
 };
 
 export const mockCollection = {

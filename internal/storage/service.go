@@ -35,6 +35,7 @@ type Service struct {
 	standard                repository.StandardRepository
 	gamePlay                repository.GamePlayRepository
 	cardPerformanceAnalysis repository.CardPerformanceRepository
+	draftAnalytics          repository.DraftAnalyticsRepository
 	currentAccountID        int // Current active account ID
 }
 
@@ -58,6 +59,7 @@ type ServiceConfig struct {
 	Standard                repository.StandardRepository
 	GamePlay                repository.GamePlayRepository
 	CardPerformanceAnalysis repository.CardPerformanceRepository
+	DraftAnalytics          repository.DraftAnalyticsRepository
 }
 
 // NewService creates a new storage service with default repository implementations.
@@ -96,6 +98,9 @@ func NewServiceWithConfig(db *DB, cfg *ServiceConfig) *Service {
 		gamePlay: orDefault(cfg.GamePlay, func() repository.GamePlayRepository { return repository.NewGamePlayRepository(conn) }),
 		cardPerformanceAnalysis: orDefault(cfg.CardPerformanceAnalysis, func() repository.CardPerformanceRepository {
 			return repository.NewCardPerformanceRepository(conn)
+		}),
+		draftAnalytics: orDefault(cfg.DraftAnalytics, func() repository.DraftAnalyticsRepository {
+			return repository.NewDraftAnalyticsRepository(conn)
 		}),
 	}
 
@@ -2034,6 +2039,11 @@ func (s *Service) GamePlayRepo() repository.GamePlayRepository {
 // CardPerformanceAnalysisRepo returns the card performance analysis repository.
 func (s *Service) CardPerformanceAnalysisRepo() repository.CardPerformanceRepository {
 	return s.cardPerformanceAnalysis
+}
+
+// DraftAnalyticsRepo returns the draft analytics repository.
+func (s *Service) DraftAnalyticsRepo() repository.DraftAnalyticsRepository {
+	return s.draftAnalytics
 }
 
 // GetCardNames retrieves card names for multiple arena IDs.
