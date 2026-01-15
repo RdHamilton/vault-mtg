@@ -34,7 +34,7 @@ const Layout = ({ children }: LayoutProps) => {
       return 'match-history';
     } else if (location.pathname === '/quests') {
       return 'quests';
-    } else if (location.pathname === '/draft') {
+    } else if (location.pathname === '/draft' || location.pathname === '/draft-analytics') {
       return 'draft';
     } else if (location.pathname === '/decks' || location.pathname.startsWith('/deck-builder')) {
       return 'decks';
@@ -159,6 +159,24 @@ const Layout = ({ children }: LayoutProps) => {
           </div>
         </div>
       </div>
+
+      {/* Sub-navigation for Draft */}
+      {activeTab === 'draft' && (
+        <div className="sub-tab-bar">
+          <Link
+            to="/draft"
+            className={`sub-tab ${isActive('/draft') ? 'active' : ''}`}
+          >
+            Current Draft
+          </Link>
+          <Link
+            to="/draft-analytics"
+            className={`sub-tab ${isActive('/draft-analytics') ? 'active' : ''}`}
+          >
+            Analytics
+          </Link>
+        </div>
+      )}
 
       {/* Sub-navigation for Charts */}
       {activeTab === 'charts' && (

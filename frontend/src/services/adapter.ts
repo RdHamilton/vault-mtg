@@ -112,6 +112,10 @@ export const draftsAdapter = {
     return api.drafts.getActiveDraftSessions();
   },
 
+  async getDraftFormats(): Promise<string[]> {
+    return api.drafts.getDraftFormats();
+  },
+
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
   async getCompletedDraftSessions(_limit = 100): Promise<models.DraftSession[]> {
     return api.drafts.getCompletedDraftSessions();

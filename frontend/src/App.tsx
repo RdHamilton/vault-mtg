@@ -10,6 +10,7 @@ import FormatDistribution from './pages/FormatDistribution';
 import ResultBreakdown from './pages/ResultBreakdown';
 import Quests from './pages/Quests';
 import Draft from './pages/Draft';
+import DraftAnalytics from './pages/DraftAnalytics';
 import Decks from './pages/Decks';
 import DeckBuilder from './pages/DeckBuilder';
 import Collection from './pages/Collection';
@@ -129,6 +130,7 @@ function App() {
           <Route path="/match-history" element={<MatchHistory />} />
           <Route path="/quests" element={<Quests />} />
           <Route path="/draft" element={<Draft />} />
+          <Route path="/draft-analytics" element={<DraftAnalytics />} />
           <Route path="/decks" element={<Decks />} />
           <Route path="/deck-builder/:deckID" element={<DeckBuilder />} />
           <Route path="/deck-builder/draft/:draftEventID" element={<DeckBuilder />} />

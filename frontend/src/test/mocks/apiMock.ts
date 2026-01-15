@@ -60,6 +60,7 @@ export const mockDecks = {
 export const mockDrafts = {
   getActiveDraftSessions: vi.fn(() => Promise.resolve([] as unknown[])),
   getCompletedDraftSessions: vi.fn(() => Promise.resolve([] as unknown[])),
+  getDraftFormats: vi.fn(() => Promise.resolve(['DSK', 'FDN', 'BLB'] as string[])),
   getDraftSession: vi.fn(() => Promise.resolve({} as unknown)),
   getDraftPicks: vi.fn(() => Promise.resolve([] as unknown[])),
   getDraftPool: vi.fn(() => Promise.resolve([] as unknown[])),
