@@ -378,16 +378,17 @@
   min-width: 0;
 }
 
+/* Compact recommendation card layout for narrow panel */
 .recommendations-panel .recommendation-card {
-  display: flex;
-  gap: 0.5rem;
-  padding: 0.5rem;
+  display: grid;
+  grid-template-columns: 45px 1fr auto;
+  gap: 8px;
+  padding: 6px 8px;
   background: #2a2a2a;
   border-radius: 6px;
   border: 1px solid #444;
   transition: all 0.2s;
-  min-width: 0;
-  overflow: hidden;
+  align-items: center;
 }
 
 .recommendations-panel .recommendation-card:hover {
@@ -395,25 +396,24 @@
   background: rgba(74, 158, 255, 0.05);
 }
 
+.recommendations-panel .rec-card-main {
+  display: contents;
+}
+
 .recommendations-panel .rec-card-image {
-  width: 50px;
+  width: 45px;
   height: auto;
   border-radius: 4px;
   object-fit: cover;
-  flex-shrink: 0;
 }
 
 .recommendations-panel .rec-card-info {
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-  gap: 0.25rem;
   min-width: 0;
   overflow: hidden;
 }
 
 .recommendations-panel .rec-card-name {
-  font-size: 0.85rem;
+  font-size: 0.8rem;
   font-weight: 600;
   color: #fff;
   white-space: nowrap;
@@ -421,47 +421,21 @@
   text-overflow: ellipsis;
 }
 
-.recommendations-panel .rec-card-type {
-  font-size: 0.7rem;
-  color: #aaa;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.recommendations-panel .rec-card-mana {
-  font-size: 0.75rem;
-  color: #4a9eff;
-  font-family: 'Courier New', monospace;
-}
-
-.recommendations-panel .rec-score {
-  font-size: 0.7rem;
-  color: #4caf50;
-  font-weight: 600;
-}
-
+/* Hide extra info in compact mode */
+.recommendations-panel .rec-card-type,
+.recommendations-panel .rec-card-mana,
+.recommendations-panel .rec-score-summary,
 .recommendations-panel .rec-reasoning {
-  font-size: 0.75rem;
-  color: #ccc;
-  line-height: 1.3;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  display: -webkit-box;
-  -webkit-line-clamp: 2;
-  -webkit-box-orient: vertical;
+  display: none;
 }
 
 .recommendations-panel .rec-card-actions {
   display: flex;
-  flex-direction: column;
-  align-items: stretch;
-  gap: 4px;
   flex-shrink: 0;
 }
 
 .recommendations-panel .add-rec-button {
-  padding: 0.35rem 0.6rem;
+  padding: 4px 8px;
   background: #4caf50;
   border: none;
   border-radius: 4px;
@@ -477,9 +451,17 @@
   background: #45a049;
 }
 
+/* Hide explain button in compact mode */
 .recommendations-panel .explain-button {
-  padding: 0.35rem 0.6rem;
-  font-size: 0.7rem;
+  display: none;
+}
+
+/* Show details when expanded */
+.recommendations-panel .rec-card-details {
+  grid-column: 1 / -1;
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px solid #444;
 }
 
 .recommendations-list::-webkit-scrollbar {

@@ -73,7 +73,7 @@ export default function RecommendationCard({
           <img src={rec.imageURI} alt={rec.name} className="rec-card-image" />
         )}
         <div className="rec-card-info">
-          <div className="rec-card-name">{rec.name}</div>
+          <div className="rec-card-name" title={rec.name}>{rec.name}</div>
           <div className="rec-card-type">{rec.typeLine}</div>
           {rec.manaCost && <div className="rec-card-mana">{rec.manaCost}</div>}
           <div className="rec-score-summary">
