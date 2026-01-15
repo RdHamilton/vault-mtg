@@ -550,6 +550,45 @@ describe('Draft Component', () => {
         expect(screen.getByText('Draft History')).toBeInTheDocument();
       }, { timeout: 2000 });
     });
+
+    it('should display FormatInsights (Archetype Performance) in historical draft detail view (#899)', async () => {
+      const completedSession = createMockDraftSession({
+        ID: 'completed-session',
+        Status: 'completed',
+        SetCode: 'BLB',
+        EventName: 'PremierDraft',
+      });
+      const picks = [createMockDraftPick({ SessionID: 'completed-session', CardID: '12345' })];
+      const card = createMockSetCard({ ArenaID: '12345' });
+      const mockMetrics = createMockDeckMetrics();
+
+      mockDrafts.getActiveDraftSessions.mockResolvedValue([]);
+      mockDrafts.getCompletedDraftSessions.mockResolvedValue([completedSession]);
+      mockDrafts.getDraftPicks.mockResolvedValue(picks);
+      mockDrafts.getDraftPool.mockResolvedValue([]);
+      mockCards.getCardByArenaId.mockResolvedValue(card);
+      mockDrafts.getDraftGrade.mockRejectedValue(new Error('No grade'));
+      mockDrafts.getDraftDeckMetrics.mockResolvedValue(mockMetrics);
+
+      render(<Draft />);
+
+      await waitFor(() => {
+        expect(screen.getByRole('button', { name: /View Replay/i })).toBeInTheDocument();
+      });
+
+      const replayButton = screen.getByRole('button', { name: /View Replay/i });
+      await userEvent.click(replayButton);
+
+      await waitFor(() => {
+        expect(screen.getByText('Draft Replay')).toBeInTheDocument();
+      }, { timeout: 5000 });
+
+      // FormatInsights component renders "Archetype Performance Dashboard" in a collapsible header
+      // The header includes arrows and set/format info, so use regex for partial match
+      await waitFor(() => {
+        expect(screen.getByText(/Archetype Performance Dashboard/i)).toBeInTheDocument();
+      }, { timeout: 2000 });
+    });
   });
 
   describe('Auto-refresh Stale Ratings (#732)', () => {

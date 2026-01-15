@@ -695,6 +695,15 @@ const Draft: React.FC = () => {
                                 })}
                             </div>
                         </div>
+
+                        {/* Format Meta Insights - Archetype Performance Dashboard */}
+                        {historicalDetailState.session && (
+                            <FormatInsights
+                                setCode={historicalDetailState.session.SetCode}
+                                draftFormat={historicalDetailState.session.EventName}
+                                autoRefresh={false}
+                            />
+                        )}
                     </div>
                 </div>
 
