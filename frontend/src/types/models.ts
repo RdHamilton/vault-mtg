@@ -4046,6 +4046,81 @@ export namespace analytics {
 			return a;
 		}
 	}
+
+	// Community comparison types
+	export class ArchetypeComparisonEntry {
+		colorCombination: string;
+		archetypeName: string;
+		userWinRate: number;
+		communityWinRate: number;
+		winRateDelta: number;
+		userMatchesPlayed: number;
+		percentileRank: number;
+		isAboveCommunity: boolean;
+
+		static createFrom(source: any = {}) {
+			return new ArchetypeComparisonEntry(source);
+		}
+
+		constructor(source: any = {}) {
+			if ('string' === typeof source) source = JSON.parse(source);
+			this.colorCombination = source["colorCombination"];
+			this.archetypeName = source["archetypeName"];
+			this.userWinRate = source["userWinRate"];
+			this.communityWinRate = source["communityWinRate"];
+			this.winRateDelta = source["winRateDelta"];
+			this.userMatchesPlayed = source["userMatchesPlayed"];
+			this.percentileRank = source["percentileRank"];
+			this.isAboveCommunity = source["isAboveCommunity"];
+		}
+	}
+
+	export class CommunityComparisonResponse {
+		setCode: string;
+		draftFormat: string;
+		userWinRate: number;
+		communityAvgWinRate: number;
+		winRateDelta: number;
+		percentileRank: number;
+		sampleSize: number;
+		rank: string;
+		archetypeComparison?: ArchetypeComparisonEntry[];
+
+		static createFrom(source: any = {}) {
+			return new CommunityComparisonResponse(source);
+		}
+
+		constructor(source: any = {}) {
+			if ('string' === typeof source) source = JSON.parse(source);
+			this.setCode = source["setCode"];
+			this.draftFormat = source["draftFormat"];
+			this.userWinRate = source["userWinRate"];
+			this.communityAvgWinRate = source["communityAvgWinRate"];
+			this.winRateDelta = source["winRateDelta"];
+			this.percentileRank = source["percentileRank"];
+			this.sampleSize = source["sampleSize"];
+			this.rank = source["rank"];
+			this.archetypeComparison = this.convertValues(source["archetypeComparison"], ArchetypeComparisonEntry);
+		}
+
+		convertValues(a: any, classs: any, asMap: boolean = false): any {
+			if (!a) {
+				return a;
+			}
+			if (a.slice && a.map) {
+				return (a as any[]).map(elem => this.convertValues(elem, classs));
+			} else if ("object" === typeof a) {
+				if (asMap) {
+					for (const key of Object.keys(a)) {
+						a[key] = new classs(a[key]);
+					}
+					return a;
+				}
+				return new classs(a);
+			}
+			return a;
+		}
+	}
 }
 
 export namespace time {

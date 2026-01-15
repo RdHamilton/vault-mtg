@@ -11,6 +11,7 @@ import (
 
 	"github.com/ramonehamilton/MTGA-Companion/internal/api/response"
 	"github.com/ramonehamilton/MTGA-Companion/internal/gui"
+	"github.com/ramonehamilton/MTGA-Companion/internal/mtga/draft/analytics"
 	"github.com/ramonehamilton/MTGA-Companion/internal/storage/models"
 )
 
@@ -626,4 +627,79 @@ func (h *DraftHandler) GetLearningCurve(w http.ResponseWriter, r *http.Request) 
 	}
 
 	response.Success(w, curve)
+}
+
+// CommunityComparisonRequest represents a request for community comparison.
+type CommunityComparisonRequest struct {
+	SetCode     string `json:"set_code"`
+	DraftFormat string `json:"draft_format"` // Optional, defaults to "PremierDraft"
+}
+
+// GetCommunityComparison returns a comparison of user performance vs community averages.
+func (h *DraftHandler) GetCommunityComparison(w http.ResponseWriter, r *http.Request) {
+	var req CommunityComparisonRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		response.BadRequest(w, errors.New("invalid request body"))
+		return
+	}
+
+	if req.SetCode == "" {
+		response.BadRequest(w, errors.New("set_code is required"))
+		return
+	}
+
+	comparison, err := h.facade.GetCommunityComparison(r.Context(), req.SetCode, req.DraftFormat)
+	if err != nil {
+		response.InternalError(w, err)
+		return
+	}
+
+	if comparison == nil {
+		response.Success(w, map[string]string{"message": "No draft data available for this set"})
+		return
+	}
+
+	response.Success(w, comparison)
+}
+
+// GetCommunityComparisonBySet returns community comparison for a specific set (from URL param).
+func (h *DraftHandler) GetCommunityComparisonBySet(w http.ResponseWriter, r *http.Request) {
+	setCode := chi.URLParam(r, "setCode")
+	if setCode == "" {
+		response.BadRequest(w, errors.New("set code is required"))
+		return
+	}
+
+	draftFormat := r.URL.Query().Get("format")
+	if draftFormat == "" {
+		draftFormat = "PremierDraft"
+	}
+
+	comparison, err := h.facade.GetCommunityComparison(r.Context(), setCode, draftFormat)
+	if err != nil {
+		response.InternalError(w, err)
+		return
+	}
+
+	if comparison == nil {
+		response.Success(w, map[string]string{"message": "No draft data available for this set"})
+		return
+	}
+
+	response.Success(w, comparison)
+}
+
+// GetAllCommunityComparisons returns all cached community comparisons.
+func (h *DraftHandler) GetAllCommunityComparisons(w http.ResponseWriter, r *http.Request) {
+	comparisons, err := h.facade.GetAllCommunityComparisons(r.Context())
+	if err != nil {
+		response.InternalError(w, err)
+		return
+	}
+
+	if comparisons == nil {
+		comparisons = []*analytics.CommunityComparisonResponse{}
+	}
+
+	response.Success(w, comparisons)
 }

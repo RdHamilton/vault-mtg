@@ -96,6 +96,29 @@ export const mockDrafts = {
     isMastered: false,
     periods: [],
   })),
+  getCommunityComparison: vi.fn(() => Promise.resolve({
+    setCode: 'DSK',
+    draftFormat: 'PremierDraft',
+    userWinRate: 0.55,
+    communityAvgWinRate: 0.52,
+    winRateDelta: 0.03,
+    percentileRank: 59,
+    sampleSize: 25,
+    rank: 'Above Average',
+    archetypeComparison: [],
+  })),
+  getCommunityComparisonBySet: vi.fn(() => Promise.resolve({
+    setCode: 'DSK',
+    draftFormat: 'PremierDraft',
+    userWinRate: 0.55,
+    communityAvgWinRate: 0.52,
+    winRateDelta: 0.03,
+    percentileRank: 59,
+    sampleSize: 25,
+    rank: 'Above Average',
+    archetypeComparison: [],
+  })),
+  getAllCommunityComparisons: vi.fn(() => Promise.resolve([])),
 };
 
 export const mockCollection = {

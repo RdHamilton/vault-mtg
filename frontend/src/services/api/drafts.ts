@@ -401,3 +401,43 @@ export async function getTemporalTrends(
 export async function getLearningCurve(setCode: string): Promise<LearningCurveResponse> {
   return get<LearningCurveResponse>(`/drafts/learning-curve/${setCode}`);
 }
+
+// Export community comparison types for convenience
+export type CommunityComparisonResponse = analytics.CommunityComparisonResponse;
+export type ArchetypeComparisonEntry = analytics.ArchetypeComparisonEntry;
+
+/**
+ * Request for community comparison.
+ */
+export interface CommunityComparisonRequest {
+  set_code: string;
+  draft_format?: string;
+}
+
+/**
+ * Get community comparison for a specific set/format.
+ * Compares user performance vs 17Lands community averages.
+ */
+export async function getCommunityComparison(
+  request: CommunityComparisonRequest
+): Promise<CommunityComparisonResponse> {
+  return post<CommunityComparisonResponse>('/drafts/community-comparison', request);
+}
+
+/**
+ * Get community comparison by set code (from URL).
+ */
+export async function getCommunityComparisonBySet(
+  setCode: string,
+  format?: string
+): Promise<CommunityComparisonResponse> {
+  const params = format ? `?format=${format}` : '';
+  return get<CommunityComparisonResponse>(`/drafts/community-comparison/${setCode}${params}`);
+}
+
+/**
+ * Get all cached community comparisons.
+ */
+export async function getAllCommunityComparisons(): Promise<CommunityComparisonResponse[]> {
+  return get<CommunityComparisonResponse[]>('/drafts/community-comparison');
+}

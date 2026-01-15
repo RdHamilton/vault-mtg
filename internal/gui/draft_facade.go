@@ -1716,3 +1716,72 @@ func (d *DraftFacade) GetLearningCurve(ctx context.Context, setCode string) (*an
 
 	return curve, nil
 }
+
+// GetCommunityComparison returns a comparison of user performance vs 17Lands community averages.
+func (d *DraftFacade) GetCommunityComparison(ctx context.Context, setCode, draftFormat string) (*analytics.CommunityComparisonResponse, error) {
+	if d.services.Storage == nil {
+		return nil, &AppError{Message: "Database not initialized"}
+	}
+
+	if setCode == "" {
+		return nil, &AppError{Message: "setCode is required"}
+	}
+
+	if draftFormat == "" {
+		draftFormat = "PremierDraft"
+	}
+
+	// Create community comparison analyzer with default 17Lands provider
+	provider := analytics.NewDefault17LandsProvider()
+	analyzer := analytics.NewCommunityComparisonAnalyzer(
+		d.services.Storage.DraftRepo(),
+		d.services.Storage.DraftAnalyticsRepo(),
+		provider,
+	)
+
+	// Get or calculate community comparison
+	comparison, err := analyzer.CompareToCommunity(ctx, setCode, draftFormat)
+	if err != nil {
+		return nil, &AppError{Message: fmt.Sprintf("Failed to calculate community comparison: %v", err)}
+	}
+
+	if comparison == nil {
+		return nil, nil // No data for this set
+	}
+
+	// Get archetype comparison
+	archetypeComparison, err := analyzer.CompareArchetypePerformance(ctx, setCode, draftFormat)
+	if err != nil {
+		// Continue without archetype data
+		archetypeComparison = nil
+	}
+
+	return analytics.BuildCommunityComparisonResponse(comparison, archetypeComparison), nil
+}
+
+// GetAllCommunityComparisons returns all cached community comparisons.
+func (d *DraftFacade) GetAllCommunityComparisons(ctx context.Context) ([]*analytics.CommunityComparisonResponse, error) {
+	if d.services.Storage == nil {
+		return nil, &AppError{Message: "Database not initialized"}
+	}
+
+	// Create analyzer with default provider
+	provider := analytics.NewDefault17LandsProvider()
+	analyzer := analytics.NewCommunityComparisonAnalyzer(
+		d.services.Storage.DraftRepo(),
+		d.services.Storage.DraftAnalyticsRepo(),
+		provider,
+	)
+
+	comparisons, err := analyzer.GetAllComparisons(ctx)
+	if err != nil {
+		return nil, &AppError{Message: fmt.Sprintf("Failed to get community comparisons: %v", err)}
+	}
+
+	var responses []*analytics.CommunityComparisonResponse
+	for _, comp := range comparisons {
+		responses = append(responses, analytics.BuildCommunityComparisonResponse(comp, nil))
+	}
+
+	return responses, nil
+}

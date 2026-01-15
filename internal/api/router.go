@@ -78,6 +78,10 @@ func (s *Server) setupRoutes() {
 			// Temporal trend analysis
 			r.Post("/trends", draftHandler.GetTemporalTrends)
 			r.Get("/learning-curve/{setCode}", draftHandler.GetLearningCurve)
+			// Community comparison (vs 17Lands averages)
+			r.Post("/community-comparison", draftHandler.GetCommunityComparison)
+			r.Get("/community-comparison", draftHandler.GetAllCommunityComparisons)
+			r.Get("/community-comparison/{setCode}", draftHandler.GetCommunityComparisonBySet)
 			r.Get("/{sessionID}", draftHandler.GetDraftSession)
 			r.Get("/{sessionID}/picks", draftHandler.GetDraftPicks)
 			r.Get("/{sessionID}/packs", draftHandler.GetDraftPacks)

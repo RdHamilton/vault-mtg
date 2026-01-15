@@ -136,6 +136,18 @@ export const draftsAdapter = {
   async getLearningCurve(setCode: string): Promise<api.drafts.LearningCurveResponse> {
     return api.drafts.getLearningCurve(setCode);
   },
+
+  async getCommunityComparison(request: api.drafts.CommunityComparisonRequest): Promise<api.drafts.CommunityComparisonResponse> {
+    return api.drafts.getCommunityComparison(request);
+  },
+
+  async getCommunityComparisonBySet(setCode: string, format?: string): Promise<api.drafts.CommunityComparisonResponse> {
+    return api.drafts.getCommunityComparisonBySet(setCode, format);
+  },
+
+  async getAllCommunityComparisons(): Promise<api.drafts.CommunityComparisonResponse[]> {
+    return api.drafts.getAllCommunityComparisons();
+  },
 };
 
 // ============================================================================
