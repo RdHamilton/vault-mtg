@@ -86,13 +86,17 @@ func (c *CommunityComparisonAnalyzer) CompareToCommunity(ctx context.Context, se
 		matches, err := c.matchRepo.GetMatches(ctx, filter)
 		if err == nil {
 			for _, match := range matches {
-				// Check if this match is from a draft for this set
+				// Check if this match is from a draft for this set and format
 				format := match.Format
 				eventName := match.EventName
 				isDraftMatch := strings.Contains(format, "Draft") || strings.Contains(eventName, "Draft")
 				containsSetCode := strings.Contains(format, setCode) || strings.Contains(eventName, setCode)
 
-				if isDraftMatch && containsSetCode {
+				// Check if format matches the requested draft format (e.g., "PremierDraft", "QuickDraft")
+				// Format strings look like "QuickDraft_TLA_20251127" or "PremierDraft_TLA_20251127"
+				matchesFormat := draftFormat == "" || strings.Contains(format, draftFormat) || strings.Contains(eventName, draftFormat)
+
+				if isDraftMatch && containsSetCode && matchesFormat {
 					userMatches++
 					if match.Result == "win" {
 						userWins++

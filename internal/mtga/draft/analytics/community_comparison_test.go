@@ -527,3 +527,99 @@ func TestCommunityComparisonAnalyzer_GetAllComparisons(t *testing.T) {
 		t.Errorf("expected 2 comparisons, got %d", len(all))
 	}
 }
+
+func TestCommunityComparisonAnalyzer_CompareToCommunity_FallbackWithFormatFilter(t *testing.T) {
+	ctx := context.Background()
+	now := time.Now()
+
+	// Create sessions with no match results (to trigger fallback)
+	sessions := []*models.DraftSession{
+		{ID: "session-1", SetCode: "TLA", Status: "completed", StartTime: now.Add(-24 * time.Hour)},
+	}
+
+	draftRepo := &mockDraftRepository{
+		sessions: sessions,
+		picks:    make(map[string][]*models.DraftPickSession),
+	}
+
+	// Analytics repo with empty match results (to trigger fallback)
+	analyticsRepo := newMockAnalyticsRepository()
+
+	// Match repo with matches from different formats
+	matchRepo := &mockMatchRepository{
+		matches: []*models.Match{
+			// QuickDraft matches - 2 wins, 1 loss
+			{ID: "m1", Format: "QuickDraft_TLA_20251127", EventName: "QuickDraft", Result: "win", Timestamp: now.Add(-20 * time.Hour)},
+			{ID: "m2", Format: "QuickDraft_TLA_20251127", EventName: "QuickDraft", Result: "win", Timestamp: now.Add(-19 * time.Hour)},
+			{ID: "m3", Format: "QuickDraft_TLA_20251127", EventName: "QuickDraft", Result: "loss", Timestamp: now.Add(-18 * time.Hour)},
+			// PremierDraft matches - 1 win, 2 losses
+			{ID: "m4", Format: "PremierDraft_TLA_20251127", EventName: "PremierDraft", Result: "win", Timestamp: now.Add(-17 * time.Hour)},
+			{ID: "m5", Format: "PremierDraft_TLA_20251127", EventName: "PremierDraft", Result: "loss", Timestamp: now.Add(-16 * time.Hour)},
+			{ID: "m6", Format: "PremierDraft_TLA_20251127", EventName: "PremierDraft", Result: "loss", Timestamp: now.Add(-15 * time.Hour)},
+			// Different set (should be excluded)
+			{ID: "m7", Format: "QuickDraft_DSK_20251127", EventName: "QuickDraft", Result: "win", Timestamp: now.Add(-14 * time.Hour)},
+		},
+	}
+
+	ratingsProvider := NewDefault17LandsProvider()
+
+	analyzer := NewCommunityComparisonAnalyzerWithMatches(draftRepo, analyticsRepo, matchRepo, ratingsProvider)
+
+	// Test QuickDraft filter - should get 2 wins out of 3 matches (67%)
+	quickDraftComparison, err := analyzer.CompareToCommunity(ctx, "TLA", "QuickDraft")
+	if err != nil {
+		t.Fatalf("CompareToCommunity (QuickDraft) failed: %v", err)
+	}
+
+	if quickDraftComparison == nil {
+		t.Fatal("expected QuickDraft comparison to not be nil")
+	}
+
+	if quickDraftComparison.SampleSize != 3 {
+		t.Errorf("expected QuickDraft sample size 3, got %d", quickDraftComparison.SampleSize)
+	}
+
+	expectedQuickDraftWinRate := 2.0 / 3.0 // ~66.7%
+	if quickDraftComparison.UserWinRate < expectedQuickDraftWinRate-0.01 || quickDraftComparison.UserWinRate > expectedQuickDraftWinRate+0.01 {
+		t.Errorf("expected QuickDraft win rate around %f, got %f", expectedQuickDraftWinRate, quickDraftComparison.UserWinRate)
+	}
+
+	// Test PremierDraft filter - should get 1 win out of 3 matches (33%)
+	premierDraftComparison, err := analyzer.CompareToCommunity(ctx, "TLA", "PremierDraft")
+	if err != nil {
+		t.Fatalf("CompareToCommunity (PremierDraft) failed: %v", err)
+	}
+
+	if premierDraftComparison == nil {
+		t.Fatal("expected PremierDraft comparison to not be nil")
+	}
+
+	if premierDraftComparison.SampleSize != 3 {
+		t.Errorf("expected PremierDraft sample size 3, got %d", premierDraftComparison.SampleSize)
+	}
+
+	expectedPremierDraftWinRate := 1.0 / 3.0 // ~33.3%
+	if premierDraftComparison.UserWinRate < expectedPremierDraftWinRate-0.01 || premierDraftComparison.UserWinRate > expectedPremierDraftWinRate+0.01 {
+		t.Errorf("expected PremierDraft win rate around %f, got %f", expectedPremierDraftWinRate, premierDraftComparison.UserWinRate)
+	}
+
+	// Test with empty format filter - should get all TLA matches (6 total)
+	allFormatsComparison, err := analyzer.CompareToCommunity(ctx, "TLA", "")
+	if err != nil {
+		t.Fatalf("CompareToCommunity (all formats) failed: %v", err)
+	}
+
+	if allFormatsComparison == nil {
+		t.Fatal("expected all formats comparison to not be nil")
+	}
+
+	if allFormatsComparison.SampleSize != 6 {
+		t.Errorf("expected all formats sample size 6, got %d", allFormatsComparison.SampleSize)
+	}
+
+	// 3 wins out of 6 matches = 50%
+	expectedAllFormatsWinRate := 0.5
+	if allFormatsComparison.UserWinRate != expectedAllFormatsWinRate {
+		t.Errorf("expected all formats win rate %f, got %f", expectedAllFormatsWinRate, allFormatsComparison.UserWinRate)
+	}
+}
