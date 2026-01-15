@@ -299,3 +299,19 @@
   background: var(--personal-bg, rgba(76, 175, 80, 0.2));
   color: var(--personal-color, #81c784);
 }
+
+/* Hover Preview - Large card image on hover */
+.rec-hover-preview {
+  background: var(--bg-primary, #1a1a2e);
+  border-radius: 12px;
+  padding: 4px;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
+  border: 1px solid var(--border-color, #3a3d46);
+}
+
+.rec-hover-image {
+  width: 240px;
+  height: auto;
+  border-radius: 10px;
+  display: block;
+}

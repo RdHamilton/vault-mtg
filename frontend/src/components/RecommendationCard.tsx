@@ -3,6 +3,11 @@ import { drafts } from '@/services/api';
 import { gui } from '@/types/models';
 import './RecommendationCard.css';
 
+interface HoverPreview {
+  imageURI: string;
+  position: { x: number; y: number };
+}
+
 interface RecommendationCardProps {
   recommendation: gui.CardRecommendation;
   deckID: string;
@@ -18,6 +23,7 @@ export default function RecommendationCard({
   const [detailedExplanation, setDetailedExplanation] = useState<string | null>(null);
   const [loadingExplanation, setLoadingExplanation] = useState(false);
   const [explanationError, setExplanationError] = useState<string | null>(null);
+  const [hoverPreview, setHoverPreview] = useState<HoverPreview | null>(null);
 
   const handleShowDetails = async () => {
     if (showDetails) {
@@ -66,8 +72,45 @@ export default function RecommendationCard({
 
   const rec = recommendation;
 
+  const handleMouseEnter = (event: React.MouseEvent) => {
+    if (!rec.imageURI) return;
+
+    const rect = event.currentTarget.getBoundingClientRect();
+    // Position to the left of the card row, ensuring it stays on screen
+    const previewWidth = 250;
+    let x = rect.left - previewWidth - 10;
+    let y = rect.top;
+
+    // If it would go off the left edge, show on the right instead
+    if (x < 10) {
+      x = rect.right + 10;
+    }
+
+    // Keep within vertical bounds
+    const previewHeight = 350;
+    if (y + previewHeight > window.innerHeight - 20) {
+      y = window.innerHeight - previewHeight - 20;
+    }
+    if (y < 10) {
+      y = 10;
+    }
+
+    setHoverPreview({
+      imageURI: rec.imageURI,
+      position: { x, y },
+    });
+  };
+
+  const handleMouseLeave = () => {
+    setHoverPreview(null);
+  };
+
   return (
-    <div className={`recommendation-card ${showDetails ? 'expanded' : ''}`}>
+    <div
+      className={`recommendation-card ${showDetails ? 'expanded' : ''}`}
+      onMouseEnter={handleMouseEnter}
+      onMouseLeave={handleMouseLeave}
+    >
       <div className="rec-card-main">
         {rec.imageURI && (
           <img src={rec.imageURI} alt={rec.name} className="rec-card-image" />
@@ -197,6 +240,26 @@ export default function RecommendationCard({
                rec.source}
             </span>
           </div>
+        </div>
+      )}
+
+      {/* Hover Preview - Large card image */}
+      {hoverPreview && (
+        <div
+          className="rec-hover-preview"
+          style={{
+            position: 'fixed',
+            left: hoverPreview.position.x,
+            top: hoverPreview.position.y,
+            zIndex: 10000,
+            pointerEvents: 'none',
+          }}
+        >
+          <img
+            src={hoverPreview.imageURI}
+            alt={rec.name}
+            className="rec-hover-image"
+          />
         </div>
       )}
     </div>
