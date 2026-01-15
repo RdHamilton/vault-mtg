@@ -49,8 +49,9 @@ export default function DeckSuggestionCard({
   );
 
   // Calculate mana curve data for visualization
-  const curveData = suggestion.analysis?.manaCurve || {};
-  const curveValues = Object.values(curveData) as number[];
+  // Keys from JSON are strings, so we need to access with string keys
+  const curveData = (suggestion.analysis?.manaCurve || {}) as Record<string, number>;
+  const curveValues = Object.values(curveData);
   const maxCurveCount = Math.max(...curveValues, 1);
 
   return (
@@ -106,13 +107,14 @@ export default function DeckSuggestionCard({
             <div className="curve-title">Mana Curve</div>
             <div className="curve-bars">
               {[1, 2, 3, 4, 5, 6, 7].map((cmc) => {
-                const count = curveData[cmc] || 0;
-                const height = count > 0 ? (count / maxCurveCount) * 100 : 0;
+                // Access with string key since JSON object keys are strings
+                const count = curveData[String(cmc)] || 0;
+                const heightPx = count > 0 ? Math.max(Math.round((count / maxCurveCount) * 50), 14) : 2;
                 return (
                   <div key={cmc} className="curve-bar-container">
                     <div
                       className="curve-bar"
-                      style={{ height: `${height}%` }}
+                      style={{ height: `${heightPx}px` }}
                       title={`${count} cards at ${cmc} CMC`}
                     >
                       {count > 0 && <span className="curve-count">{count}</span>}
