@@ -832,6 +832,7 @@ describe('DeckBuilder Component - Legality Validation', () => {
       isLegal: false,
       errors: [{ cardId: 0, cardName: '', reason: 'deck_size', details: 'Deck has 8 cards (minimum 60 required)' }],
       warnings: [],
+      rotatingCards: [],
       setBreakdown: [],
     });
 

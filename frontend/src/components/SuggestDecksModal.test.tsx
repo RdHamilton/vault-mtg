@@ -13,6 +13,7 @@ vi.mock('@/services/api', () => ({
 }));
 
 import { decks } from '@/services/api';
+import type { SuggestDecksApiResponse } from '@/services/api/decks';
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -121,7 +122,7 @@ describe('SuggestDecksModal', () => {
       totalCombos: 32,
       viableCombos: 14,
       bestCombo: { colors: ['W', 'U'], name: 'Azorius' },
-    };
+    } as unknown as SuggestDecksApiResponse;
     vi.mocked(decks.suggestDecks).mockResolvedValue(mockResponse);
 
     render(
@@ -147,7 +148,7 @@ describe('SuggestDecksModal', () => {
   });
 
   it('should display error message when API returns error', async () => {
-    const mockResponse = {
+    const mockResponse: SuggestDecksApiResponse = {
       suggestions: [],
       totalCombos: 0,
       viableCombos: 0,

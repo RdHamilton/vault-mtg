@@ -177,11 +177,11 @@ export const decksAdapter = {
   },
 
   async suggestDecks(sessionId: string): Promise<gui.SuggestDecksResponse> {
-    const suggestions = await api.decks.suggestDecks({ session_id: sessionId });
+    const response = await api.decks.suggestDecks({ session_id: sessionId });
     return {
-      suggestions: suggestions,
-      totalCombos: suggestions.length,
-      viableCombos: suggestions.length,
+      suggestions: response.suggestions,
+      totalCombos: response.totalCombos,
+      viableCombos: response.viableCombos,
     } as gui.SuggestDecksResponse;
   },
 };
