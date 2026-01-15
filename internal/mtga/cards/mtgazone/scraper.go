@@ -24,8 +24,11 @@ const (
 	// DefaultTimeout for HTTP requests.
 	DefaultTimeout = 30 * time.Second
 
-	// DefaultRateLimit is conservative: 1 request per 2 seconds to be respectful.
+	// DefaultRateLimit is conservative: 2 requests per second (500ms) to be respectful.
 	DefaultRateLimit = 500 * time.Millisecond
+
+	// maxResponseSize limits response body to prevent memory exhaustion (10MB).
+	maxResponseSize = 10 * 1024 * 1024
 )
 
 // Colors represents the color categories in set reviews.
@@ -195,7 +198,7 @@ func (s *Scraper) fetchColorReview(ctx context.Context, setSlug, color string) (
 		return nil, fmt.Errorf("unexpected status: %d", resp.StatusCode)
 	}
 
-	body, err := io.ReadAll(resp.Body)
+	body, err := io.ReadAll(io.LimitReader(resp.Body, maxResponseSize))
 	if err != nil {
 		return nil, fmt.Errorf("failed to read response: %w", err)
 	}
