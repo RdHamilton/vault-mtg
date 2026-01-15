@@ -1,0 +1,103 @@
+/* Shared Card Hover Preview */
+.card-hover-preview {
+  pointer-events: none;
+  animation: fadeInPreview 0.15s ease-out;
+}
+
+@keyframes fadeInPreview {
+  from {
+    opacity: 0;
+    transform: translateY(-5px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.card-hover-preview .preview-card {
+  background: #1e1e1e;
+  border: 2px solid #4a9eff;
+  border-radius: 12px;
+  overflow: hidden;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
+  width: 260px;
+}
+
+.card-hover-preview .preview-image {
+  width: 100%;
+  display: block;
+  border-radius: 8px 8px 0 0;
+}
+
+.card-hover-preview .preview-details {
+  padding: 0.75rem;
+}
+
+.card-hover-preview .preview-name {
+  margin: 0 0 0.25rem 0;
+  font-size: 1rem;
+  color: #fff;
+  font-weight: 600;
+}
+
+.card-hover-preview .preview-type {
+  margin: 0 0 0.5rem 0;
+  font-size: 0.8rem;
+  color: #aaa;
+}
+
+.card-hover-preview .preview-stats {
+  display: flex;
+  gap: 1rem;
+  margin-bottom: 0.5rem;
+  font-size: 0.85rem;
+}
+
+.card-hover-preview .preview-mana {
+  color: #4a9eff;
+}
+
+.card-hover-preview .preview-pt {
+  color: #4caf50;
+  font-weight: 600;
+}
+
+.card-hover-preview .preview-text {
+  margin: 0 0 0.5rem 0;
+  font-size: 0.8rem;
+  color: #ccc;
+  line-height: 1.4;
+  white-space: pre-wrap;
+}
+
+.card-hover-preview .preview-score-section {
+  display: flex;
+  gap: 0.75rem;
+  margin-bottom: 0.5rem;
+  font-size: 0.8rem;
+}
+
+.card-hover-preview .preview-score {
+  color: #4caf50;
+  font-weight: 600;
+}
+
+.card-hover-preview .preview-confidence {
+  color: #6b7fd4;
+}
+
+.card-hover-preview .preview-reasoning {
+  margin: 0 0 0.5rem 0;
+  font-size: 0.75rem;
+  color: #aaa;
+  line-height: 1.4;
+  font-style: italic;
+}
+
+.card-hover-preview .preview-set {
+  margin: 0;
+  font-size: 0.75rem;
+  color: #888;
+  text-transform: capitalize;
+}

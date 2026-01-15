@@ -1,12 +1,8 @@
 import { useState } from 'react';
 import { drafts } from '@/services/api';
 import { gui } from '@/types/models';
+import CardHoverPreview from './CardHoverPreview';
 import './RecommendationCard.css';
-
-interface HoverPreview {
-  imageURI: string;
-  position: { x: number; y: number };
-}
 
 interface RecommendationCardProps {
   recommendation: gui.CardRecommendation;
@@ -23,7 +19,7 @@ export default function RecommendationCard({
   const [detailedExplanation, setDetailedExplanation] = useState<string | null>(null);
   const [loadingExplanation, setLoadingExplanation] = useState(false);
   const [explanationError, setExplanationError] = useState<string | null>(null);
-  const [hoverPreview, setHoverPreview] = useState<HoverPreview | null>(null);
+  const [hoverPosition, setHoverPosition] = useState<{ x: number; y: number } | null>(null);
 
   const handleShowDetails = async () => {
     if (showDetails) {
@@ -77,7 +73,7 @@ export default function RecommendationCard({
 
     const rect = event.currentTarget.getBoundingClientRect();
     // Position to the left of the card row, ensuring it stays on screen
-    const previewWidth = 250;
+    const previewWidth = 280;
     let x = rect.left - previewWidth - 10;
     let y = rect.top;
 
@@ -87,7 +83,7 @@ export default function RecommendationCard({
     }
 
     // Keep within vertical bounds
-    const previewHeight = 350;
+    const previewHeight = 450;
     if (y + previewHeight > window.innerHeight - 20) {
       y = window.innerHeight - previewHeight - 20;
     }
@@ -95,14 +91,11 @@ export default function RecommendationCard({
       y = 10;
     }
 
-    setHoverPreview({
-      imageURI: rec.imageURI,
-      position: { x, y },
-    });
+    setHoverPosition({ x, y });
   };
 
   const handleMouseLeave = () => {
-    setHoverPreview(null);
+    setHoverPosition(null);
   };
 
   return (
@@ -243,24 +236,18 @@ export default function RecommendationCard({
         </div>
       )}
 
-      {/* Hover Preview - Large card image */}
-      {hoverPreview && (
-        <div
-          className="rec-hover-preview"
-          style={{
-            position: 'fixed',
-            left: hoverPreview.position.x,
-            top: hoverPreview.position.y,
-            zIndex: 10000,
-            pointerEvents: 'none',
-          }}
-        >
-          <img
-            src={hoverPreview.imageURI}
-            alt={rec.name}
-            className="rec-hover-image"
-          />
-        </div>
+      {/* Hover Preview - Shared component with full details */}
+      {hoverPosition && rec.imageURI && (
+        <CardHoverPreview
+          imageURL={rec.imageURI}
+          name={rec.name}
+          typeLine={rec.typeLine}
+          manaCost={rec.manaCost}
+          score={rec.score}
+          confidence={rec.confidence}
+          reasoning={rec.reasoning}
+          position={hoverPosition}
+        />
       )}
     </div>
   );
