@@ -3,6 +3,7 @@ package repository
 import (
 	"context"
 	"database/sql"
+	"strings"
 	"time"
 
 	"github.com/ramonehamilton/MTGA-Companion/internal/storage/models"
@@ -32,7 +33,8 @@ type CFBRatingsRepository interface {
 	GetRatingsCount(ctx context.Context, setCode string) (int, error)
 
 	// LinkArenaIDs updates Arena IDs for ratings based on card name matching.
-	LinkArenaIDs(ctx context.Context, setCode string, cardNameToArenaID map[string]int) error
+	// Returns the number of ratings that were linked.
+	LinkArenaIDs(ctx context.Context, setCode string, cardNameToArenaID map[string]int) (int, error)
 }
 
 // cfbRatingsRepository is the concrete implementation of CFBRatingsRepository.
@@ -272,20 +274,28 @@ func (r *cfbRatingsRepository) GetRatingsCount(ctx context.Context, setCode stri
 }
 
 // LinkArenaIDs updates Arena IDs for ratings based on card name matching.
-func (r *cfbRatingsRepository) LinkArenaIDs(ctx context.Context, setCode string, cardNameToArenaID map[string]int) error {
+// Uses case-insensitive matching and skips already-linked ratings.
+// Returns the number of ratings that were linked.
+func (r *cfbRatingsRepository) LinkArenaIDs(ctx context.Context, setCode string, cardNameToArenaID map[string]int) (int, error) {
 	query := `
 		UPDATE cfb_ratings
 		SET arena_id = ?
-		WHERE card_name = ? AND set_code = ?
+		WHERE LOWER(TRIM(card_name)) = ? AND set_code = ? AND arena_id IS NULL
 	`
 
+	linked := 0
 	for cardName, arenaID := range cardNameToArenaID {
-		if _, err := r.db.ExecContext(ctx, query, arenaID, cardName, setCode); err != nil {
-			return err
+		// Normalize the card name to match the query
+		normalizedName := strings.TrimSpace(strings.ToLower(cardName))
+		result, err := r.db.ExecContext(ctx, query, arenaID, normalizedName, setCode)
+		if err != nil {
+			return linked, err
 		}
+		rowsAffected, _ := result.RowsAffected()
+		linked += int(rowsAffected)
 	}
 
-	return nil
+	return linked, nil
 }
 
 // scanRatings scans multiple CFB rating rows.

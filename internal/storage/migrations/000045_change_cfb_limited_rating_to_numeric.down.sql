@@ -44,6 +44,7 @@ INSERT INTO cfb_ratings_new (
 SELECT
     id, card_name, set_code, arena_id,
     CASE
+        WHEN limited_rating IS NULL THEN NULL
         WHEN limited_rating >= 4.75 THEN 'A+'
         WHEN limited_rating >= 4.25 THEN 'A'
         WHEN limited_rating >= 3.75 THEN 'A-'

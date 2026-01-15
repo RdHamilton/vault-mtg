@@ -134,7 +134,7 @@ func buildSetMappings() map[string]string {
 func (s *Scraper) GetSetRatings(ctx context.Context, setCode string) ([]CardRating, error) {
 	setCode = strings.ToUpper(setCode)
 
-	slug, ok := s.setMappings[setCode]
+	slug, ok := s.GetSetMapping(setCode)
 	if !ok {
 		// Try constructing a default slug
 		slug = strings.ToLower(setCode)

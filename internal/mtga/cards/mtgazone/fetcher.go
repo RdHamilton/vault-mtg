@@ -103,39 +103,19 @@ func (f *Fetcher) LinkArenaIDs(ctx context.Context, setCode string) (int, error)
 		return 0, nil
 	}
 
-	// Build name to Arena ID map (case-insensitive)
+	// Build name to Arena ID map
 	cardNameToArenaID := make(map[string]int)
 	for _, card := range cards {
-		normalizedName := strings.TrimSpace(strings.ToLower(card.Name))
 		var arenaID int
 		if _, err := fmt.Sscanf(card.ArenaID, "%d", &arenaID); err == nil {
-			cardNameToArenaID[normalizedName] = arenaID
+			cardNameToArenaID[card.Name] = arenaID
 		}
 	}
 
-	// Get ratings for this set
-	ratings, err := f.cfbRepo.GetRatingsForSet(ctx, setCode)
+	// Use bulk linking method (handles case-insensitive matching and skips already-linked)
+	linked, err := f.cfbRepo.LinkArenaIDs(ctx, setCode, cardNameToArenaID)
 	if err != nil {
-		return 0, fmt.Errorf("failed to get ratings: %w", err)
-	}
-
-	linked := 0
-	for _, rating := range ratings {
-		// Skip if already linked
-		if rating.ArenaID != nil {
-			continue
-		}
-
-		// Try to find matching Arena ID
-		normalizedName := strings.TrimSpace(strings.ToLower(rating.CardName))
-		if arenaID, found := cardNameToArenaID[normalizedName]; found {
-			rating.ArenaID = &arenaID
-			if err := f.cfbRepo.UpsertRating(ctx, rating); err != nil {
-				log.Printf("[MTGAZone Fetcher] Warning: failed to link Arena ID for %s: %v", rating.CardName, err)
-				continue
-			}
-			linked++
-		}
+		return 0, fmt.Errorf("failed to link arena IDs: %w", err)
 	}
 
 	return linked, nil
