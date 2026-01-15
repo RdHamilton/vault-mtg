@@ -1130,5 +1130,178 @@ describe('Decks', () => {
 
       alertMock.mockRestore();
     });
+
+    it('should show warning banner when export has unknown cards', async () => {
+      cleanup();
+      mockDecks.getDecks.mockResolvedValue(createMockDeckList());
+      mockDecks.exportDeck.mockResolvedValue({
+        content: 'Deck\n4 Lightning Bolt (STA) 1\n2 Unknown Card (81181)',
+        filename: 'Mono_Red_Aggro.txt',
+        error: '',
+        unknownCardIds: [81181, 81182],
+        unknownCount: 2,
+      });
+
+      // Mock URL methods and link creation/click to prevent actual download
+      const originalCreateObjectURL = URL.createObjectURL;
+      const originalRevokeObjectURL = URL.revokeObjectURL;
+      URL.createObjectURL = vi.fn(() => 'blob:test');
+      URL.revokeObjectURL = vi.fn();
+
+      renderWithRouter(<Decks />);
+
+      await vi.advanceTimersByTimeAsync(100);
+
+      await waitFor(() => {
+        expect(screen.getByText('Mono Red Aggro')).toBeInTheDocument();
+      });
+
+      const exportButtons = screen.getAllByRole('button', { name: 'Export' });
+      fireEvent.click(exportButtons[0]);
+
+      fireEvent.click(screen.getByRole('button', { name: 'Download File' }));
+
+      await waitFor(() => {
+        expect(screen.getByText(/2 cards in "Mono Red Aggro"/)).toBeInTheDocument();
+      });
+
+      expect(screen.getByText(/could not be found/)).toBeInTheDocument();
+
+      // Restore URL mocks
+      URL.createObjectURL = originalCreateObjectURL;
+      URL.revokeObjectURL = originalRevokeObjectURL;
+    });
+
+    it('should dismiss warning banner when clicking dismiss button', async () => {
+      cleanup();
+      mockDecks.getDecks.mockResolvedValue(createMockDeckList());
+      mockDecks.exportDeck.mockResolvedValue({
+        content: 'Deck\n4 Lightning Bolt (STA) 1',
+        filename: 'Mono_Red_Aggro.txt',
+        error: '',
+        unknownCardIds: [81181],
+        unknownCount: 1,
+      });
+
+      // Mock URL methods
+      const originalCreateObjectURL = URL.createObjectURL;
+      const originalRevokeObjectURL = URL.revokeObjectURL;
+      URL.createObjectURL = vi.fn(() => 'blob:test');
+      URL.revokeObjectURL = vi.fn();
+
+      renderWithRouter(<Decks />);
+
+      await vi.advanceTimersByTimeAsync(100);
+
+      await waitFor(() => {
+        expect(screen.getByText('Mono Red Aggro')).toBeInTheDocument();
+      });
+
+      const exportButtons = screen.getAllByRole('button', { name: 'Export' });
+      fireEvent.click(exportButtons[0]);
+
+      fireEvent.click(screen.getByRole('button', { name: 'Download File' }));
+
+      await waitFor(() => {
+        expect(screen.getByText(/1 card in "Mono Red Aggro"/)).toBeInTheDocument();
+      });
+
+      // Click dismiss button
+      const dismissButton = screen.getByRole('button', { name: 'Dismiss warning' });
+      fireEvent.click(dismissButton);
+
+      await waitFor(() => {
+        expect(screen.queryByText(/1 card in "Mono Red Aggro"/)).not.toBeInTheDocument();
+      });
+
+      // Restore URL mocks
+      URL.createObjectURL = originalCreateObjectURL;
+      URL.revokeObjectURL = originalRevokeObjectURL;
+    });
+
+    it('should show warning in alert when copying to clipboard with unknown cards', async () => {
+      cleanup();
+      mockDecks.getDecks.mockResolvedValue(createMockDeckList());
+      mockDecks.exportDeck.mockResolvedValue({
+        content: 'Deck\n4 Lightning Bolt (STA) 1',
+        filename: 'Mono_Red_Aggro.txt',
+        error: '',
+        unknownCardIds: [81181, 81182, 81183],
+        unknownCount: 3,
+      });
+
+      const writeTextMock = vi.fn().mockResolvedValue(undefined);
+      Object.assign(navigator, {
+        clipboard: {
+          writeText: writeTextMock,
+        },
+      });
+      const alertMock = vi.spyOn(window, 'alert').mockImplementation(() => {});
+
+      renderWithRouter(<Decks />);
+
+      await vi.advanceTimersByTimeAsync(100);
+
+      await waitFor(() => {
+        expect(screen.getByText('Mono Red Aggro')).toBeInTheDocument();
+      });
+
+      const exportButtons = screen.getAllByRole('button', { name: 'Export' });
+      fireEvent.click(exportButtons[0]);
+
+      fireEvent.click(screen.getByRole('button', { name: 'Copy to Clipboard' }));
+
+      await waitFor(() => {
+        expect(alertMock).toHaveBeenCalledWith(
+          'Deck copied to clipboard! Note: 3 card(s) could not be found and are listed as "Unknown Card".'
+        );
+      });
+
+      alertMock.mockRestore();
+    });
+
+    it('should not show warning when export has no unknown cards', async () => {
+      cleanup();
+      mockDecks.getDecks.mockResolvedValue(createMockDeckList());
+      mockDecks.exportDeck.mockResolvedValue({
+        content: 'Deck\n4 Lightning Bolt (STA) 1',
+        filename: 'Mono_Red_Aggro.txt',
+        error: '',
+        unknownCardIds: [],
+        unknownCount: 0,
+      });
+
+      // Mock URL methods
+      const originalCreateObjectURL = URL.createObjectURL;
+      const originalRevokeObjectURL = URL.revokeObjectURL;
+      URL.createObjectURL = vi.fn(() => 'blob:test');
+      URL.revokeObjectURL = vi.fn();
+
+      renderWithRouter(<Decks />);
+
+      await vi.advanceTimersByTimeAsync(100);
+
+      await waitFor(() => {
+        expect(screen.getByText('Mono Red Aggro')).toBeInTheDocument();
+      });
+
+      const exportButtons = screen.getAllByRole('button', { name: 'Export' });
+      fireEvent.click(exportButtons[0]);
+
+      fireEvent.click(screen.getByRole('button', { name: 'Download File' }));
+
+      await waitFor(() => {
+        expect(mockDecks.exportDeck).toHaveBeenCalled();
+      });
+
+      // Wait a bit to ensure no warning appears
+      await vi.advanceTimersByTimeAsync(100);
+
+      expect(screen.queryByText(/could not be found/)).not.toBeInTheDocument();
+
+      // Restore URL mocks
+      URL.createObjectURL = originalCreateObjectURL;
+      URL.revokeObjectURL = originalRevokeObjectURL;
+    });
   });
 });

@@ -457,8 +457,8 @@ describe('TierList Component', () => {
           id: 1,
           cardName: 'Lightning Bolt',
           setCode: 'TST',
-          limitedRating: 'A+',
-          limitedScore: 10,
+          limitedRating: 5.0, // A+ (numerical rating)
+          limitedScore: 1.0,
           importedAt: '2024-01-01',
           updatedAt: '2024-01-01',
         },
@@ -490,8 +490,8 @@ describe('TierList Component', () => {
           id: 1,
           cardName: 'Lightning Bolt',
           setCode: 'TST',
-          limitedRating: 'A+',
-          limitedScore: 10,
+          limitedRating: 5.0, // A+ (numerical rating)
+          limitedScore: 1.0,
           commentary: 'Top tier removal',
           importedAt: '2024-01-01',
           updatedAt: '2024-01-01',
@@ -507,7 +507,7 @@ describe('TierList Component', () => {
         expect(screen.getByText('Lightning Bolt')).toBeInTheDocument();
       });
 
-      // CFB rating badge should be present with the grade
+      // CFB rating badge should be present with the grade (displays letter grade)
       await waitFor(() => {
         const badge = screen.getByTestId('cfb-rating-badge');
         expect(badge).toBeInTheDocument();
@@ -525,8 +525,8 @@ describe('TierList Component', () => {
           id: 1,
           cardName: 'Lightning Bolt',
           setCode: 'TST',
-          limitedRating: 'A+',
-          limitedScore: 10,
+          limitedRating: 5.0, // A+ (numerical rating)
+          limitedScore: 1.0,
           importedAt: '2024-01-01',
           updatedAt: '2024-01-01',
         },
@@ -559,8 +559,8 @@ describe('TierList Component', () => {
           id: 1,
           cardName: 'lightning bolt', // lowercase
           setCode: 'TST',
-          limitedRating: 'B+',
-          limitedScore: 7,
+          limitedRating: 3.5, // B+ (numerical rating)
+          limitedScore: 0.7,
           importedAt: '2024-01-01',
           updatedAt: '2024-01-01',
         },
@@ -575,7 +575,7 @@ describe('TierList Component', () => {
         expect(screen.getByText('LIGHTNING BOLT')).toBeInTheDocument();
       });
 
-      // CFB rating should still be found and displayed
+      // CFB rating should still be found and displayed (shows letter grade)
       await waitFor(() => {
         const badge = screen.getByTestId('cfb-rating-badge');
         expect(badge).toBeInTheDocument();
@@ -611,8 +611,8 @@ describe('TierList Component', () => {
           id: 1,
           cardName: 'Lightning Bolt',
           setCode: 'TST',
-          limitedRating: 'A+',
-          limitedScore: 10,
+          limitedRating: 5.0, // A+ (numerical rating)
+          limitedScore: 1.0,
           commentary: 'Best removal in the format',
           importedAt: '2024-01-01',
           updatedAt: '2024-01-01',
@@ -646,8 +646,8 @@ describe('TierList Component', () => {
           id: 1,
           cardName: 'Bomb Rare',
           setCode: 'TST',
-          limitedRating: 'A+',
-          limitedScore: 10,
+          limitedRating: 5.0, // A+ (numerical rating)
+          limitedScore: 1.0,
           importedAt: '2024-01-01',
           updatedAt: '2024-01-01',
         },
@@ -655,8 +655,8 @@ describe('TierList Component', () => {
           id: 2,
           cardName: 'Good Card',
           setCode: 'TST',
-          limitedRating: 'B',
-          limitedScore: 6,
+          limitedRating: 3.0, // B (numerical rating)
+          limitedScore: 0.6,
           importedAt: '2024-01-01',
           updatedAt: '2024-01-01',
         },
@@ -664,8 +664,8 @@ describe('TierList Component', () => {
           id: 3,
           cardName: 'Filler',
           setCode: 'TST',
-          limitedRating: 'C-',
-          limitedScore: 2,
+          limitedRating: 1.0, // C- (numerical rating)
+          limitedScore: 0.2,
           importedAt: '2024-01-01',
           updatedAt: '2024-01-01',
         },
@@ -682,7 +682,7 @@ describe('TierList Component', () => {
         expect(screen.getByText('Filler')).toBeInTheDocument();
       });
 
-      // All CFB badges should be present
+      // All CFB badges should be present (displaying letter grades)
       await waitFor(() => {
         const badges = screen.getAllByTestId('cfb-rating-badge');
         expect(badges).toHaveLength(3);

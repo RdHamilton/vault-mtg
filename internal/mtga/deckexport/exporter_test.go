@@ -431,9 +431,9 @@ func TestExport_MoxfieldFormat(t *testing.T) {
 		t.Fatalf("Export failed: %v", err)
 	}
 
-	// Check filename
-	if !strings.HasSuffix(result.Filename, "_moxfield.txt") {
-		t.Errorf("Moxfield export should have _moxfield.txt suffix, got %s", result.Filename)
+	// Check filename contains format name and ends with .txt
+	if !strings.Contains(result.Filename, "_moxfield_") || !strings.HasSuffix(result.Filename, ".txt") {
+		t.Errorf("Moxfield export should contain '_moxfield_' and end with .txt, got %s", result.Filename)
 	}
 
 	content := result.Content
@@ -474,9 +474,9 @@ func TestExport_ArchidektFormat(t *testing.T) {
 		t.Fatalf("Export failed: %v", err)
 	}
 
-	// Check filename
-	if !strings.HasSuffix(result.Filename, "_archidekt.txt") {
-		t.Errorf("Archidekt export should have _archidekt.txt suffix, got %s", result.Filename)
+	// Check filename contains format name and ends with .txt
+	if !strings.Contains(result.Filename, "_archidekt_") || !strings.HasSuffix(result.Filename, ".txt") {
+		t.Errorf("Archidekt export should contain '_archidekt_' and end with .txt, got %s", result.Filename)
 	}
 
 	content := result.Content

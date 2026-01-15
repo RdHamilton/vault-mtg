@@ -146,7 +146,7 @@ export async function refreshSetRatings(
 // ============================================================================
 
 /**
- * CFB rating grades for Limited.
+ * CFB rating grades for Limited (display purposes).
  */
 export type CFBLimitedGrade = 'A+' | 'A' | 'A-' | 'B+' | 'B' | 'B-' | 'C+' | 'C' | 'C-' | 'D' | 'F';
 
@@ -156,6 +156,23 @@ export type CFBLimitedGrade = 'A+' | 'A' | 'A-' | 'B+' | 'B' | 'B-' | 'C+' | 'C'
 export type CFBConstructedRating = 'Staple' | 'Playable' | 'Fringe' | 'Unplayable';
 
 /**
+ * Convert a numerical rating (0-5 scale) to a letter grade for display.
+ */
+export function ratingToGrade(rating: number): CFBLimitedGrade {
+  if (rating >= 4.75) return 'A+';
+  if (rating >= 4.25) return 'A';
+  if (rating >= 3.75) return 'A-';
+  if (rating >= 3.25) return 'B+';
+  if (rating >= 2.75) return 'B';
+  if (rating >= 2.25) return 'B-';
+  if (rating >= 1.75) return 'C+';
+  if (rating >= 1.25) return 'C';
+  if (rating >= 0.75) return 'C-';
+  if (rating >= 0.25) return 'D';
+  return 'F';
+}
+
+/**
  * ChannelFireball card rating.
  */
 export interface CFBRating {
@@ -163,7 +180,9 @@ export interface CFBRating {
   cardName: string;
   setCode: string;
   arenaId?: number;
-  limitedRating: CFBLimitedGrade;
+  /** Numerical rating on 0.0-5.0 scale (matching TCGPlayer/MTG Arena Zone format) */
+  limitedRating: number;
+  /** Normalized score (0.0-1.0) for internal calculations */
   limitedScore: number;
   constructedRating?: CFBConstructedRating;
   constructedScore?: number;
@@ -181,7 +200,8 @@ export interface CFBRating {
 export interface CFBRatingImport {
   card_name: string;
   set_code: string;
-  limited_rating: CFBLimitedGrade;
+  /** Numerical rating on 0.0-5.0 scale */
+  limited_rating: number;
   constructed_rating?: CFBConstructedRating;
   archetype_fit?: string;
   commentary?: string;
@@ -256,4 +276,11 @@ export function getCFBGradeColor(grade: CFBLimitedGrade): string {
     'F': '#ff4444',  // Red
   };
   return colors[grade] || '#888888';
+}
+
+/**
+ * Get display color for a numerical CFB rating (0-5 scale).
+ */
+export function getCFBRatingColor(rating: number): string {
+  return getCFBGradeColor(ratingToGrade(rating));
 }

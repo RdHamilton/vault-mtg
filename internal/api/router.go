@@ -161,13 +161,14 @@ func (s *Server) setupRoutes() {
 			r.Post("/ratings/{setCode}/fetch", cardHandler.FetchSetRatings)
 			r.Post("/ratings/{setCode}/refresh", cardHandler.RefreshSetRatings)
 
-			// ChannelFireball ratings routes
+			// ChannelFireball ratings routes (auto-fetches from MTG Arena Zone)
 			cfbHandler := handlers.NewCFBHandler(s.cardFacade)
 			r.Post("/cfb/import", cfbHandler.ImportCFBRatings)
 			r.Get("/cfb/{setCode}", cfbHandler.GetCFBRatings)
 			r.Get("/cfb/{setCode}/count", cfbHandler.GetCFBRatingsCount)
 			r.Get("/cfb/{setCode}/card/{cardName}", cfbHandler.GetCFBRatingByCard)
 			r.Post("/cfb/{setCode}/link-arena-ids", cfbHandler.LinkCFBArenaIDs)
+			r.Post("/cfb/{setCode}/fetch", cfbHandler.FetchCFBRatings) // Explicit fetch from MTG Arena Zone
 			r.Delete("/cfb/{setCode}", cfbHandler.DeleteCFBRatings)
 		})
 

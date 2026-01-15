@@ -552,6 +552,53 @@
   cursor: not-allowed;
 }
 
+/* Export Warning Banner */
+.export-warning-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  background: rgba(255, 193, 7, 0.15);
+  border: 1px solid #ffc107;
+  border-radius: 8px;
+  padding: 1rem 1.25rem;
+  margin-bottom: 1.5rem;
+}
+
+.export-warning-content {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  flex: 1;
+}
+
+.export-warning-icon {
+  color: #ffc107;
+  font-size: 1.5rem;
+  flex-shrink: 0;
+}
+
+.export-warning-text {
+  color: #e6e6e6;
+  font-size: 0.9rem;
+  line-height: 1.4;
+}
+
+.export-warning-dismiss {
+  background: transparent;
+  border: none;
+  color: #888;
+  font-size: 1.5rem;
+  cursor: pointer;
+  padding: 0.25rem;
+  margin-left: 1rem;
+  line-height: 1;
+  transition: color 0.2s;
+}
+
+.export-warning-dismiss:hover {
+  color: #fff;
+}
+
 /* Responsive */
 @media (max-width: 768px) {
   .decks-page {

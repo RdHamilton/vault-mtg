@@ -57,7 +57,7 @@ func (i *Importer) ImportRatings(ctx context.Context, imports []models.CFBRating
 			CardName:          imp.CardName,
 			SetCode:           strings.ToUpper(imp.SetCode),
 			LimitedRating:     imp.LimitedRating,
-			LimitedScore:      models.LimitedGradeToScore(imp.LimitedRating),
+			LimitedScore:      models.LimitedRatingToScore(imp.LimitedRating),
 			ConstructedRating: imp.ConstructedRating,
 			ConstructedScore:  models.ConstructedRatingToScore(imp.ConstructedRating),
 			ArchetypeFit:      imp.ArchetypeFit,

@@ -3,6 +3,7 @@ package deckexport
 import (
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/ramonehamilton/MTGA-Companion/internal/mtga/cards"
 	"github.com/ramonehamilton/MTGA-Companion/internal/storage/models"
@@ -31,9 +32,10 @@ type ExportOptions struct {
 
 // DeckExport represents an exported deck.
 type DeckExport struct {
-	Content  string       // The exported deck text
-	Format   ExportFormat // The format used
-	Filename string       // Suggested filename for download
+	Content        string       // The exported deck text
+	Format         ExportFormat // The format used
+	Filename       string       // Suggested filename for download
+	UnknownCardIDs []int        // Arena IDs of cards that couldn't be found
 }
 
 // CardProvider is an interface for getting card information.
@@ -69,6 +71,7 @@ func (e *Exporter) Export(deck *models.Deck, deckCards []*models.DeckCard, optio
 
 	// Get card metadata for all cards
 	cardMetadata := make(map[int]*cards.Card)
+	var unknownCardIDs []int
 	for _, deckCard := range deckCards {
 		if _, exists := cardMetadata[deckCard.CardID]; !exists && e.cardProvider != nil {
 			card, err := e.cardProvider.GetCard(deckCard.CardID)
@@ -76,39 +79,45 @@ func (e *Exporter) Export(deck *models.Deck, deckCards []*models.DeckCard, optio
 				return nil, fmt.Errorf("failed to get card %d: %w", deckCard.CardID, err)
 			}
 			cardMetadata[deckCard.CardID] = card
+			// Track unknown cards (placeholder cards have names starting with "Unknown Card")
+			if strings.HasPrefix(card.Name, "Unknown Card") {
+				unknownCardIDs = append(unknownCardIDs, deckCard.CardID)
+			}
 		}
 	}
 
 	var content string
 	var filename string
+	timestamp := time.Now().Format("2006-01-02_1504")
 
 	switch options.Format {
 	case FormatArena:
 		content = e.exportArena(deck, deckCards, cardMetadata, options)
-		filename = fmt.Sprintf("%s.txt", sanitizeFilename(deck.Name))
+		filename = fmt.Sprintf("%s_arena_%s.txt", sanitizeFilename(deck.Name), timestamp)
 	case FormatPlainText:
 		content = e.exportPlainText(deck, deckCards, cardMetadata, options)
-		filename = fmt.Sprintf("%s.txt", sanitizeFilename(deck.Name))
+		filename = fmt.Sprintf("%s_plaintext_%s.txt", sanitizeFilename(deck.Name), timestamp)
 	case FormatMTGO:
 		content = e.exportMTGO(deck, deckCards, cardMetadata, options)
-		filename = fmt.Sprintf("%s.dek", sanitizeFilename(deck.Name))
+		filename = fmt.Sprintf("%s_mtgo_%s.dek", sanitizeFilename(deck.Name), timestamp)
 	case FormatMTGGoldfish:
 		content = e.exportMTGGoldfish(deck, deckCards, cardMetadata, options)
-		filename = fmt.Sprintf("%s.txt", sanitizeFilename(deck.Name))
+		filename = fmt.Sprintf("%s_mtggoldfish_%s.txt", sanitizeFilename(deck.Name), timestamp)
 	case FormatMoxfield:
 		content = e.exportMoxfield(deck, deckCards, cardMetadata, options)
-		filename = fmt.Sprintf("%s_moxfield.txt", sanitizeFilename(deck.Name))
+		filename = fmt.Sprintf("%s_moxfield_%s.txt", sanitizeFilename(deck.Name), timestamp)
 	case FormatArchidekt:
 		content = e.exportArchidekt(deck, deckCards, cardMetadata, options)
-		filename = fmt.Sprintf("%s_archidekt.txt", sanitizeFilename(deck.Name))
+		filename = fmt.Sprintf("%s_archidekt_%s.txt", sanitizeFilename(deck.Name), timestamp)
 	default:
 		return nil, fmt.Errorf("unsupported export format: %s", options.Format)
 	}
 
 	return &DeckExport{
-		Content:  content,
-		Format:   options.Format,
-		Filename: filename,
+		Content:        content,
+		Format:         options.Format,
+		Filename:       filename,
+		UnknownCardIDs: unknownCardIDs,
 	}, nil
 }
 

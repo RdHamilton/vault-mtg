@@ -69,14 +69,14 @@ type CFBImportRequest struct {
 
 // CFBRatingData represents a single CFB rating to import.
 type CFBRatingData struct {
-	CardName          string `json:"card_name"`
-	SetCode           string `json:"set_code"`
-	LimitedRating     string `json:"limited_rating"`
-	ConstructedRating string `json:"constructed_rating,omitempty"`
-	ArchetypeFit      string `json:"archetype_fit,omitempty"`
-	Commentary        string `json:"commentary,omitempty"`
-	SourceURL         string `json:"source_url,omitempty"`
-	Author            string `json:"author,omitempty"`
+	CardName          string  `json:"card_name"`
+	SetCode           string  `json:"set_code"`
+	LimitedRating     float64 `json:"limited_rating"` // 0.0-5.0 scale
+	ConstructedRating string  `json:"constructed_rating,omitempty"`
+	ArchetypeFit      string  `json:"archetype_fit,omitempty"`
+	Commentary        string  `json:"commentary,omitempty"`
+	SourceURL         string  `json:"source_url,omitempty"`
+	Author            string  `json:"author,omitempty"`
 }
 
 // ImportCFBRatings imports CFB ratings from the request body.
@@ -164,5 +164,28 @@ func (h *CFBHandler) GetCFBRatingsCount(w http.ResponseWriter, r *http.Request) 
 	response.Success(w, map[string]interface{}{
 		"set_code": setCode,
 		"count":    count,
+	})
+}
+
+// FetchCFBRatings fetches CFB ratings from MTG Arena Zone for a set.
+// This explicitly triggers a fetch/refresh of ratings from the web.
+func (h *CFBHandler) FetchCFBRatings(w http.ResponseWriter, r *http.Request) {
+	setCode := chi.URLParam(r, "setCode")
+	if setCode == "" {
+		response.BadRequest(w, errors.New("set code is required"))
+		return
+	}
+
+	count, err := h.facade.FetchCFBRatings(r.Context(), setCode)
+	if err != nil {
+		response.InternalError(w, err)
+		return
+	}
+
+	response.Success(w, map[string]interface{}{
+		"status":   "success",
+		"set_code": setCode,
+		"fetched":  count,
+		"message":  "CFB ratings fetched from MTG Arena Zone",
 	})
 }

@@ -1184,10 +1184,12 @@ type ExportDeckRequest struct {
 
 // ExportDeckResponse represents the exported deck data.
 type ExportDeckResponse struct {
-	Content  string `json:"content"`         // The exported deck text
-	Filename string `json:"filename"`        // Suggested filename
-	Format   string `json:"format"`          // The format used
-	Error    string `json:"error,omitempty"` // Error message if failed
+	Content        string `json:"content"`                  // The exported deck text
+	Filename       string `json:"filename"`                 // Suggested filename
+	Format         string `json:"format"`                   // The format used
+	Error          string `json:"error,omitempty"`          // Error message if failed
+	UnknownCardIDs []int  `json:"unknownCardIds,omitempty"` // Arena IDs of cards that couldn't be found
+	UnknownCount   int    `json:"unknownCount,omitempty"`   // Count of unknown cards for easy display
 }
 
 // CloneDeck creates a copy of an existing deck.
@@ -1953,9 +1955,11 @@ func (d *DeckFacade) ExportDeck(ctx context.Context, req *ExportDeckRequest) (*E
 	}
 
 	return &ExportDeckResponse{
-		Content:  result.Content,
-		Filename: result.Filename,
-		Format:   string(result.Format),
+		Content:        result.Content,
+		Filename:       result.Filename,
+		Format:         string(result.Format),
+		UnknownCardIDs: result.UnknownCardIDs,
+		UnknownCount:   len(result.UnknownCardIDs),
 	}, nil
 }
 

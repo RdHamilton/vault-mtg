@@ -143,12 +143,16 @@ func main() {
 	// Initialize DeckImportParser
 	deckImportParser := deckimport.NewParser(cardService)
 
-	// Initialize DeckExporter with a CardProvider
-	deckExporter := deckexport.NewExporter(cardService)
+	// Initialize DeckExporter with a CardProvider that checks local databases first.
+	// This handles Arena-exclusive sets (like TLA) that aren't available via Scryfall's arena ID endpoint.
+	setCardRepo := storageService.SetCardRepo()
+	draftRatingsRepo := storageService.DraftRatingsRepo()
+	cardsScryfallClient := cards.NewScryfallClient() // Different from scryfall.Client - has GetCardByName method
+	cardProvider := gui.NewLocalFirstCardProvider(setCardRepo, draftRatingsRepo, cardService, cardsScryfallClient)
+	deckExporter := deckexport.NewExporter(cardProvider)
 
 	// Initialize RecommendationEngine
 	ratingsRepo := storageService.DraftRatingsRepo()
-	setCardRepo := storageService.SetCardRepo()
 	recommendationEngine := recommendations.NewRuleBasedEngineWithSetRepo(cardService, setCardRepo, ratingsRepo)
 
 	// Initialize meta service

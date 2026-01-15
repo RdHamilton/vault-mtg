@@ -637,7 +637,43 @@ func (c *CardFacade) GetAllSetInfo(ctx context.Context) ([]*SetInfo, error) {
 // GetCFBRatings returns all CFB ratings for a set.
 func (c *CardFacade) GetCFBRatings(ctx context.Context, setCode string) ([]*models.CFBRating, error) {
 	cfbRepo := c.services.Storage.NewCFBRatingsRepo()
-	return cfbRepo.GetRatingsForSet(ctx, strings.ToUpper(setCode))
+	setCode = strings.ToUpper(setCode)
+
+	// Check if we have ratings
+	ratings, err := cfbRepo.GetRatingsForSet(ctx, setCode)
+	if err != nil {
+		return nil, err
+	}
+
+	// If no ratings and we have a fetcher, try to auto-fetch
+	if len(ratings) == 0 && c.services.MTGAZoneFetcher != nil {
+		log.Printf("[CardFacade] No CFB ratings for %s, attempting auto-fetch from MTG Arena Zone", setCode)
+		count, fetchErr := c.services.MTGAZoneFetcher.FetchAndStoreRatings(ctx, setCode)
+		if fetchErr != nil {
+			log.Printf("[CardFacade] Auto-fetch failed for %s: %v", setCode, fetchErr)
+			// Return empty list, don't fail the request
+			return ratings, nil
+		}
+		if count > 0 {
+			log.Printf("[CardFacade] Auto-fetched %d ratings for %s", count, setCode)
+			// Re-fetch from DB
+			ratings, err = cfbRepo.GetRatingsForSet(ctx, setCode)
+			if err != nil {
+				return nil, err
+			}
+		}
+	}
+
+	return ratings, nil
+}
+
+// FetchCFBRatings explicitly fetches CFB ratings from MTG Arena Zone.
+// This can be used to refresh ratings even if they already exist.
+func (c *CardFacade) FetchCFBRatings(ctx context.Context, setCode string) (int, error) {
+	if c.services.MTGAZoneFetcher == nil {
+		return 0, fmt.Errorf("MTG Arena Zone fetcher not configured")
+	}
+	return c.services.MTGAZoneFetcher.FetchAndStoreRatings(ctx, strings.ToUpper(setCode))
 }
 
 // GetCFBRatingByCardName returns a CFB rating by card name and set code.
@@ -671,9 +707,19 @@ func (c *CardFacade) ImportCFBRatings(ctx context.Context, ratings interface{}) 
 
 		cardName, _ := ratingMap["card_name"].(string)
 		setCode, _ := ratingMap["set_code"].(string)
-		limitedRating, _ := ratingMap["limited_rating"].(string)
 
-		if cardName == "" || setCode == "" || limitedRating == "" {
+		// limited_rating is now a float64 (0-5 scale)
+		var limitedRating float64
+		switch v := ratingMap["limited_rating"].(type) {
+		case float64:
+			limitedRating = v
+		case int:
+			limitedRating = float64(v)
+		default:
+			continue // Skip if not a valid number
+		}
+
+		if cardName == "" || setCode == "" {
 			continue
 		}
 
@@ -681,7 +727,7 @@ func (c *CardFacade) ImportCFBRatings(ctx context.Context, ratings interface{}) 
 			CardName:      cardName,
 			SetCode:       strings.ToUpper(setCode),
 			LimitedRating: limitedRating,
-			LimitedScore:  models.LimitedGradeToScore(limitedRating),
+			LimitedScore:  models.LimitedRatingToScore(limitedRating),
 		}
 
 		// Optional fields

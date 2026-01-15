@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { cards } from '@/services/api';
-import type { CFBRating, CFBLimitedGrade } from '@/services/api/cards';
+import type { CFBRating } from '@/services/api/cards';
 import { gui, models } from '@/types/models';
 import { CFBRatingBadge } from './CFBRatingBadge';
 import './TierList.css';
@@ -462,7 +462,7 @@ const TierList: React.FC<TierListProps> = ({ setCode, draftFormat, pickedCardIds
                                                         <td className="card-cfb">
                                                             {cfbRating ? (
                                                                 <CFBRatingBadge
-                                                                    grade={cfbRating.limitedRating as CFBLimitedGrade}
+                                                                    rating={cfbRating.limitedRating}
                                                                     commentary={cfbRating.commentary}
                                                                     size="small"
                                                                     showLabel={false}

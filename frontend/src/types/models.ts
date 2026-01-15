@@ -1240,17 +1240,21 @@ export namespace gui {
 	    filename: string;
 	    format: string;
 	    error?: string;
-	
+	    unknownCardIds?: number[];
+	    unknownCount?: number;
+
 	    static createFrom(source: any = {}) {
 	        return new ExportDeckResponse(source);
 	    }
-	
+
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.content = source["content"];
 	        this.filename = source["filename"];
 	        this.format = source["format"];
 	        this.error = source["error"];
+	        this.unknownCardIds = source["unknownCardIds"];
+	        this.unknownCount = source["unknownCount"];
 	    }
 	}
 	

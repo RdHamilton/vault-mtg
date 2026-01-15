@@ -23,6 +23,7 @@ export default function Decks() {
   const [deckToExport, setDeckToExport] = useState<gui.DeckListItem | null>(null);
   const [exportFormat, setExportFormat] = useState<ExportFormat>('arena');
   const [isExporting, setIsExporting] = useState(false);
+  const [exportWarning, setExportWarning] = useState<{ count: number; deckName: string } | null>(null);
 
   // Rotation notifications
   const {
@@ -131,6 +132,11 @@ export default function Decks() {
       document.body.removeChild(link);
       URL.revokeObjectURL(url);
 
+      // Show warning if cards couldn't be found
+      if (response.unknownCount && response.unknownCount > 0) {
+        setExportWarning({ count: response.unknownCount, deckName: deckToExport.name });
+      }
+
       setShowExportDialog(false);
       setDeckToExport(null);
     } catch (err) {
@@ -158,7 +164,15 @@ export default function Decks() {
       }
 
       await navigator.clipboard.writeText(response.content);
-      alert('Deck copied to clipboard!');
+
+      // Show warning if cards couldn't be found
+      if (response.unknownCount && response.unknownCount > 0) {
+        setExportWarning({ count: response.unknownCount, deckName: deckToExport.name });
+        alert(`Deck copied to clipboard! Note: ${response.unknownCount} card(s) could not be found and are listed as "Unknown Card".`);
+      } else {
+        alert('Deck copied to clipboard!');
+      }
+
       setShowExportDialog(false);
       setDeckToExport(null);
     } catch (err) {
@@ -233,6 +247,27 @@ export default function Decks() {
           affectedDecks={affectedDecks}
           onDismiss={markAsNotified}
         />
+      )}
+
+      {/* Export Warning Banner */}
+      {exportWarning && (
+        <div className="export-warning-banner">
+          <div className="export-warning-content">
+            <span className="export-warning-icon">&#9888;</span>
+            <span className="export-warning-text">
+              {exportWarning.count} card{exportWarning.count !== 1 ? 's' : ''} in "{exportWarning.deckName}"
+              could not be found and {exportWarning.count !== 1 ? 'are' : 'is'} listed as "Unknown Card" in the export.
+              These cards may need to be synced from the game.
+            </span>
+          </div>
+          <button
+            className="export-warning-dismiss"
+            onClick={() => setExportWarning(null)}
+            aria-label="Dismiss warning"
+          >
+            &times;
+          </button>
+        </div>
       )}
 
       {/* Decks Grid */}

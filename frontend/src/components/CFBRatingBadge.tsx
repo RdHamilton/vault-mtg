@@ -1,38 +1,43 @@
-import type { CFBLimitedGrade } from '@/services/api/cards';
-import { getCFBGradeColor } from '@/services/api/cards';
+import { getCFBRatingColor, ratingToGrade } from '@/services/api/cards';
 import './CFBRatingBadge.css';
 
 export interface CFBRatingBadgeProps {
-  /** The CFB limited rating grade (A+, A, A-, B+, etc.) */
-  grade: CFBLimitedGrade;
+  /** The CFB limited rating (0.0-5.0 numerical scale) */
+  rating: number;
   /** Optional commentary/tooltip text */
   commentary?: string;
   /** Size variant */
   size?: 'small' | 'medium' | 'large';
   /** Whether to show the "CFB" label */
   showLabel?: boolean;
+  /** Whether to show numerical rating instead of letter grade */
+  showNumeric?: boolean;
 }
 
 /**
- * Displays a ChannelFireball rating grade as a colored badge.
+ * Displays a ChannelFireball rating as a colored badge.
+ * Accepts numerical rating (0-5 scale) and converts to letter grade for display.
  */
 export function CFBRatingBadge({
-  grade,
+  rating,
   commentary,
   size = 'medium',
   showLabel = true,
+  showNumeric = false,
 }: CFBRatingBadgeProps) {
-  const color = getCFBGradeColor(grade);
+  const color = getCFBRatingColor(rating);
+  const grade = ratingToGrade(rating);
+  const displayValue = showNumeric ? rating.toFixed(1) : grade;
 
   return (
     <span
       className={`cfb-rating-badge cfb-rating-badge--${size}`}
       style={{ backgroundColor: color }}
-      title={commentary || `CFB Rating: ${grade}`}
+      title={commentary || `CFB Rating: ${rating.toFixed(1)} (${grade})`}
       data-testid="cfb-rating-badge"
     >
       {showLabel && <span className="cfb-rating-badge__label">CFB</span>}
-      <span className="cfb-rating-badge__grade">{grade}</span>
+      <span className="cfb-rating-badge__grade">{displayValue}</span>
     </span>
   );
 }

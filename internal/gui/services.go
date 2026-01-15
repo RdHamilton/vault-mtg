@@ -9,6 +9,7 @@ import (
 	"github.com/ramonehamilton/MTGA-Companion/internal/metrics"
 	"github.com/ramonehamilton/MTGA-Companion/internal/mtga/cards"
 	"github.com/ramonehamilton/MTGA-Companion/internal/mtga/cards/datasets"
+	"github.com/ramonehamilton/MTGA-Companion/internal/mtga/cards/mtgazone"
 	"github.com/ramonehamilton/MTGA-Companion/internal/mtga/cards/setcache"
 	"github.com/ramonehamilton/MTGA-Companion/internal/mtga/deckexport"
 	"github.com/ramonehamilton/MTGA-Companion/internal/mtga/deckimport"
@@ -41,6 +42,7 @@ type Services struct {
 	CardService      *cards.Service
 	SetFetcher       CardFetcher // Interface for fetching card metadata (allows mocking)
 	RatingsFetcher   *setcache.RatingsFetcher
+	MTGAZoneFetcher  *mtgazone.Fetcher // Fetcher for MTG Arena Zone expert ratings
 	DatasetService   *datasets.Service
 	DeckImportParser *deckimport.Parser
 

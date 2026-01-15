@@ -15,6 +15,7 @@ import (
 	"github.com/ramonehamilton/MTGA-Companion/internal/ipc"
 	"github.com/ramonehamilton/MTGA-Companion/internal/mtga/cards"
 	"github.com/ramonehamilton/MTGA-Companion/internal/mtga/cards/datasets"
+	"github.com/ramonehamilton/MTGA-Companion/internal/mtga/cards/mtgazone"
 	"github.com/ramonehamilton/MTGA-Companion/internal/mtga/cards/scryfall"
 	"github.com/ramonehamilton/MTGA-Companion/internal/mtga/cards/setcache"
 	"github.com/ramonehamilton/MTGA-Companion/internal/mtga/deckexport"
@@ -94,6 +95,15 @@ func (s *SystemFacade) Initialize(ctx context.Context, dbPath string) error {
 		s.services.Storage.DraftRatingsRepo(),
 	)
 
+	// Initialize MTGAZoneFetcher for expert ratings (CFB/MTG Arena Zone)
+	s.services.MTGAZoneFetcher = mtgazone.NewFetcher(
+		s.services.Storage.NewCFBRatingsRepo(),
+		s.services.Storage.SetCardRepo(),
+		mtgazone.FetcherOptions{
+			ScraperOptions: mtgazone.DefaultScraperOptions(),
+		},
+	)
+
 	// Initialize CardService for card metadata with caching
 	// DB is disabled to avoid schema conflicts - we use storage.SetCardRepo instead
 	cardServiceConfig := cards.DefaultServiceConfig()
@@ -107,13 +117,12 @@ func (s *SystemFacade) Initialize(ctx context.Context, dbPath string) error {
 	// Initialize DeckImportParser (depends on CardService)
 	s.services.DeckImportParser = deckimport.NewParser(cardService)
 
-	// Initialize DeckExporter with a CardProvider that checks SetCardRepo first
-	// This ensures draft cards are found in the local database before trying Scryfall
+	// Initialize DeckExporter with a CardProvider that checks SetCardRepo first,
+	// then DraftRatingsRepo for card name lookup (for Arena-exclusive sets like TLA).
+	// This ensures draft cards are found in the local database before trying Scryfall.
 	setCardRepo := s.services.Storage.SetCardRepo()
-	cardProvider := &localFirstCardProvider{
-		setCardRepo: setCardRepo,
-		cardService: cardService,
-	}
+	draftRatingsRepo := s.services.Storage.DraftRatingsRepo()
+	cardProvider := NewLocalFirstCardProvider(setCardRepo, draftRatingsRepo, cardService, cards.NewScryfallClient())
 	s.services.DeckExporter = deckexport.NewExporter(cardProvider)
 
 	// Initialize RecommendationEngine (depends on CardService, SetCardRepo, and DraftRatingsRepo)
@@ -1006,23 +1015,88 @@ func (s *SystemFacade) GetHealth(ctx context.Context) (*HealthStatus, error) {
 	}, nil
 }
 
-// localFirstCardProvider implements deckexport.CardProvider by checking
-// SetCardRepo first (local database) before falling back to CardService (Scryfall).
-// This ensures draft cards are found locally without expensive API calls.
-type localFirstCardProvider struct {
-	setCardRepo repository.SetCardRepository
-	cardService *cards.Service
+// LocalFirstCardProvider implements deckexport.CardProvider by checking
+// SetCardRepo first (local database), then DraftRatingsRepo for card name lookup,
+// before falling back to CardService (Scryfall).
+// This ensures draft cards are found locally without expensive API calls,
+// and handles Arena-exclusive sets (like TLA) that aren't available via Scryfall's arena ID endpoint.
+type LocalFirstCardProvider struct {
+	setCardRepo      repository.SetCardRepository
+	draftRatingsRepo repository.DraftRatingsRepository
+	cardService      *cards.Service
+	scryfallClient   *cards.ScryfallClient
+}
+
+// NewLocalFirstCardProvider creates a new LocalFirstCardProvider with the given dependencies.
+func NewLocalFirstCardProvider(
+	setCardRepo repository.SetCardRepository,
+	draftRatingsRepo repository.DraftRatingsRepository,
+	cardService *cards.Service,
+	scryfallClient *cards.ScryfallClient,
+) *LocalFirstCardProvider {
+	return &LocalFirstCardProvider{
+		setCardRepo:      setCardRepo,
+		draftRatingsRepo: draftRatingsRepo,
+		cardService:      cardService,
+		scryfallClient:   scryfallClient,
+	}
 }
 
 // GetCard implements deckexport.CardProvider
-func (p *localFirstCardProvider) GetCard(id int) (*cards.Card, error) {
+func (p *LocalFirstCardProvider) GetCard(id int) (*cards.Card, error) {
+	ctx := context.Background()
+	arenaIDStr := fmt.Sprintf("%d", id)
+
+	log.Printf("[localFirstCardProvider] GetCard called for Arena ID %d (draftRatingsRepo=%v, scryfallClient=%v)",
+		id, p.draftRatingsRepo != nil, p.scryfallClient != nil)
+
 	// Try SetCardRepo first (fast, local database)
-	setCard, err := p.setCardRepo.GetCardByArenaID(context.Background(), fmt.Sprintf("%d", id))
+	setCard, err := p.setCardRepo.GetCardByArenaID(ctx, arenaIDStr)
 	if err == nil && setCard != nil {
+		log.Printf("[localFirstCardProvider] Found card %d in SetCardRepo: %s", id, setCard.Name)
 		// Convert SetCard to cards.Card using the shared function from deck_facade.go
 		return convertSetCardToCard(setCard), nil
 	}
+	log.Printf("[localFirstCardProvider] Card %d not in SetCardRepo: %v", id, err)
 
-	// Fall back to CardService (Scryfall API)
-	return p.cardService.GetCard(id)
+	// Try to look up card name from 17Lands ratings data (DraftRatingsRepo)
+	// This handles Arena-exclusive sets (like TLA) that aren't available via Scryfall's arena ID endpoint
+	if p.draftRatingsRepo != nil && p.scryfallClient != nil {
+		cardName, setCode, lookupErr := p.draftRatingsRepo.GetCardNameAndSetByArenaID(ctx, arenaIDStr)
+		log.Printf("[localFirstCardProvider] DraftRatingsRepo lookup for %d: name='%s', set='%s', err=%v", id, cardName, setCode, lookupErr)
+		if lookupErr == nil && cardName != "" {
+			log.Printf("[localFirstCardProvider] Found card name '%s' in 17Lands data for Arena ID %d, fetching from Scryfall by name", cardName, id)
+			card, nameErr := p.scryfallClient.GetCardByName(cardName)
+			if nameErr == nil && card != nil {
+				// Set the arena ID since Scryfall's name lookup might not include it
+				card.ArenaID = id
+				log.Printf("[localFirstCardProvider] Successfully fetched '%s' from Scryfall by name", cardName)
+				return card, nil
+			}
+			log.Printf("[localFirstCardProvider] Failed to fetch by name '%s': %v", cardName, nameErr)
+		}
+	} else {
+		log.Printf("[localFirstCardProvider] Skipping DraftRatingsRepo fallback: draftRatingsRepo=%v, scryfallClient=%v",
+			p.draftRatingsRepo != nil, p.scryfallClient != nil)
+	}
+
+	// Fall back to CardService (Scryfall API by arena ID)
+	log.Printf("[localFirstCardProvider] Falling back to CardService for Arena ID %d", id)
+	card, err := p.cardService.GetCard(id)
+	if err != nil {
+		// Check Arena-exclusive cards mapping (manually maintained for cards not on Scryfall)
+		if exclusiveCard := cards.GetArenaExclusiveCard(id); exclusiveCard != nil {
+			log.Printf("[localFirstCardProvider] Found Arena ID %d in ArenaExclusiveCards: %s", id, exclusiveCard.Name)
+			return exclusiveCard.ToCard(), nil
+		}
+
+		// If all lookups fail, return a placeholder card so exports don't fail completely
+		log.Printf("[localFirstCardProvider] All lookups failed for Arena ID %d, using placeholder: %v", id, err)
+		return &cards.Card{
+			ArenaID: id,
+			Name:    fmt.Sprintf("Unknown Card (%d)", id),
+			SetCode: "UNK",
+		}, nil
+	}
+	return card, nil
 }
