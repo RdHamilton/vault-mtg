@@ -1,18 +1,14 @@
 import { useState, useEffect } from 'react';
 import { decks } from '@/services/api';
+import type { SuggestDecksApiResponse } from '@/services/api/decks';
 import { downloadTextFile } from '@/utils/download';
 import { gui } from '@/types/models';
 import DeckSuggestionCard from './DeckSuggestionCard';
 import './SuggestDecksModal.css';
 
-// Suggest decks from draft pool
-async function suggestDecksFromPool(sessionId: string): Promise<gui.SuggestDecksResponse> {
-  const suggestions = await decks.suggestDecks({ session_id: sessionId });
-  return {
-    suggestions,
-    totalCombos: suggestions.length,
-    viableCombos: suggestions.length,
-  } as gui.SuggestDecksResponse;
+// Suggest decks from draft pool - uses the full API response
+async function suggestDecksFromPool(sessionId: string): Promise<SuggestDecksApiResponse> {
+  return decks.suggestDecks({ session_id: sessionId });
 }
 
 // Export suggested deck to file
@@ -38,7 +34,7 @@ export default function SuggestDecksModal({
   deckName,
   onDeckApplied,
 }: SuggestDecksModalProps) {
-  const [suggestions, setSuggestions] = useState<gui.SuggestDecksResponse | null>(null);
+  const [suggestions, setSuggestions] = useState<SuggestDecksApiResponse | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [expandedIndex, setExpandedIndex] = useState<number | null>(null);

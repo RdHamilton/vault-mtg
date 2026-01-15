@@ -163,10 +163,26 @@ export async function parseDeckList(content: string): Promise<ImportDeckResponse
 }
 
 /**
- * Get deck suggestions for a draft.
+ * Response from suggest decks endpoint.
+ * Matches backend gui.SuggestDecksResponse.
  */
-export async function suggestDecks(request: SuggestDecksRequest): Promise<SuggestedDeckResponse[]> {
-  return post<SuggestedDeckResponse[]>('/decks/suggest', request);
+export interface SuggestDecksApiResponse {
+  suggestions: SuggestedDeckResponse[];
+  totalCombos: number;
+  viableCombos: number;
+  bestCombo?: {
+    colors: string[];
+    name: string;
+  };
+  error?: string;
+}
+
+/**
+ * Get deck suggestions for a draft.
+ * Returns the full response with suggestions array, totals, and best combo.
+ */
+export async function suggestDecks(request: SuggestDecksRequest): Promise<SuggestDecksApiResponse> {
+  return post<SuggestDecksApiResponse>('/decks/suggest', request);
 }
 
 /**

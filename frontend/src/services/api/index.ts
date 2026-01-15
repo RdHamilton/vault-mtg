@@ -48,6 +48,7 @@ export type {
   ImportDeckApiRequest,
   ExportDeckApiRequest,
   SuggestDecksRequest,
+  SuggestDecksApiResponse,
   AnalyzeDeckRequest,
 } from './decks';
 

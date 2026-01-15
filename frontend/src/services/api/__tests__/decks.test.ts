@@ -232,11 +232,58 @@ describe('decks API', () => {
 
   describe('suggestDecks', () => {
     it('should call post with correct path and session_id', async () => {
-      vi.mocked(post).mockResolvedValue([]);
+      const mockResponse: decks.SuggestDecksApiResponse = {
+        suggestions: [],
+        totalCombos: 32,
+        viableCombos: 5,
+        bestCombo: { colors: ['W', 'U'], name: 'Azorius' },
+      };
+      vi.mocked(post).mockResolvedValue(mockResponse);
 
-      await decks.suggestDecks({ session_id: 'draft-session-123' });
+      const result = await decks.suggestDecks({ session_id: 'draft-session-123' });
 
       expect(post).toHaveBeenCalledWith('/decks/suggest', { session_id: 'draft-session-123' });
+      expect(result).toEqual(mockResponse);
+    });
+
+    it('should return full response with suggestions, totals, and bestCombo', async () => {
+      const mockSuggestion = {
+        colorCombo: { colors: ['W', 'U'], name: 'Azorius' },
+        spells: [],
+        lands: [],
+        totalCards: 40,
+        score: 0.85,
+        viability: 'strong',
+      };
+      const mockResponse: decks.SuggestDecksApiResponse = {
+        suggestions: [mockSuggestion as any],
+        totalCombos: 32,
+        viableCombos: 14,
+        bestCombo: { colors: ['W', 'U'], name: 'Azorius' },
+      };
+      vi.mocked(post).mockResolvedValue(mockResponse);
+
+      const result = await decks.suggestDecks({ session_id: 'draft-456' });
+
+      expect(result.suggestions).toHaveLength(1);
+      expect(result.totalCombos).toBe(32);
+      expect(result.viableCombos).toBe(14);
+      expect(result.bestCombo?.name).toBe('Azorius');
+    });
+
+    it('should handle error response', async () => {
+      const mockResponse: decks.SuggestDecksApiResponse = {
+        suggestions: [],
+        totalCombos: 0,
+        viableCombos: 0,
+        error: 'No cards in draft pool',
+      };
+      vi.mocked(post).mockResolvedValue(mockResponse);
+
+      const result = await decks.suggestDecks({ session_id: 'empty-draft' });
+
+      expect(result.error).toBe('No cards in draft pool');
+      expect(result.suggestions).toHaveLength(0);
     });
   });
 
