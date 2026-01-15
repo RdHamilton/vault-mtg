@@ -574,13 +574,17 @@ func (h *DeckHandler) GetDeckByDraftEvent(w http.ResponseWriter, r *http.Request
 }
 
 // GetRecommendationsRequest represents a request for card recommendations.
+// NOTE: JSON tags use camelCase to match frontend types generated from gui.GetRecommendationsRequest.
 type GetRecommendationsRequest struct {
-	DeckID       string   `json:"deck_id"`
-	MaxResults   int      `json:"max_results,omitempty"`
-	MinScore     float64  `json:"min_score,omitempty"`
-	Colors       []string `json:"colors,omitempty"`
-	CardTypes    []string `json:"card_types,omitempty"`
-	IncludeLands bool     `json:"include_lands,omitempty"`
+	DeckID        string   `json:"deckID"`
+	MaxResults    int      `json:"maxResults,omitempty"`
+	MinScore      float64  `json:"minScore,omitempty"`
+	Colors        []string `json:"colors,omitempty"`
+	CardTypes     []string `json:"cardTypes,omitempty"`
+	CMCMin        *int     `json:"cmcMin,omitempty"`
+	CMCMax        *int     `json:"cmcMax,omitempty"`
+	IncludeLands  bool     `json:"includeLands"`
+	OnlyDraftPool bool     `json:"onlyDraftPool,omitempty"`
 }
 
 // GetRecommendations returns card recommendations for a deck.
@@ -592,17 +596,20 @@ func (h *DeckHandler) GetRecommendations(w http.ResponseWriter, r *http.Request)
 	}
 
 	if req.DeckID == "" {
-		response.BadRequest(w, errors.New("deck_id is required"))
+		response.BadRequest(w, errors.New("deckID is required"))
 		return
 	}
 
 	guiReq := &gui.GetRecommendationsRequest{
-		DeckID:       req.DeckID,
-		MaxResults:   req.MaxResults,
-		MinScore:     req.MinScore,
-		Colors:       req.Colors,
-		CardTypes:    req.CardTypes,
-		IncludeLands: req.IncludeLands,
+		DeckID:        req.DeckID,
+		MaxResults:    req.MaxResults,
+		MinScore:      req.MinScore,
+		Colors:        req.Colors,
+		CardTypes:     req.CardTypes,
+		CMCMin:        req.CMCMin,
+		CMCMax:        req.CMCMax,
+		IncludeLands:  req.IncludeLands,
+		OnlyDraftPool: req.OnlyDraftPool,
 	}
 
 	recommendations, err := h.facade.GetRecommendations(r.Context(), guiReq)
@@ -615,9 +622,10 @@ func (h *DeckHandler) GetRecommendations(w http.ResponseWriter, r *http.Request)
 }
 
 // ExplainRecommendationRequest represents a request to explain a recommendation.
+// NOTE: JSON tags use camelCase to match frontend types.
 type ExplainRecommendationRequest struct {
-	DeckID string `json:"deck_id"`
-	CardID int    `json:"card_id"`
+	DeckID string `json:"deckID"`
+	CardID int    `json:"cardID"`
 }
 
 // ExplainRecommendation explains why a card is recommended.
