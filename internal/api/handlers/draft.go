@@ -655,7 +655,17 @@ func (h *DraftHandler) GetCommunityComparison(w http.ResponseWriter, r *http.Req
 	}
 
 	if comparison == nil {
-		response.Success(w, map[string]string{"message": "No draft data available for this set"})
+		// Return empty response with sampleSize=0 for proper frontend handling
+		draftFmt := req.DraftFormat
+		if draftFmt == "" {
+			draftFmt = "PremierDraft"
+		}
+		response.Success(w, &analytics.CommunityComparisonResponse{
+			SetCode:     req.SetCode,
+			DraftFormat: draftFmt,
+			SampleSize:  0,
+			Rank:        "",
+		})
 		return
 	}
 
@@ -682,7 +692,13 @@ func (h *DraftHandler) GetCommunityComparisonBySet(w http.ResponseWriter, r *htt
 	}
 
 	if comparison == nil {
-		response.Success(w, map[string]string{"message": "No draft data available for this set"})
+		// Return empty response with sampleSize=0 for proper frontend handling
+		response.Success(w, &analytics.CommunityComparisonResponse{
+			SetCode:     setCode,
+			DraftFormat: draftFormat,
+			SampleSize:  0,
+			Rank:        "",
+		})
 		return
 	}
 
