@@ -157,43 +157,106 @@ type CollectiveDeckAnalysis struct {
 
 // ArchetypeProfile defines the build parameters for a deck archetype.
 type ArchetypeProfile struct {
-	Name          string      `json:"name"`          // "Aggro", "Midrange", "Control"
-	LandCount     int         `json:"landCount"`     // Target number of lands
-	CurveTargets  map[int]int `json:"curveTargets"`  // CMC -> target count
-	CreatureRatio float64     `json:"creatureRatio"` // % creatures vs spells (0.0-1.0)
-	RemovalCount  int         `json:"removalCount"`  // Target removal spells
-	CardAdvantage int         `json:"cardAdvantage"` // Target draw/advantage cards
-	Description   string      `json:"description"`   // User-friendly description
+	Name           string      `json:"name"`           // "Aggro", "Midrange", "Control", etc.
+	LandCount      int         `json:"landCount"`      // Target number of lands
+	CurveTargets   map[int]int `json:"curveTargets"`   // CMC -> target count
+	CreatureRatio  float64     `json:"creatureRatio"`  // % creatures vs spells (0.0-1.0)
+	RemovalCount   int         `json:"removalCount"`   // Target removal spells
+	CardAdvantage  int         `json:"cardAdvantage"`  // Target draw/advantage cards
+	Description    string      `json:"description"`    // User-friendly description
+	SplashTendency float64     `json:"splashTendency"` // 0.0 = strict 2-color, 1.0 = flexible multi-color
+	Icon           string      `json:"icon"`           // Emoji icon for UI
 }
 
 // archetypeProfiles contains configuration for each deck archetype.
 var archetypeProfiles = map[string]*ArchetypeProfile{
 	"aggro": {
-		Name:          "Aggro",
-		LandCount:     20,
-		CurveTargets:  map[int]int{1: 8, 2: 14, 3: 10, 4: 4, 5: 4, 6: 0}, // Sum: 40 = 60 - 20
-		CreatureRatio: 0.70,
-		RemovalCount:  4,
-		CardAdvantage: 2,
-		Description:   "Fast, aggressive deck that aims to win quickly with cheap threats.",
+		Name:           "Aggro",
+		LandCount:      20,
+		CurveTargets:   map[int]int{1: 8, 2: 14, 3: 10, 4: 4, 5: 4, 6: 0}, // Sum: 40 = 60 - 20
+		CreatureRatio:  0.70,
+		RemovalCount:   4,
+		CardAdvantage:  2,
+		Description:    "Fast, aggressive deck that aims to win quickly with cheap threats.",
+		SplashTendency: 0.1, // Aggro wants consistent mana, minimal splash
+		Icon:           "⚡",
 	},
 	"midrange": {
-		Name:          "Midrange",
-		LandCount:     24,
-		CurveTargets:  map[int]int{1: 4, 2: 8, 3: 10, 4: 8, 5: 4, 6: 2}, // Sum: 36 = 60 - 24
-		CreatureRatio: 0.55,
-		RemovalCount:  6,
-		CardAdvantage: 4,
-		Description:   "Balanced deck with efficient threats and answers at every point in the curve.",
+		Name:           "Midrange",
+		LandCount:      24,
+		CurveTargets:   map[int]int{1: 4, 2: 8, 3: 10, 4: 8, 5: 4, 6: 2}, // Sum: 36 = 60 - 24
+		CreatureRatio:  0.55,
+		RemovalCount:   6,
+		CardAdvantage:  4,
+		Description:    "Balanced deck with efficient threats and answers at every point in the curve.",
+		SplashTendency: 0.4, // Midrange can splash for powerful cards
+		Icon:           "⚖️",
 	},
 	"control": {
-		Name:          "Control",
-		LandCount:     26,
-		CurveTargets:  map[int]int{1: 2, 2: 6, 3: 8, 4: 8, 5: 6, 6: 4}, // Sum: 34 = 60 - 26
-		CreatureRatio: 0.25,
-		RemovalCount:  10,
-		CardAdvantage: 8,
-		Description:   "Slow, controlling deck that grinds out opponents with removal and card advantage.",
+		Name:           "Control",
+		LandCount:      26,
+		CurveTargets:   map[int]int{1: 2, 2: 6, 3: 8, 4: 8, 5: 6, 6: 4}, // Sum: 34 = 60 - 26
+		CreatureRatio:  0.25,
+		RemovalCount:   10,
+		CardAdvantage:  8,
+		Description:    "Slow, controlling deck that grinds out opponents with removal and card advantage.",
+		SplashTendency: 0.6, // Control can afford to splash for answers
+		Icon:           "🛡️",
+	},
+	"tempo": {
+		Name:           "Tempo",
+		LandCount:      22,
+		CurveTargets:   map[int]int{1: 6, 2: 12, 3: 10, 4: 6, 5: 4, 6: 0}, // Sum: 38 = 60 - 22
+		CreatureRatio:  0.60,
+		RemovalCount:   6,
+		CardAdvantage:  4,
+		Description:    "Disrupt opponents while deploying efficient threats. Use bounce, counters, and removal to stay ahead.",
+		SplashTendency: 0.2, // Tempo needs consistent mana for interaction
+		Icon:           "💨",
+	},
+	"ramp": {
+		Name:           "Ramp",
+		LandCount:      24,
+		CurveTargets:   map[int]int{1: 4, 2: 8, 3: 6, 4: 4, 5: 6, 6: 8}, // Sum: 36 = 60 - 24
+		CreatureRatio:  0.45,
+		RemovalCount:   4,
+		CardAdvantage:  4,
+		Description:    "Accelerate your mana to deploy massive threats ahead of schedule. Focuses on mana dorks and payoffs.",
+		SplashTendency: 0.5, // Ramp can splash thanks to mana fixing
+		Icon:           "🌱",
+	},
+	"combo": {
+		Name:           "Combo",
+		LandCount:      24,
+		CurveTargets:   map[int]int{1: 4, 2: 10, 3: 10, 4: 6, 5: 4, 6: 2}, // Sum: 36 = 60 - 24
+		CreatureRatio:  0.40,
+		RemovalCount:   4,
+		CardAdvantage:  8,
+		Description:    "Assemble synergistic card combinations to create powerful effects or win the game outright.",
+		SplashTendency: 0.3, // Combo wants consistency to find pieces
+		Icon:           "🔗",
+	},
+	"tokens": {
+		Name:           "Tokens",
+		LandCount:      23,
+		CurveTargets:   map[int]int{1: 4, 2: 10, 3: 10, 4: 8, 5: 4, 6: 1}, // Sum: 37 = 60 - 23
+		CreatureRatio:  0.50,
+		RemovalCount:   4,
+		CardAdvantage:  4,
+		Description:    "Generate an army of creature tokens and buff them with anthems and lords to overwhelm opponents.",
+		SplashTendency: 0.3, // Tokens wants consistent anthem access
+		Icon:           "👥",
+	},
+	"aristocrats": {
+		Name:           "Aristocrats",
+		LandCount:      23,
+		CurveTargets:   map[int]int{1: 6, 2: 10, 3: 10, 4: 6, 5: 4, 6: 1}, // Sum: 37 = 60 - 23
+		CreatureRatio:  0.65,
+		RemovalCount:   2,
+		CardAdvantage:  4,
+		Description:    "Sacrifice your own creatures for value with death triggers, blood artists, and recursive threats.",
+		SplashTendency: 0.2, // Aristocrats needs consistent sac outlets
+		Icon:           "💀",
 	},
 }
 
@@ -679,6 +742,35 @@ func (s *SeedDeckBuilder) scoreColorCompatibility(card *cards.Card, seedAnalysis
 
 	// Partial match
 	return float64(matchingColors) / float64(len(card.Colors)) * 0.7
+}
+
+// scoreColorCompatibilityWithSplash scores color fit considering archetype's splash tendency.
+// Archetypes with higher splash tendency are more forgiving of off-color cards.
+func (s *SeedDeckBuilder) scoreColorCompatibilityWithSplash(card *cards.Card, seedAnalysis *SeedCardAnalysis, profile *ArchetypeProfile) float64 {
+	baseScore := s.scoreColorCompatibility(card, seedAnalysis)
+
+	// Perfect matches or colorless cards don't need adjustment
+	if baseScore >= 0.9 || baseScore == 0.5 {
+		return baseScore
+	}
+
+	// No overlap - apply splash tendency to allow some off-color splashes
+	// High splash archetypes (Control 0.6) can consider 1-off color cards
+	// Low splash archetypes (Aggro 0.1) stay strict
+	if baseScore == 0.0 {
+		// Only allow splash for single-color cards (easier to splash)
+		if len(card.Colors) == 1 && profile.SplashTendency >= 0.4 {
+			// Return a small score based on splash tendency
+			// Control (0.6) gets 0.24, Midrange (0.4) gets 0.16
+			return profile.SplashTendency * 0.4
+		}
+		return 0.0
+	}
+
+	// Partial match - boost score based on splash tendency
+	// The more splashable the archetype, the less penalty for partial matches
+	splashBonus := (1.0 - baseScore) * profile.SplashTendency * 0.3
+	return baseScore + splashBonus
 }
 
 // scoreManaCurveFit scores how well a card fits the ideal mana curve.
@@ -1930,10 +2022,12 @@ func (s *SeedDeckBuilder) scoreCardForArchetype(card *cards.Card, seedAnalysis *
 	reasons := make([]string, 0)
 	synergyDetails := make([]SynergyDetail, 0)
 
-	// Factor 1: Color Compatibility (25%)
-	colorScore := s.scoreColorCompatibility(card, seedAnalysis)
+	// Factor 1: Color Compatibility (25%) - with archetype-aware splashing
+	colorScore := s.scoreColorCompatibilityWithSplash(card, seedAnalysis, profile)
 	if colorScore >= 0.8 {
 		reasons = append(reasons, "matches your colors")
+	} else if colorScore > 0.0 && colorScore < 0.5 {
+		reasons = append(reasons, "splash candidate")
 	}
 
 	// Factor 2: Archetype Curve Fit (25%) - higher weight than normal

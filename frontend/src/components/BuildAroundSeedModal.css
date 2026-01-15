@@ -1437,9 +1437,15 @@
 }
 
 .archetype-buttons {
-  display: flex;
-  flex-direction: column;
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
   gap: 12px;
+}
+
+@media (max-width: 768px) {
+  .archetype-buttons {
+    grid-template-columns: 1fr;
+  }
 }
 
 .archetype-btn {
@@ -1474,6 +1480,31 @@
 .archetype-btn.control:hover {
   border-color: #3b82f6;
   box-shadow: 0 4px 12px rgba(59, 130, 246, 0.2);
+}
+
+.archetype-btn.tempo:hover {
+  border-color: #06b6d4;
+  box-shadow: 0 4px 12px rgba(6, 182, 212, 0.2);
+}
+
+.archetype-btn.ramp:hover {
+  border-color: #22c55e;
+  box-shadow: 0 4px 12px rgba(34, 197, 94, 0.2);
+}
+
+.archetype-btn.combo:hover {
+  border-color: #a855f7;
+  box-shadow: 0 4px 12px rgba(168, 85, 247, 0.2);
+}
+
+.archetype-btn.tokens:hover {
+  border-color: #f59e0b;
+  box-shadow: 0 4px 12px rgba(245, 158, 11, 0.2);
+}
+
+.archetype-btn.aristocrats:hover {
+  border-color: #6b7280;
+  box-shadow: 0 4px 12px rgba(107, 114, 128, 0.2);
 }
 
 .archetype-icon {
@@ -1513,9 +1544,42 @@
 
 .archetype-options-footer {
   display: flex;
+  flex-wrap: wrap;
   justify-content: center;
-  padding-top: 8px;
+  gap: 16px;
+  padding-top: 12px;
   border-top: 1px solid var(--border-color, #333);
+}
+
+.set-restriction-selector {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.set-restriction-selector label {
+  color: var(--text-secondary, #aaa);
+  font-size: 0.9rem;
+}
+
+.set-restriction-select {
+  padding: 6px 12px;
+  background: var(--surface-color, #2d2d2d);
+  border: 1px solid var(--border-color, #444);
+  border-radius: 4px;
+  color: var(--text-primary, #fff);
+  font-size: 0.9rem;
+  cursor: pointer;
+}
+
+.set-restriction-select:hover {
+  border-color: var(--accent-color, #6366f1);
+}
+
+.set-restriction-select:focus {
+  outline: none;
+  border-color: var(--accent-color, #6366f1);
+  box-shadow: 0 0 0 2px rgba(99, 102, 241, 0.2);
 }
 
 /* Generated Deck Mode */

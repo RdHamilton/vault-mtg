@@ -2141,6 +2141,8 @@ describe('BuildAroundSeedModal', () => {
         removalCount: 4,
         cardAdvantage: 2,
         description: 'Fast, aggressive deck that aims to win quickly with cheap threats.',
+        splashTendency: 0.1,
+        icon: '⚡',
       },
       midrange: {
         name: 'Midrange',
@@ -2150,6 +2152,8 @@ describe('BuildAroundSeedModal', () => {
         removalCount: 6,
         cardAdvantage: 4,
         description: 'Balanced deck with efficient threats and answers.',
+        splashTendency: 0.4,
+        icon: '⚖️',
       },
       control: {
         name: 'Control',
@@ -2159,6 +2163,8 @@ describe('BuildAroundSeedModal', () => {
         removalCount: 10,
         cardAdvantage: 8,
         description: 'Slow, controlling deck that grinds out opponents.',
+        splashTendency: 0.6,
+        icon: '🛡️',
       },
     };
 
@@ -2344,13 +2350,16 @@ describe('BuildAroundSeedModal', () => {
       fireEvent.click(await screen.findByText('Quick Generate (60-Card Deck)'));
 
       await waitFor(() => {
-        // Check archetype stats are displayed
-        expect(screen.getByText('20 lands')).toBeInTheDocument();
-        expect(screen.getByText('70% creatures')).toBeInTheDocument();
-        expect(screen.getByText('24 lands')).toBeInTheDocument();
-        expect(screen.getByText('55% creatures')).toBeInTheDocument();
-        expect(screen.getByText('26 lands')).toBeInTheDocument();
-        expect(screen.getByText('25% creatures')).toBeInTheDocument();
+        // Check archetype names are displayed (some may have same land counts now with 8 archetypes)
+        expect(screen.getByText('Aggro')).toBeInTheDocument();
+        expect(screen.getByText('Midrange')).toBeInTheDocument();
+        expect(screen.getByText('Control')).toBeInTheDocument();
+        // New archetypes
+        expect(screen.getByText('Tempo')).toBeInTheDocument();
+        expect(screen.getByText('Ramp')).toBeInTheDocument();
+        expect(screen.getByText('Combo')).toBeInTheDocument();
+        expect(screen.getByText('Tokens')).toBeInTheDocument();
+        expect(screen.getByText('Aristocrats')).toBeInTheDocument();
       });
     });
 
@@ -2394,6 +2403,8 @@ describe('BuildAroundSeedModal', () => {
           seed_card_id: 12345,
           archetype: 'aggro',
           budget_mode: false,
+          set_restriction: 'all',
+          allowed_sets: undefined,
         });
       });
     });
@@ -2667,6 +2678,8 @@ describe('BuildAroundSeedModal', () => {
           seed_card_id: 12345,
           archetype: 'midrange',
           budget_mode: true,
+          set_restriction: 'all',
+          allowed_sets: undefined,
         });
       });
     });

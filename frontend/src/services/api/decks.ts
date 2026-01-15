@@ -501,6 +501,8 @@ export interface ArchetypeProfile {
   removalCount: number;
   cardAdvantage: number;
   description: string;
+  splashTendency: number;
+  icon: string;
 }
 
 /**
@@ -508,9 +510,9 @@ export interface ArchetypeProfile {
  */
 export interface GenerateCompleteDeckRequest {
   seed_card_id: number;
-  archetype: 'aggro' | 'midrange' | 'control';
+  archetype: 'aggro' | 'midrange' | 'control' | 'tempo' | 'ramp' | 'combo' | 'tokens' | 'aristocrats';
   budget_mode?: boolean;
-  set_restriction?: string;
+  set_restriction?: 'all' | 'standard' | 'custom';
   allowed_sets?: string[];
   /** Optional existing deck cards to build around (instead of just seed card) */
   deck_card_ids?: number[];

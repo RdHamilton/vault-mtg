@@ -15,7 +15,7 @@ import ProgressBar from './ProgressBar';
 import HelpIcon from './HelpIcon';
 import './BuildAroundSeedModal.css';
 
-type ArchetypeKey = 'aggro' | 'midrange' | 'control';
+type ArchetypeKey = 'aggro' | 'midrange' | 'control' | 'tempo' | 'ramp' | 'combo' | 'tokens' | 'aristocrats';
 
 interface HoverPreview {
   card: CardWithOwnership;
@@ -81,6 +81,9 @@ export default function BuildAroundSeedModal({
   const [searching, setSearching] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [budgetMode, setBudgetMode] = useState(false);
+  const [setRestriction, setSetRestriction] = useState<'all' | 'standard'>('all');
+  // allowedSets would be used for custom set selection (future enhancement)
+  const allowedSets: string[] = [];
   const [applying, setApplying] = useState(false);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -569,6 +572,8 @@ export default function BuildAroundSeedModal({
         seed_card_id: seedCardId,
         archetype,
         budget_mode: budgetMode,
+        set_restriction: setRestriction,
+        allowed_sets: allowedSets.length > 0 ? allowedSets : undefined,
         deck_card_ids: useDeckCardsAsSeed ? currentDeckCards : undefined,
       });
 
@@ -1383,7 +1388,7 @@ export default function BuildAroundSeedModal({
                   <div className="mode-icon">🎴</div>
                   <div className="mode-info">
                     <h4>Quick Generate (60-Card Deck)</h4>
-                    <p>Select an archetype (Aggro, Midrange, Control) and generate a complete deck with lands.</p>
+                    <p>Select an archetype and generate a complete deck with lands.</p>
                   </div>
                 </button>
 
@@ -1446,7 +1451,12 @@ export default function BuildAroundSeedModal({
                 <p>Each archetype has a different playstyle:</p>
                 <ul>
                   <li><strong>Aggro</strong> - Fast, low-cost creatures. Win quickly before opponent stabilizes.</li>
+                  <li><strong>Tempo</strong> - Efficient threats plus disruption. Stay ahead with bounce and counters.</li>
                   <li><strong>Midrange</strong> - Balanced threats and removal. Flexible gameplan.</li>
+                  <li><strong>Ramp</strong> - Mana acceleration into massive threats. Dominate late game.</li>
+                  <li><strong>Tokens</strong> - Generate creature armies, buff with anthems and lords.</li>
+                  <li><strong>Aristocrats</strong> - Sacrifice your creatures for value. Death triggers win games.</li>
+                  <li><strong>Combo</strong> - Assemble synergistic combinations. Create powerful effects.</li>
                   <li><strong>Control</strong> - Removal and card draw. Win with late-game power.</li>
                 </ul>
                 <p>Stats show average mana curve and expected land count.</p>
@@ -1516,13 +1526,29 @@ export default function BuildAroundSeedModal({
                     className="archetype-btn aggro"
                     onClick={() => handleGenerateCompleteDeck('aggro')}
                   >
-                    <div className="archetype-icon">⚡</div>
+                    <div className="archetype-icon">{archetypeProfiles?.aggro?.icon || '⚡'}</div>
                     <div className="archetype-info">
                       <h4>Aggro</h4>
                       <p>{archetypeProfiles?.aggro?.description || 'Fast, aggressive deck that aims to win quickly with cheap threats.'}</p>
                       <div className="archetype-stats">
-                        <span>20 lands</span>
-                        <span>70% creatures</span>
+                        <span>{archetypeProfiles?.aggro?.landCount || 20} lands</span>
+                        <span>{Math.round((archetypeProfiles?.aggro?.creatureRatio || 0.70) * 100)}% creatures</span>
+                      </div>
+                    </div>
+                  </button>
+
+                  {/* Tempo */}
+                  <button
+                    className="archetype-btn tempo"
+                    onClick={() => handleGenerateCompleteDeck('tempo')}
+                  >
+                    <div className="archetype-icon">{archetypeProfiles?.tempo?.icon || '💨'}</div>
+                    <div className="archetype-info">
+                      <h4>Tempo</h4>
+                      <p>{archetypeProfiles?.tempo?.description || 'Disrupt opponents while deploying efficient threats.'}</p>
+                      <div className="archetype-stats">
+                        <span>{archetypeProfiles?.tempo?.landCount || 22} lands</span>
+                        <span>{Math.round((archetypeProfiles?.tempo?.creatureRatio || 0.60) * 100)}% creatures</span>
                       </div>
                     </div>
                   </button>
@@ -1532,13 +1558,77 @@ export default function BuildAroundSeedModal({
                     className="archetype-btn midrange"
                     onClick={() => handleGenerateCompleteDeck('midrange')}
                   >
-                    <div className="archetype-icon">⚖️</div>
+                    <div className="archetype-icon">{archetypeProfiles?.midrange?.icon || '⚖️'}</div>
                     <div className="archetype-info">
                       <h4>Midrange</h4>
                       <p>{archetypeProfiles?.midrange?.description || 'Balanced deck that can play offense or defense as needed.'}</p>
                       <div className="archetype-stats">
-                        <span>24 lands</span>
-                        <span>55% creatures</span>
+                        <span>{archetypeProfiles?.midrange?.landCount || 24} lands</span>
+                        <span>{Math.round((archetypeProfiles?.midrange?.creatureRatio || 0.55) * 100)}% creatures</span>
+                      </div>
+                    </div>
+                  </button>
+
+                  {/* Ramp */}
+                  <button
+                    className="archetype-btn ramp"
+                    onClick={() => handleGenerateCompleteDeck('ramp')}
+                  >
+                    <div className="archetype-icon">{archetypeProfiles?.ramp?.icon || '🌱'}</div>
+                    <div className="archetype-info">
+                      <h4>Ramp</h4>
+                      <p>{archetypeProfiles?.ramp?.description || 'Accelerate mana to deploy massive threats ahead of schedule.'}</p>
+                      <div className="archetype-stats">
+                        <span>{archetypeProfiles?.ramp?.landCount || 24} lands</span>
+                        <span>{Math.round((archetypeProfiles?.ramp?.creatureRatio || 0.45) * 100)}% creatures</span>
+                      </div>
+                    </div>
+                  </button>
+
+                  {/* Tokens */}
+                  <button
+                    className="archetype-btn tokens"
+                    onClick={() => handleGenerateCompleteDeck('tokens')}
+                  >
+                    <div className="archetype-icon">{archetypeProfiles?.tokens?.icon || '👥'}</div>
+                    <div className="archetype-info">
+                      <h4>Tokens</h4>
+                      <p>{archetypeProfiles?.tokens?.description || 'Generate creature tokens and buff them with anthems.'}</p>
+                      <div className="archetype-stats">
+                        <span>{archetypeProfiles?.tokens?.landCount || 23} lands</span>
+                        <span>{Math.round((archetypeProfiles?.tokens?.creatureRatio || 0.50) * 100)}% creatures</span>
+                      </div>
+                    </div>
+                  </button>
+
+                  {/* Aristocrats */}
+                  <button
+                    className="archetype-btn aristocrats"
+                    onClick={() => handleGenerateCompleteDeck('aristocrats')}
+                  >
+                    <div className="archetype-icon">{archetypeProfiles?.aristocrats?.icon || '💀'}</div>
+                    <div className="archetype-info">
+                      <h4>Aristocrats</h4>
+                      <p>{archetypeProfiles?.aristocrats?.description || 'Sacrifice creatures for value with death triggers.'}</p>
+                      <div className="archetype-stats">
+                        <span>{archetypeProfiles?.aristocrats?.landCount || 23} lands</span>
+                        <span>{Math.round((archetypeProfiles?.aristocrats?.creatureRatio || 0.65) * 100)}% creatures</span>
+                      </div>
+                    </div>
+                  </button>
+
+                  {/* Combo */}
+                  <button
+                    className="archetype-btn combo"
+                    onClick={() => handleGenerateCompleteDeck('combo')}
+                  >
+                    <div className="archetype-icon">{archetypeProfiles?.combo?.icon || '🔗'}</div>
+                    <div className="archetype-info">
+                      <h4>Combo</h4>
+                      <p>{archetypeProfiles?.combo?.description || 'Assemble synergistic card combinations for powerful effects.'}</p>
+                      <div className="archetype-stats">
+                        <span>{archetypeProfiles?.combo?.landCount || 24} lands</span>
+                        <span>{Math.round((archetypeProfiles?.combo?.creatureRatio || 0.40) * 100)}% creatures</span>
                       </div>
                     </div>
                   </button>
@@ -1548,19 +1638,19 @@ export default function BuildAroundSeedModal({
                     className="archetype-btn control"
                     onClick={() => handleGenerateCompleteDeck('control')}
                   >
-                    <div className="archetype-icon">🛡️</div>
+                    <div className="archetype-icon">{archetypeProfiles?.control?.icon || '🛡️'}</div>
                     <div className="archetype-info">
                       <h4>Control</h4>
                       <p>{archetypeProfiles?.control?.description || 'Reactive deck that answers threats and wins with powerful finishers.'}</p>
                       <div className="archetype-stats">
-                        <span>26 lands</span>
-                        <span>25% creatures</span>
+                        <span>{archetypeProfiles?.control?.landCount || 26} lands</span>
+                        <span>{Math.round((archetypeProfiles?.control?.creatureRatio || 0.25) * 100)}% creatures</span>
                       </div>
                     </div>
                   </button>
                 </div>
 
-                {/* Budget Mode Toggle */}
+                {/* Options Footer */}
                 <div className="archetype-options-footer">
                   <label className="option-checkbox">
                     <input
@@ -1570,6 +1660,18 @@ export default function BuildAroundSeedModal({
                     />
                     <span>Budget Mode (only cards in collection)</span>
                   </label>
+
+                  <div className="set-restriction-selector">
+                    <label>Card Pool:</label>
+                    <select
+                      value={setRestriction}
+                      onChange={(e) => setSetRestriction(e.target.value as 'all' | 'standard')}
+                      className="set-restriction-select"
+                    >
+                      <option value="all">All Sets</option>
+                      <option value="standard">Standard Legal Only</option>
+                    </select>
+                  </div>
                 </div>
               </div>
             )}
