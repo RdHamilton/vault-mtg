@@ -81,9 +81,6 @@ export default function BuildAroundSeedModal({
   const [searching, setSearching] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [budgetMode, setBudgetMode] = useState(false);
-  const [setRestriction, setSetRestriction] = useState<'all' | 'standard'>('all');
-  // allowedSets would be used for custom set selection (future enhancement)
-  const allowedSets: string[] = [];
   const [applying, setApplying] = useState(false);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -572,8 +569,6 @@ export default function BuildAroundSeedModal({
         seed_card_id: seedCardId,
         archetype,
         budget_mode: budgetMode,
-        set_restriction: setRestriction,
-        allowed_sets: allowedSets.length > 0 ? allowedSets : undefined,
         deck_card_ids: useDeckCardsAsSeed ? currentDeckCards : undefined,
       });
 
@@ -1660,18 +1655,6 @@ export default function BuildAroundSeedModal({
                     />
                     <span>Budget Mode (only cards in collection)</span>
                   </label>
-
-                  <div className="set-restriction-selector">
-                    <label>Card Pool:</label>
-                    <select
-                      value={setRestriction}
-                      onChange={(e) => setSetRestriction(e.target.value as 'all' | 'standard')}
-                      className="set-restriction-select"
-                    >
-                      <option value="all">All Sets</option>
-                      <option value="standard">Standard Legal Only</option>
-                    </select>
-                  </div>
                 </div>
               </div>
             )}

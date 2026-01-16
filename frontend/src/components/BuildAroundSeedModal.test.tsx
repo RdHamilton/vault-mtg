@@ -2403,8 +2403,6 @@ describe('BuildAroundSeedModal', () => {
           seed_card_id: 12345,
           archetype: 'aggro',
           budget_mode: false,
-          set_restriction: 'all',
-          allowed_sets: undefined,
         });
       });
     });
@@ -2678,8 +2676,6 @@ describe('BuildAroundSeedModal', () => {
           seed_card_id: 12345,
           archetype: 'midrange',
           budget_mode: true,
-          set_restriction: 'all',
-          allowed_sets: undefined,
         });
       });
     });

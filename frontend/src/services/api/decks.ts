@@ -512,7 +512,8 @@ export interface GenerateCompleteDeckRequest {
   seed_card_id: number;
   archetype: 'aggro' | 'midrange' | 'control' | 'tempo' | 'ramp' | 'combo' | 'tokens' | 'aristocrats';
   budget_mode?: boolean;
-  set_restriction?: 'all' | 'standard' | 'custom';
+  /** Set restriction: 'single' = seed card's set, 'multiple' = allowed_sets, 'all' = all Standard-legal sets (default) */
+  set_restriction?: 'single' | 'multiple' | 'all';
   allowed_sets?: string[];
   /** Optional existing deck cards to build around (instead of just seed card) */
   deck_card_ids?: number[];

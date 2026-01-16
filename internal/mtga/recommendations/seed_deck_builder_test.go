@@ -1249,6 +1249,14 @@ func TestGetAllArchetypeProfiles(t *testing.T) {
 		if profile.Description == "" {
 			t.Errorf("profile %s has empty description", key)
 		}
+		// Verify SplashTendency is in valid range (0.0-1.0)
+		if profile.SplashTendency < 0.0 || profile.SplashTendency > 1.0 {
+			t.Errorf("profile %s has invalid splash tendency: %f (expected 0.0-1.0)", key, profile.SplashTendency)
+		}
+		// Verify Icon is set (emoji for UI display)
+		if profile.Icon == "" {
+			t.Errorf("profile %s has empty icon", key)
+		}
 	}
 }
 
