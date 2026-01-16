@@ -12,7 +12,7 @@ import MatchNotesModal from '../components/MatchNotesModal';
 import { useAppContext } from '../context/AppContext';
 import './MatchHistory.css';
 
-type SortField = 'Timestamp' | 'Result' | 'Format' | 'EventName';
+type SortField = 'Timestamp' | 'Result' | 'Format' | 'EventName' | 'DeckName';
 type SortDirection = 'asc' | 'desc';
 
 const MatchHistory = () => {
@@ -437,6 +437,11 @@ const MatchHistory = () => {
                     <span>Opponent</span>
                   </Tooltip>
                 </th>
+                <th onClick={() => handleSort('DeckName')} style={{ cursor: 'pointer' }}>
+                  <Tooltip content="Click to sort by deck name">
+                    <span>Deck {getSortIcon('DeckName')}</span>
+                  </Tooltip>
+                </th>
                 <th>
                   <Tooltip content="Add notes about this match">
                     <span>Notes</span>
@@ -462,6 +467,9 @@ const MatchHistory = () => {
                   <td>{getDisplayEventName(match)}</td>
                   <td>{formatScore(match.PlayerWins, match.OpponentWins)}</td>
                   <td>{match.OpponentName || '—'}</td>
+                  <td className="deck-name-cell" title={match.DeckName || 'Unknown'}>
+                    {match.DeckName || '—'}
+                  </td>
                   <td>
                     <button
                       className="notes-btn"

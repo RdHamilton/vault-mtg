@@ -42,6 +42,13 @@ const FORMAT_EVENT_PATTERNS: Record<string, string> = {
   'Timeless': 'Play Queue',
   'Timeless_Play': 'Play Queue',
   'Timeless_Ladder': 'Ranked',
+  // Traditional Standard events (Bo3 Standard)
+  'TraditionalStandard': 'Traditional Standard',
+  'TraditionalStandard_Play': 'Traditional Standard Play',
+  'TraditionalStandard_Ladder': 'Traditional Standard Ranked',
+  'Traditional_Standard': 'Traditional Standard',
+  'Traditional_Standard_Play': 'Traditional Standard Play',
+  'Traditional_Standard_Ladder': 'Traditional Standard Ranked',
 };
 
 /**

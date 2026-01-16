@@ -237,7 +237,9 @@ describe('MatchHistory', () => {
       renderWithProvider(<MatchHistory />);
 
       await waitFor(() => {
-        expect(screen.getByText('—')).toBeInTheDocument();
+        // Both opponent name and deck name show '—' when missing
+        const dashes = screen.getAllByText('—');
+        expect(dashes.length).toBeGreaterThanOrEqual(1);
       });
     });
 
@@ -517,7 +519,7 @@ describe('MatchHistory', () => {
 
       // Check headers exist in thead
       const headers = screen.getAllByRole('columnheader');
-      expect(headers.length).toBe(7);
+      expect(headers.length).toBe(8);
 
       // Verify header text content
       const headerTexts = headers.map((h) => h.textContent);
@@ -527,6 +529,7 @@ describe('MatchHistory', () => {
       expect(headerTexts.some((t) => t?.includes('Event'))).toBe(true);
       expect(headerTexts.some((t) => t?.includes('Score'))).toBe(true);
       expect(headerTexts.some((t) => t?.includes('Opponent'))).toBe(true);
+      expect(headerTexts.some((t) => t?.includes('Deck'))).toBe(true);
       expect(headerTexts.some((t) => t?.includes('Notes'))).toBe(true);
     });
   });

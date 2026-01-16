@@ -80,6 +80,30 @@ describe('formatNormalization', () => {
       it('should normalize "Timeless_Ladder" to "Ranked"', () => {
         expect(normalizeQueueType('Timeless_Ladder')).toBe('Ranked');
       });
+
+      it('should normalize "TraditionalStandard" to "Traditional Standard"', () => {
+        expect(normalizeQueueType('TraditionalStandard')).toBe('Traditional Standard');
+      });
+
+      it('should normalize "TraditionalStandard_Play" to "Traditional Standard Play"', () => {
+        expect(normalizeQueueType('TraditionalStandard_Play')).toBe('Traditional Standard Play');
+      });
+
+      it('should normalize "TraditionalStandard_Ladder" to "Traditional Standard Ranked"', () => {
+        expect(normalizeQueueType('TraditionalStandard_Ladder')).toBe('Traditional Standard Ranked');
+      });
+
+      it('should normalize "Traditional_Standard" to "Traditional Standard"', () => {
+        expect(normalizeQueueType('Traditional_Standard')).toBe('Traditional Standard');
+      });
+
+      it('should normalize "Traditional_Standard_Play" to "Traditional Standard Play"', () => {
+        expect(normalizeQueueType('Traditional_Standard_Play')).toBe('Traditional Standard Play');
+      });
+
+      it('should normalize "Traditional_Standard_Ladder" to "Traditional Standard Ranked"', () => {
+        expect(normalizeQueueType('Traditional_Standard_Ladder')).toBe('Traditional Standard Ranked');
+      });
     });
 
     describe('edge cases', () => {
@@ -221,6 +245,33 @@ describe('formatNormalization', () => {
       it('should combine Timeless + Timeless_Ladder to "Timeless Ranked"', () => {
         const match = createMatch({ DeckFormat: 'Timeless', EventName: 'Timeless_Ladder' });
         expect(getDisplayEventName(match)).toBe('Timeless Ranked');
+      });
+    });
+
+    describe('Traditional Standard events', () => {
+      it('should return "Traditional Standard" for TraditionalStandard event', () => {
+        const match = createMatch({ DeckFormat: undefined, EventName: 'TraditionalStandard' });
+        expect(getDisplayEventName(match)).toBe('Traditional Standard');
+      });
+
+      it('should return "Traditional Standard Play" for TraditionalStandard_Play event', () => {
+        const match = createMatch({ DeckFormat: undefined, EventName: 'TraditionalStandard_Play' });
+        expect(getDisplayEventName(match)).toBe('Traditional Standard Play');
+      });
+
+      it('should return "Traditional Standard Ranked" for TraditionalStandard_Ladder event', () => {
+        const match = createMatch({ DeckFormat: undefined, EventName: 'TraditionalStandard_Ladder' });
+        expect(getDisplayEventName(match)).toBe('Traditional Standard Ranked');
+      });
+
+      it('should return "Traditional Standard" for Traditional_Standard event', () => {
+        const match = createMatch({ DeckFormat: undefined, EventName: 'Traditional_Standard' });
+        expect(getDisplayEventName(match)).toBe('Traditional Standard');
+      });
+
+      it('should return "Traditional Standard Ranked" for Traditional_Standard_Ladder event', () => {
+        const match = createMatch({ DeckFormat: undefined, EventName: 'Traditional_Standard_Ladder' });
+        expect(getDisplayEventName(match)).toBe('Traditional Standard Ranked');
       });
     });
 

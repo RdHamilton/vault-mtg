@@ -136,3 +136,11 @@ th[style*="cursor: pointer"]:hover {
 .notes-btn:hover {
   background-color: rgba(74, 158, 255, 0.2);
 }
+
+/* Deck Name Cell */
+.deck-name-cell {
+  max-width: 150px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}

@@ -2940,6 +2940,7 @@ export namespace models {
 	    PlayerTeamID: number;
 	    DeckID?: string;
 	    DeckFormat?: string;
+	    DeckName?: string;
 	    RankBefore?: string;
 	    RankAfter?: string;
 	    Format: string;
@@ -2966,6 +2967,7 @@ export namespace models {
 	        this.PlayerTeamID = source["PlayerTeamID"];
 	        this.DeckID = source["DeckID"];
 	        this.DeckFormat = source["DeckFormat"];
+	        this.DeckName = source["DeckName"];
 	        this.RankBefore = source["RankBefore"];
 	        this.RankAfter = source["RankAfter"];
 	        this.Format = source["Format"];

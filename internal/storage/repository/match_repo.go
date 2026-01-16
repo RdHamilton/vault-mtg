@@ -456,7 +456,7 @@ func (r *matchRepository) GetByFormat(ctx context.Context, format string, accoun
 
 // GetMatches retrieves matches based on the given filter with advanced filtering support.
 func (r *matchRepository) GetMatches(ctx context.Context, filter models.StatsFilter) ([]*models.Match, error) {
-	// Always JOIN with decks table to get deck format for display
+	// Always JOIN with decks table to get deck format and name for display
 	fromClause := "FROM matches m LEFT JOIN decks d ON m.deck_id = d.id"
 	tableAlias := "m"
 
@@ -466,7 +466,7 @@ func (r *matchRepository) GetMatches(ctx context.Context, filter models.StatsFil
 	query := fmt.Sprintf(`
 		SELECT
 			m.id, m.account_id, m.event_id, m.event_name, m.timestamp, m.duration_seconds,
-			m.player_wins, m.opponent_wins, m.player_team_id, m.deck_id, d.format,
+			m.player_wins, m.opponent_wins, m.player_team_id, m.deck_id, d.format, d.name,
 			m.rank_before, m.rank_after, m.format, m.result, m.result_reason,
 			m.opponent_name, m.opponent_id, m.created_at
 		%s
@@ -498,6 +498,7 @@ func (r *matchRepository) GetMatches(ctx context.Context, filter models.StatsFil
 			&match.PlayerTeamID,
 			&match.DeckID,
 			&match.DeckFormat,
+			&match.DeckName,
 			&match.RankBefore,
 			&match.RankAfter,
 			&match.Format,
@@ -1384,7 +1385,7 @@ func (r *matchRepository) GetMatchesForMLProcessing(ctx context.Context, filter 
 	query := fmt.Sprintf(`
 		SELECT
 			m.id, m.account_id, m.event_id, m.event_name, m.timestamp, m.duration_seconds,
-			m.player_wins, m.opponent_wins, m.player_team_id, m.deck_id, d.format,
+			m.player_wins, m.opponent_wins, m.player_team_id, m.deck_id, d.format, d.name,
 			m.rank_before, m.rank_after, m.format, m.result, m.result_reason,
 			m.opponent_name, m.opponent_id, m.created_at
 		%s
@@ -1416,6 +1417,7 @@ func (r *matchRepository) GetMatchesForMLProcessing(ctx context.Context, filter 
 			&match.PlayerTeamID,
 			&match.DeckID,
 			&match.DeckFormat,
+			&match.DeckName,
 			&match.RankBefore,
 			&match.RankAfter,
 			&match.Format,
