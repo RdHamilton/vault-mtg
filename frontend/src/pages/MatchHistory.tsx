@@ -278,7 +278,9 @@ const MatchHistory = () => {
         decks.set(match.DeckID, match.DeckName);
       }
     });
-    return Array.from(decks.entries()).map(([id, name]) => ({ id, name }));
+    return Array.from(decks.entries())
+      .map(([id, name]) => ({ id, name }))
+      .sort((a, b) => a.name.localeCompare(b.name));
   }, [matchList]);
 
   const getSortIcon = (field: SortField) => {

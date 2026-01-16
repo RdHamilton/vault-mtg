@@ -28,10 +28,10 @@ func TestNormalizeMatchFormat(t *testing.T) {
 		{"HistoricBrawl_Play returns HistoricBrawl", "HistoricBrawl_Play", "HistoricBrawl"},
 		{"Brawl returns Brawl", "Brawl", "Brawl"},
 
-		// Traditional Standard
-		{"TraditionalStandard returns TraditionalStandard", "TraditionalStandard", "TraditionalStandard"},
-		{"TraditionalStandard_Ladder returns TraditionalStandard", "TraditionalStandard_Ladder", "TraditionalStandard"},
-		{"Traditional_Standard returns Traditional_Standard", "Traditional_Standard", "Traditional_Standard"},
+		// Traditional Standard (stored as "Standard" in deck formats)
+		{"TraditionalStandard returns Standard", "TraditionalStandard", "Standard"},
+		{"TraditionalStandard_Ladder returns Standard", "TraditionalStandard_Ladder", "Standard"},
+		{"Traditional_Standard returns Standard", "Traditional_Standard", "Standard"},
 
 		// Draft formats -> Limited
 		{"QuickDraft_TLA returns Limited", "QuickDraft_TLA_20251127", "Limited"},

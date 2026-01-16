@@ -169,6 +169,11 @@ th[style*="cursor: pointer"]:hover {
   transform: translateY(0);
 }
 
+.compare-btn:focus-visible {
+  outline: 2px solid #a5b4fc;
+  outline-offset: 2px;
+}
+
 /* Comparison Panel Overlay */
 .comparison-panel-overlay {
   position: fixed;

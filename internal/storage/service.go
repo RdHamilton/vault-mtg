@@ -1086,10 +1086,14 @@ func (s *Service) CleanupStaleArenaDecks(ctx context.Context, currentDeckIDs []s
 // normalizeMatchFormat extracts the base format from match event names.
 // E.g., "Ladder" -> "Standard", "Alchemy_Ladder" -> "Alchemy", "Historic_Play" -> "Historic"
 func normalizeMatchFormat(format string) string {
+	// Traditional Standard is stored as "Standard" in deck formats, so normalize to "Standard"
+	if strings.HasPrefix(format, "TraditionalStandard") || strings.HasPrefix(format, "Traditional_Standard") {
+		return "Standard"
+	}
+
 	// Handle format-specific event prefixes
 	// NOTE: Order matters - more specific prefixes (HistoricBrawl) must come before less specific (Historic)
 	formatPrefixes := []string{
-		"TraditionalStandard", "Traditional_Standard",
 		"HistoricBrawl", "Brawl", // Brawl formats before Historic
 		"Alchemy", "Historic", "Explorer", "Timeless",
 	}
@@ -1226,16 +1230,18 @@ func (s *Service) InferDeckIDsForMatches(ctx context.Context) (int, error) {
 			}
 		}
 
-		// Prefer format-matched deck, fall back to closest timestamp if no format match
-		if bestDeckWithFormat != nil {
+		// Prefer format-matched deck, but only if it's within the time window
+		// This prevents a far-away format-matched deck from blocking a valid time-window fallback
+		formatMatched := false
+		if bestDeckWithFormat != nil && minDiffWithFormat <= maxTimeDiff {
 			bestDeck = bestDeckWithFormat
 			minDiff = minDiffWithFormat
+			formatMatched = true
 		}
 
 		// Determine if we should link this match to the best deck
 		shouldLink := false
 		var linkReason string
-		formatMatched := bestDeckWithFormat != nil
 
 		if bestDeck != nil && minDiff <= maxTimeDiff {
 			shouldLink = true
