@@ -81,7 +81,7 @@ func (h *ExportHandler) ExportCollection(w http.ResponseWriter, r *http.Request)
 
 // DeckExportRequest represents a request to export a deck.
 type DeckExportRequest struct {
-	DeckID string `json:"deck_id"`
+	DeckID string `json:"deckID"`
 	Format string `json:"format"` // "json", "mtga", "arena", "text"
 }
 

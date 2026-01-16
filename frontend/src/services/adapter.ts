@@ -358,9 +358,9 @@ export function createRestApiClient(): Record<string, (...args: any[]) => Promis
     // Stats methods
     GetTrendAnalysis: (startDate: Date, endDate: Date, periodType: string, formats: string[]) =>
       api.matches.getTrendAnalysis({
-        start_date: startDate.toISOString().split('T')[0],
-        end_date: endDate.toISOString().split('T')[0],
-        period_type: periodType,
+        startDate: startDate.toISOString().split('T')[0],
+        endDate: endDate.toISOString().split('T')[0],
+        periodType: periodType,
         formats,
       }),
     GetStatsByDeck: async () => ({}),

@@ -76,7 +76,7 @@ export async function getCardRatings(
 export async function getCollectionQuantities(
   arenaIds: number[]
 ): Promise<Record<number, number>> {
-  return post<Record<number, number>>('/cards/collection-quantities', { arena_ids: arenaIds });
+  return post<Record<number, number>>('/cards/collection-quantities', { arenaIDs: arenaIds });
 }
 
 /**
@@ -107,7 +107,7 @@ export async function searchCardsWithCollection(
 ): Promise<CardWithCollection[]> {
   return post<CardWithCollection[]>('/cards/search-with-collection', {
     query,
-    set_codes: sets,
+    setCodes: sets,
     limit,
   });
 }

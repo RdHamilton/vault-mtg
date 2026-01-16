@@ -64,9 +64,9 @@ const WinRateTrend = () => {
       };
 
       const data = await matches.getTrendAnalysis({
-        start_date: formatDate(start),
-        end_date: formatDate(now),
-        period_type: periodType,
+        startDate: formatDate(start),
+        endDate: formatDate(now),
+        periodType: periodType,
         formats: formats || undefined,
       });
       setAnalysis(data as storage.TrendAnalysis);

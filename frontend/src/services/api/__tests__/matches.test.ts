@@ -38,22 +38,22 @@ describe('matches API', () => {
       const result = matches.statsFilterToRequest(filter);
 
       expect(result).toEqual({
-        account_id: 123,
-        start_date: '2024-01-01',
-        end_date: '2024-01-31',
+        accountID: 123,
+        startDate: '2024-01-01',
+        endDate: '2024-01-31',
         format: 'standard',
         formats: ['standard', 'historic'],
-        deck_format: 'standard',
-        deck_id: 'deck-123',
-        event_name: 'Ranked',
-        event_names: ['Ranked', 'Premier'],
-        opponent_name: 'opponent',
-        opponent_id: 'opp-123',
+        deckFormat: 'standard',
+        deckID: 'deck-123',
+        eventName: 'Ranked',
+        eventNames: ['Ranked', 'Premier'],
+        opponentName: 'opponent',
+        opponentID: 'opp-123',
         result: 'win',
-        rank_class: 'Gold',
-        rank_min_class: 'Silver',
-        rank_max_class: 'Platinum',
-        result_reason: 'concede',
+        rankClass: 'Gold',
+        rankMinClass: 'Silver',
+        rankMaxClass: 'Platinum',
+        resultReason: 'concede',
       });
     });
 
@@ -62,22 +62,22 @@ describe('matches API', () => {
       const result = matches.statsFilterToRequest(filter);
 
       expect(result).toEqual({
-        account_id: undefined,
-        start_date: undefined,
-        end_date: undefined,
+        accountID: undefined,
+        startDate: undefined,
+        endDate: undefined,
         format: undefined,
         formats: undefined,
-        deck_format: undefined,
-        deck_id: undefined,
-        event_name: undefined,
-        event_names: undefined,
-        opponent_name: undefined,
-        opponent_id: undefined,
+        deckFormat: undefined,
+        deckID: undefined,
+        eventName: undefined,
+        eventNames: undefined,
+        opponentName: undefined,
+        opponentID: undefined,
         result: undefined,
-        rank_class: undefined,
-        rank_min_class: undefined,
-        rank_max_class: undefined,
-        result_reason: undefined,
+        rankClass: undefined,
+        rankMinClass: undefined,
+        rankMaxClass: undefined,
+        resultReason: undefined,
       });
     });
 
@@ -89,8 +89,8 @@ describe('matches API', () => {
 
       const result = matches.statsFilterToRequest(filter);
 
-      expect(result.start_date).toBe('2024-01-01');
-      expect(result.end_date).toBe('2024-01-31');
+      expect(result.startDate).toBe('2024-01-01');
+      expect(result.endDate).toBe('2024-01-31');
     });
   });
 

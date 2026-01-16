@@ -100,7 +100,7 @@ export default function MatchComparisonPanel({
           }
           comparisonResult = await compareFormats({
             formats: selectedFormats,
-            base_filter: baseFilter,
+            baseFilter: baseFilter,
           });
           break;
         case 'decks':
@@ -110,8 +110,8 @@ export default function MatchComparisonPanel({
             return;
           }
           comparisonResult = await compareDecks({
-            deck_ids: selectedDecks,
-            base_filter: baseFilter,
+            deckIDs: selectedDecks,
+            baseFilter: baseFilter,
           });
           break;
         case 'time-periods':
@@ -123,10 +123,10 @@ export default function MatchComparisonPanel({
           comparisonResult = await compareTimePeriods({
             periods: selectedPeriods.map((p) => ({
               label: p.label,
-              start_date: p.startDate,
-              end_date: p.endDate,
+              startDate: p.startDate,
+              endDate: p.endDate,
             })),
-            base_filter: baseFilter,
+            baseFilter: baseFilter,
           });
           break;
         default:

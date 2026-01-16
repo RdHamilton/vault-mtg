@@ -146,7 +146,7 @@ func (h *CardHandler) GetRatings(w http.ResponseWriter, r *http.Request) {
 
 // BulkCardsRequest represents a request for multiple cards.
 type BulkCardsRequest struct {
-	ArenaIDs []int `json:"arena_ids"`
+	ArenaIDs []int `json:"arenaIDs"`
 }
 
 // GetCardsBulk returns collection quantities for multiple cards by Arena ID.
@@ -212,7 +212,7 @@ func (h *CardHandler) RefreshSetCards(w http.ResponseWriter, r *http.Request) {
 
 // FetchRatingsRequest represents a request to fetch ratings.
 type FetchRatingsRequest struct {
-	DraftFormat string `json:"draft_format"`
+	DraftFormat string `json:"draftFormat"`
 }
 
 // FetchSetRatings fetches and caches 17Lands ratings for a set.
@@ -434,9 +434,9 @@ func (h *CardHandler) GetRatingsWithEvent(w http.ResponseWriter, r *http.Request
 // SearchWithCollectionRequest represents a search request with collection filter.
 type SearchWithCollectionRequest struct {
 	Query          string   `json:"query"`
-	SetCodes       []string `json:"set_codes,omitempty"`
+	SetCodes       []string `json:"setCodes,omitempty"`
 	Limit          int      `json:"limit,omitempty"`
-	CollectionOnly bool     `json:"collection_only,omitempty"`
+	CollectionOnly bool     `json:"collectionOnly,omitempty"`
 }
 
 // SearchCardsWithCollection searches for cards and includes collection ownership.

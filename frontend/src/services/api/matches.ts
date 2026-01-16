@@ -16,31 +16,31 @@ export type PerformanceMetrics = models.PerformanceMetrics;
  * Filter request for API calls.
  */
 export interface StatsFilterRequest {
-  account_id?: number;
-  start_date?: string;
-  end_date?: string;
+  accountID?: number;
+  startDate?: string;
+  endDate?: string;
   format?: string;
   formats?: string[];
-  deck_format?: string;
-  deck_id?: string;
-  event_name?: string;
-  event_names?: string[];
-  opponent_name?: string;
-  opponent_id?: string;
+  deckFormat?: string;
+  deckID?: string;
+  eventName?: string;
+  eventNames?: string[];
+  opponentName?: string;
+  opponentID?: string;
   result?: string;
-  rank_class?: string;
-  rank_min_class?: string;
-  rank_max_class?: string;
-  result_reason?: string;
+  rankClass?: string;
+  rankMinClass?: string;
+  rankMaxClass?: string;
+  resultReason?: string;
 }
 
 /**
  * Trend analysis request.
  */
 export interface TrendAnalysisRequest {
-  start_date: string;
-  end_date: string;
-  period_type: string;
+  startDate: string;
+  endDate: string;
+  periodType: string;
   formats?: string[];
 }
 
@@ -196,22 +196,22 @@ function formatDateParam(date: unknown): string | undefined {
  */
 export function statsFilterToRequest(filter: StatsFilter): StatsFilterRequest {
   return {
-    account_id: filter.AccountID,
-    start_date: formatDateParam(filter.StartDate),
-    end_date: formatDateParam(filter.EndDate),
+    accountID: filter.AccountID,
+    startDate: formatDateParam(filter.StartDate),
+    endDate: formatDateParam(filter.EndDate),
     format: filter.Format,
     formats: filter.Formats,
-    deck_format: filter.DeckFormat,
-    deck_id: filter.DeckID,
-    event_name: filter.EventName,
-    event_names: filter.EventNames,
-    opponent_name: filter.OpponentName,
-    opponent_id: filter.OpponentID,
+    deckFormat: filter.DeckFormat,
+    deckID: filter.DeckID,
+    eventName: filter.EventName,
+    eventNames: filter.EventNames,
+    opponentName: filter.OpponentName,
+    opponentID: filter.OpponentID,
     result: filter.Result,
-    rank_class: filter.RankClass,
-    rank_min_class: filter.RankMinClass,
-    rank_max_class: filter.RankMaxClass,
-    result_reason: filter.ResultReason,
+    rankClass: filter.RankClass,
+    rankMinClass: filter.RankMinClass,
+    rankMaxClass: filter.RankMaxClass,
+    resultReason: filter.ResultReason,
   };
 }
 
@@ -268,23 +268,23 @@ export interface CompareMatchesRequest {
 
 export interface CompareFormatsRequest {
   formats: string[];
-  base_filter?: StatsFilterRequest;
+  baseFilter?: StatsFilterRequest;
 }
 
 export interface CompareDecksRequest {
-  deck_ids: string[];
-  base_filter?: StatsFilterRequest;
+  deckIDs: string[];
+  baseFilter?: StatsFilterRequest;
 }
 
 export interface TimePeriodRequest {
   label: string;
-  start_date: string;
-  end_date: string;
+  startDate: string;
+  endDate: string;
 }
 
 export interface CompareTimePeriodsRequest {
   periods: TimePeriodRequest[];
-  base_filter?: StatsFilterRequest;
+  baseFilter?: StatsFilterRequest;
 }
 
 // ==================

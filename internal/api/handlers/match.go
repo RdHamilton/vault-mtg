@@ -26,22 +26,22 @@ func NewMatchHandler(facade *gui.MatchFacade) *MatchHandler {
 
 // StatsFilterRequest represents the JSON request body for filtering.
 type StatsFilterRequest struct {
-	AccountID    *int     `json:"account_id,omitempty"`
-	StartDate    *string  `json:"start_date,omitempty"`
-	EndDate      *string  `json:"end_date,omitempty"`
+	AccountID    *int     `json:"accountID,omitempty"`
+	StartDate    *string  `json:"startDate,omitempty"`
+	EndDate      *string  `json:"endDate,omitempty"`
 	Format       *string  `json:"format,omitempty"`
 	Formats      []string `json:"formats,omitempty"`
-	DeckFormat   *string  `json:"deck_format,omitempty"`
-	DeckID       *string  `json:"deck_id,omitempty"`
-	EventName    *string  `json:"event_name,omitempty"`
-	EventNames   []string `json:"event_names,omitempty"`
-	OpponentName *string  `json:"opponent_name,omitempty"`
-	OpponentID   *string  `json:"opponent_id,omitempty"`
+	DeckFormat   *string  `json:"deckFormat,omitempty"`
+	DeckID       *string  `json:"deckID,omitempty"`
+	EventName    *string  `json:"eventName,omitempty"`
+	EventNames   []string `json:"eventNames,omitempty"`
+	OpponentName *string  `json:"opponentName,omitempty"`
+	OpponentID   *string  `json:"opponentID,omitempty"`
 	Result       *string  `json:"result,omitempty"`
-	RankClass    *string  `json:"rank_class,omitempty"`
-	RankMinClass *string  `json:"rank_min_class,omitempty"`
-	RankMaxClass *string  `json:"rank_max_class,omitempty"`
-	ResultReason *string  `json:"result_reason,omitempty"`
+	RankClass    *string  `json:"rankClass,omitempty"`
+	RankMinClass *string  `json:"rankMinClass,omitempty"`
+	RankMaxClass *string  `json:"rankMaxClass,omitempty"`
+	ResultReason *string  `json:"resultReason,omitempty"`
 }
 
 // ToStatsFilter converts the request to a StatsFilter model.
@@ -164,9 +164,9 @@ func (h *MatchHandler) GetStats(w http.ResponseWriter, r *http.Request) {
 
 // TrendAnalysisRequest represents a request for trend analysis.
 type TrendAnalysisRequest struct {
-	StartDate  string   `json:"start_date"`
-	EndDate    string   `json:"end_date"`
-	PeriodType string   `json:"period_type"`
+	StartDate  string   `json:"startDate"`
+	EndDate    string   `json:"endDate"`
+	PeriodType string   `json:"periodType"`
 	Formats    []string `json:"formats,omitempty"`
 }
 
@@ -407,26 +407,26 @@ type CompareMatchesRequest struct {
 // CompareFormatsRequest represents a request to compare formats.
 type CompareFormatsRequest struct {
 	Formats    []string           `json:"formats"`
-	BaseFilter StatsFilterRequest `json:"base_filter,omitempty"`
+	BaseFilter StatsFilterRequest `json:"baseFilter,omitempty"`
 }
 
 // CompareDecksRequest represents a request to compare decks.
 type CompareDecksRequest struct {
-	DeckIDs    []string           `json:"deck_ids"`
-	BaseFilter StatsFilterRequest `json:"base_filter,omitempty"`
+	DeckIDs    []string           `json:"deckIDs"`
+	BaseFilter StatsFilterRequest `json:"baseFilter,omitempty"`
 }
 
 // TimePeriodRequest represents a time period for comparison.
 type TimePeriodRequest struct {
 	Label     string `json:"label"`
-	StartDate string `json:"start_date"`
-	EndDate   string `json:"end_date"`
+	StartDate string `json:"startDate"`
+	EndDate   string `json:"endDate"`
 }
 
 // CompareTimePeriodsRequest represents a request to compare time periods.
 type CompareTimePeriodsRequest struct {
 	Periods    []TimePeriodRequest `json:"periods"`
-	BaseFilter StatsFilterRequest  `json:"base_filter,omitempty"`
+	BaseFilter StatsFilterRequest  `json:"baseFilter,omitempty"`
 }
 
 // CompareMatches compares multiple groups of matches.

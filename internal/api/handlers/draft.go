@@ -27,8 +27,8 @@ func NewDraftHandler(facade *gui.DraftFacade) *DraftHandler {
 
 // DraftFilterRequest represents the JSON request body for draft filtering.
 type DraftFilterRequest struct {
-	SetCode   *string `json:"set_code,omitempty"`
-	DraftType *string `json:"draft_type,omitempty"`
+	SetCode   *string `json:"setCode,omitempty"`
+	DraftType *string `json:"draftType,omitempty"`
 	Status    *string `json:"status,omitempty"`
 	Limit     int     `json:"limit,omitempty"`
 }
@@ -222,8 +222,8 @@ func (h *DraftHandler) GetDraftDeckMetrics(w http.ResponseWriter, r *http.Reques
 
 // DraftStatsRequest represents a request for draft statistics.
 type DraftStatsRequest struct {
-	SetCode   *string `json:"set_code,omitempty"`
-	DraftType *string `json:"draft_type,omitempty"`
+	SetCode   *string `json:"setCode,omitempty"`
+	DraftType *string `json:"draftType,omitempty"`
 }
 
 // GetDraftStats returns draft performance metrics.
@@ -277,9 +277,9 @@ func (h *DraftHandler) GetRecentDrafts(w http.ResponseWriter, r *http.Request) {
 
 // GradePickRequest represents a request to grade a draft pick.
 type GradePickRequest struct {
-	SessionID  string `json:"session_id"`
-	PackNumber int    `json:"pack_number"`
-	PickNumber int    `json:"pick_number"`
+	SessionID  string `json:"sessionID"`
+	PackNumber int    `json:"packNumber"`
+	PickNumber int    `json:"pickNumber"`
 }
 
 // GradePick grades a draft pick using pick alternatives.
@@ -301,8 +301,8 @@ func (h *DraftHandler) GradePick(w http.ResponseWriter, r *http.Request) {
 
 // DraftInsightsRequest represents a request for draft insights.
 type DraftInsightsRequest struct {
-	SetCode     string `json:"set_code"`
-	DraftFormat string `json:"draft_format"`
+	SetCode     string `json:"setCode"`
+	DraftFormat string `json:"draftFormat"`
 }
 
 // GetDraftInsights returns format insights for a set.
@@ -324,7 +324,7 @@ func (h *DraftHandler) GetDraftInsights(w http.ResponseWriter, r *http.Request) 
 
 // WinProbabilityRequest represents a request for win probability prediction.
 type WinProbabilityRequest struct {
-	SessionID string `json:"session_id"`
+	SessionID string `json:"sessionID"`
 }
 
 // PredictWinProbability predicts win probability for a draft.
@@ -363,8 +363,8 @@ func (h *DraftHandler) GetDraftPacks(w http.ResponseWriter, r *http.Request) {
 
 // MissingCardsRequest represents a request for missing cards analysis.
 type MissingCardsRequest struct {
-	PackNum int `json:"pack_num"`
-	PickNum int `json:"pick_num"`
+	PackNum int `json:"packNum"`
+	PickNum int `json:"pickNum"`
 }
 
 // GetMissingCards returns missing cards analysis for a pick.
@@ -458,7 +458,7 @@ func (h *DraftHandler) RepairSession(w http.ResponseWriter, r *http.Request) {
 
 // RecalculateSetGradesRequest represents a request to recalculate grades for a set.
 type RecalculateSetGradesRequest struct {
-	SetCode string `json:"set_code"`
+	SetCode string `json:"setCode"`
 }
 
 // RecalculateSetGrades recalculates all draft grades for a specific set.
@@ -490,8 +490,8 @@ func (h *DraftHandler) RecalculateSetGrades(w http.ResponseWriter, r *http.Reque
 
 // ArchetypeCardsRequest represents a request for archetype cards.
 type ArchetypeCardsRequest struct {
-	SetCode     string `json:"set_code"`
-	DraftFormat string `json:"draft_format"`
+	SetCode     string `json:"setCode"`
+	DraftFormat string `json:"draftFormat"`
 	Colors      string `json:"colors"`
 }
 
@@ -582,9 +582,9 @@ func (h *DraftHandler) GetExportableDrafts(w http.ResponseWriter, r *http.Reques
 
 // TemporalTrendsRequest represents a request for temporal performance trends.
 type TemporalTrendsRequest struct {
-	PeriodType string  `json:"period_type"` // "weekly" or "monthly"
-	NumPeriods int     `json:"num_periods"` // Number of periods to return (default 12)
-	SetCode    *string `json:"set_code"`    // Optional: filter by set
+	PeriodType string  `json:"periodType"` // "weekly" or "monthly"
+	NumPeriods int     `json:"numPeriods"` // Number of periods to return (default 12)
+	SetCode    *string `json:"setCode"`    // Optional: filter by set
 }
 
 // GetTemporalTrends returns temporal performance trends (win rate over time).
@@ -631,8 +631,8 @@ func (h *DraftHandler) GetLearningCurve(w http.ResponseWriter, r *http.Request) 
 
 // CommunityComparisonRequest represents a request for community comparison.
 type CommunityComparisonRequest struct {
-	SetCode     string `json:"set_code"`
-	DraftFormat string `json:"draft_format"` // Optional, defaults to "PremierDraft"
+	SetCode     string `json:"setCode"`
+	DraftFormat string `json:"draftFormat"` // Optional, defaults to "PremierDraft"
 }
 
 // GetCommunityComparison returns a comparison of user performance vs community averages.
