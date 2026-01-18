@@ -144,6 +144,9 @@ func (us *UnifiedScorer) ScoreCards(cardList []*cards.Card, analysis *DeckAnalys
 	scores := make([]*CardScore, 0, len(cardList))
 
 	for _, card := range cardList {
+		if card == nil {
+			continue
+		}
 		var ratings *RatingData
 		if ratingsMap != nil {
 			ratings = ratingsMap[card.ArenaID]

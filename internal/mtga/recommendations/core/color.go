@@ -59,8 +59,8 @@ func (cs *ColorScorer) ScoreColorFit(card *cards.Card, deckColors []string) (flo
 	if matchingColors > 0 {
 		ratio := float64(matchingColors) / float64(len(cardColors))
 		if cs.AllowSplash {
-			// Apply splash penalty
-			score := ratio*(1.0-cs.SplashPenalty) + cs.SplashPenalty*ratio
+			// Apply splash penalty as a multiplier to reduce score for partial matches
+			score := ratio * cs.SplashPenalty
 			return score, fmt.Sprintf("partial color match (%d/%d colors)", matchingColors, len(cardColors))
 		}
 		return ratio, fmt.Sprintf("partial color match (%d/%d colors)", matchingColors, len(cardColors))

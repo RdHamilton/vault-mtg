@@ -63,7 +63,7 @@ func NewControlCurveScorer() *CurveScorer {
 			6: 0.15, // 15% 6+ drops
 		},
 		TargetAverageCMC: 3.5,
-		MaxCMC:           7,
+		MaxCMC:           6,
 	}
 }
 

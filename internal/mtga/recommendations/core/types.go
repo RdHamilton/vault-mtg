@@ -110,8 +110,14 @@ func AnalyzeDeck(deckCards []*cards.Card) *DeckAnalysis {
 
 		analysis.TotalCards++
 
-		// Count colors
-		for _, color := range card.Colors {
+		// Count colors (include both Colors and ColorIdentity, deduplicated per card)
+		seenColors := make(map[string]bool)
+		allColors := append(card.Colors, card.ColorIdentity...)
+		for _, color := range allColors {
+			if seenColors[color] {
+				continue
+			}
+			seenColors[color] = true
 			analysis.ColorCounts[color]++
 			if !containsString(analysis.ColorIdentity, color) {
 				analysis.ColorIdentity = append(analysis.ColorIdentity, color)
@@ -147,8 +153,13 @@ func AnalyzeDeck(deckCards []*cards.Card) *DeckAnalysis {
 		} else {
 			// Track CMC for non-land cards
 			cmc := int(card.CMC)
-			if cmc >= 0 && cmc < len(analysis.ManaCurve) {
-				analysis.ManaCurve[cmc]++
+			if cmc >= 0 {
+				// Clamp high CMC cards to the last bucket
+				cmcBucket := cmc
+				if cmcBucket >= len(analysis.ManaCurve) {
+					cmcBucket = len(analysis.ManaCurve) - 1
+				}
+				analysis.ManaCurve[cmcBucket]++
 			}
 			totalCMC += cmc
 			nonLandCount++

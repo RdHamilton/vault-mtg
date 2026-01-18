@@ -30,7 +30,7 @@ func TestNewControlCurveScorer(t *testing.T) {
 	scorer := NewControlCurveScorer()
 
 	assert.Equal(t, 3.5, scorer.TargetAverageCMC)
-	assert.Equal(t, 7, scorer.MaxCMC)
+	assert.Equal(t, 6, scorer.MaxCMC) // Aligned with 6+ bucket in TargetCurve
 	// Control wants fewer 1 drops
 	assert.Less(t, scorer.TargetCurve[1], 0.10)
 }

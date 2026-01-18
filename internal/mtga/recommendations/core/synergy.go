@@ -144,9 +144,13 @@ func (ss *SynergyScorer) scoreKeywordSynergy(oracleText string, analysis *DeckAn
 	}
 
 	// Score increases with matches but with diminishing returns
-	// 1 match = 0.5, 2 matches = 0.7, 3+ matches = 0.85+
+	// 1 match = 0.5, 2 matches = 0.7, 3+ matches = 0.85+ (capped at 1.0)
 	if matchCount >= 3 {
-		return 0.85 + float64(matchCount-3)*0.05
+		score := 0.85 + float64(matchCount-3)*0.05
+		if score > 1.0 {
+			score = 1.0
+		}
+		return score
 	}
 	if matchCount == 2 {
 		return 0.7

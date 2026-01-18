@@ -28,4 +28,3 @@ func extractCreatureTypes(typeLine string) []string {
 
 	return types
 }
-
