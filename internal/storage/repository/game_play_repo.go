@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"sort"
 
 	"github.com/ramonehamilton/MTGA-Companion/internal/storage/models"
 )
@@ -68,9 +69,10 @@ func NewGamePlayRepository(db *sql.DB) GamePlayRepository {
 }
 
 // CreatePlay inserts a new game play record.
+// Uses INSERT OR IGNORE to skip duplicates based on (game_id, sequence_number) unique constraint.
 func (r *gamePlayRepository) CreatePlay(ctx context.Context, play *models.GamePlay) error {
 	query := `
-		INSERT INTO game_plays (
+		INSERT OR IGNORE INTO game_plays (
 			game_id, match_id, turn_number, phase, step, player_type, action_type,
 			card_id, card_name, zone_from, zone_to, life_from, life_to, timestamp, sequence_number
 		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
@@ -99,16 +101,25 @@ func (r *gamePlayRepository) CreatePlay(ctx context.Context, play *models.GamePl
 		return fmt.Errorf("failed to create game play: %w", err)
 	}
 
-	id, err := result.LastInsertId()
+	rowsAffected, err := result.RowsAffected()
 	if err != nil {
-		return fmt.Errorf("failed to get last insert id: %w", err)
+		return fmt.Errorf("failed to get rows affected: %w", err)
 	}
-	play.ID = int(id)
+
+	// Only get the ID if a row was actually inserted (not ignored due to duplicate)
+	if rowsAffected > 0 {
+		id, err := result.LastInsertId()
+		if err != nil {
+			return fmt.Errorf("failed to get last insert id: %w", err)
+		}
+		play.ID = int(id)
+	}
 
 	return nil
 }
 
 // CreatePlays inserts multiple game plays in a batch.
+// Uses INSERT OR IGNORE to skip duplicates based on (game_id, sequence_number) unique constraint.
 func (r *gamePlayRepository) CreatePlays(ctx context.Context, plays []*models.GamePlay) error {
 	if len(plays) == 0 {
 		return nil
@@ -123,7 +134,7 @@ func (r *gamePlayRepository) CreatePlays(ctx context.Context, plays []*models.Ga
 	}()
 
 	query := `
-		INSERT INTO game_plays (
+		INSERT OR IGNORE INTO game_plays (
 			game_id, match_id, turn_number, phase, step, player_type, action_type,
 			card_id, card_name, zone_from, zone_to, life_from, life_to, timestamp, sequence_number
 		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
@@ -160,11 +171,18 @@ func (r *gamePlayRepository) CreatePlays(ctx context.Context, plays []*models.Ga
 			return fmt.Errorf("failed to insert game play: %w", err)
 		}
 
-		id, err := result.LastInsertId()
+		// Only set ID if a row was actually inserted (not ignored due to duplicate)
+		rowsAffected, err := result.RowsAffected()
 		if err != nil {
-			return fmt.Errorf("failed to get last insert id: %w", err)
+			return fmt.Errorf("failed to get rows affected: %w", err)
 		}
-		play.ID = int(id)
+		if rowsAffected > 0 {
+			id, err := result.LastInsertId()
+			if err != nil {
+				return fmt.Errorf("failed to get last insert id: %w", err)
+			}
+			play.ID = int(id)
+		}
 	}
 
 	if err = tx.Commit(); err != nil {
@@ -346,16 +364,18 @@ func (r *gamePlayRepository) RecordOpponentCard(ctx context.Context, card *model
 }
 
 // GetPlaysByMatch retrieves all plays for a match, ordered by sequence number.
-// Card names are resolved by joining with set_cards table using arena_id.
+// Card names are resolved in order: 1) stored card_name, 2) set_cards (Scryfall),
+// 3) draft_card_ratings (17Lands), 4) "Card #<id>" fallback.
 func (r *gamePlayRepository) GetPlaysByMatch(ctx context.Context, matchID string) ([]*models.GamePlay, error) {
 	query := `
 		SELECT gp.id, gp.game_id, gp.match_id, gp.turn_number, gp.phase, gp.step,
 		       gp.player_type, gp.action_type, gp.card_id,
-		       COALESCE(gp.card_name, sc.name) as card_name,
+		       COALESCE(gp.card_name, sc.name, dcr.name, CASE WHEN gp.card_id IS NOT NULL THEN 'Card #' || gp.card_id ELSE NULL END) as card_name,
 		       gp.zone_from, gp.zone_to, gp.life_from, gp.life_to,
 		       gp.timestamp, gp.sequence_number, gp.created_at
 		FROM game_plays gp
 		LEFT JOIN set_cards sc ON CAST(gp.card_id AS TEXT) = sc.arena_id
+		LEFT JOIN (SELECT DISTINCT arena_id, name FROM draft_card_ratings) dcr ON CAST(gp.card_id AS TEXT) = dcr.arena_id
 		WHERE gp.match_id = ?
 		ORDER BY gp.sequence_number ASC
 	`
@@ -372,16 +392,18 @@ func (r *gamePlayRepository) GetPlaysByMatch(ctx context.Context, matchID string
 }
 
 // GetPlaysByGame retrieves all plays for a specific game within a match.
-// Card names are resolved by joining with set_cards table using arena_id.
+// Card names are resolved in order: 1) stored card_name, 2) set_cards (Scryfall),
+// 3) draft_card_ratings (17Lands), 4) "Card #<id>" fallback.
 func (r *gamePlayRepository) GetPlaysByGame(ctx context.Context, gameID int) ([]*models.GamePlay, error) {
 	query := `
 		SELECT gp.id, gp.game_id, gp.match_id, gp.turn_number, gp.phase, gp.step,
 		       gp.player_type, gp.action_type, gp.card_id,
-		       COALESCE(gp.card_name, sc.name) as card_name,
+		       COALESCE(gp.card_name, sc.name, dcr.name, CASE WHEN gp.card_id IS NOT NULL THEN 'Card #' || gp.card_id ELSE NULL END) as card_name,
 		       gp.zone_from, gp.zone_to, gp.life_from, gp.life_to,
 		       gp.timestamp, gp.sequence_number, gp.created_at
 		FROM game_plays gp
 		LEFT JOIN set_cards sc ON CAST(gp.card_id AS TEXT) = sc.arena_id
+		LEFT JOIN (SELECT DISTINCT arena_id, name FROM draft_card_ratings) dcr ON CAST(gp.card_id AS TEXT) = dcr.arena_id
 		WHERE gp.game_id = ?
 		ORDER BY gp.sequence_number ASC
 	`
@@ -522,6 +544,32 @@ func (r *gamePlayRepository) GetPlayTimeline(ctx context.Context, matchID string
 		}
 		playsByGameTurnPhase[key] = append(playsByGameTurnPhase[key], play)
 	}
+
+	// Sort turnPhaseOrder by game ID, then turn number, then phase order
+	// This ensures the timeline is displayed in chronological order
+	phaseOrder := map[string]int{
+		"Beginning": 1,
+		"Main1":     2,
+		"Combat":    3,
+		"Main2":     4,
+		"Ending":    5,
+		"":          6, // Unknown phase goes last
+	}
+	phaseRank := func(phase string) int {
+		if v, ok := phaseOrder[phase]; ok {
+			return v
+		}
+		return 99 // Unknown phases go last
+	}
+	sort.Slice(turnPhaseOrder, func(i, j int) bool {
+		if turnPhaseOrder[i].GameID != turnPhaseOrder[j].GameID {
+			return turnPhaseOrder[i].GameID < turnPhaseOrder[j].GameID
+		}
+		if turnPhaseOrder[i].Turn != turnPhaseOrder[j].Turn {
+			return turnPhaseOrder[i].Turn < turnPhaseOrder[j].Turn
+		}
+		return phaseRank(turnPhaseOrder[i].Phase) < phaseRank(turnPhaseOrder[j].Phase)
+	})
 
 	// Build timeline entries
 	var timeline []*models.PlayTimelineEntry

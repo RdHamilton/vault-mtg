@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/ramonehamilton/MTGA-Companion/internal/mtga/cards/mtgjson"
 	"github.com/ramonehamilton/MTGA-Companion/internal/mtga/cards/scryfall"
 	"github.com/ramonehamilton/MTGA-Companion/internal/mtga/cards/seventeenlands"
 	"github.com/ramonehamilton/MTGA-Companion/internal/storage/models"
@@ -37,11 +38,15 @@ func ExtractScryfallIDFromURL(url string) string {
 
 // MTGASetToScryfall maps MTGA set codes to Scryfall set codes.
 var MTGASetToScryfall = map[string]string{
+	"ECL": "ecl", // Lorwyn Eclipsed
 	"TLA": "tla", // Avatar: The Last Airbender
 	"TDM": "tdm", // Tarkir Dragonstorm
+	"AED": "aed", // Aetherdrift
+	"FDN": "fdn", // Foundations
 	"DSK": "dsk", // Duskmourn: House of Horror
 	"BLB": "blb", // Bloomburrow
 	"OTJ": "otj", // Outlaws of Thunder Junction
+	"BIG": "big", // The Big Score (OTJ bonus sheet)
 	"MKM": "mkm", // Murders at Karlov Manor
 	"LCI": "lci", // The Lost Caverns of Ixalan
 	"WOE": "woe", // Wilds of Eldraine
@@ -72,33 +77,37 @@ var ArenaExclusiveBasicLands = map[int]struct {
 	97567: {"TLA", "Forest"},
 }
 
-// Fetcher handles fetching and caching set cards from Scryfall.
+// Fetcher handles fetching and caching set cards from MTGJSON (primary) or Scryfall (fallback).
 type Fetcher struct {
+	mtgjsonClient  *mtgjson.Client
 	scryfallClient *scryfall.Client
 	setCardRepo    repository.SetCardRepository
 	ratingsRepo    repository.DraftRatingsRepository
 }
 
 // NewFetcher creates a new set card fetcher.
+// Uses MTGJSON as the primary source for card data, with Scryfall and 17Lands as fallbacks.
 func NewFetcher(scryfallClient *scryfall.Client, setCardRepo repository.SetCardRepository, ratingsRepo repository.DraftRatingsRepository) *Fetcher {
 	return &Fetcher{
+		mtgjsonClient:  mtgjson.NewClient(),
 		scryfallClient: scryfallClient,
 		setCardRepo:    setCardRepo,
 		ratingsRepo:    ratingsRepo,
 	}
 }
 
-// FetchAndCacheSet fetches all cards for a set from Scryfall and caches them.
+// FetchAndCacheSet fetches all cards for a set and caches them.
+// Uses MTGJSON as the primary source (has Arena IDs for new sets like ECL),
+// with Scryfall and 17Lands as fallbacks.
 // Returns the number of cards cached.
 func (f *Fetcher) FetchAndCacheSet(ctx context.Context, mtgaSetCode string) (int, error) {
 	log.Printf("[FetchAndCacheSet] Starting fetch for %s", mtgaSetCode)
 
-	// Map MTGA set code to Scryfall set code
+	// Map MTGA set code to Scryfall set code (used for fallback)
 	scryfallSetCode, ok := MTGASetToScryfall[mtgaSetCode]
 	if !ok {
 		scryfallSetCode = strings.ToLower(mtgaSetCode)
 	}
-	log.Printf("[FetchAndCacheSet] Mapped %s -> Scryfall code: %s", mtgaSetCode, scryfallSetCode)
 
 	// Check if set is already cached
 	isCached, err := f.setCardRepo.IsSetCached(ctx, mtgaSetCode)
@@ -108,7 +117,7 @@ func (f *Fetcher) FetchAndCacheSet(ctx context.Context, mtgaSetCode string) (int
 	log.Printf("[FetchAndCacheSet] IsSetCached returned: %v", isCached)
 
 	if isCached {
-		// Check if cached count is complete by comparing to Scryfall's Arena card count
+		// Check if cached count is complete
 		needsRefresh, err := f.checkCacheCompleteness(ctx, mtgaSetCode, scryfallSetCode)
 		if err != nil {
 			log.Printf("[FetchAndCacheSet] Failed to check cache completeness: %v", err)
@@ -122,20 +131,148 @@ func (f *Fetcher) FetchAndCacheSet(ctx context.Context, mtgaSetCode string) (int
 		return 0, nil // Already cached and complete
 	}
 
+	fetchedAt := time.Now()
+
+	// Try MTGJSON first (primary source - has Arena IDs for new sets)
+	count, err := f.fetchFromMTGJSON(ctx, mtgaSetCode, fetchedAt)
+	if err == nil && count > 0 {
+		log.Printf("[FetchAndCacheSet] Successfully fetched %d cards from MTGJSON for %s", count, mtgaSetCode)
+		return count, nil
+	}
+	if err != nil {
+		log.Printf("[FetchAndCacheSet] MTGJSON fetch failed for %s: %v, trying Scryfall fallback", mtgaSetCode, err)
+	} else {
+		log.Printf("[FetchAndCacheSet] MTGJSON returned 0 cards for %s, trying Scryfall fallback", mtgaSetCode)
+	}
+
+	// Fallback to Scryfall
+	count, err = f.fetchFromScryfall(ctx, mtgaSetCode, scryfallSetCode, fetchedAt)
+	if err == nil && count > 0 {
+		log.Printf("[FetchAndCacheSet] Successfully fetched %d cards from Scryfall for %s", count, mtgaSetCode)
+		return count, nil
+	}
+	if err != nil {
+		log.Printf("[FetchAndCacheSet] Scryfall fetch failed for %s: %v", mtgaSetCode, err)
+	}
+
+	// Final fallback to 17Lands for Arena-exclusive sets
+	if f.ratingsRepo != nil {
+		log.Printf("[FetchAndCacheSet] Trying 17Lands fallback for %s", mtgaSetCode)
+		count, fallbackErr := f.fetchFrom17Lands(ctx, mtgaSetCode, fetchedAt)
+		if fallbackErr != nil {
+			log.Printf("[FetchAndCacheSet] 17Lands fallback also failed: %v", fallbackErr)
+		} else if count > 0 {
+			return count, nil
+		}
+	}
+
+	if err != nil {
+		return 0, fmt.Errorf("all fetch methods failed for set %s: %w", mtgaSetCode, err)
+	}
+
+	log.Printf("[FetchAndCacheSet] WARNING: No cards found for %s from any source", mtgaSetCode)
+	return 0, nil
+}
+
+// fetchFromMTGJSON fetches cards from MTGJSON API.
+// MTGJSON is the primary source because it has mtgArenaId populated for new sets.
+func (f *Fetcher) fetchFromMTGJSON(ctx context.Context, mtgaSetCode string, fetchedAt time.Time) (int, error) {
+	log.Printf("[fetchFromMTGJSON] Fetching %s from MTGJSON", mtgaSetCode)
+
+	// Fetch set data from MTGJSON
+	setFile, err := f.mtgjsonClient.GetSet(ctx, mtgaSetCode)
+	if err != nil {
+		return 0, fmt.Errorf("MTGJSON fetch failed: %w", err)
+	}
+
+	// Convert MTGJSON cards to SetCard models
+	allCards := make([]*models.SetCard, 0, len(setFile.Data.Cards))
+	cardsWithArenaID := 0
+	cardsWithoutArenaID := 0
+
+	for i := range setFile.Data.Cards {
+		mtgjsonCard := &setFile.Data.Cards[i]
+
+		// Skip cards without Arena IDs (not in MTGA)
+		if !mtgjsonCard.HasArenaID() {
+			cardsWithoutArenaID++
+			continue
+		}
+
+		cardsWithArenaID++
+		card := convertMTGJSONCard(mtgjsonCard, mtgaSetCode, fetchedAt)
+		allCards = append(allCards, card)
+	}
+
+	log.Printf("[fetchFromMTGJSON] Set %s: %d cards with ArenaID, %d without",
+		mtgaSetCode, cardsWithArenaID, cardsWithoutArenaID)
+
+	if len(allCards) == 0 {
+		return 0, nil
+	}
+
+	// Save all cards to database
+	if err := f.setCardRepo.SaveCards(ctx, allCards); err != nil {
+		return 0, fmt.Errorf("save cards to database: %w", err)
+	}
+
+	log.Printf("[fetchFromMTGJSON] Successfully saved %d cards for %s", len(allCards), mtgaSetCode)
+	return len(allCards), nil
+}
+
+// convertMTGJSONCard converts an MTGJSON card to a SetCard model.
+func convertMTGJSONCard(card *mtgjson.Card, setCode string, fetchedAt time.Time) *models.SetCard {
+	// Combine types, supertypes, and subtypes
+	allTypes := make([]string, 0, len(card.Supertypes)+len(card.Types)+len(card.Subtypes))
+	allTypes = append(allTypes, card.Supertypes...)
+	allTypes = append(allTypes, card.Types...)
+	allTypes = append(allTypes, card.Subtypes...)
+
+	// Construct image URLs from Scryfall ID
+	imageURLs := mtgjson.ConstructAllImageURLs(card.Identifiers.ScryfallId)
+
+	// Serialize legalities to JSON
+	legalities := ""
+	if legalitiesJSON, err := json.Marshal(card.Legalities); err == nil {
+		legalities = string(legalitiesJSON)
+	}
+
+	return &models.SetCard{
+		SetCode:       setCode,
+		ArenaID:       card.Identifiers.MtgArenaId,
+		ScryfallID:    card.Identifiers.ScryfallId,
+		Name:          card.Name,
+		ManaCost:      card.ManaCost,
+		CMC:           int(card.ManaValue),
+		Types:         allTypes,
+		Colors:        card.Colors,
+		Rarity:        strings.ToLower(card.Rarity),
+		Text:          card.Text,
+		Power:         card.Power,
+		Toughness:     card.Toughness,
+		ImageURL:      imageURLs.Normal,
+		ImageURLSmall: imageURLs.Small,
+		ImageURLArt:   imageURLs.ArtCrop,
+		FetchedAt:     fetchedAt,
+		Legalities:    legalities,
+	}
+}
+
+// fetchFromScryfall fetches cards from Scryfall API (fallback).
+func (f *Fetcher) fetchFromScryfall(ctx context.Context, mtgaSetCode, scryfallSetCode string, fetchedAt time.Time) (int, error) {
+	log.Printf("[fetchFromScryfall] Fetching %s from Scryfall (code: %s)", mtgaSetCode, scryfallSetCode)
+
 	// Search for all cards in the set (with pagination)
 	query := fmt.Sprintf("set:%s", scryfallSetCode)
 	allCards := []*models.SetCard{}
-	fetchedAt := time.Now()
 	pageNum := 1
 
-	log.Printf("[FetchAndCacheSet] Searching Scryfall with query: %s", query)
 	searchResult, err := f.scryfallClient.SearchCards(ctx, query)
 	if err != nil {
-		log.Printf("[FetchAndCacheSet] Scryfall search failed: %v", err)
-		return 0, fmt.Errorf("search cards for set %s: %w", scryfallSetCode, err)
+		return 0, fmt.Errorf("scryfall search failed: %w", err)
 	}
 
-	log.Printf("[FetchAndCacheSet] First page: found %d cards, hasMore=%v", len(searchResult.Data), searchResult.HasMore)
+	log.Printf("[fetchFromScryfall] First page: found %d cards, hasMore=%v", len(searchResult.Data), searchResult.HasMore)
 
 	// Process first page
 	cardsWithArenaID := 0
@@ -151,7 +288,7 @@ func (f *Fetcher) FetchAndCacheSet(ctx context.Context, mtgaSetCode string) (int
 		card := convertScryfallCard(&scryfallCard, mtgaSetCode, fetchedAt)
 		allCards = append(allCards, card)
 	}
-	log.Printf("[FetchAndCacheSet] Page 1: %d cards with ArenaID, %d without", cardsWithArenaID, cardsWithoutArenaID)
+	log.Printf("[fetchFromScryfall] Page 1: %d cards with ArenaID, %d without", cardsWithArenaID, cardsWithoutArenaID)
 
 	// Handle pagination if there are more results
 	for searchResult.HasMore && searchResult.NextPage != "" {
@@ -177,26 +314,23 @@ func (f *Fetcher) FetchAndCacheSet(ctx context.Context, mtgaSetCode string) (int
 		searchResult = &nextResult
 	}
 
-	// Save all cards to database
-	log.Printf("[FetchAndCacheSet] Total cards to save: %d", len(allCards))
-	if len(allCards) > 0 {
-		if err := f.setCardRepo.SaveCards(ctx, allCards); err != nil {
-			log.Printf("[FetchAndCacheSet] Failed to save cards: %v", err)
-			return 0, fmt.Errorf("save cards to database: %w", err)
+	if len(allCards) == 0 {
+		// If no cards found with Arena IDs, this might be an Arena-exclusive set
+		// Try using 17Lands ratings data which includes Arena IDs
+		log.Printf("[fetchFromScryfall] No cards found with Arena IDs - checking for Arena-exclusive set")
+		if f.ratingsRepo != nil {
+			return f.fetchArenaExclusiveSet(ctx, mtgaSetCode, scryfallSetCode, fetchedAt)
 		}
-		log.Printf("[FetchAndCacheSet] Successfully saved %d cards for %s", len(allCards), mtgaSetCode)
-		return len(allCards), nil
+		return 0, nil
 	}
 
-	// If no cards found with Arena IDs, this might be an Arena-exclusive set
-	// Try using 17Lands ratings data which includes Arena IDs
-	log.Printf("[FetchAndCacheSet] No cards found with Arena IDs - checking 17Lands for Arena-exclusive set")
-	if f.ratingsRepo != nil {
-		return f.fetchArenaExclusiveSet(ctx, mtgaSetCode, scryfallSetCode, fetchedAt)
+	// Save all cards to database
+	if err := f.setCardRepo.SaveCards(ctx, allCards); err != nil {
+		return 0, fmt.Errorf("save cards to database: %w", err)
 	}
 
-	log.Printf("[FetchAndCacheSet] WARNING: No cards found for %s and no ratings repository available", mtgaSetCode)
-	return 0, nil
+	log.Printf("[fetchFromScryfall] Successfully saved %d cards for %s", len(allCards), mtgaSetCode)
+	return len(allCards), nil
 }
 
 // convertScryfallCard converts a Scryfall card to a SetCard model.
@@ -476,6 +610,105 @@ func parseTypeLine(typeLine string) []string {
 	}
 
 	return types
+}
+
+// fetchFrom17Lands creates basic card entries from 17Lands ratings data.
+// Used as a fallback when Scryfall doesn't have the set (e.g., very new sets).
+// This provides card names and Arena IDs but limited metadata.
+func (f *Fetcher) fetchFrom17Lands(ctx context.Context, mtgaSetCode string, fetchedAt time.Time) (int, error) {
+	log.Printf("[fetchFrom17Lands] Attempting to fetch %s from 17Lands data", mtgaSetCode)
+
+	// Try both draft formats and use the one with more ratings
+	premierRatings, _, err := f.ratingsRepo.GetCardRatings(ctx, mtgaSetCode, "PremierDraft")
+	if err != nil {
+		log.Printf("[fetchFrom17Lands] Failed to get PremierDraft ratings: %v", err)
+		premierRatings = nil
+	}
+
+	quickRatings, _, err := f.ratingsRepo.GetCardRatings(ctx, mtgaSetCode, "QuickDraft")
+	if err != nil {
+		log.Printf("[fetchFrom17Lands] Failed to get QuickDraft ratings: %v", err)
+		quickRatings = nil
+	}
+
+	// Use whichever format has more ratings
+	var ratings []seventeenlands.CardRating
+	var formatUsed string
+	if len(premierRatings) >= len(quickRatings) && len(premierRatings) > 0 {
+		ratings = premierRatings
+		formatUsed = "PremierDraft"
+	} else if len(quickRatings) > 0 {
+		ratings = quickRatings
+		formatUsed = "QuickDraft"
+	}
+
+	if len(ratings) == 0 {
+		log.Printf("[fetchFrom17Lands] No 17Lands ratings found for %s in any format", mtgaSetCode)
+		return 0, nil
+	}
+
+	log.Printf("[fetchFrom17Lands] Using %s with %d ratings", formatUsed, len(ratings))
+
+	// Create basic SetCard entries from 17Lands ratings
+	// This provides limited metadata but enables card name resolution
+	allCards := make([]*models.SetCard, 0, len(ratings))
+	seenArenaIDs := make(map[string]bool)
+
+	for _, rating := range ratings {
+		// Skip cards without valid Arena IDs
+		if rating.MTGAID == 0 {
+			continue
+		}
+		arenaID := fmt.Sprintf("%d", rating.MTGAID)
+
+		// Skip duplicates (same card can appear in multiple rating entries)
+		if seenArenaIDs[arenaID] {
+			continue
+		}
+		seenArenaIDs[arenaID] = true
+
+		// Extract Scryfall ID from URL if available
+		scryfallID := ExtractScryfallIDFromURL(rating.URL)
+
+		card := &models.SetCard{
+			SetCode:       mtgaSetCode,
+			ArenaID:       arenaID,
+			ScryfallID:    scryfallID,
+			Name:          rating.Name,
+			Colors:        parseColorString(rating.Color),
+			Rarity:        strings.ToLower(rating.Rarity),
+			ImageURL:      rating.URL, // 17Lands provides Scryfall image URLs
+			ImageURLSmall: strings.Replace(rating.URL, "/large/", "/small/", 1),
+			FetchedAt:     fetchedAt,
+		}
+
+		allCards = append(allCards, card)
+	}
+
+	log.Printf("[fetchFrom17Lands] Created %d card entries from 17Lands data", len(allCards))
+
+	// Save all cards to database
+	if len(allCards) > 0 {
+		if err := f.setCardRepo.SaveCards(ctx, allCards); err != nil {
+			log.Printf("[fetchFrom17Lands] Failed to save cards: %v", err)
+			return 0, fmt.Errorf("save cards to database: %w", err)
+		}
+		log.Printf("[fetchFrom17Lands] Successfully saved %d cards for %s", len(allCards), mtgaSetCode)
+	}
+
+	return len(allCards), nil
+}
+
+// parseColorString converts a 17Lands color string (e.g., "WU", "BRG") to a color slice.
+func parseColorString(colorStr string) []string {
+	if colorStr == "" {
+		return []string{}
+	}
+	colors := make([]string, 0, len(colorStr))
+	for _, c := range colorStr {
+		colors = append(colors, string(c))
+	}
+	return colors
 }
 
 // fetchArenaExclusiveSet handles fetching cards for Arena-exclusive sets (like TLA)

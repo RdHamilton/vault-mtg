@@ -586,16 +586,45 @@ func ParseGamePlays(entries []*LogEntry, playerConn *GREConnection) ([]*GamePlay
 	var plays []*GamePlayEvent
 	sequenceNum := 0
 
+	// Track the current game number from messages that include it.
+	// Many GRE messages don't include gameNumber in gameInfo, so we need to
+	// track it ourselves and apply it to plays from messages missing the field.
+	currentGameNumber := 1 // Default to game 1
+
+	// Track the last valid turn number from messages that include it.
+	// Some GRE messages (especially zone transfers for lands) report turnNumber=0
+	// even though they happen during a valid turn. We carry forward the last valid
+	// turn number to properly attribute these events.
+	lastValidTurnNumber := 1 // Default to turn 1
+
 	// Compare consecutive states to detect changes
 	for i := 1; i < len(messages); i++ {
 		prev := messages[i-1]
 		curr := messages[i]
+
+		// Update tracked game number if this message has a valid one
+		if curr.GameNumber > 0 {
+			currentGameNumber = curr.GameNumber
+		}
+
+		// Update tracked turn number if this message has a valid one
+		if curr.TurnInfo != nil && curr.TurnInfo.TurnNumber > 0 {
+			lastValidTurnNumber = curr.TurnInfo.TurnNumber
+		}
 
 		// Detect life changes
 		lifeChanges := detectLifeChanges(prev, curr, playerConn, lifeTotals)
 		for _, change := range lifeChanges {
 			change.SequenceNumber = sequenceNum
 			sequenceNum++
+			// Apply tracked game number if the message didn't have one
+			if change.GameNumber == 0 {
+				change.GameNumber = currentGameNumber
+			}
+			// Apply tracked turn number if the message had turnNumber=0
+			if change.TurnNumber == 0 {
+				change.TurnNumber = lastValidTurnNumber
+			}
 			plays = append(plays, change)
 		}
 
@@ -604,6 +633,14 @@ func ParseGamePlays(entries []*LogEntry, playerConn *GREConnection) ([]*GamePlay
 		for _, change := range zoneChanges {
 			change.SequenceNumber = sequenceNum
 			sequenceNum++
+			if change.GameNumber == 0 {
+				change.GameNumber = currentGameNumber
+			}
+			// Apply tracked turn number if the message had turnNumber=0
+			// This is especially important for land drops which often have turnNumber=0
+			if change.TurnNumber == 0 {
+				change.TurnNumber = lastValidTurnNumber
+			}
 			plays = append(plays, change)
 		}
 
@@ -612,6 +649,13 @@ func ParseGamePlays(entries []*LogEntry, playerConn *GREConnection) ([]*GamePlay
 		for _, attack := range attacks {
 			attack.SequenceNumber = sequenceNum
 			sequenceNum++
+			if attack.GameNumber == 0 {
+				attack.GameNumber = currentGameNumber
+			}
+			// Apply tracked turn number if the message had turnNumber=0
+			if attack.TurnNumber == 0 {
+				attack.TurnNumber = lastValidTurnNumber
+			}
 			plays = append(plays, attack)
 		}
 
@@ -620,6 +664,13 @@ func ParseGamePlays(entries []*LogEntry, playerConn *GREConnection) ([]*GamePlay
 		for _, block := range blocks {
 			block.SequenceNumber = sequenceNum
 			sequenceNum++
+			if block.GameNumber == 0 {
+				block.GameNumber = currentGameNumber
+			}
+			// Apply tracked turn number if the message had turnNumber=0
+			if block.TurnNumber == 0 {
+				block.TurnNumber = lastValidTurnNumber
+			}
 			plays = append(plays, block)
 		}
 
@@ -646,8 +697,10 @@ func ParseGamePlays(entries []*LogEntry, playerConn *GREConnection) ([]*GamePlay
 func detectLifeChanges(prev, curr *GREGameStateMessage, playerConn *GREConnection, lifeTotals map[int]int) []*GamePlayEvent {
 	var events []*GamePlayEvent
 
-	if curr.TurnInfo == nil {
-		return events
+	// Get turn number safely (may be nil for some game states)
+	turnNumber := 0
+	if curr.TurnInfo != nil {
+		turnNumber = curr.TurnInfo.TurnNumber
 	}
 
 	for _, player := range curr.Players {
@@ -665,7 +718,8 @@ func detectLifeChanges(prev, curr *GREGameStateMessage, playerConn *GREConnectio
 
 		if existed && prevLife != player.LifeTotal {
 			// Skip mulligan-related life changes (turn 0 or very early)
-			if curr.TurnInfo.TurnNumber < 1 {
+			// The caller will apply lastValidTurnNumber to turn 0 events
+			if turnNumber < 1 && curr.TurnInfo != nil {
 				continue
 			}
 
@@ -674,12 +728,20 @@ func detectLifeChanges(prev, curr *GREGameStateMessage, playerConn *GREConnectio
 				playerType = "player"
 			}
 
+			// Extract phase/step safely (TurnInfo may be nil)
+			phase := ""
+			step := ""
+			if curr.TurnInfo != nil {
+				phase = normalizePhase(curr.TurnInfo.Phase)
+				step = normalizeStep(curr.TurnInfo.Step)
+			}
+
 			event := &GamePlayEvent{
 				MatchID:    curr.MatchID,
 				GameNumber: curr.GameNumber,
-				TurnNumber: curr.TurnInfo.TurnNumber,
-				Phase:      normalizePhase(curr.TurnInfo.Phase),
-				Step:       normalizeStep(curr.TurnInfo.Step),
+				TurnNumber: turnNumber,
+				Phase:      phase,
+				Step:       step,
 				PlayerType: playerType,
 				ActionType: "life_change",
 				LifeFrom:   prevLife,
@@ -705,9 +767,9 @@ type trackedObject struct {
 func detectZoneChangesWithZones(prev, curr *GREGameStateMessage, playerConn *GREConnection, zones map[int]*GREZone, trackedObjs map[int]*trackedObject) []*GamePlayEvent {
 	var events []*GamePlayEvent
 
-	if curr.TurnInfo == nil {
-		return events
-	}
+	// Note: We no longer return early when TurnInfo is nil.
+	// Zone changes (especially land drops) often occur in game states without TurnInfo.
+	// The caller (ParseGamePlays) will apply the last valid turn number to events with TurnNumber=0.
 
 	// Build map of previous objects from both the prev message and our tracked state
 	prevObjects := make(map[int]*trackedObject)
@@ -762,12 +824,22 @@ func detectZoneChangesWithZones(prev, curr *GREGameStateMessage, playerConn *GRE
 			continue
 		}
 
+		// Extract turn info safely (may be nil for some game states)
+		turnNumber := 0
+		phase := ""
+		step := ""
+		if curr.TurnInfo != nil {
+			turnNumber = curr.TurnInfo.TurnNumber
+			phase = normalizePhase(curr.TurnInfo.Phase)
+			step = normalizeStep(curr.TurnInfo.Step)
+		}
+
 		event := &GamePlayEvent{
 			MatchID:    curr.MatchID,
 			GameNumber: curr.GameNumber,
-			TurnNumber: curr.TurnInfo.TurnNumber,
-			Phase:      normalizePhase(curr.TurnInfo.Phase),
-			Step:       normalizeStep(curr.TurnInfo.Step),
+			TurnNumber: turnNumber,
+			Phase:      phase,
+			Step:       step,
 			PlayerType: playerType,
 			ActionType: actionType,
 			CardID:     currObj.GRPId,
@@ -833,8 +905,17 @@ func determineActionType(fromZone, toZone string, cardTypes []string) string {
 func detectAttacks(prev, curr *GREGameStateMessage, playerConn *GREConnection) []*GamePlayEvent {
 	var events []*GamePlayEvent
 
-	if curr.TurnInfo == nil {
-		return events
+	// Note: We no longer return early when TurnInfo is nil.
+	// The caller (ParseGamePlays) will apply the last valid turn number to events with TurnNumber=0.
+
+	// Extract turn info safely (may be nil for some game states)
+	turnNumber := 0
+	phase := ""
+	step := ""
+	if curr.TurnInfo != nil {
+		turnNumber = curr.TurnInfo.TurnNumber
+		phase = normalizePhase(curr.TurnInfo.Phase)
+		step = normalizeStep(curr.TurnInfo.Step)
 	}
 
 	// Build map of previous attacking state
@@ -855,9 +936,9 @@ func detectAttacks(prev, curr *GREGameStateMessage, playerConn *GREConnection) [
 			event := &GamePlayEvent{
 				MatchID:    curr.MatchID,
 				GameNumber: curr.GameNumber,
-				TurnNumber: curr.TurnInfo.TurnNumber,
-				Phase:      normalizePhase(curr.TurnInfo.Phase),
-				Step:       normalizeStep(curr.TurnInfo.Step),
+				TurnNumber: turnNumber,
+				Phase:      phase,
+				Step:       step,
 				PlayerType: playerType,
 				ActionType: "attack",
 				CardID:     obj.GRPId,
@@ -876,8 +957,17 @@ func detectAttacks(prev, curr *GREGameStateMessage, playerConn *GREConnection) [
 func detectBlocks(prev, curr *GREGameStateMessage, playerConn *GREConnection) []*GamePlayEvent {
 	var events []*GamePlayEvent
 
-	if curr.TurnInfo == nil {
-		return events
+	// Note: We no longer return early when TurnInfo is nil.
+	// The caller (ParseGamePlays) will apply the last valid turn number to events with TurnNumber=0.
+
+	// Extract turn info safely (may be nil for some game states)
+	turnNumber := 0
+	phase := ""
+	step := ""
+	if curr.TurnInfo != nil {
+		turnNumber = curr.TurnInfo.TurnNumber
+		phase = normalizePhase(curr.TurnInfo.Phase)
+		step = normalizeStep(curr.TurnInfo.Step)
 	}
 
 	// Build map of previous blocking state
@@ -898,9 +988,9 @@ func detectBlocks(prev, curr *GREGameStateMessage, playerConn *GREConnection) []
 			event := &GamePlayEvent{
 				MatchID:    curr.MatchID,
 				GameNumber: curr.GameNumber,
-				TurnNumber: curr.TurnInfo.TurnNumber,
-				Phase:      normalizePhase(curr.TurnInfo.Phase),
-				Step:       normalizeStep(curr.TurnInfo.Step),
+				TurnNumber: turnNumber,
+				Phase:      phase,
+				Step:       step,
 				PlayerType: playerType,
 				ActionType: "block",
 				CardID:     obj.GRPId,

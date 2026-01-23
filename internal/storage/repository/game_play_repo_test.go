@@ -117,9 +117,22 @@ func setupGamePlayTestDB(t *testing.T) *sql.DB {
 			UNIQUE(set_code, arena_id)
 		);
 
+		CREATE TABLE draft_card_ratings (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			set_code TEXT NOT NULL,
+			draft_format TEXT NOT NULL,
+			arena_id TEXT,
+			name TEXT NOT NULL,
+			color TEXT,
+			rarity TEXT,
+			gihwr REAL,
+			UNIQUE(set_code, draft_format, name)
+		);
+
 		CREATE INDEX idx_game_plays_game_id ON game_plays(game_id);
 		CREATE INDEX idx_game_plays_match_id ON game_plays(match_id);
 		CREATE INDEX idx_game_plays_turn ON game_plays(game_id, turn_number);
+		CREATE UNIQUE INDEX idx_game_plays_unique ON game_plays(game_id, sequence_number);
 		CREATE INDEX idx_game_snapshots_game_id ON game_state_snapshots(game_id);
 		CREATE INDEX idx_game_snapshots_match_id ON game_state_snapshots(match_id);
 		CREATE INDEX idx_opponent_cards_game_id ON opponent_cards_observed(game_id);
@@ -259,6 +272,163 @@ func TestGamePlayRepository_CreatePlays_Batch(t *testing.T) {
 	}
 	if len(retrieved) != 3 {
 		t.Errorf("Expected 3 plays, got %d", len(retrieved))
+	}
+}
+
+func TestGamePlayRepository_CreatePlays_IgnoresDuplicates(t *testing.T) {
+	db := setupGamePlayTestDB(t)
+	defer func() { _ = db.Close() }()
+
+	gameID := createTestMatch(t, db, "match-dupe-test")
+	repo := NewGamePlayRepository(db)
+	ctx := context.Background()
+
+	// Create initial plays
+	plays := []*models.GamePlay{
+		{
+			GameID:         gameID,
+			MatchID:        "match-dupe-test",
+			TurnNumber:     1,
+			Phase:          "Main1",
+			PlayerType:     "player",
+			ActionType:     "land_drop",
+			Timestamp:      time.Now(),
+			SequenceNumber: 1,
+		},
+		{
+			GameID:         gameID,
+			MatchID:        "match-dupe-test",
+			TurnNumber:     1,
+			Phase:          "Main1",
+			PlayerType:     "player",
+			ActionType:     "play_card",
+			Timestamp:      time.Now(),
+			SequenceNumber: 2,
+		},
+	}
+
+	err := repo.CreatePlays(ctx, plays)
+	if err != nil {
+		t.Fatalf("CreatePlays failed: %v", err)
+	}
+
+	// Verify both were inserted
+	retrieved, err := repo.GetPlaysByMatch(ctx, "match-dupe-test")
+	if err != nil {
+		t.Fatalf("GetPlaysByMatch failed: %v", err)
+	}
+	if len(retrieved) != 2 {
+		t.Fatalf("Expected 2 plays initially, got %d", len(retrieved))
+	}
+
+	// Try to insert duplicates with the same (game_id, sequence_number)
+	duplicatePlays := []*models.GamePlay{
+		{
+			GameID:         gameID,
+			MatchID:        "match-dupe-test",
+			TurnNumber:     1,
+			Phase:          "Main1",
+			PlayerType:     "player",
+			ActionType:     "land_drop",
+			Timestamp:      time.Now(),
+			SequenceNumber: 1, // Same as first play - should be ignored
+		},
+		{
+			GameID:         gameID,
+			MatchID:        "match-dupe-test",
+			TurnNumber:     2,
+			Phase:          "Main1",
+			PlayerType:     "player",
+			ActionType:     "play_card",
+			Timestamp:      time.Now(),
+			SequenceNumber: 3, // New sequence number - should be inserted
+		},
+	}
+
+	// This should NOT error - duplicates should be silently ignored
+	err = repo.CreatePlays(ctx, duplicatePlays)
+	if err != nil {
+		t.Fatalf("CreatePlays with duplicates should not fail: %v", err)
+	}
+
+	// Verify only 3 plays exist (2 original + 1 new, duplicate ignored)
+	retrieved, err = repo.GetPlaysByMatch(ctx, "match-dupe-test")
+	if err != nil {
+		t.Fatalf("GetPlaysByMatch failed: %v", err)
+	}
+	if len(retrieved) != 3 {
+		t.Errorf("Expected 3 plays after inserting duplicates (1 new, 1 duplicate ignored), got %d", len(retrieved))
+	}
+
+	// Verify the duplicate didn't get an ID (since it was ignored)
+	if duplicatePlays[0].ID != 0 {
+		t.Errorf("Expected duplicate play to have ID 0 (not inserted), got %d", duplicatePlays[0].ID)
+	}
+
+	// Verify the new play did get an ID
+	if duplicatePlays[1].ID == 0 {
+		t.Error("Expected new play to have ID set after insertion")
+	}
+}
+
+func TestGamePlayRepository_CreatePlay_IgnoresDuplicate(t *testing.T) {
+	db := setupGamePlayTestDB(t)
+	defer func() { _ = db.Close() }()
+
+	gameID := createTestMatch(t, db, "match-single-dupe")
+	repo := NewGamePlayRepository(db)
+	ctx := context.Background()
+
+	play := &models.GamePlay{
+		GameID:         gameID,
+		MatchID:        "match-single-dupe",
+		TurnNumber:     1,
+		Phase:          "Main1",
+		PlayerType:     "player",
+		ActionType:     "land_drop",
+		Timestamp:      time.Now(),
+		SequenceNumber: 1,
+	}
+
+	// First insert should succeed
+	err := repo.CreatePlay(ctx, play)
+	if err != nil {
+		t.Fatalf("First CreatePlay failed: %v", err)
+	}
+	firstID := play.ID
+	if firstID == 0 {
+		t.Error("Expected first play to have ID set")
+	}
+
+	// Second insert with same game_id + sequence_number should be silently ignored
+	play2 := &models.GamePlay{
+		GameID:         gameID,
+		MatchID:        "match-single-dupe",
+		TurnNumber:     1,
+		Phase:          "Main1",
+		PlayerType:     "player",
+		ActionType:     "land_drop",
+		Timestamp:      time.Now(),
+		SequenceNumber: 1, // Same sequence number as first play
+	}
+
+	err = repo.CreatePlay(ctx, play2)
+	if err != nil {
+		t.Fatalf("Second CreatePlay should not fail: %v", err)
+	}
+
+	// ID should remain 0 since it was ignored
+	if play2.ID != 0 {
+		t.Errorf("Expected duplicate play to have ID 0 (not inserted), got %d", play2.ID)
+	}
+
+	// Verify only 1 play exists
+	retrieved, err := repo.GetPlaysByMatch(ctx, "match-single-dupe")
+	if err != nil {
+		t.Fatalf("GetPlaysByMatch failed: %v", err)
+	}
+	if len(retrieved) != 1 {
+		t.Errorf("Expected 1 play (duplicate ignored), got %d", len(retrieved))
 	}
 }
 

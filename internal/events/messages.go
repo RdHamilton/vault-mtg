@@ -124,6 +124,40 @@ type ReplayDraftDetectedEvent struct {
 }
 
 // ============================================================================
+// Sync Progress Events
+// ============================================================================
+
+// SyncProgressEvent is the payload for sync:progress events.
+// Sent during set card synchronization to indicate progress.
+type SyncProgressEvent struct {
+	TaskID     string  `json:"taskId"`               // Unique task identifier
+	Title      string  `json:"title"`                // Display title
+	Current    int     `json:"current"`              // Current item being processed
+	Total      int     `json:"total"`                // Total items to process
+	Percentage float64 `json:"percentage"`           // Progress percentage (0-100)
+	Detail     string  `json:"detail,omitempty"`     // Current item detail (e.g., set name)
+	CardsSoFar int     `json:"cardsSoFar,omitempty"` // Cards synced so far
+}
+
+// SyncCompletedEvent is the payload for sync:completed events.
+// Sent when synchronization finishes successfully.
+type SyncCompletedEvent struct {
+	TaskID      string  `json:"taskId"`      // Unique task identifier
+	SetsSynced  int     `json:"setsSynced"`  // Number of sets synced
+	TotalCards  int     `json:"totalCards"`  // Total cards synced
+	SetsFailed  int     `json:"setsFailed"`  // Number of sets that failed
+	DurationSec float64 `json:"durationSec"` // Duration in seconds
+}
+
+// SyncErrorEvent is the payload for sync:error events.
+// Sent when synchronization encounters an error.
+type SyncErrorEvent struct {
+	TaskID  string `json:"taskId"`            // Unique task identifier
+	Error   string `json:"error"`             // Error message
+	SetCode string `json:"setCode,omitempty"` // Set that failed (if applicable)
+}
+
+// ============================================================================
 // Outgoing Message Types (sent to daemon)
 // ============================================================================
 

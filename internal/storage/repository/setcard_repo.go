@@ -78,6 +78,9 @@ type SetCardRepository interface {
 
 	// GetAllCardSetInfo returns arena_id, set_code, and rarity for all cards.
 	GetAllCardSetInfo(ctx context.Context) ([]*CardSetInfo, error)
+
+	// GetSetCardCount returns the number of cards cached for a given set.
+	GetSetCardCount(ctx context.Context, setCode string) (int, error)
 }
 
 type setCardRepository struct {
@@ -669,4 +672,15 @@ func (r *setCardRepository) GetAllCardSetInfo(ctx context.Context) ([]*CardSetIn
 	}
 
 	return cardInfos, rows.Err()
+}
+
+// GetSetCardCount returns the number of cards cached for a given set.
+func (r *setCardRepository) GetSetCardCount(ctx context.Context, setCode string) (int, error) {
+	query := `SELECT COUNT(*) FROM set_cards WHERE set_code = ?`
+	var count int
+	err := r.db.QueryRowContext(ctx, query, setCode).Scan(&count)
+	if err != nil {
+		return 0, err
+	}
+	return count, nil
 }

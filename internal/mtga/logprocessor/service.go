@@ -1445,6 +1445,17 @@ func (s *Service) processGamePlays(ctx context.Context, entries []*logreader.Log
 		}
 	}
 
+	// Check if this batch contains MULTIPLE matches (historical batch processing)
+	// This happens when daemon starts after matches were played - the log contains
+	// GRE entries for multiple completed matches that we need to process separately
+	allMatchIDs := s.detectAllMatchIDsFromEntries(entries)
+	if len(allMatchIDs) > 1 {
+		log.Printf("[PlayTracking] Detected historical batch with %d matches, using batch processing", len(allMatchIDs))
+		s.processHistoricalBatchPlays(ctx, entries, result)
+		// Don't do regular accumulation processing for historical batches
+		return nil
+	}
+
 	// Detect match start from matchGameRoomStateChangedEvent
 	matchID := s.detectMatchIDFromEntries(entries)
 	if matchID != "" && matchID != s.activeMatchID {
@@ -1571,6 +1582,190 @@ func (s *Service) detectMatchIDFromEntries(entries []*logreader.LogEntry) string
 	return ""
 }
 
+// detectAllMatchIDsFromEntries extracts ALL unique match IDs from log entries in order of first appearance.
+// This is used for historical batch processing where multiple matches may be present.
+func (s *Service) detectAllMatchIDsFromEntries(entries []*logreader.LogEntry) []string {
+	seen := make(map[string]bool)
+	var matchIDs []string
+
+	for _, entry := range entries {
+		if !entry.IsJSON {
+			continue
+		}
+
+		var matchID string
+
+		// Check greToClientEvent for match ID
+		if greEvent, ok := entry.JSON["greToClientEvent"].(map[string]interface{}); ok {
+			if msgs, ok := greEvent["greToClientMessages"].([]interface{}); ok {
+				for _, msgData := range msgs {
+					if msgMap, ok := msgData.(map[string]interface{}); ok {
+						if gsm, ok := msgMap["gameStateMessage"].(map[string]interface{}); ok {
+							if gameInfo, ok := gsm["gameInfo"].(map[string]interface{}); ok {
+								if id, ok := gameInfo["matchID"].(string); ok && id != "" {
+									matchID = id
+									break
+								}
+							}
+						}
+					}
+				}
+			}
+		}
+
+		// Check matchGameRoomStateChangedEvent for match ID
+		if matchID == "" {
+			if matchEvent, ok := entry.JSON["matchGameRoomStateChangedEvent"].(map[string]interface{}); ok {
+				if gameRoomInfo, ok := matchEvent["gameRoomInfo"].(map[string]interface{}); ok {
+					if gameRoomConfig, ok := gameRoomInfo["gameRoomConfig"].(map[string]interface{}); ok {
+						if id, ok := gameRoomConfig["matchId"].(string); ok && id != "" {
+							matchID = id
+						}
+					}
+				}
+			}
+		}
+
+		if matchID != "" && !seen[matchID] {
+			seen[matchID] = true
+			matchIDs = append(matchIDs, matchID)
+		}
+	}
+
+	return matchIDs
+}
+
+// segmentEntriesByMatch segments entries into groups by match, based on match boundaries.
+// GRE entries are sequential in the log - not all entries contain match IDs.
+// This function identifies match boundaries and assigns all entries between boundaries
+// to the appropriate match.
+//
+// IMPORTANT: connectResp is NOT shared across matches because the player's seat ID
+// can differ between matches (seat 1 in one match, seat 2 in another).
+// connectResp appears BEFORE the match ID is known, so we track "pending" entries
+// and associate them with the next match that starts.
+func (s *Service) segmentEntriesByMatch(entries []*logreader.LogEntry) map[string][]*logreader.LogEntry {
+	result := make(map[string][]*logreader.LogEntry)
+	var currentMatchID string
+	var currentMatchEntries []*logreader.LogEntry
+
+	// Track authenticateResponse separately - this is session-level and can be shared
+	var authenticateResponse *logreader.LogEntry
+
+	// Pending entries that appear before match ID is known (like connectResp)
+	// These get associated with the next match that starts
+	var pendingEntries []*logreader.LogEntry
+
+	for _, entry := range entries {
+		if !entry.IsJSON {
+			continue
+		}
+
+		// Track authenticateResponse (session-level, contains player screen name)
+		if _, hasAuth := entry.JSON["authenticateResponse"]; hasAuth {
+			authenticateResponse = entry
+			continue
+		}
+
+		// connectResp contains the player's seat ID for THIS match connection
+		// It appears BEFORE the match ID is known, so track it as pending
+		if _, hasConn := entry.JSON["connectResp"]; hasConn {
+			// Clear pending and add this connectResp (new match connection starting)
+			pendingEntries = []*logreader.LogEntry{entry}
+			continue
+		}
+
+		// Try to extract match ID from this entry
+		matchID := s.extractMatchIDFromEntry(entry)
+
+		// If we found a new match ID, save current match entries and start new segment
+		if matchID != "" && matchID != currentMatchID {
+			if currentMatchID != "" && len(currentMatchEntries) > 0 {
+				result[currentMatchID] = currentMatchEntries
+			}
+			currentMatchID = matchID
+			// Start new segment with pending entries (like connectResp)
+			currentMatchEntries = append([]*logreader.LogEntry{}, pendingEntries...)
+			pendingEntries = nil
+		}
+
+		// Accumulate entry to current match (if we have a current match)
+		if currentMatchID != "" {
+			// Only include GRE-related entries
+			if s.isGRERelatedEntry(entry) {
+				currentMatchEntries = append(currentMatchEntries, entry)
+			}
+		}
+	}
+
+	// Save the last match's entries
+	if currentMatchID != "" && len(currentMatchEntries) > 0 {
+		result[currentMatchID] = currentMatchEntries
+	}
+
+	// Prepend authenticateResponse to each match (needed for player name)
+	if authenticateResponse != nil {
+		for matchID, matchEntries := range result {
+			result[matchID] = append([]*logreader.LogEntry{authenticateResponse}, matchEntries...)
+		}
+	}
+
+	return result
+}
+
+// extractMatchIDFromEntry extracts match ID from a single log entry.
+func (s *Service) extractMatchIDFromEntry(entry *logreader.LogEntry) string {
+	if !entry.IsJSON {
+		return ""
+	}
+
+	// Check greToClientEvent for match ID
+	if greEvent, ok := entry.JSON["greToClientEvent"].(map[string]interface{}); ok {
+		if msgs, ok := greEvent["greToClientMessages"].([]interface{}); ok {
+			for _, msgData := range msgs {
+				if msgMap, ok := msgData.(map[string]interface{}); ok {
+					if gsm, ok := msgMap["gameStateMessage"].(map[string]interface{}); ok {
+						if gameInfo, ok := gsm["gameInfo"].(map[string]interface{}); ok {
+							if id, ok := gameInfo["matchID"].(string); ok && id != "" {
+								return id
+							}
+						}
+					}
+				}
+			}
+		}
+	}
+
+	// Check matchGameRoomStateChangedEvent for match ID
+	if matchEvent, ok := entry.JSON["matchGameRoomStateChangedEvent"].(map[string]interface{}); ok {
+		if gameRoomInfo, ok := matchEvent["gameRoomInfo"].(map[string]interface{}); ok {
+			if gameRoomConfig, ok := gameRoomInfo["gameRoomConfig"].(map[string]interface{}); ok {
+				if id, ok := gameRoomConfig["matchId"].(string); ok && id != "" {
+					return id
+				}
+			}
+		}
+	}
+
+	return ""
+}
+
+// isGRERelatedEntry checks if an entry contains GRE-related data for play tracking.
+func (s *Service) isGRERelatedEntry(entry *logreader.LogEntry) bool {
+	if !entry.IsJSON {
+		return false
+	}
+	if _, hasGRE := entry.JSON["greToClientEvent"]; hasGRE {
+		return true
+	}
+	if _, hasRoom := entry.JSON["matchGameRoomStateChangedEvent"]; hasRoom {
+		return true
+	}
+	return false
+}
+
+// filterEntriesByMatchID filters entries to only include those belonging to a specific match.
+// DEPRECATED: Use segmentEntriesByMatch for historical batch processing instead.
 // processAccumulatedPlays processes all accumulated GRE entries to extract plays.
 func (s *Service) processAccumulatedPlays(ctx context.Context, result *ProcessResult) {
 	if s.playerConnection == nil {
@@ -1602,6 +1797,64 @@ func (s *Service) processAccumulatedPlays(ctx context.Context, result *ProcessRe
 		matchID = gamePlays[0].MatchID
 	}
 
+	if matchID == "" {
+		log.Printf("[PlayTracking] No match ID available, cannot store plays")
+		return
+	}
+
+	// Delegate to the common storage function
+	s.storePlaysForMatch(ctx, matchID, gamePlays, opponentCards, result)
+}
+
+// processHistoricalBatchPlays processes plays for multiple matches in a historical batch.
+// This is used when processing log files that contain multiple completed matches.
+func (s *Service) processHistoricalBatchPlays(ctx context.Context, entries []*logreader.LogEntry, result *ProcessResult) {
+	// Segment entries by match boundaries (GRE entries are sequential in the log)
+	// This captures ALL entries between match boundaries, not just those with explicit match IDs
+	matchSegments := s.segmentEntriesByMatch(entries)
+	if len(matchSegments) == 0 {
+		return
+	}
+
+	log.Printf("[PlayTracking] Processing historical batch with %d segmented match(es)", len(matchSegments))
+
+	// Process each match separately
+	for matchID, matchEntries := range matchSegments {
+		if len(matchEntries) == 0 {
+			continue
+		}
+
+		// IMPORTANT: Get player connection PER MATCH from this match's segmented entries
+		// Player can be seat 1 in one match and seat 2 in another, so we must determine
+		// the seat ID from each match's own connectResp or matchGameRoomStateChangedEvent
+		playerConn := logreader.GetPlayerSeatIDByName(matchEntries, s.playerScreenName)
+		if playerConn == nil {
+			log.Printf("[PlayTracking] No player connection found for match %s (screenName: %s), skipping", matchID, s.playerScreenName)
+			continue
+		}
+
+		log.Printf("[PlayTracking] Processing %d entries for match %s (player seat: %d)", len(matchEntries), matchID, playerConn.SeatID)
+
+		// Parse game plays for this match
+		gamePlays, err := logreader.ParseGamePlays(matchEntries, playerConn)
+		if err != nil {
+			log.Printf("Warning: Failed to parse game plays for match %s: %v", matchID, err)
+			continue
+		}
+
+		// Extract opponent cards for this match
+		opponentCards, err := logreader.ExtractOpponentCards(matchEntries, playerConn)
+		if err != nil {
+			log.Printf("Warning: Failed to extract opponent cards for match %s: %v", matchID, err)
+		}
+
+		// Store plays for this match
+		s.storePlaysForMatch(ctx, matchID, gamePlays, opponentCards, result)
+	}
+}
+
+// storePlaysForMatch stores game plays and opponent cards for a specific match.
+func (s *Service) storePlaysForMatch(ctx context.Context, matchID string, gamePlays []*logreader.GamePlayEvent, opponentCards []logreader.OpponentCard, result *ProcessResult) {
 	if matchID == "" {
 		log.Printf("[PlayTracking] No match ID available, cannot store plays")
 		return

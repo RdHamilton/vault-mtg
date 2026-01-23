@@ -208,6 +208,14 @@ func (s *Server) setupRoutes() {
 			storageService = s.services.Storage
 		}
 		standardHandler := handlers.NewStandardHandler(storageService)
+		// Wire up the SetFetcher for card syncing if available
+		if s.services != nil && s.services.SetFetcher != nil {
+			standardHandler.SetCardFetcher(s.services.SetFetcher)
+		}
+		// Wire up the event dispatcher for progress events
+		if s.systemFacade != nil {
+			standardHandler.SetEventDispatcher(s.systemFacade.GetEventDispatcher())
+		}
 		r.Route("/standard", func(r chi.Router) {
 			r.Get("/sets", standardHandler.GetStandardSets)
 			r.Get("/rotation", standardHandler.GetUpcomingRotation)
@@ -215,6 +223,7 @@ func (s *Server) setupRoutes() {
 			r.Get("/config", standardHandler.GetStandardConfig)
 			r.Post("/validate/{deckID}", standardHandler.ValidateDeckStandard)
 			r.Get("/cards/{arenaID}/legality", standardHandler.GetCardLegality)
+			r.Post("/sync", standardHandler.SyncStandardSetCards) // Sync Standard set cards
 		})
 
 		// System routes

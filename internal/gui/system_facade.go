@@ -142,15 +142,157 @@ func (s *SystemFacade) Initialize(ctx context.Context, dbPath string) error {
 	setSyncer.SetFetcher(setCardFetcher)
 
 	go func() {
-		// Give longer timeout to allow for card syncing (5 minutes)
-		syncCtx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
+		// Give longer timeout to allow for card syncing (10 minutes for full Standard sync)
+		syncCtx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
 		defer cancel()
+
+		// First, sync sets metadata if table is empty
 		if err := setSyncer.SyncIfEmpty(syncCtx); err != nil {
 			log.Printf("Warning: Failed to sync sets: %v", err)
 		}
+
+		// Then, check if Standard set cards are incomplete and sync them
+		s.SyncIncompleteStandardCards(syncCtx, setCardFetcher)
 	}()
 
 	return nil
+}
+
+// SyncIncompleteStandardCards checks for Standard sets with incomplete card data and syncs them.
+// This is exported so it can be called from both the GUI app and the API server.
+func (s *SystemFacade) SyncIncompleteStandardCards(ctx context.Context, fetcher *setcache.Fetcher) {
+	// Defensive nil guards for safety in minimal deployments/tests
+	if s == nil || s.services == nil || s.services.Storage == nil || fetcher == nil {
+		log.Printf("[CardSync] Sync skipped: missing storage or fetcher")
+		return
+	}
+
+	// Get Standard-legal sets
+	standardSets, err := s.services.Storage.GetStandardSets(ctx)
+	if err != nil {
+		log.Printf("[CardSync] Failed to get Standard sets: %v", err)
+		return
+	}
+
+	if len(standardSets) == 0 {
+		log.Println("[CardSync] No Standard-legal sets found, skipping card sync")
+		return
+	}
+
+	// Build a map of set codes to names for progress reporting
+	setNameMap := make(map[string]string)
+	for _, set := range standardSets {
+		setNameMap[set.Code] = set.Name
+	}
+
+	// Check each Standard set for completeness
+	incompleteSets := []string{}
+	for _, set := range standardSets {
+		// Get cached card count for this set
+		cachedCount, err := s.services.Storage.SetCardRepo().GetSetCardCount(ctx, set.Code)
+		if err != nil {
+			log.Printf("[CardSync] Failed to get card count for %s: %v", set.Code, err)
+			continue
+		}
+
+		// If we have less than 50% of the expected cards, consider it incomplete
+		// Using 50% threshold because some cards may not have Arena IDs
+		if set.CardCount == nil || *set.CardCount == 0 {
+			// No expected card count - sync if we have fewer than 100 cards cached
+			// (most Standard sets have 200+ cards)
+			if cachedCount < 100 {
+				log.Printf("[CardSync] Set %s (%s) has no expected card count, but only %d cards cached - marking as incomplete",
+					set.Code, set.Name, cachedCount)
+				incompleteSets = append(incompleteSets, set.Code)
+			} else {
+				log.Printf("[CardSync] Set %s (%s) has no expected card count, %d cards cached - assuming complete",
+					set.Code, set.Name, cachedCount)
+			}
+			continue
+		}
+		expectedMinimum := *set.CardCount / 2
+		if cachedCount < expectedMinimum {
+			log.Printf("[CardSync] Set %s (%s) is incomplete: %d/%d cards cached (expected at least %d)",
+				set.Code, set.Name, cachedCount, *set.CardCount, expectedMinimum)
+			incompleteSets = append(incompleteSets, set.Code)
+		} else {
+			log.Printf("[CardSync] Set %s (%s) is complete: %d/%d cards cached",
+				set.Code, set.Name, cachedCount, *set.CardCount)
+		}
+	}
+
+	if len(incompleteSets) == 0 {
+		log.Println("[CardSync] All Standard sets have sufficient card data")
+		return
+	}
+
+	log.Printf("[CardSync] Syncing %d incomplete Standard sets: %v", len(incompleteSets), incompleteSets)
+
+	// Generate unique task ID for progress tracking
+	taskID := fmt.Sprintf("startup-sync-%d", time.Now().UnixNano())
+	totalCards := 0
+	successCount := 0
+
+	// Emit initial progress event (using task:progress for frontend compatibility)
+	s.eventDispatcher.Dispatch(events.NewTypedEvent("task:progress", map[string]interface{}{
+		"id":       taskID,
+		"title":    "Syncing Standard Card Data",
+		"category": "sync",
+		"progress": 0,
+		"detail":   "Checking for incomplete sets...",
+	}, ctx))
+
+	for i, setCode := range incompleteSets {
+		// Check for context cancellation
+		select {
+		case <-ctx.Done():
+			log.Printf("[CardSync] Context cancelled, stopping after %d/%d sets", i, len(incompleteSets))
+			return
+		default:
+		}
+
+		setName := setNameMap[setCode]
+		if setName == "" {
+			setName = setCode
+		}
+
+		// Emit progress event (using task:progress for frontend compatibility)
+		s.eventDispatcher.Dispatch(events.NewTypedEvent("task:progress", map[string]interface{}{
+			"id":       taskID,
+			"title":    "Syncing Standard Card Data",
+			"category": "sync",
+			"progress": float64(i) / float64(len(incompleteSets)) * 100,
+			"detail":   fmt.Sprintf("Syncing %s... (%d cards so far)", setName, totalCards),
+		}, ctx))
+
+		log.Printf("[CardSync] Syncing set %d/%d: %s", i+1, len(incompleteSets), setCode)
+		cardCount, err := fetcher.FetchAndCacheSet(ctx, setCode)
+		if err != nil {
+			log.Printf("[CardSync] Failed to sync %s: %v", setCode, err)
+			// Emit error event (using task:error for frontend compatibility)
+			s.eventDispatcher.Dispatch(events.NewTypedEvent("task:error", map[string]interface{}{
+				"id":    taskID,
+				"error": fmt.Sprintf("Failed to sync %s: %v", setCode, err),
+			}, ctx))
+			continue
+		}
+		log.Printf("[CardSync] Synced %d cards for %s", cardCount, setCode)
+		totalCards += cardCount
+		successCount++
+
+		// Rate limiting
+		if i < len(incompleteSets)-1 {
+			time.Sleep(200 * time.Millisecond)
+		}
+	}
+
+	log.Printf("[CardSync] Standard set card sync complete: %d/%d sets synced, %d total cards",
+		successCount, len(incompleteSets), totalCards)
+
+	// Emit completion event (using task:complete for frontend compatibility)
+	s.eventDispatcher.Dispatch(events.NewTypedEvent("task:complete", map[string]interface{}{
+		"id": taskID,
+	}, ctx))
 }
 
 // StartPoller starts the log file poller for real-time updates

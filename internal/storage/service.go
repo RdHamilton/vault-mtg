@@ -577,11 +577,22 @@ func (s *Service) extractMatchesFromEntries(ctx context.Context, entries []*logr
 						matchResult = "loss"
 					}
 				case "MatchScope_Game":
+					// Extract game-specific result reason if available
+					var gameResultReason *string
+					if reason, ok := resultMap["reason"].(string); ok && reason != "" {
+						normalizedReason := normalizeResultReason(reason)
+						gameResultReason = &normalizedReason
+					} else if reason, ok := resultMap["Reason"].(string); ok && reason != "" {
+						normalizedReason := normalizeResultReason(reason)
+						gameResultReason = &normalizedReason
+					}
+
 					game := &Game{
-						MatchID:    matchID,
-						GameNumber: gameNumber,
-						Result:     map[bool]string{true: "win", false: "loss"}[playerWon],
-						CreatedAt:  matchTime,
+						MatchID:      matchID,
+						GameNumber:   gameNumber,
+						Result:       map[bool]string{true: "win", false: "loss"}[playerWon],
+						ResultReason: gameResultReason,
+						CreatedAt:    matchTime,
 					}
 					games = append(games, game)
 					gameNumber++
@@ -844,20 +855,22 @@ func (s *Service) BatchStoreMatches(ctx context.Context, matchesData []matchData
 		rowsAffected, _ := result.RowsAffected()
 		if rowsAffected > 0 {
 			stored++
+		}
 
-			// Insert games for this match
-			for _, game := range matchData.Games {
-				_, err := gameStmt.ExecContext(ctx,
-					game.MatchID,
-					game.GameNumber,
-					game.Result,
-					game.DurationSeconds,
-					game.ResultReason,
-					game.CreatedAt,
-				)
-				if err != nil {
-					return stored, fmt.Errorf("failed to insert game for match %s: %w", game.MatchID, err)
-				}
+		// Always try to insert games for this match (uses INSERT OR IGNORE)
+		// This ensures games are created even if the match was previously stored
+		// without game records (which can happen with partial log processing)
+		for _, game := range matchData.Games {
+			_, err := gameStmt.ExecContext(ctx,
+				game.MatchID,
+				game.GameNumber,
+				game.Result,
+				game.DurationSeconds,
+				game.ResultReason,
+				game.CreatedAt,
+			)
+			if err != nil {
+				return stored, fmt.Errorf("failed to insert game for match %s: %w", game.MatchID, err)
 			}
 		}
 	}

@@ -3,7 +3,9 @@ package setcache
 import (
 	"context"
 	"testing"
+	"time"
 
+	"github.com/ramonehamilton/MTGA-Companion/internal/mtga/cards/mtgjson"
 	"github.com/ramonehamilton/MTGA-Companion/internal/mtga/cards/scryfall"
 	"github.com/ramonehamilton/MTGA-Companion/internal/storage/models"
 	"github.com/ramonehamilton/MTGA-Companion/internal/storage/repository"
@@ -524,4 +526,258 @@ func TestFetchCardByArenaID_FallbackLogic(t *testing.T) {
 			}
 		})
 	}
+}
+
+func (m *mockSetCardRepo) GetSetCardCount(_ context.Context, setCode string) (int, error) {
+	return len(m.cards[setCode]), nil
+}
+
+func TestConvertMTGJSONCard_BasicCard(t *testing.T) {
+	// Test conversion of a basic MTGJSON card to SetCard
+	mtgjsonCard := &mtgjson.Card{
+		UUID:      "test-uuid-12345",
+		Name:      "Lightning Bolt",
+		ManaCost:  "{R}",
+		ManaValue: 1.0,
+		Type:      "Instant",
+		Types:     []string{"Instant"},
+		Colors:    []string{"R"},
+		Rarity:    "Common",
+		Text:      "Lightning Bolt deals 3 damage to any target.",
+		Identifiers: mtgjson.CardIdentifiers{
+			MtgArenaId: "12345",
+			ScryfallId: "fa940e68-010e-4b68-be8a-555d7068f7b4",
+		},
+	}
+
+	fetchedAt := time.Now()
+	setCard := convertMTGJSONCard(mtgjsonCard, "ECL", fetchedAt)
+
+	// Verify basic fields
+	if setCard.Name != "Lightning Bolt" {
+		t.Errorf("Name = %q, want %q", setCard.Name, "Lightning Bolt")
+	}
+	if setCard.SetCode != "ECL" {
+		t.Errorf("SetCode = %q, want %q", setCard.SetCode, "ECL")
+	}
+	if setCard.ArenaID != "12345" {
+		t.Errorf("ArenaID = %q, want %q", setCard.ArenaID, "12345")
+	}
+	if setCard.ScryfallID != "fa940e68-010e-4b68-be8a-555d7068f7b4" {
+		t.Errorf("ScryfallID = %q, want %q", setCard.ScryfallID, "fa940e68-010e-4b68-be8a-555d7068f7b4")
+	}
+	if setCard.ManaCost != "{R}" {
+		t.Errorf("ManaCost = %q, want %q", setCard.ManaCost, "{R}")
+	}
+	if setCard.CMC != 1 {
+		t.Errorf("CMC = %d, want %d", setCard.CMC, 1)
+	}
+	if setCard.Rarity != "common" {
+		t.Errorf("Rarity = %q, want %q", setCard.Rarity, "common")
+	}
+	if setCard.Text != "Lightning Bolt deals 3 damage to any target." {
+		t.Errorf("Text = %q, want %q", setCard.Text, "Lightning Bolt deals 3 damage to any target.")
+	}
+
+	// Verify image URLs are constructed from Scryfall ID
+	expectedImageURL := "https://cards.scryfall.io/normal/front/f/a/fa940e68-010e-4b68-be8a-555d7068f7b4.jpg"
+	if setCard.ImageURL != expectedImageURL {
+		t.Errorf("ImageURL = %q, want %q", setCard.ImageURL, expectedImageURL)
+	}
+	expectedSmallURL := "https://cards.scryfall.io/small/front/f/a/fa940e68-010e-4b68-be8a-555d7068f7b4.jpg"
+	if setCard.ImageURLSmall != expectedSmallURL {
+		t.Errorf("ImageURLSmall = %q, want %q", setCard.ImageURLSmall, expectedSmallURL)
+	}
+}
+
+func TestConvertMTGJSONCard_CreatureWithStats(t *testing.T) {
+	mtgjsonCard := &mtgjson.Card{
+		UUID:       "creature-uuid",
+		Name:       "Goblin Guide",
+		ManaCost:   "{R}",
+		ManaValue:  1.0,
+		Type:       "Creature — Goblin Scout",
+		Types:      []string{"Creature"},
+		Subtypes:   []string{"Goblin", "Scout"},
+		Supertypes: []string{},
+		Colors:     []string{"R"},
+		Rarity:     "Rare",
+		Text:       "Haste",
+		Power:      "2",
+		Toughness:  "2",
+		Identifiers: mtgjson.CardIdentifiers{
+			MtgArenaId: "67890",
+			ScryfallId: "abcd1234-5678-90ab-cdef-1234567890ab",
+		},
+	}
+
+	setCard := convertMTGJSONCard(mtgjsonCard, "ECL", time.Now())
+
+	if setCard.Power != "2" {
+		t.Errorf("Power = %q, want %q", setCard.Power, "2")
+	}
+	if setCard.Toughness != "2" {
+		t.Errorf("Toughness = %q, want %q", setCard.Toughness, "2")
+	}
+
+	// Check that types includes both types and subtypes
+	expectedTypes := []string{"Creature", "Goblin", "Scout"}
+	if len(setCard.Types) != len(expectedTypes) {
+		t.Errorf("Types length = %d, want %d", len(setCard.Types), len(expectedTypes))
+	}
+	for i, expectedType := range expectedTypes {
+		if i < len(setCard.Types) && setCard.Types[i] != expectedType {
+			t.Errorf("Types[%d] = %q, want %q", i, setCard.Types[i], expectedType)
+		}
+	}
+}
+
+func TestConvertMTGJSONCard_LegendaryCreature(t *testing.T) {
+	mtgjsonCard := &mtgjson.Card{
+		UUID:       "legend-uuid",
+		Name:       "Ojer Axonil, Deepest Might",
+		ManaCost:   "{2}{R}{R}",
+		ManaValue:  4.0,
+		Type:       "Legendary Creature — God",
+		Types:      []string{"Creature"},
+		Subtypes:   []string{"God"},
+		Supertypes: []string{"Legendary"},
+		Colors:     []string{"R"},
+		Rarity:     "Mythic",
+		Power:      "4",
+		Toughness:  "4",
+		Identifiers: mtgjson.CardIdentifiers{
+			MtgArenaId: "98765",
+			ScryfallId: "12345678-1234-1234-1234-123456789abc",
+		},
+	}
+
+	setCard := convertMTGJSONCard(mtgjsonCard, "LCI", time.Now())
+
+	// Check supertypes are included
+	expectedTypes := []string{"Legendary", "Creature", "God"}
+	if len(setCard.Types) != len(expectedTypes) {
+		t.Errorf("Types length = %d, want %d", len(setCard.Types), len(expectedTypes))
+	}
+	for i, expectedType := range expectedTypes {
+		if i < len(setCard.Types) && setCard.Types[i] != expectedType {
+			t.Errorf("Types[%d] = %q, want %q", i, setCard.Types[i], expectedType)
+		}
+	}
+}
+
+func TestConvertMTGJSONCard_MulticolorCard(t *testing.T) {
+	mtgjsonCard := &mtgjson.Card{
+		UUID:      "multicolor-uuid",
+		Name:      "Nicol Bolas, Dragon-God",
+		ManaCost:  "{U}{B}{B}{B}{R}",
+		ManaValue: 5.0,
+		Type:      "Legendary Planeswalker — Bolas",
+		Types:     []string{"Planeswalker"},
+		Subtypes:  []string{"Bolas"},
+		Colors:    []string{"U", "B", "R"},
+		Rarity:    "Mythic",
+		Identifiers: mtgjson.CardIdentifiers{
+			MtgArenaId: "11111",
+			ScryfallId: "98765432-1234-5678-90ab-cdef12345678",
+		},
+	}
+
+	setCard := convertMTGJSONCard(mtgjsonCard, "WAR", time.Now())
+
+	// Check colors
+	if len(setCard.Colors) != 3 {
+		t.Errorf("Colors length = %d, want 3", len(setCard.Colors))
+	}
+}
+
+func TestConvertMTGJSONCard_WithLegalities(t *testing.T) {
+	mtgjsonCard := &mtgjson.Card{
+		UUID:      "legal-uuid",
+		Name:      "Test Card",
+		ManaCost:  "{1}",
+		ManaValue: 1.0,
+		Type:      "Artifact",
+		Types:     []string{"Artifact"},
+		Rarity:    "Common",
+		Identifiers: mtgjson.CardIdentifiers{
+			MtgArenaId: "22222",
+			ScryfallId: "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee",
+		},
+		Legalities: mtgjson.Legalities{
+			Standard: "legal",
+			Historic: "legal",
+			Pioneer:  "not_legal",
+			Modern:   "legal",
+		},
+	}
+
+	setCard := convertMTGJSONCard(mtgjsonCard, "FDN", time.Now())
+
+	// Legalities should be serialized as JSON
+	if setCard.Legalities == "" {
+		t.Error("Legalities should not be empty")
+	}
+	// Should contain the legalities JSON
+	if !containsSubstring(setCard.Legalities, "standard") {
+		t.Errorf("Legalities should contain 'standard', got %q", setCard.Legalities)
+	}
+}
+
+func TestConvertMTGJSONCard_NoScryfallID(t *testing.T) {
+	mtgjsonCard := &mtgjson.Card{
+		UUID:      "no-scryfall-uuid",
+		Name:      "Arena Exclusive Card",
+		ManaCost:  "{W}",
+		ManaValue: 1.0,
+		Type:      "Creature",
+		Types:     []string{"Creature"},
+		Rarity:    "Common",
+		Identifiers: mtgjson.CardIdentifiers{
+			MtgArenaId: "33333",
+			// No ScryfallId
+		},
+	}
+
+	setCard := convertMTGJSONCard(mtgjsonCard, "Y24", time.Now())
+
+	// Image URLs should be empty without Scryfall ID
+	if setCard.ImageURL != "" {
+		t.Errorf("ImageURL should be empty without ScryfallID, got %q", setCard.ImageURL)
+	}
+	if setCard.ImageURLSmall != "" {
+		t.Errorf("ImageURLSmall should be empty without ScryfallID, got %q", setCard.ImageURLSmall)
+	}
+}
+
+func TestNewFetcher_CreatesMTGJSONClient(t *testing.T) {
+	// Test that NewFetcher creates an MTGJSON client
+	mockRepo := newMockSetCardRepo()
+	scryfallClient := scryfall.NewClient()
+
+	fetcher := NewFetcher(scryfallClient, mockRepo, nil)
+
+	if fetcher == nil {
+		t.Fatal("NewFetcher returned nil")
+	}
+	if fetcher.mtgjsonClient == nil {
+		t.Error("mtgjsonClient should be initialized")
+	}
+	if fetcher.scryfallClient == nil {
+		t.Error("scryfallClient should be set")
+	}
+}
+
+// containsSubstring checks if a string contains a substring.
+func containsSubstring(s, substr string) bool {
+	return len(s) >= len(substr) && (s == substr || len(s) > 0 && containsHelper(s, substr))
+}
+
+func containsHelper(s, substr string) bool {
+	for i := 0; i <= len(s)-len(substr); i++ {
+		if s[i:i+len(substr)] == substr {
+			return true
+		}
+	}
+	return false
 }

@@ -1684,3 +1684,358 @@ func TestIsMatchFromDraft(t *testing.T) {
 		})
 	}
 }
+
+func TestDetectAllMatchIDsFromEntries(t *testing.T) {
+	service, cleanup := setupTestService(t)
+	defer cleanup()
+
+	processor := NewService(service)
+
+	// Create entries with multiple unique match IDs
+	entries := []*logreader.LogEntry{
+		// First match
+		{
+			Raw:    "entry-match-1",
+			IsJSON: true,
+			JSON: map[string]interface{}{
+				"greToClientEvent": map[string]interface{}{
+					"greToClientMessages": []interface{}{
+						map[string]interface{}{
+							"gameStateMessage": map[string]interface{}{
+								"gameInfo": map[string]interface{}{
+									"matchID": "match-001",
+								},
+							},
+						},
+					},
+				},
+			},
+		},
+		// Another entry for first match
+		{
+			Raw:    "entry-match-1-again",
+			IsJSON: true,
+			JSON: map[string]interface{}{
+				"greToClientEvent": map[string]interface{}{
+					"greToClientMessages": []interface{}{
+						map[string]interface{}{
+							"gameStateMessage": map[string]interface{}{
+								"gameInfo": map[string]interface{}{
+									"matchID": "match-001",
+								},
+							},
+						},
+					},
+				},
+			},
+		},
+		// Second match via matchGameRoomStateChangedEvent
+		{
+			Raw:    "entry-match-2",
+			IsJSON: true,
+			JSON: map[string]interface{}{
+				"matchGameRoomStateChangedEvent": map[string]interface{}{
+					"gameRoomInfo": map[string]interface{}{
+						"gameRoomConfig": map[string]interface{}{
+							"matchId": "match-002",
+						},
+					},
+				},
+			},
+		},
+		// Third match via greToClientEvent
+		{
+			Raw:    "entry-match-3",
+			IsJSON: true,
+			JSON: map[string]interface{}{
+				"greToClientEvent": map[string]interface{}{
+					"greToClientMessages": []interface{}{
+						map[string]interface{}{
+							"gameStateMessage": map[string]interface{}{
+								"gameInfo": map[string]interface{}{
+									"matchID": "match-003",
+								},
+							},
+						},
+					},
+				},
+			},
+		},
+	}
+
+	matchIDs := processor.detectAllMatchIDsFromEntries(entries)
+
+	// Should detect 3 unique match IDs in order of first appearance
+	if len(matchIDs) != 3 {
+		t.Errorf("Expected 3 unique match IDs, got %d: %v", len(matchIDs), matchIDs)
+	}
+
+	// Verify order of detection
+	expected := []string{"match-001", "match-002", "match-003"}
+	for i, expected := range expected {
+		if i >= len(matchIDs) {
+			t.Errorf("Missing match ID at index %d, expected %s", i, expected)
+			continue
+		}
+		if matchIDs[i] != expected {
+			t.Errorf("Match ID at index %d = %s, want %s", i, matchIDs[i], expected)
+		}
+	}
+}
+
+func TestSegmentEntriesByMatch(t *testing.T) {
+	service, cleanup := setupTestService(t)
+	defer cleanup()
+
+	processor := NewService(service)
+
+	// Create entries with sequential matches (simulating real log structure)
+	// GRE entries are sequential - not all entries have match IDs, they belong to current match
+	// IMPORTANT: connectResp appears BEFORE the match ID and contains the player's seat ID
+	// for THAT specific match. It should NOT be shared across matches.
+	entries := []*logreader.LogEntry{
+		// connectResp for match 1 (player is seat 1 in this match)
+		{
+			Raw:    "connect-resp-1",
+			IsJSON: true,
+			JSON: map[string]interface{}{
+				"connectResp": map[string]interface{}{
+					"systemSeatIds": []interface{}{float64(1)},
+				},
+			},
+		},
+		// Match 1 starts - entry with matchID
+		{
+			Raw:    "match-1-start",
+			IsJSON: true,
+			JSON: map[string]interface{}{
+				"matchGameRoomStateChangedEvent": map[string]interface{}{
+					"gameRoomInfo": map[string]interface{}{
+						"gameRoomConfig": map[string]interface{}{
+							"matchId": "match-001",
+						},
+					},
+				},
+			},
+		},
+		// Match 1 GRE entry (has matchID in gameInfo)
+		{
+			Raw:    "match-1-gre-1",
+			IsJSON: true,
+			JSON: map[string]interface{}{
+				"greToClientEvent": map[string]interface{}{
+					"greToClientMessages": []interface{}{
+						map[string]interface{}{
+							"gameStateMessage": map[string]interface{}{
+								"gameInfo": map[string]interface{}{
+									"matchID": "match-001",
+								},
+							},
+						},
+					},
+				},
+			},
+		},
+		// Match 1 GRE entry (no matchID - still belongs to match-001)
+		{
+			Raw:    "match-1-gre-2",
+			IsJSON: true,
+			JSON: map[string]interface{}{
+				"greToClientEvent": map[string]interface{}{
+					"greToClientMessages": []interface{}{
+						map[string]interface{}{
+							"gameStateMessage": map[string]interface{}{
+								"turnInfo": map[string]interface{}{
+									"turnNumber": float64(5),
+								},
+							},
+						},
+					},
+				},
+			},
+		},
+		// connectResp for match 2 (player is seat 2 in THIS match - different!)
+		{
+			Raw:    "connect-resp-2",
+			IsJSON: true,
+			JSON: map[string]interface{}{
+				"connectResp": map[string]interface{}{
+					"systemSeatIds": []interface{}{float64(2)},
+				},
+			},
+		},
+		// Match 2 starts - new matchID marks boundary
+		{
+			Raw:    "match-2-start",
+			IsJSON: true,
+			JSON: map[string]interface{}{
+				"greToClientEvent": map[string]interface{}{
+					"greToClientMessages": []interface{}{
+						map[string]interface{}{
+							"gameStateMessage": map[string]interface{}{
+								"gameInfo": map[string]interface{}{
+									"matchID": "match-002",
+								},
+							},
+						},
+					},
+				},
+			},
+		},
+		// Match 2 GRE entry (no matchID - belongs to match-002)
+		{
+			Raw:    "match-2-gre-1",
+			IsJSON: true,
+			JSON: map[string]interface{}{
+				"greToClientEvent": map[string]interface{}{
+					"greToClientMessages": []interface{}{
+						map[string]interface{}{
+							"gameStateMessage": map[string]interface{}{
+								"turnInfo": map[string]interface{}{
+									"turnNumber": float64(1),
+								},
+							},
+						},
+					},
+				},
+			},
+		},
+	}
+
+	// Segment entries by match
+	segments := processor.segmentEntriesByMatch(entries)
+
+	// Should have 2 matches
+	if len(segments) != 2 {
+		t.Errorf("Expected 2 match segments, got %d", len(segments))
+	}
+
+	// Match 001 should have: connectResp-1 + matchGameRoomStateChangedEvent + 2 GRE entries = 4 entries
+	match001Entries := segments["match-001"]
+	if len(match001Entries) < 3 {
+		t.Errorf("Expected at least 3 entries for match-001, got %d", len(match001Entries))
+	}
+
+	// Match 002 should have: connectResp-2 + 2 GRE entries = 3 entries
+	match002Entries := segments["match-002"]
+	if len(match002Entries) < 2 {
+		t.Errorf("Expected at least 2 entries for match-002, got %d", len(match002Entries))
+	}
+
+	// Verify each match has its OWN connectResp (not shared!)
+	// Match 001 should have connectResp with seat 1
+	hasCorrectSeat1 := false
+	for _, entry := range match001Entries {
+		if connResp, ok := entry.JSON["connectResp"].(map[string]interface{}); ok {
+			if seatIDs, ok := connResp["systemSeatIds"].([]interface{}); ok && len(seatIDs) > 0 {
+				if seatID, ok := seatIDs[0].(float64); ok && int(seatID) == 1 {
+					hasCorrectSeat1 = true
+				}
+			}
+		}
+	}
+	if !hasCorrectSeat1 {
+		t.Error("Match 001 should have connectResp with seat 1")
+	}
+
+	// Match 002 should have connectResp with seat 2
+	hasCorrectSeat2 := false
+	for _, entry := range match002Entries {
+		if connResp, ok := entry.JSON["connectResp"].(map[string]interface{}); ok {
+			if seatIDs, ok := connResp["systemSeatIds"].([]interface{}); ok && len(seatIDs) > 0 {
+				if seatID, ok := seatIDs[0].(float64); ok && int(seatID) == 2 {
+					hasCorrectSeat2 = true
+				}
+			}
+		}
+	}
+	if !hasCorrectSeat2 {
+		t.Error("Match 002 should have connectResp with seat 2")
+	}
+}
+
+func TestProcessGamePlays_MultiMatchBatch(t *testing.T) {
+	service, cleanup := setupTestService(t)
+	defer cleanup()
+
+	ctx := context.Background()
+	processor := NewService(service)
+
+	// Create entries with multiple matches (historical batch scenario)
+	entries := []*logreader.LogEntry{
+		// First match - GRE entry
+		{
+			Raw:    "entry-match-1-gre",
+			IsJSON: true,
+			JSON: map[string]interface{}{
+				"greToClientEvent": map[string]interface{}{
+					"greToClientMessages": []interface{}{
+						map[string]interface{}{
+							"gameStateMessage": map[string]interface{}{
+								"gameInfo": map[string]interface{}{
+									"matchID":    "match-001",
+									"gameNumber": float64(1),
+								},
+							},
+						},
+					},
+				},
+			},
+		},
+		// Second match - GRE entry
+		{
+			Raw:    "entry-match-2-gre",
+			IsJSON: true,
+			JSON: map[string]interface{}{
+				"greToClientEvent": map[string]interface{}{
+					"greToClientMessages": []interface{}{
+						map[string]interface{}{
+							"gameStateMessage": map[string]interface{}{
+								"gameInfo": map[string]interface{}{
+									"matchID":    "match-002",
+									"gameNumber": float64(1),
+								},
+							},
+						},
+					},
+				},
+			},
+		},
+		// Third match - GRE entry
+		{
+			Raw:    "entry-match-3-gre",
+			IsJSON: true,
+			JSON: map[string]interface{}{
+				"greToClientEvent": map[string]interface{}{
+					"greToClientMessages": []interface{}{
+						map[string]interface{}{
+							"gameStateMessage": map[string]interface{}{
+								"gameInfo": map[string]interface{}{
+									"matchID":    "match-003",
+									"gameNumber": float64(1),
+								},
+							},
+						},
+					},
+				},
+			},
+		},
+	}
+
+	result := &ProcessResult{}
+	err := processor.processGamePlays(ctx, entries, result)
+	if err != nil {
+		t.Fatalf("processGamePlays failed: %v", err)
+	}
+
+	// After processing a multi-match batch, no accumulation should remain
+	// because it was processed immediately via processHistoricalBatchPlays
+	if len(processor.accumulatedGRECalls) != 0 {
+		t.Errorf("Expected no accumulated GRE calls after multi-match batch, got %d", len(processor.accumulatedGRECalls))
+	}
+
+	// activeMatchID should be empty (not tracking any single match)
+	if processor.activeMatchID != "" {
+		t.Errorf("Expected empty activeMatchID after multi-match batch, got '%s'", processor.activeMatchID)
+	}
+}
