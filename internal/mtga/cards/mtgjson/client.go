@@ -39,6 +39,7 @@ type Client struct {
 	httpClient  *http.Client
 	rateLimiter *rate.Limiter
 	userAgent   string
+	baseURL     string // configurable for testing, defaults to baseURL constant
 }
 
 // NewClient creates a new MTGJSON API client.
@@ -50,7 +51,16 @@ func NewClient() *Client {
 		// Rate limiter: 1 request per 200ms = 5 req/sec
 		rateLimiter: rate.NewLimiter(rate.Every(rateLimitDelay), 1),
 		userAgent:   "MTGA-Companion/1.0",
+		baseURL:     baseURL,
 	}
+}
+
+// getBaseURL returns the base URL, using the default if not set.
+func (c *Client) getBaseURL() string {
+	if c.baseURL != "" {
+		return c.baseURL
+	}
+	return baseURL
 }
 
 // GetSet fetches a complete set file from MTGJSON.
@@ -58,7 +68,7 @@ func NewClient() *Client {
 func (c *Client) GetSet(ctx context.Context, setCode string) (*SetFile, error) {
 	// MTGJSON uses uppercase set codes
 	setCode = strings.ToUpper(setCode)
-	url := fmt.Sprintf("%s/%s.json", baseURL, setCode)
+	url := fmt.Sprintf("%s/%s.json", c.getBaseURL(), setCode)
 
 	log.Printf("[MTGJSON] Fetching set: %s", setCode)
 
