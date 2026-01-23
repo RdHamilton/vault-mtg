@@ -122,7 +122,7 @@ type CardIdentifiers struct {
 	CardKingdomEtchedId      string `json:"cardKingdomEtchedId,omitempty"`
 	CardKingdomFoilId        string `json:"cardKingdomFoilId,omitempty"`
 	CardKingdomId            string `json:"cardKingdomId,omitempty"`
-	CardMarketId             string `json:"cardsphereId,omitempty"`
+	CardsphereId             string `json:"cardsphereId,omitempty"`
 	MCMId                    string `json:"mcmId,omitempty"`
 	MCMMetaId                string `json:"mcmMetaId,omitempty"`
 	MtgArenaId               string `json:"mtgArenaId,omitempty"`

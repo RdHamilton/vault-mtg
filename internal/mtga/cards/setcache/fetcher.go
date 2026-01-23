@@ -655,6 +655,10 @@ func (f *Fetcher) fetchFrom17Lands(ctx context.Context, mtgaSetCode string, fetc
 	seenArenaIDs := make(map[string]bool)
 
 	for _, rating := range ratings {
+		// Skip cards without valid Arena IDs
+		if rating.MTGAID == 0 {
+			continue
+		}
 		arenaID := fmt.Sprintf("%d", rating.MTGAID)
 
 		// Skip duplicates (same card can appear in multiple rating entries)

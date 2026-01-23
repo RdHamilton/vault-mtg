@@ -136,12 +136,11 @@ func TestConstructBackFaceImageURL(t *testing.T) {
 }
 
 func TestConstructImageURL_EdgeCases(t *testing.T) {
-	// Test with very short ID (should return empty)
+	// Test with very short ID (should return empty since len < 2 after cleaning)
 	shortID := "a"
 	result := ConstructImageURL(shortID, ScryfallImageNormal)
-	// Even with short ID, we use the first char
-	if result == "" {
-		t.Log("Short ID handled gracefully")
+	if result != "" {
+		t.Errorf("Short ID should return empty string, got %q", result)
 	}
 
 	// Test with ID starting with numbers

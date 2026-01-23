@@ -555,6 +555,12 @@ func (r *gamePlayRepository) GetPlayTimeline(ctx context.Context, matchID string
 		"Ending":    5,
 		"":          6, // Unknown phase goes last
 	}
+	phaseRank := func(phase string) int {
+		if v, ok := phaseOrder[phase]; ok {
+			return v
+		}
+		return 99 // Unknown phases go last
+	}
 	sort.Slice(turnPhaseOrder, func(i, j int) bool {
 		if turnPhaseOrder[i].GameID != turnPhaseOrder[j].GameID {
 			return turnPhaseOrder[i].GameID < turnPhaseOrder[j].GameID
@@ -562,7 +568,7 @@ func (r *gamePlayRepository) GetPlayTimeline(ctx context.Context, matchID string
 		if turnPhaseOrder[i].Turn != turnPhaseOrder[j].Turn {
 			return turnPhaseOrder[i].Turn < turnPhaseOrder[j].Turn
 		}
-		return phaseOrder[turnPhaseOrder[i].Phase] < phaseOrder[turnPhaseOrder[j].Phase]
+		return phaseRank(turnPhaseOrder[i].Phase) < phaseRank(turnPhaseOrder[j].Phase)
 	})
 
 	// Build timeline entries

@@ -136,14 +136,12 @@ func (c *Client) doRequest(ctx context.Context, url string, result interface{}) 
 			return lastErr
 		}
 
-		// Handle response
-		defer func() { _ = resp.Body.Close() }()
-
 		// Check status code
 		switch resp.StatusCode {
 		case http.StatusOK:
 			// Success - parse response
 			body, err := io.ReadAll(resp.Body)
+			_ = resp.Body.Close()
 			if err != nil {
 				return fmt.Errorf("failed to read response body: %w", err)
 			}
@@ -156,6 +154,7 @@ func (c *Client) doRequest(ctx context.Context, url string, result interface{}) 
 
 		case http.StatusTooManyRequests:
 			// Rate limited - exponential backoff
+			_ = resp.Body.Close()
 			lastErr = fmt.Errorf("rate limited (HTTP 429)")
 
 			if attempt < maxRetries {
@@ -168,10 +167,12 @@ func (c *Client) doRequest(ctx context.Context, url string, result interface{}) 
 			return lastErr
 
 		case http.StatusNotFound:
+			_ = resp.Body.Close()
 			return &NotFoundError{SetCode: url}
 
 		default:
 			body, _ := io.ReadAll(resp.Body)
+			_ = resp.Body.Close()
 			return fmt.Errorf("API request failed with status %d: %s", resp.StatusCode, string(body))
 		}
 	}
