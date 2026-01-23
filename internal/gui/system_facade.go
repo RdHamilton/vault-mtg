@@ -161,6 +161,12 @@ func (s *SystemFacade) Initialize(ctx context.Context, dbPath string) error {
 // SyncIncompleteStandardCards checks for Standard sets with incomplete card data and syncs them.
 // This is exported so it can be called from both the GUI app and the API server.
 func (s *SystemFacade) SyncIncompleteStandardCards(ctx context.Context, fetcher *setcache.Fetcher) {
+	// Defensive nil guards for safety in minimal deployments/tests
+	if s == nil || s.services == nil || s.services.Storage == nil || fetcher == nil {
+		log.Printf("[CardSync] Sync skipped: missing storage or fetcher")
+		return
+	}
+
 	// Get Standard-legal sets
 	standardSets, err := s.services.Storage.GetStandardSets(ctx)
 	if err != nil {

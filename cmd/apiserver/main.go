@@ -13,6 +13,7 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"sync"
 	"syscall"
 	"time"
 
@@ -235,17 +236,27 @@ func main() {
 
 	// Start background sync of Standard set card data
 	// NOTE: This must happen AFTER WebSocket observer is registered so progress events are forwarded
+	var syncWg sync.WaitGroup
+	syncCtx, syncCancel := context.WithCancel(ctx)
+
+	syncWg.Add(1)
 	go func() {
+		defer syncWg.Done()
+
 		// Wait for browser/frontend to connect before starting sync
 		// This ensures progress events are received by at least one WebSocket client
-		time.Sleep(3 * time.Second)
+		select {
+		case <-time.After(3 * time.Second):
+		case <-syncCtx.Done():
+			return
+		}
 
 		// Give longer timeout to allow for card syncing (10 minutes for full Standard sync)
-		syncCtx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
+		syncTimeoutCtx, cancel := context.WithTimeout(syncCtx, 10*time.Minute)
 		defer cancel()
 
 		// Check if Standard set cards are incomplete and sync them
-		systemFacade.SyncIncompleteStandardCards(syncCtx, setFetcher)
+		systemFacade.SyncIncompleteStandardCards(syncTimeoutCtx, setFetcher)
 	}()
 
 	// Start API server
@@ -265,6 +276,10 @@ func main() {
 
 	fmt.Println()
 	fmt.Println("Shutting down...")
+
+	// Cancel background sync and wait for it to exit before resource teardown
+	syncCancel()
+	syncWg.Wait()
 
 	// Graceful shutdown
 	shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
