@@ -895,3 +895,184 @@ func TestDeckPermutationRepository_GetAllPerformance(t *testing.T) {
 		}
 	}
 }
+
+func TestDeckPermutationRepository_ResetPerformance(t *testing.T) {
+	db := setupPermutationTestDB(t)
+	defer func() {
+		if err := db.Close(); err != nil {
+			t.Errorf("Error closing database: %v", err)
+		}
+	}()
+
+	createTestDeck(t, db, "deck-1", "Test Deck")
+
+	repo := NewDeckPermutationRepository(db)
+	ctx := context.Background()
+
+	// Create a permutation
+	cards := []models.DeckPermutationCard{{CardID: 100, Quantity: 4, Board: "main"}}
+	cardsJSON, _ := json.Marshal(cards)
+	cardHash := testComputeCardHash(cards)
+
+	perm := &models.DeckPermutation{
+		DeckID:        "deck-1",
+		Cards:         string(cardsJSON),
+		CardHash:      cardHash,
+		VersionNumber: 1,
+		CreatedAt:     time.Now(),
+	}
+	if err := repo.Create(ctx, perm); err != nil {
+		t.Fatalf("failed to create permutation: %v", err)
+	}
+
+	// Update performance to set some stats and last_played_at
+	if err := repo.UpdatePerformance(ctx, perm.ID, true, 2, 1); err != nil {
+		t.Fatalf("failed to update performance: %v", err)
+	}
+	if err := repo.UpdatePerformance(ctx, perm.ID, false, 1, 2); err != nil {
+		t.Fatalf("failed to update performance: %v", err)
+	}
+
+	// Verify stats are set before reset
+	perf, err := repo.GetPerformance(ctx, perm.ID)
+	if err != nil {
+		t.Fatalf("failed to get performance: %v", err)
+	}
+	if perf.MatchesPlayed != 2 {
+		t.Errorf("expected 2 matches played before reset, got %d", perf.MatchesPlayed)
+	}
+
+	// Verify last_played_at is set
+	var lastPlayedAt *time.Time
+	err = db.QueryRowContext(ctx, "SELECT last_played_at FROM deck_permutations WHERE id = ?", perm.ID).Scan(&lastPlayedAt)
+	if err != nil {
+		t.Fatalf("failed to query last_played_at: %v", err)
+	}
+	if lastPlayedAt == nil {
+		t.Error("expected last_played_at to be set before reset")
+	}
+
+	// Reset performance
+	if err := repo.ResetPerformance(ctx, perm.ID); err != nil {
+		t.Fatalf("failed to reset performance: %v", err)
+	}
+
+	// Verify all stats are reset to zero
+	perf, err = repo.GetPerformance(ctx, perm.ID)
+	if err != nil {
+		t.Fatalf("failed to get performance after reset: %v", err)
+	}
+	if perf.MatchesPlayed != 0 {
+		t.Errorf("expected 0 matches played after reset, got %d", perf.MatchesPlayed)
+	}
+	if perf.MatchesWon != 0 {
+		t.Errorf("expected 0 matches won after reset, got %d", perf.MatchesWon)
+	}
+	if perf.GamesPlayed != 0 {
+		t.Errorf("expected 0 games played after reset, got %d", perf.GamesPlayed)
+	}
+	if perf.GamesWon != 0 {
+		t.Errorf("expected 0 games won after reset, got %d", perf.GamesWon)
+	}
+
+	// Verify last_played_at is cleared
+	err = db.QueryRowContext(ctx, "SELECT last_played_at FROM deck_permutations WHERE id = ?", perm.ID).Scan(&lastPlayedAt)
+	if err != nil {
+		t.Fatalf("failed to query last_played_at after reset: %v", err)
+	}
+	if lastPlayedAt != nil {
+		t.Errorf("expected last_played_at to be NULL after reset, got %v", lastPlayedAt)
+	}
+}
+
+func TestDeckPermutationRepository_ResetAllPerformanceForDeck(t *testing.T) {
+	db := setupPermutationTestDB(t)
+	defer func() {
+		if err := db.Close(); err != nil {
+			t.Errorf("Error closing database: %v", err)
+		}
+	}()
+
+	createTestDeck(t, db, "deck-1", "Test Deck")
+
+	repo := NewDeckPermutationRepository(db)
+	ctx := context.Background()
+
+	// Create multiple permutations
+	for i := 1; i <= 3; i++ {
+		cards := []models.DeckPermutationCard{{CardID: 100 + i, Quantity: 4, Board: "main"}}
+		cardsJSON, _ := json.Marshal(cards)
+		cardHash := testComputeCardHash(cards)
+
+		perm := &models.DeckPermutation{
+			DeckID:        "deck-1",
+			Cards:         string(cardsJSON),
+			CardHash:      cardHash,
+			VersionNumber: i,
+			CreatedAt:     time.Now().Add(time.Duration(i) * time.Hour),
+		}
+		if err := repo.Create(ctx, perm); err != nil {
+			t.Fatalf("failed to create permutation %d: %v", i, err)
+		}
+
+		// Update performance for each permutation
+		if err := repo.UpdatePerformance(ctx, perm.ID, true, 2, 0); err != nil {
+			t.Fatalf("failed to update performance for permutation %d: %v", i, err)
+		}
+	}
+
+	// Verify all permutations have performance stats
+	perms, err := repo.GetByDeckID(ctx, "deck-1")
+	if err != nil {
+		t.Fatalf("failed to get permutations: %v", err)
+	}
+	for _, perm := range perms {
+		if perm.MatchesPlayed != 1 {
+			t.Errorf("expected 1 match played before reset for perm %d, got %d", perm.ID, perm.MatchesPlayed)
+		}
+	}
+
+	// Verify last_played_at is set for all
+	var count int
+	err = db.QueryRowContext(ctx, "SELECT COUNT(*) FROM deck_permutations WHERE deck_id = ? AND last_played_at IS NOT NULL", "deck-1").Scan(&count)
+	if err != nil {
+		t.Fatalf("failed to count permutations with last_played_at: %v", err)
+	}
+	if count != 3 {
+		t.Errorf("expected 3 permutations with last_played_at set, got %d", count)
+	}
+
+	// Reset all performance for the deck
+	if err := repo.ResetAllPerformanceForDeck(ctx, "deck-1"); err != nil {
+		t.Fatalf("failed to reset all performance: %v", err)
+	}
+
+	// Verify all stats are reset
+	perms, err = repo.GetByDeckID(ctx, "deck-1")
+	if err != nil {
+		t.Fatalf("failed to get permutations after reset: %v", err)
+	}
+	for _, perm := range perms {
+		if perm.MatchesPlayed != 0 {
+			t.Errorf("expected 0 matches played after reset for perm %d, got %d", perm.ID, perm.MatchesPlayed)
+		}
+		if perm.MatchesWon != 0 {
+			t.Errorf("expected 0 matches won after reset for perm %d, got %d", perm.ID, perm.MatchesWon)
+		}
+		if perm.GamesPlayed != 0 {
+			t.Errorf("expected 0 games played after reset for perm %d, got %d", perm.ID, perm.GamesPlayed)
+		}
+		if perm.GamesWon != 0 {
+			t.Errorf("expected 0 games won after reset for perm %d, got %d", perm.ID, perm.GamesWon)
+		}
+	}
+
+	// Verify last_played_at is cleared for all
+	err = db.QueryRowContext(ctx, "SELECT COUNT(*) FROM deck_permutations WHERE deck_id = ? AND last_played_at IS NULL", "deck-1").Scan(&count)
+	if err != nil {
+		t.Fatalf("failed to count permutations with NULL last_played_at: %v", err)
+	}
+	if count != 3 {
+		t.Errorf("expected 3 permutations with NULL last_played_at after reset, got %d", count)
+	}
+}

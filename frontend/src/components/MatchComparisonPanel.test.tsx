@@ -422,5 +422,52 @@ describe('MatchComparisonPanel', () => {
         expect(screen.getAllByText(/Mono White Aggro/).length).toBeGreaterThan(0);
       });
     });
+
+    it('renders insights as safe JSX without raw HTML tags', async () => {
+      mockCompareDecks.mockResolvedValue(deckComparisonResult);
+
+      const { container } = render(
+        <MatchComparisonPanel
+          deckIds={[
+            { id: 'deck-uuid-1', name: 'Izzet Phoenix' },
+            { id: 'deck-uuid-2', name: 'Mono White Aggro' },
+          ]}
+        />
+      );
+
+      // Switch to decks comparison
+      fireEvent.click(screen.getByText('Compare Decks'));
+
+      // Select decks
+      const checkboxes = screen.getAllByRole('checkbox');
+      fireEvent.click(checkboxes[0]);
+      fireEvent.click(checkboxes[1]);
+
+      // Click compare
+      fireEvent.click(screen.getByText('Compare'));
+
+      await waitFor(() => {
+        // Verify insights section exists
+        expect(screen.getByText(/outperforms/)).toBeInTheDocument();
+
+        // Verify no raw HTML tags in the insights section
+        // This tests that we're using JSX properly instead of dangerouslySetInnerHTML
+        const insightsSection = container.querySelector('.comparison-insight');
+        expect(insightsSection).not.toBeNull();
+        if (insightsSection) {
+          const htmlContent = insightsSection.innerHTML;
+          // Should not contain escaped HTML entities that would indicate raw HTML strings
+          expect(htmlContent).not.toContain('&lt;strong&gt;');
+          expect(htmlContent).not.toContain('&lt;span&gt;');
+        }
+
+        // Verify strong and span elements are rendered properly as DOM elements
+        const strongElements = container.querySelectorAll('.comparison-insight strong');
+        expect(strongElements.length).toBeGreaterThan(0);
+
+        const highlightSpans = container.querySelectorAll('.comparison-insight .highlight');
+        expect(highlightSpans.length).toBeGreaterThan(0);
+      });
+    });
   });
 });

@@ -2048,3 +2048,128 @@ func TestDeckRepository_DeleteBySourceExcluding_DifferentAccounts(t *testing.T) 
 		t.Error("expected arena-deck-account2 to still exist (different account)")
 	}
 }
+
+func TestDeckRepository_CurrentPermutationID(t *testing.T) {
+	db := setupDeckTestDB(t)
+	defer db.Close()
+
+	repo := NewDeckRepository(db)
+	ctx := context.Background()
+
+	now := time.Now()
+
+	// Create a deck without current_permutation_id
+	deck := &models.Deck{
+		ID:            "deck-1",
+		AccountID:     1,
+		Name:          "Test Deck",
+		Format:        "Standard",
+		Source:        "constructed",
+		MatchesPlayed: 0,
+		MatchesWon:    0,
+		GamesPlayed:   0,
+		GamesWon:      0,
+		CreatedAt:     now,
+		ModifiedAt:    now,
+	}
+
+	err := repo.Create(ctx, deck)
+	if err != nil {
+		t.Fatalf("failed to create deck: %v", err)
+	}
+
+	// Verify GetByID returns nil current_permutation_id
+	retrieved, err := repo.GetByID(ctx, "deck-1")
+	if err != nil {
+		t.Fatalf("failed to get deck by ID: %v", err)
+	}
+	if retrieved.CurrentPermutationID != nil {
+		t.Errorf("expected nil CurrentPermutationID, got %d", *retrieved.CurrentPermutationID)
+	}
+
+	// Manually set current_permutation_id
+	permID := 42
+	_, err = db.ExecContext(ctx, "UPDATE decks SET current_permutation_id = ? WHERE id = ?", permID, "deck-1")
+	if err != nil {
+		t.Fatalf("failed to update current_permutation_id: %v", err)
+	}
+
+	// Verify GetByID returns current_permutation_id
+	retrieved, err = repo.GetByID(ctx, "deck-1")
+	if err != nil {
+		t.Fatalf("failed to get deck by ID: %v", err)
+	}
+	if retrieved.CurrentPermutationID == nil {
+		t.Fatal("expected CurrentPermutationID to be set")
+	}
+	if *retrieved.CurrentPermutationID != permID {
+		t.Errorf("expected CurrentPermutationID %d, got %d", permID, *retrieved.CurrentPermutationID)
+	}
+
+	// Verify List returns current_permutation_id
+	decks, err := repo.List(ctx, 1)
+	if err != nil {
+		t.Fatalf("failed to list decks: %v", err)
+	}
+	if len(decks) != 1 {
+		t.Fatalf("expected 1 deck, got %d", len(decks))
+	}
+	if decks[0].CurrentPermutationID == nil {
+		t.Fatal("expected CurrentPermutationID in List result")
+	}
+	if *decks[0].CurrentPermutationID != permID {
+		t.Errorf("expected CurrentPermutationID %d in List, got %d", permID, *decks[0].CurrentPermutationID)
+	}
+
+	// Create another deck for format filtering
+	deck2 := &models.Deck{
+		ID:            "deck-2",
+		AccountID:     1,
+		Name:          "Test Deck 2",
+		Format:        "Standard",
+		Source:        "constructed",
+		MatchesPlayed: 0,
+		MatchesWon:    0,
+		GamesPlayed:   0,
+		GamesWon:      0,
+		CreatedAt:     now,
+		ModifiedAt:    now,
+	}
+	if err := repo.Create(ctx, deck2); err != nil {
+		t.Fatalf("failed to create deck2: %v", err)
+	}
+
+	permID2 := 99
+	_, err = db.ExecContext(ctx, "UPDATE decks SET current_permutation_id = ? WHERE id = ?", permID2, "deck-2")
+	if err != nil {
+		t.Fatalf("failed to update current_permutation_id for deck2: %v", err)
+	}
+
+	// Verify GetByFormat returns current_permutation_id
+	formatDecks, err := repo.GetByFormat(ctx, 1, "Standard")
+	if err != nil {
+		t.Fatalf("failed to get decks by format: %v", err)
+	}
+	if len(formatDecks) != 2 {
+		t.Fatalf("expected 2 Standard decks, got %d", len(formatDecks))
+	}
+	for _, d := range formatDecks {
+		if d.CurrentPermutationID == nil {
+			t.Errorf("expected CurrentPermutationID in GetByFormat result for deck %s", d.ID)
+		}
+	}
+
+	// Verify GetBySource returns current_permutation_id
+	sourceDecks, err := repo.GetBySource(ctx, 1, "constructed")
+	if err != nil {
+		t.Fatalf("failed to get decks by source: %v", err)
+	}
+	if len(sourceDecks) != 2 {
+		t.Fatalf("expected 2 constructed decks, got %d", len(sourceDecks))
+	}
+	for _, d := range sourceDecks {
+		if d.CurrentPermutationID == nil {
+			t.Errorf("expected CurrentPermutationID in GetBySource result for deck %s", d.ID)
+		}
+	}
+}
