@@ -46,6 +46,7 @@ func setupServiceTestDB(t *testing.T) *sql.DB {
 			is_app_created BOOLEAN DEFAULT FALSE,
 			created_method TEXT DEFAULT 'imported',
 			seed_card_id INTEGER,
+			current_permutation_id INTEGER,
 			FOREIGN KEY (account_id) REFERENCES accounts(id) ON DELETE CASCADE,
 			CHECK(source IN ('draft', 'constructed', 'imported', 'arena'))
 		);

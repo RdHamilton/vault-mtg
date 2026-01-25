@@ -310,10 +310,10 @@ export async function addCard(request: {
 }): Promise<void> {
   // Map frontend field names to backend expected field names
   const body = {
-    card_id: request.arena_id,
+    cardID: request.arena_id,
     quantity: request.quantity,
     board: request.zone,
-    from_draft: request.from_draft ?? false,
+    fromDraft: request.from_draft ?? false,
   };
   await post(`/decks/${request.deck_id}/cards`, body);
 }
@@ -869,6 +869,7 @@ export interface DeckPermutation {
   gameWinRate: number;
   createdAt: string;
   lastPlayedAt?: string | null;
+  isCurrent: boolean;
 }
 
 /**

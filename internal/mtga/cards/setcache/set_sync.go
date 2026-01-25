@@ -87,12 +87,7 @@ func (s *SetSyncer) SyncSets(ctx context.Context) error {
 	var lastErr error
 
 	for _, scryfallSet := range sets.Data {
-		// Skip digital-only sets except Alchemy
-		if scryfallSet.Digital && scryfallSet.SetType != "alchemy" {
-			continue
-		}
-
-		// Skip irrelevant set types
+		// Skip irrelevant set types (tokens, memorabilia, etc.)
 		if !relevantTypes[scryfallSet.SetType] {
 			continue
 		}

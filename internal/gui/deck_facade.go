@@ -513,6 +513,10 @@ func (d *DeckFacade) AddCard(ctx context.Context, deckID string, cardID, quantit
 	}
 
 	log.Printf("Added card %d (x%d) to deck %s", cardID, quantity, deckID)
+
+	// Create a permutation to track this change
+	d.createDeckPermutation(ctx, deckID, fmt.Sprintf("Added %d copy of card %d", quantity, cardID))
+
 	return nil
 }
 
@@ -544,6 +548,10 @@ func (d *DeckFacade) RemoveCard(ctx context.Context, deckID string, cardID int, 
 	}
 
 	log.Printf("Removed 1 copy of card %d from deck %s", cardID, deckID)
+
+	// Create a permutation to track this change
+	d.createDeckPermutation(ctx, deckID, fmt.Sprintf("Removed 1 copy of card %d", cardID))
+
 	return nil
 }
 
@@ -575,7 +583,27 @@ func (d *DeckFacade) RemoveAllCopies(ctx context.Context, deckID string, cardID 
 	}
 
 	log.Printf("Removed all copies of card %d from deck %s", cardID, deckID)
+
+	// Create a permutation to track this change
+	d.createDeckPermutation(ctx, deckID, fmt.Sprintf("Removed all copies of card %d", cardID))
+
 	return nil
+}
+
+// createDeckPermutation creates a new permutation to track deck changes.
+// This is called after any card modification to maintain deck history.
+func (d *DeckFacade) createDeckPermutation(ctx context.Context, deckID, changeSummary string) {
+	if d.services.Storage == nil {
+		return
+	}
+
+	err := storage.RetryOnBusy(func() error {
+		_, err := d.services.Storage.DeckPermutationRepo().CreateFromCurrentDeck(ctx, deckID, nil, &changeSummary)
+		return err
+	})
+	if err != nil {
+		log.Printf("Warning: Failed to create deck permutation: %v", err)
+	}
 }
 
 // ValidateDraftDeck validates that all cards in a draft deck are from the associated draft.
@@ -3567,6 +3595,7 @@ type DeckPermutationResponse struct {
 	GameWinRate         float64                       `json:"gameWinRate"`
 	CreatedAt           time.Time                     `json:"createdAt"`
 	LastPlayedAt        *time.Time                    `json:"lastPlayedAt,omitempty"`
+	IsCurrent           bool                          `json:"isCurrent"`
 }
 
 // DeckPermutationDiffResponse represents the diff between two permutations.
@@ -3589,9 +3618,25 @@ func (d *DeckFacade) GetDeckPermutations(ctx context.Context, deckID string) ([]
 		return nil, &AppError{Message: "Failed to get deck permutations", Err: err}
 	}
 
+	// Get the deck to find the current permutation ID
+	deck, err := d.services.Storage.DeckRepo().GetByID(ctx, deckID)
+	if err != nil {
+		return nil, &AppError{Message: "Failed to get deck", Err: err}
+	}
+
+	var currentPermID *int
+	if deck != nil {
+		currentPermID = deck.CurrentPermutationID
+	}
+
 	responses := make([]*DeckPermutationResponse, 0, len(perms))
 	for _, perm := range perms {
-		responses = append(responses, d.permutationToResponse(perm))
+		resp := d.permutationToResponse(perm)
+		// Mark as current if this permutation matches the deck's current_permutation_id
+		if currentPermID != nil && perm.ID == *currentPermID {
+			resp.IsCurrent = true
+		}
+		responses = append(responses, resp)
 	}
 
 	return responses, nil
@@ -3786,4 +3831,14 @@ func (d *DeckFacade) permutationToResponse(perm *models.DeckPermutation) *DeckPe
 		CreatedAt:           perm.CreatedAt,
 		LastPlayedAt:        perm.LastPlayedAt,
 	}
+}
+
+// RecalculateDeckPerformance recalculates all deck and permutation performance statistics
+// from the historical match data.
+func (d *DeckFacade) RecalculateDeckPerformance(ctx context.Context) (*storage.RecalculateDeckPerformanceResult, error) {
+	if d.services.Storage == nil {
+		return nil, &AppError{Message: "Database not initialized"}
+	}
+
+	return d.services.Storage.RecalculateDeckPerformance(ctx)
 }

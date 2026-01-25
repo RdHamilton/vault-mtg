@@ -1170,24 +1170,37 @@ func (s *Service) InferDeckIDsForMatches(ctx context.Context) (int, error) {
 
 	log.Printf("[InferDeckIDs] Found %d decks with LastPlayed timestamps", len(decksWithTimestamp))
 
-	if len(decksWithTimestamp) == 0 {
-		log.Printf("[InferDeckIDs] No decks have LastPlayed timestamps - cannot infer deck IDs")
-		return 0, nil
+	// If no decks have timestamps but we have decks, try format-only matching
+	noTimestamps := len(decksWithTimestamp) == 0
+	if noTimestamps {
+		if len(allDecks) == 0 {
+			log.Printf("[InferDeckIDs] No decks in database - cannot infer deck IDs")
+			return 0, nil
+		}
+		log.Printf("[InferDeckIDs] No decks have LastPlayed timestamps - falling back to format-only matching with %d decks", len(allDecks))
 	}
 
 	updatedCount := 0
 	const maxTimeDiff = 24 * time.Hour // Only link if within 24 hours (same play session day)
 
-	// Sort decks by LastPlayed descending (most recent first)
+	// Use decksWithTimestamp if available, otherwise fall back to allDecks for format-only matching
+	decksToSearch := decksWithTimestamp
+	if noTimestamps {
+		decksToSearch = allDecks
+	}
+
+	// Sort decks by LastPlayed descending (most recent first) if timestamps exist
 	// This helps when match timestamps are missing and we fall back to time.Now()
-	sort.Slice(decksWithTimestamp, func(i, j int) bool {
-		return decksWithTimestamp[i].LastPlayed.After(*decksWithTimestamp[j].LastPlayed)
-	})
+	if !noTimestamps {
+		sort.Slice(decksWithTimestamp, func(i, j int) bool {
+			return decksWithTimestamp[i].LastPlayed.After(*decksWithTimestamp[j].LastPlayed)
+		})
+	}
 
 	// Check if all match timestamps are suspiciously close together (within 1 minute)
 	// This indicates they're using time.Now() fallback during batch replay
 	suspiciousBatch := false
-	if len(matchesNeedingDecks) > 1 {
+	if !noTimestamps && len(matchesNeedingDecks) > 1 {
 		timeDiffBetweenMatches := matchesNeedingDecks[len(matchesNeedingDecks)-1].Timestamp.Sub(matchesNeedingDecks[0].Timestamp)
 		// Take absolute value to handle both chronological and reverse-chronological ordering
 		if timeDiffBetweenMatches < 0 {
@@ -1200,8 +1213,12 @@ func (s *Service) InferDeckIDsForMatches(ctx context.Context) (int, error) {
 		}
 	}
 
-	log.Printf("[InferDeckIDs] Starting to match %d matches with %d decks (max time diff: %v)", len(matchesNeedingDecks), len(decksWithTimestamp), maxTimeDiff)
-	log.Printf("[InferDeckIDs] Most recent deck: '%s' (LastPlayed: %v)", decksWithTimestamp[0].Name, *decksWithTimestamp[0].LastPlayed)
+	if noTimestamps {
+		log.Printf("[InferDeckIDs] Starting format-only matching for %d matches with %d decks", len(matchesNeedingDecks), len(decksToSearch))
+	} else {
+		log.Printf("[InferDeckIDs] Starting to match %d matches with %d decks (max time diff: %v)", len(matchesNeedingDecks), len(decksWithTimestamp), maxTimeDiff)
+		log.Printf("[InferDeckIDs] Most recent deck: '%s' (LastPlayed: %v)", decksWithTimestamp[0].Name, *decksWithTimestamp[0].LastPlayed)
+	}
 
 	for i, match := range matchesNeedingDecks {
 		var bestDeck *models.Deck
@@ -1216,63 +1233,113 @@ func (s *Service) InferDeckIDsForMatches(ctx context.Context) (int, error) {
 			log.Printf("[InferDeckIDs] Match %d: timestamp=%v, format=%s (normalized: %s)", i+1, match.Timestamp, match.Format, matchFormat)
 		}
 
-		for j, deck := range decksWithTimestamp {
-			// Calculate time difference
-			diff := match.Timestamp.Sub(*deck.LastPlayed)
-			if diff < 0 {
-				diff = -diff
+		for j, deck := range decksToSearch {
+			// Calculate time difference (only if deck has LastPlayed)
+			var diff time.Duration
+			hasTimestamp := deck.LastPlayed != nil
+			if hasTimestamp {
+				diff = match.Timestamp.Sub(*deck.LastPlayed)
+				if diff < 0 {
+					diff = -diff
+				}
 			}
 
 			// Check format match (case-insensitive)
 			formatMatches := strings.EqualFold(deck.Format, matchFormat)
 
 			if i < 3 && j < 3 { // Log first few comparisons
-				log.Printf("[InferDeckIDs]   Deck '%s': format=%s, LastPlayed=%v, diff=%v, formatMatch=%v", deck.Name, deck.Format, *deck.LastPlayed, diff, formatMatches)
+				if hasTimestamp {
+					log.Printf("[InferDeckIDs]   Deck '%s': format=%s, LastPlayed=%v, diff=%v, formatMatch=%v", deck.Name, deck.Format, *deck.LastPlayed, diff, formatMatches)
+				} else {
+					log.Printf("[InferDeckIDs]   Deck '%s': format=%s, LastPlayed=nil, formatMatch=%v", deck.Name, deck.Format, formatMatches)
+				}
 			}
 
-			// Track best deck overall (for fallback)
-			if bestDeck == nil || diff < minDiff {
-				bestDeck = deck
-				minDiff = diff
+			// Track best deck overall (for fallback) - only consider if has timestamp or in format-only mode
+			if hasTimestamp {
+				if bestDeck == nil || diff < minDiff {
+					bestDeck = deck
+					minDiff = diff
+				}
 			}
 
 			// Track best deck that matches format (preferred)
-			if formatMatches && (bestDeckWithFormat == nil || diff < minDiffWithFormat) {
-				bestDeckWithFormat = deck
-				minDiffWithFormat = diff
+			// In format-only mode (noTimestamps), this is the primary matching criteria
+			if formatMatches {
+				if noTimestamps {
+					// In format-only mode, prefer first format match (or could use most recently modified)
+					if bestDeckWithFormat == nil {
+						bestDeckWithFormat = deck
+					}
+				} else if hasTimestamp && (bestDeckWithFormat == nil || diff < minDiffWithFormat) {
+					bestDeckWithFormat = deck
+					minDiffWithFormat = diff
+				}
 			}
-		}
-
-		// Prefer format-matched deck, but only if it's within the time window
-		// This prevents a far-away format-matched deck from blocking a valid time-window fallback
-		formatMatched := false
-		if bestDeckWithFormat != nil && minDiffWithFormat <= maxTimeDiff {
-			bestDeck = bestDeckWithFormat
-			minDiff = minDiffWithFormat
-			formatMatched = true
 		}
 
 		// Determine if we should link this match to the best deck
 		shouldLink := false
 		var linkReason string
+		formatMatched := false
 
-		if bestDeck != nil && minDiff <= maxTimeDiff {
-			shouldLink = true
-			if formatMatched {
-				linkReason = fmt.Sprintf("format match + within time window (diff: %v)", minDiff)
-			} else {
-				linkReason = fmt.Sprintf("within time window, no format match (diff: %v)", minDiff)
+		if noTimestamps {
+			// Format-only matching mode
+			if bestDeckWithFormat != nil {
+				bestDeck = bestDeckWithFormat
+				shouldLink = true
+				formatMatched = true
+				linkReason = "format match (no timestamps available)"
 			}
-		} else if suspiciousBatch && bestDeck != nil {
-			// Fallback for batch replay: link to most recent deck
-			shouldLink = true
-			linkReason = "suspicious batch - using most recent deck"
+		} else {
+			// Prefer format-matched deck, but only if it's within the time window
+			// This prevents a far-away format-matched deck from blocking a valid time-window fallback
+			if bestDeckWithFormat != nil && minDiffWithFormat <= maxTimeDiff {
+				bestDeck = bestDeckWithFormat
+				minDiff = minDiffWithFormat
+				formatMatched = true
+			}
+
+			if bestDeck != nil && minDiff <= maxTimeDiff {
+				shouldLink = true
+				if formatMatched {
+					linkReason = fmt.Sprintf("format match + within time window (diff: %v)", minDiff)
+				} else {
+					linkReason = fmt.Sprintf("within time window, no format match (diff: %v)", minDiff)
+				}
+			} else if suspiciousBatch && bestDeck != nil {
+				// Fallback for batch replay: link to most recent deck
+				shouldLink = true
+				linkReason = "suspicious batch - using most recent deck"
+			}
 		}
 
 		if shouldLink && bestDeck != nil {
 			if err := s.matches.UpdateDeckID(ctx, match.ID, bestDeck.ID); err != nil {
 				return updatedCount, fmt.Errorf("failed to update match %s with deck ID: %w", match.ID, err)
 			}
+
+			// Update deck and permutation performance stats
+			matchWon := match.Result == "win"
+			gamesWon := match.PlayerWins
+			gamesLost := match.OpponentWins
+
+			// Update deck performance
+			if err := s.decks.UpdatePerformance(ctx, bestDeck.ID, matchWon, gamesWon, gamesLost); err != nil {
+				log.Printf("[InferDeckIDs] Warning: Failed to update deck performance for %s: %v", bestDeck.ID, err)
+			}
+
+			// Update current permutation performance
+			permRepo := s.DeckPermutationRepo()
+			currentPerm, err := permRepo.GetCurrent(ctx, bestDeck.ID)
+			if err != nil {
+				log.Printf("[InferDeckIDs] Warning: Failed to get current permutation for deck %s: %v", bestDeck.ID, err)
+			} else if currentPerm != nil {
+				if err := permRepo.UpdatePerformance(ctx, currentPerm.ID, matchWon, gamesWon, gamesLost); err != nil {
+					log.Printf("[InferDeckIDs] Warning: Failed to update permutation performance for %d: %v", currentPerm.ID, err)
+				}
+			}
+
 			updatedCount++
 			if updatedCount <= 3 { // Log first few successful links
 				log.Printf("[InferDeckIDs] ✓ Linked match %s to deck '%s' (%s)", match.ID, bestDeck.Name, linkReason)
@@ -1291,6 +1358,131 @@ func (s *Service) InferDeckIDsForMatches(ctx context.Context) (int, error) {
 	log.Printf("[InferDeckIDs] Completed: linked %d/%d matches to decks", updatedCount, len(matchesNeedingDecks))
 
 	return updatedCount, nil
+}
+
+// RecalculateDeckPerformanceResult contains the results of a deck performance recalculation.
+type RecalculateDeckPerformanceResult struct {
+	DecksProcessed       int `json:"decksProcessed"`
+	MatchesProcessed     int `json:"matchesProcessed"`
+	PermutationsReset    int `json:"permutationsReset"`
+	DecksWithoutMatches  int `json:"decksWithoutMatches"`
+	MatchesWithoutDeckID int `json:"matchesWithoutDeckID"`
+}
+
+// RecalculateDeckPerformance recalculates all deck and permutation performance statistics
+// from the historical match data. This resets all performance counters and recalculates
+// them based on the matches that have deck IDs assigned.
+// Matches are attributed to the permutation that was active at the time of the match
+// based on comparing match timestamps with permutation creation times.
+func (s *Service) RecalculateDeckPerformance(ctx context.Context) (*RecalculateDeckPerformanceResult, error) {
+	result := &RecalculateDeckPerformanceResult{}
+
+	// Get all matches grouped by deck ID
+	matchesByDeck, err := s.matches.GetMatchesWithDeckID(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get matches with deck IDs: %w", err)
+	}
+
+	log.Printf("[RecalculateDeckPerformance] Found %d decks with matches", len(matchesByDeck))
+
+	// Get all decks to reset their performance counters
+	allDecks, err := s.decks.List(ctx, s.currentAccountID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to list decks: %w", err)
+	}
+
+	// Reset all deck performance counters
+	permRepo := s.DeckPermutationRepo()
+	for _, deck := range allDecks {
+		// Reset deck performance
+		if err := s.decks.ResetPerformance(ctx, deck.ID); err != nil {
+			log.Printf("[RecalculateDeckPerformance] Warning: Failed to reset deck performance for %s: %v", deck.ID, err)
+			continue
+		}
+
+		// Reset all permutation performance for this deck
+		if err := permRepo.ResetAllPerformanceForDeck(ctx, deck.ID); err != nil {
+			log.Printf("[RecalculateDeckPerformance] Warning: Failed to reset permutation performance for deck %s: %v", deck.ID, err)
+		}
+		result.PermutationsReset++
+	}
+
+	log.Printf("[RecalculateDeckPerformance] Reset performance for %d decks", len(allDecks))
+
+	// Track which decks have matches
+	decksWithMatches := make(map[string]bool)
+
+	// Process each deck's matches
+	for deckID, matches := range matchesByDeck {
+		decksWithMatches[deckID] = true
+		result.DecksProcessed++
+
+		// Get all permutations for this deck ordered by creation time (ascending)
+		permutations, err := permRepo.GetByDeckID(ctx, deckID)
+		if err != nil {
+			log.Printf("[RecalculateDeckPerformance] Warning: Failed to get permutations for deck %s: %v", deckID, err)
+		}
+
+		// Process each match for this deck
+		for _, match := range matches {
+			result.MatchesProcessed++
+
+			matchWon := match.Result == "win"
+			gamesWon := match.PlayerWins
+			gamesLost := match.OpponentWins
+
+			// Update deck performance
+			if err := s.decks.UpdatePerformance(ctx, deckID, matchWon, gamesWon, gamesLost); err != nil {
+				log.Printf("[RecalculateDeckPerformance] Warning: Failed to update deck performance for %s: %v", deckID, err)
+				continue
+			}
+
+			// Find the permutation that was active when this match was played
+			// The active permutation is the one with the highest CreatedAt that is <= match.Timestamp
+			// We iterate through all permutations (ordered by version_number) and keep updating
+			// activePerm as long as the permutation was created before or at the match time.
+			var activePerm *models.DeckPermutation
+			for _, perm := range permutations {
+				if perm.CreatedAt.Before(match.Timestamp) || perm.CreatedAt.Equal(match.Timestamp) {
+					activePerm = perm
+				}
+			}
+
+			// Fallback: If no permutation was found (match was played before any permutation was created),
+			// attribute to the first permutation (v1) as it represents the original deck state.
+			// This handles cases where permutations were created via migration after matches were played.
+			if activePerm == nil && len(permutations) > 0 {
+				activePerm = permutations[0] // First permutation (lowest version number)
+			}
+
+			// Update the active permutation's performance (if found)
+			if activePerm != nil {
+				if err := permRepo.UpdatePerformance(ctx, activePerm.ID, matchWon, gamesWon, gamesLost); err != nil {
+					log.Printf("[RecalculateDeckPerformance] Warning: Failed to update permutation %d performance: %v", activePerm.ID, err)
+				}
+			}
+		}
+	}
+
+	// Count decks without matches
+	for _, deck := range allDecks {
+		if !decksWithMatches[deck.ID] {
+			result.DecksWithoutMatches++
+		}
+	}
+
+	// Get count of matches without deck IDs for reference
+	matchesWithoutDeckID, err := s.matches.GetMatchesWithoutDeckID(ctx)
+	if err != nil {
+		log.Printf("[RecalculateDeckPerformance] Warning: Failed to count matches without deck IDs: %v", err)
+	} else {
+		result.MatchesWithoutDeckID = len(matchesWithoutDeckID)
+	}
+
+	log.Printf("[RecalculateDeckPerformance] Completed: processed %d decks with %d matches, %d decks have no matches, %d matches have no deck ID",
+		result.DecksProcessed, result.MatchesProcessed, result.DecksWithoutMatches, result.MatchesWithoutDeckID)
+
+	return result, nil
 }
 
 // UpdateCollection updates the collection based on changes detected in the log.

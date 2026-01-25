@@ -105,6 +105,12 @@
   font-size: 0.875rem;
 }
 
+.deck-history-modal .current-badge {
+  font-size: 0.7rem;
+  font-weight: 500;
+  color: var(--accent-color);
+}
+
 .deck-history-modal .version-name {
   font-size: 0.75rem;
   color: var(--text-secondary);
@@ -146,12 +152,14 @@
   display: flex;
   flex-direction: column;
   gap: 2px;
+  align-items: flex-start;
 }
 
 .deck-history-modal .version-date,
 .deck-history-modal .version-stats {
   font-size: 0.75rem;
   color: var(--text-secondary);
+  line-height: 1.3;
 }
 
 /* Version details */
@@ -192,14 +200,14 @@
 
 .deck-history-modal .details-stats {
   display: grid;
-  grid-template-columns: repeat(4, 1fr);
-  gap: 16px;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 12px;
   margin-bottom: 20px;
 }
 
 .deck-history-modal .stat {
   background: var(--background-color);
-  padding: 12px;
+  padding: 12px 16px;
   border-radius: 6px;
   text-align: center;
 }
@@ -209,6 +217,8 @@
   font-size: 0.75rem;
   color: var(--text-secondary);
   margin-bottom: 4px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
 }
 
 .deck-history-modal .stat-value {

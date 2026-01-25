@@ -1268,3 +1268,16 @@ func (h *DeckHandler) GetAllPerformanceRecommendations(w http.ResponseWriter, r 
 
 	response.Success(w, result)
 }
+
+// RecalculateDeckPerformance recalculates all deck and permutation performance statistics
+// from the historical match data.
+// POST /admin/recalculate-deck-performance
+func (h *DeckHandler) RecalculateDeckPerformance(w http.ResponseWriter, r *http.Request) {
+	result, err := h.facade.RecalculateDeckPerformance(r.Context())
+	if err != nil {
+		response.InternalError(w, err)
+		return
+	}
+
+	response.Success(w, result)
+}

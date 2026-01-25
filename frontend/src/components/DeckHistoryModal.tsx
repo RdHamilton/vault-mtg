@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { decks as decksApi } from '@/services/api';
+import { decks as decksApi, cards as cardsApi } from '@/services/api';
 import type { DeckPermutation, DeckPermutationDiff } from '@/services/api/decks';
 import LoadingSpinner from './LoadingSpinner';
 import './DeckHistoryModal.css';
@@ -39,6 +39,7 @@ export default function DeckHistoryModal({
   const [restoring, setRestoring] = useState(false);
   const [editingName, setEditingName] = useState<number | null>(null);
   const [newName, setNewName] = useState('');
+  const [cardNames, setCardNames] = useState<Record<number, string>>({});
 
   // Load permutations
   useEffect(() => {
@@ -53,8 +54,11 @@ export default function DeckHistoryModal({
         const sorted = [...data].sort((a, b) => b.versionNumber - a.versionNumber);
         setPermutations(sorted);
 
-        // Select the latest version by default
-        if (sorted.length > 0) {
+        // Select the current permutation by default, or the latest if none is current
+        const currentPerm = sorted.find((p) => p.isCurrent);
+        if (currentPerm) {
+          setSelectedPermId(currentPerm.id);
+        } else if (sorted.length > 0) {
           setSelectedPermId(sorted[0].id);
         }
       } catch (err) {
@@ -102,6 +106,46 @@ export default function DeckHistoryModal({
 
     loadDiff();
   }, [selectedPermId, permutations, deckId]);
+
+  // Fetch card names when diff changes
+  useEffect(() => {
+    if (!diff) return;
+
+    const fetchCardNames = async () => {
+      // Collect all unique card IDs from the diff
+      const cardIds = new Set<number>();
+      diff.addedCards.forEach((c) => cardIds.add(c.card_id));
+      diff.removedCards.forEach((c) => cardIds.add(c.card_id));
+      diff.changedCards.forEach((c) => cardIds.add(c.card_id));
+
+      // Filter out IDs we already have names for
+      const idsToFetch = Array.from(cardIds).filter((id) => !cardNames[id]);
+
+      if (idsToFetch.length === 0) return;
+
+      // Fetch card details for each ID
+      const newNames: Record<number, string> = {};
+      await Promise.all(
+        idsToFetch.map(async (cardId) => {
+          try {
+            const card = await cardsApi.getCardByArenaId(cardId);
+            newNames[cardId] = card.Name;
+          } catch {
+            newNames[cardId] = `Card #${cardId}`;
+          }
+        })
+      );
+
+      setCardNames((prev) => ({ ...prev, ...newNames }));
+    };
+
+    fetchCardNames();
+  }, [diff, cardNames]);
+
+  // Helper to get card name with fallback
+  const getCardName = (cardId: number): string => {
+    return cardNames[cardId] || `Card #${cardId}`;
+  };
 
   const handleRestore = async (permId: number) => {
     if (!confirm('Are you sure you want to restore this version? Your current deck will be replaced.')) {
@@ -182,7 +226,10 @@ export default function DeckHistoryModal({
                     onClick={() => setSelectedPermId(perm.id)}
                   >
                     <div className="version-header">
-                      <span className="version-number">v{perm.versionNumber}</span>
+                      <span className="version-number">
+                        v{perm.versionNumber}
+                        {perm.isCurrent && <span className="current-badge"> (Current)</span>}
+                      </span>
                       {editingName === perm.id ? (
                         <div className="name-edit">
                           <input
@@ -239,9 +286,7 @@ export default function DeckHistoryModal({
                       <button
                         className="restore-button"
                         onClick={() => handleRestore(selectedPerm.id)}
-                        disabled={
-                          restoring || selectedPerm.id === permutations[0]?.id
-                        }
+                        disabled={restoring || selectedPerm.isCurrent}
                       >
                         {restoring ? 'Restoring...' : 'Restore This Version'}
                       </button>
@@ -286,7 +331,7 @@ export default function DeckHistoryModal({
                             <ul>
                               {diff.addedCards.map((card, idx) => (
                                 <li key={idx}>
-                                  +{card.quantity} Card #{card.card_id} ({card.board})
+                                  +{card.quantity} {getCardName(card.card_id)} ({card.board})
                                 </li>
                               ))}
                             </ul>
@@ -299,7 +344,7 @@ export default function DeckHistoryModal({
                             <ul>
                               {diff.removedCards.map((card, idx) => (
                                 <li key={idx}>
-                                  -{card.quantity} Card #{card.card_id} ({card.board})
+                                  -{card.quantity} {getCardName(card.card_id)} ({card.board})
                                 </li>
                               ))}
                             </ul>
@@ -312,7 +357,7 @@ export default function DeckHistoryModal({
                             <ul>
                               {diff.changedCards.map((card, idx) => (
                                 <li key={idx}>
-                                  Card #{card.card_id}: {card.old_quantity} &rarr;{' '}
+                                  {getCardName(card.card_id)}: {card.old_quantity} &rarr;{' '}
                                   {card.new_quantity} ({card.board})
                                 </li>
                               ))}

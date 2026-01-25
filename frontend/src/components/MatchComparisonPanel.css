@@ -22,17 +22,21 @@
 }
 
 .match-comparison-panel .close-button {
-  background: none;
-  border: none;
-  font-size: 1.5rem;
+  background: var(--bg-primary);
+  border: 1px solid var(--border-color);
+  border-radius: 4px;
+  font-size: 1.25rem;
   cursor: pointer;
   color: var(--text-secondary);
-  padding: 0;
+  padding: 4px 10px;
   line-height: 1;
+  transition: all 0.2s ease;
 }
 
 .match-comparison-panel .close-button:hover {
   color: var(--text-primary);
+  background: var(--bg-hover);
+  border-color: var(--text-secondary);
 }
 
 .comparison-type-selector {

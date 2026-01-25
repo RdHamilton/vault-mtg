@@ -63,6 +63,10 @@ type MatchRepository interface {
 	// GetMatchesWithoutDeckID returns all matches that don't have a deck_id assigned.
 	GetMatchesWithoutDeckID(ctx context.Context) ([]*models.Match, error)
 
+	// GetMatchesWithDeckID returns all matches that have a deck_id assigned, grouped by deck.
+	// Returns a map of deck_id -> slice of matches for that deck.
+	GetMatchesWithDeckID(ctx context.Context) (map[string][]*models.Match, error)
+
 	// UpdateDeckID updates the deck_id for a specific match.
 	UpdateDeckID(ctx context.Context, matchID, deckID string) error
 
@@ -1187,6 +1191,67 @@ func (r *matchRepository) GetMatchesWithoutDeckID(ctx context.Context) ([]*model
 	}
 
 	return matches, nil
+}
+
+// GetMatchesWithDeckID returns all matches that have a deck_id assigned, grouped by deck.
+func (r *matchRepository) GetMatchesWithDeckID(ctx context.Context) (map[string][]*models.Match, error) {
+	query := `
+		SELECT id, account_id, event_id, event_name, timestamp, player_wins, opponent_wins,
+			   player_team_id, deck_id, format, result, result_reason, created_at
+		FROM matches
+		WHERE deck_id IS NOT NULL
+		ORDER BY deck_id, timestamp DESC
+	`
+
+	rows, err := r.db.QueryContext(ctx, query)
+	if err != nil {
+		return nil, fmt.Errorf("failed to query matches: %w", err)
+	}
+	defer func() {
+		if err := rows.Close(); err != nil {
+			log.Printf("Error closing rows: %v", err)
+		}
+	}()
+
+	result := make(map[string][]*models.Match)
+	for rows.Next() {
+		var m models.Match
+		var resultReason sql.NullString
+		var deckID sql.NullString
+
+		err := rows.Scan(
+			&m.ID,
+			&m.AccountID,
+			&m.EventID,
+			&m.EventName,
+			&m.Timestamp,
+			&m.PlayerWins,
+			&m.OpponentWins,
+			&m.PlayerTeamID,
+			&deckID,
+			&m.Format,
+			&m.Result,
+			&resultReason,
+			&m.CreatedAt,
+		)
+		if err != nil {
+			return nil, fmt.Errorf("failed to scan match: %w", err)
+		}
+
+		if resultReason.Valid {
+			m.ResultReason = &resultReason.String
+		}
+		if deckID.Valid {
+			m.DeckID = &deckID.String
+			result[deckID.String] = append(result[deckID.String], &m)
+		}
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("error iterating matches: %w", err)
+	}
+
+	return result, nil
 }
 
 // UpdateDeckID updates the deck_id for a specific match.

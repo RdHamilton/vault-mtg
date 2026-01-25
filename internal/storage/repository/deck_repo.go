@@ -54,6 +54,9 @@ type DeckRepository interface {
 	// UpdatePerformance updates deck performance metrics after a match.
 	UpdatePerformance(ctx context.Context, deckID string, matchWon bool, gamesWon, gamesLost int) error
 
+	// ResetPerformance resets a deck's performance counters to zero.
+	ResetPerformance(ctx context.Context, deckID string) error
+
 	// GetPerformance calculates and returns deck performance metrics.
 	GetPerformance(ctx context.Context, deckID string) (*models.DeckPerformance, error)
 
@@ -204,7 +207,7 @@ func (r *deckRepository) GetByID(ctx context.Context, id string) (*models.Deck, 
 	query := `
 		SELECT id, account_id, name, format, description, color_identity, source, draft_event_id,
 		       matches_played, matches_won, games_played, games_won,
-		       created_at, modified_at, last_played,
+		       created_at, modified_at, last_played, current_permutation_id,
 		       is_app_created, created_method, seed_card_id
 		FROM decks
 		WHERE id = ?
@@ -227,6 +230,7 @@ func (r *deckRepository) GetByID(ctx context.Context, id string) (*models.Deck, 
 		&deck.CreatedAt,
 		&deck.ModifiedAt,
 		&deck.LastPlayed,
+		&deck.CurrentPermutationID,
 		&deck.IsAppCreated,
 		&deck.CreatedMethod,
 		&deck.SeedCardID,
@@ -575,6 +579,28 @@ func (r *deckRepository) UpdatePerformance(ctx context.Context, deckID string, m
 	)
 	if err != nil {
 		return fmt.Errorf("failed to update deck performance: %w", err)
+	}
+
+	return nil
+}
+
+// ResetPerformance resets a deck's performance counters to zero.
+func (r *deckRepository) ResetPerformance(ctx context.Context, deckID string) error {
+	query := `
+		UPDATE decks
+		SET matches_played = 0,
+		    matches_won = 0,
+		    games_played = 0,
+		    games_won = 0,
+		    modified_at = ?
+		WHERE id = ?
+	`
+
+	now := time.Now().UTC().Format("2006-01-02 15:04:05.999999")
+
+	_, err := r.db.ExecContext(ctx, query, now, deckID)
+	if err != nil {
+		return fmt.Errorf("failed to reset deck performance: %w", err)
 	}
 
 	return nil

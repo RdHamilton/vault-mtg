@@ -517,7 +517,7 @@ func (c *CardFacade) SearchCardsWithCollection(ctx context.Context, query string
 	results := make([]*CardWithOwned, 0, len(cards))
 	for _, card := range cards {
 		var arenaID int
-		if _, err := fmt.Sscanf(card.ArenaID, "%d", &arenaID); err != nil {
+		if _, err := fmt.Sscanf(card.ArenaID, "%d", &arenaID); err != nil || arenaID <= 0 {
 			continue
 		}
 

@@ -74,6 +74,10 @@ func (m *mockMatchRepository) GetMatchesWithoutDeckID(ctx context.Context) ([]*m
 	return nil, nil
 }
 
+func (m *mockMatchRepository) GetMatchesWithDeckID(ctx context.Context) (map[string][]*models.Match, error) {
+	return nil, nil
+}
+
 func (m *mockMatchRepository) UpdateDeckID(ctx context.Context, matchID, deckID string) error {
 	return nil
 }

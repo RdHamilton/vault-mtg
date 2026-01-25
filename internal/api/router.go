@@ -403,6 +403,12 @@ func (s *Server) setupRoutes() {
 			// Archetype expected cards
 			r.Get("/archetypes/{name}/expected-cards", opponentHandler.GetExpectedCards)
 		}
+
+		// Admin routes for maintenance operations
+		r.Route("/admin", func(r chi.Router) {
+			// Recalculate deck and permutation performance from historical match data
+			r.Post("/recalculate-deck-performance", deckHandler.RecalculateDeckPerformance)
+		})
 	})
 }
 

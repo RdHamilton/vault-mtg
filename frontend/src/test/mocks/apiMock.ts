@@ -60,6 +60,13 @@ export const mockDecks = {
   suggestDecks: vi.fn((() => Promise.resolve([] as unknown[])) as MockFn),
   applySuggestedDeck: vi.fn((() => Promise.resolve()) as MockFn),
   validateDraftDeck: vi.fn((() => Promise.resolve(true)) as MockFn),
+  // Deck permutation methods
+  getDeckPermutations: vi.fn((() => Promise.resolve([] as unknown[])) as MockFn),
+  getCurrentDeckPermutation: vi.fn((() => Promise.resolve(null as unknown)) as MockFn),
+  getDeckPermutation: vi.fn((() => Promise.resolve({} as unknown)) as MockFn),
+  getDeckPermutationDiff: vi.fn((() => Promise.resolve({ addedCards: [], removedCards: [], changedCards: [] })) as MockFn),
+  updateDeckPermutationName: vi.fn((() => Promise.resolve()) as MockFn),
+  restoreDeckPermutation: vi.fn((() => Promise.resolve()) as MockFn),
 };
 
 export const mockDrafts = {

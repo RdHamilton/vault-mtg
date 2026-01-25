@@ -586,8 +586,16 @@ const MatchHistory = () => {
 
       {/* Match Comparison Panel */}
       {showComparisonPanel && (
-        <div className="comparison-panel-overlay">
-          <div className="comparison-panel-container">
+        <div
+          className="comparison-panel-overlay"
+          onClick={() => setShowComparisonPanel(false)}
+          data-testid="comparison-panel-overlay"
+        >
+          <div
+            className="comparison-panel-container"
+            onClick={(e) => e.stopPropagation()}
+            data-testid="comparison-panel-container"
+          >
             <MatchComparisonPanel
               formats={uniqueFormats}
               deckIds={uniqueDecks}

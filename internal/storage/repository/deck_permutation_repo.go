@@ -38,6 +38,12 @@ type DeckPermutationRepository interface {
 	// UpdatePerformance updates a permutation's performance stats after a match.
 	UpdatePerformance(ctx context.Context, permutationID int, matchWon bool, gamesWon, gamesLost int) error
 
+	// ResetPerformance resets a permutation's performance counters to zero.
+	ResetPerformance(ctx context.Context, permutationID int) error
+
+	// ResetAllPerformanceForDeck resets performance counters for all permutations of a deck.
+	ResetAllPerformanceForDeck(ctx context.Context, deckID string) error
+
 	// GetPerformance retrieves performance metrics for a permutation.
 	GetPerformance(ctx context.Context, permutationID int) (*models.DeckPermutationPerformance, error)
 
@@ -359,6 +365,44 @@ func (r *deckPermutationRepository) UpdatePerformance(ctx context.Context, permu
 	_, err := r.db.ExecContext(ctx, query, matchWonInt, totalGames, gamesWon, now, permutationID)
 	if err != nil {
 		return fmt.Errorf("failed to update permutation performance: %w", err)
+	}
+
+	return nil
+}
+
+// ResetPerformance resets a permutation's performance counters to zero.
+func (r *deckPermutationRepository) ResetPerformance(ctx context.Context, permutationID int) error {
+	query := `
+		UPDATE deck_permutations
+		SET matches_played = 0,
+		    matches_won = 0,
+		    games_played = 0,
+		    games_won = 0
+		WHERE id = ?
+	`
+
+	_, err := r.db.ExecContext(ctx, query, permutationID)
+	if err != nil {
+		return fmt.Errorf("failed to reset permutation performance: %w", err)
+	}
+
+	return nil
+}
+
+// ResetAllPerformanceForDeck resets performance counters for all permutations of a deck.
+func (r *deckPermutationRepository) ResetAllPerformanceForDeck(ctx context.Context, deckID string) error {
+	query := `
+		UPDATE deck_permutations
+		SET matches_played = 0,
+		    matches_won = 0,
+		    games_played = 0,
+		    games_won = 0
+		WHERE deck_id = ?
+	`
+
+	_, err := r.db.ExecContext(ctx, query, deckID)
+	if err != nil {
+		return fmt.Errorf("failed to reset all permutation performance for deck: %w", err)
 	}
 
 	return nil

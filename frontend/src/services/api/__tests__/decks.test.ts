@@ -122,10 +122,10 @@ describe('decks API', () => {
 
       // Verify the backend receives the correct field names
       expect(post).toHaveBeenCalledWith('/decks/deck-123/cards', {
-        card_id: 12345, // NOT arena_id
+        cardID: 12345, // NOT arena_id
         quantity: 4,
         board: 'main', // NOT zone
-        from_draft: false,
+        fromDraft: false,
       });
     });
 
@@ -141,10 +141,10 @@ describe('decks API', () => {
       });
 
       expect(post).toHaveBeenCalledWith('/decks/deck-456/cards', {
-        card_id: 99999,
+        cardID: 99999,
         quantity: 2,
         board: 'sideboard',
-        from_draft: false,
+        fromDraft: false,
       });
     });
 
@@ -161,10 +161,10 @@ describe('decks API', () => {
       });
 
       expect(post).toHaveBeenCalledWith('/decks/draft-deck-123/cards', {
-        card_id: 54321,
+        cardID: 54321,
         quantity: 1,
         board: 'main',
-        from_draft: true,
+        fromDraft: true,
       });
     });
 
@@ -180,10 +180,10 @@ describe('decks API', () => {
       });
 
       expect(post).toHaveBeenCalledWith('/decks/deck-789/cards', {
-        card_id: 11111,
+        cardID: 11111,
         quantity: 3,
         board: 'main',
-        from_draft: false,
+        fromDraft: false,
       });
     });
   });

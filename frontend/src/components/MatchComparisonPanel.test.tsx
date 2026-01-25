@@ -286,4 +286,141 @@ describe('MatchComparisonPanel', () => {
       expect(onClose).toHaveBeenCalled();
     });
   });
+
+  describe('deck comparison display', () => {
+    const deckComparisonResult: ComparisonResult = {
+      Groups: [
+        {
+          Label: 'deck-uuid-1', // API returns UUID
+          Filter: mockFilter,
+          Statistics: {
+            TotalMatches: 50,
+            MatchesWon: 30,
+            MatchesLost: 20,
+            TotalGames: 100,
+            GamesWon: 60,
+            GamesLost: 40,
+            WinRate: 0.6,
+            GameWinRate: 0.6,
+          },
+          MatchCount: 50,
+        },
+        {
+          Label: 'deck-uuid-2', // API returns UUID
+          Filter: mockFilter,
+          Statistics: {
+            TotalMatches: 30,
+            MatchesWon: 12,
+            MatchesLost: 18,
+            TotalGames: 60,
+            GamesWon: 24,
+            GamesLost: 36,
+            WinRate: 0.4,
+            GameWinRate: 0.4,
+          },
+          MatchCount: 30,
+        },
+      ],
+      BestGroup: {
+        Label: 'deck-uuid-1',
+        Filter: mockFilter,
+        Statistics: {
+          TotalMatches: 50,
+          MatchesWon: 30,
+          MatchesLost: 20,
+          TotalGames: 100,
+          GamesWon: 60,
+          GamesLost: 40,
+          WinRate: 0.6,
+          GameWinRate: 0.6,
+        },
+        MatchCount: 50,
+      },
+      WorstGroup: {
+        Label: 'deck-uuid-2',
+        Filter: mockFilter,
+        Statistics: {
+          TotalMatches: 30,
+          MatchesWon: 12,
+          MatchesLost: 18,
+          TotalGames: 60,
+          GamesWon: 24,
+          GamesLost: 36,
+          WinRate: 0.4,
+          GameWinRate: 0.4,
+        },
+        MatchCount: 30,
+      },
+      WinRateDiff: 0.2,
+      TotalMatches: 80,
+      ComparisonDate: '2025-01-09T12:00:00Z',
+    };
+
+    it('displays deck names instead of UUIDs in comparison results', async () => {
+      mockCompareDecks.mockResolvedValue(deckComparisonResult);
+
+      render(
+        <MatchComparisonPanel
+          deckIds={[
+            { id: 'deck-uuid-1', name: 'Izzet Phoenix' },
+            { id: 'deck-uuid-2', name: 'Mono White Aggro' },
+          ]}
+        />
+      );
+
+      // Switch to decks comparison
+      fireEvent.click(screen.getByText('Compare Decks'));
+
+      // Select decks
+      const checkboxes = screen.getAllByRole('checkbox');
+      fireEvent.click(checkboxes[0]); // Izzet Phoenix
+      fireEvent.click(checkboxes[1]); // Mono White Aggro
+
+      // Click compare
+      fireEvent.click(screen.getByText('Compare'));
+
+      await waitFor(() => {
+        // Should show deck names, not UUIDs
+        expect(screen.getByText('Izzet Phoenix')).toBeInTheDocument();
+        expect(screen.getByText('Mono White Aggro')).toBeInTheDocument();
+        // Should NOT show UUIDs
+        expect(screen.queryByText('deck-uuid-1')).not.toBeInTheDocument();
+        expect(screen.queryByText('deck-uuid-2')).not.toBeInTheDocument();
+      });
+    });
+
+    it('displays insightful comparison text for deck comparison', async () => {
+      mockCompareDecks.mockResolvedValue(deckComparisonResult);
+
+      render(
+        <MatchComparisonPanel
+          deckIds={[
+            { id: 'deck-uuid-1', name: 'Izzet Phoenix' },
+            { id: 'deck-uuid-2', name: 'Mono White Aggro' },
+          ]}
+        />
+      );
+
+      // Switch to decks comparison
+      fireEvent.click(screen.getByText('Compare Decks'));
+
+      // Select decks
+      const checkboxes = screen.getAllByRole('checkbox');
+      fireEvent.click(checkboxes[0]);
+      fireEvent.click(checkboxes[1]);
+
+      // Click compare
+      fireEvent.click(screen.getByText('Compare'));
+
+      await waitFor(() => {
+        // Should show deck-specific insight with comparison
+        expect(screen.getByText(/outperforms/)).toBeInTheDocument();
+        expect(screen.getByText(/percentage points/)).toBeInTheDocument();
+        // Deck names appear multiple times (in selector, table, and insight)
+        // so we use getAllByText and verify they exist
+        expect(screen.getAllByText(/Izzet Phoenix/).length).toBeGreaterThan(0);
+        expect(screen.getAllByText(/Mono White Aggro/).length).toBeGreaterThan(0);
+      });
+    });
+  });
 });

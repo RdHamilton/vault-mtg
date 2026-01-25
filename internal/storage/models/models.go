@@ -70,21 +70,22 @@ type PlayerStats struct {
 
 // Deck represents a deck list.
 type Deck struct {
-	ID            string
-	AccountID     int // Foreign key to accounts
-	Name          string
-	Format        string
-	Description   *string // Nullable
-	ColorIdentity *string // Nullable
-	Source        string  // "draft", "constructed", or "imported"
-	DraftEventID  *string // Nullable, foreign key to draft_events
-	MatchesPlayed int     // Total matches played with this deck
-	MatchesWon    int     // Total matches won with this deck
-	GamesPlayed   int     // Total games played with this deck
-	GamesWon      int     // Total games won with this deck
-	CreatedAt     time.Time
-	ModifiedAt    time.Time
-	LastPlayed    *time.Time // Nullable
+	ID                   string
+	AccountID            int // Foreign key to accounts
+	Name                 string
+	Format               string
+	Description          *string // Nullable
+	ColorIdentity        *string // Nullable
+	Source               string  // "draft", "constructed", or "imported"
+	DraftEventID         *string // Nullable, foreign key to draft_events
+	MatchesPlayed        int     // Total matches played with this deck
+	MatchesWon           int     // Total matches won with this deck
+	GamesPlayed          int     // Total games played with this deck
+	GamesWon             int     // Total games won with this deck
+	CreatedAt            time.Time
+	ModifiedAt           time.Time
+	LastPlayed           *time.Time // Nullable
+	CurrentPermutationID *int       // Nullable, references deck_permutations(id)
 	// ML training tracking fields
 	IsAppCreated  bool   // True if deck was created/managed by the app
 	CreatedMethod string // How the deck was created: "build_around", "suggest_decks", "manual", "imported"
@@ -542,19 +543,19 @@ type DeckPermutationCard struct {
 
 // DeckPermutationDiff represents the changes between two permutations.
 type DeckPermutationDiff struct {
-	FromPermutationID int
-	ToPermutationID   int
-	AddedCards        []DeckPermutationCard // Cards added in the new version
-	RemovedCards      []DeckPermutationCard // Cards removed from the old version
-	ChangedCards      []DeckCardChange      // Cards with quantity changes
+	FromPermutationID int                   `json:"fromPermutationID"`
+	ToPermutationID   int                   `json:"toPermutationID"`
+	AddedCards        []DeckPermutationCard `json:"addedCards"`  // Cards added in the new version
+	RemovedCards      []DeckPermutationCard `json:"removedCards"` // Cards removed from the old version
+	ChangedCards      []DeckCardChange      `json:"changedCards"` // Cards with quantity changes
 }
 
 // DeckCardChange represents a quantity change for a card between versions.
 type DeckCardChange struct {
-	CardID      int
-	Board       string
-	OldQuantity int
-	NewQuantity int
+	CardID      int    `json:"card_id"`
+	Board       string `json:"board"`
+	OldQuantity int    `json:"old_quantity"`
+	NewQuantity int    `json:"new_quantity"`
 }
 
 // DeckPermutationPerformance provides calculated metrics for a permutation.
