@@ -19,17 +19,17 @@ import (
 
 // mockDeckFacade is a mock implementation of the deck facade for testing.
 type mockDeckFacade struct {
-	decks            []*gui.DeckListItem
-	deck             *gui.DeckWithCards
-	deckStats        *gui.DeckStatistics
-	deckPerf         *models.DeckPerformance
-	exportResult     *gui.ExportDeckResponse
-	importResult     *gui.ImportDeckResponse
-	suggestions      *gui.SuggestDecksResponse
-	classification   *gui.ArchetypeClassificationResult
-	createdDeck      *models.Deck
+	decks             []*gui.DeckListItem
+	deck              *gui.DeckWithCards
+	deckStats         *gui.DeckStatistics
+	deckPerf          *models.DeckPerformance
+	exportResult      *gui.ExportDeckResponse
+	importResult      *gui.ImportDeckResponse
+	suggestions       *gui.SuggestDecksResponse
+	classification    *gui.ArchetypeClassificationResult
+	createdDeck       *models.Deck
 	recalculateResult *storage.RecalculateDeckPerformanceResult
-	err              error
+	err               error
 
 	// AddCard/RemoveCard tracking for verification
 	addCardCalls    []addCardCall
@@ -861,8 +861,8 @@ func TestDeckHandler_AddCard(t *testing.T) {
 			expectedBoard:  "main",
 		},
 		{
-			name:   "add card to sideboard",
-			deckID: "deck-456",
+			name:           "add card to sideboard",
+			deckID:         "deck-456",
 			requestBody:    `{"cardID": 67890, "quantity": 2, "board": "sideboard"}`,
 			mockErr:        nil,
 			expectedStatus: http.StatusOK,
@@ -871,8 +871,8 @@ func TestDeckHandler_AddCard(t *testing.T) {
 			expectedBoard:  "sideboard",
 		},
 		{
-			name:   "default board to main when not provided",
-			deckID: "deck-789",
+			name:           "default board to main when not provided",
+			deckID:         "deck-789",
 			requestBody:    `{"cardID": 11111, "quantity": 1}`,
 			mockErr:        nil,
 			expectedStatus: http.StatusOK,
@@ -881,8 +881,8 @@ func TestDeckHandler_AddCard(t *testing.T) {
 			expectedBoard:  "main",
 		},
 		{
-			name:   "default quantity to 1 when not provided",
-			deckID: "deck-abc",
+			name:           "default quantity to 1 when not provided",
+			deckID:         "deck-abc",
 			requestBody:    `{"cardID": 22222, "board": "main"}`,
 			mockErr:        nil,
 			expectedStatus: http.StatusOK,
@@ -891,8 +891,8 @@ func TestDeckHandler_AddCard(t *testing.T) {
 			expectedBoard:  "main",
 		},
 		{
-			name:   "add card from draft",
-			deckID: "draft-deck-123",
+			name:           "add card from draft",
+			deckID:         "draft-deck-123",
 			requestBody:    `{"cardID": 33333, "quantity": 1, "board": "main", "fromDraft": true}`,
 			mockErr:        nil,
 			expectedStatus: http.StatusOK,
@@ -1069,11 +1069,11 @@ func TestDeckHandler_SuggestDecks(t *testing.T) {
 			expectedStatus: http.StatusBadRequest,
 		},
 		{
-			name:        "facade error returns internal server error",
-			requestBody: `{"sessionID": "draft-error"}`,
+			name:            "facade error returns internal server error",
+			requestBody:     `{"sessionID": "draft-error"}`,
 			mockSuggestions: nil,
-			mockErr:        errors.New("no cards in draft pool"),
-			expectedStatus: http.StatusInternalServerError,
+			mockErr:         errors.New("no cards in draft pool"),
+			expectedStatus:  http.StatusInternalServerError,
 		},
 	}
 

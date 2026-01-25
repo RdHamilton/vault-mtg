@@ -545,7 +545,7 @@ type DeckPermutationCard struct {
 type DeckPermutationDiff struct {
 	FromPermutationID int                   `json:"fromPermutationID"`
 	ToPermutationID   int                   `json:"toPermutationID"`
-	AddedCards        []DeckPermutationCard `json:"addedCards"`  // Cards added in the new version
+	AddedCards        []DeckPermutationCard `json:"addedCards"`   // Cards added in the new version
 	RemovedCards      []DeckPermutationCard `json:"removedCards"` // Cards removed from the old version
 	ChangedCards      []DeckCardChange      `json:"changedCards"` // Cards with quantity changes
 }

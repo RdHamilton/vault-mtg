@@ -5,7 +5,7 @@ import DeckHistoryModal from './DeckHistoryModal';
 
 // Note: The API module is mocked globally in src/test/setup.ts
 // We import the mocks for test manipulation
-import { mockDecks, mockCards } from '@/test/mocks/apiMock';
+import { mockDecks } from '@/test/mocks/apiMock';
 
 describe('DeckHistoryModal', () => {
   const defaultProps = {
