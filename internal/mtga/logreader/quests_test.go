@@ -753,3 +753,240 @@ func TestIsQuestRerolled(t *testing.T) {
 		})
 	}
 }
+
+func TestCompletionSource_Disappeared(t *testing.T) {
+	// First response has the quest, second response omits it - completion detected by disappearance
+	entries := []*LogEntry{
+		{
+			IsJSON:    true,
+			Timestamp: "[UnityCrossThreadLogger]2024-01-15 10:30:45",
+			JSON: map[string]interface{}{
+				"quests": []interface{}{
+					map[string]interface{}{
+						"questId":        "quest-disappear",
+						"locKey":         "Win 3 games",
+						"goal":           float64(3),
+						"canSwap":        true,
+						"endingProgress": float64(2),
+					},
+				},
+				"canSwap": true,
+			},
+		},
+		{
+			IsJSON:    true,
+			Timestamp: "[UnityCrossThreadLogger]2024-01-15 11:00:00",
+			JSON: map[string]interface{}{
+				"quests":  []interface{}{}, // Quest disappeared
+				"canSwap": true,
+			},
+		},
+	}
+
+	quests, err := ParseQuests(entries)
+	if err != nil {
+		t.Fatalf("ParseQuests returned error: %v", err)
+	}
+
+	if len(quests) != 1 {
+		t.Fatalf("Expected 1 quest, got %d", len(quests))
+	}
+
+	quest := quests[0]
+
+	if !quest.Completed {
+		t.Error("Quest should be marked as completed")
+	}
+
+	if quest.CompletionSource != "disappeared" {
+		t.Errorf("Expected CompletionSource 'disappeared', got %q", quest.CompletionSource)
+	}
+}
+
+func TestCompletionSource_Progress(t *testing.T) {
+	// A single response where endingProgress >= goal triggers completion by progress
+	entries := []*LogEntry{
+		{
+			IsJSON:    true,
+			Timestamp: "[UnityCrossThreadLogger]2024-01-15 10:30:45",
+			JSON: map[string]interface{}{
+				"quests": []interface{}{
+					map[string]interface{}{
+						"questId":        "quest-full-progress",
+						"locKey":         "Win 5 games",
+						"goal":           float64(5),
+						"canSwap":        true,
+						"endingProgress": float64(5), // progress == goal
+					},
+				},
+				"canSwap": true,
+			},
+		},
+	}
+
+	quests, err := ParseQuests(entries)
+	if err != nil {
+		t.Fatalf("ParseQuests returned error: %v", err)
+	}
+
+	if len(quests) != 1 {
+		t.Fatalf("Expected 1 quest, got %d", len(quests))
+	}
+
+	quest := quests[0]
+
+	if !quest.Completed {
+		t.Error("Quest should be marked as completed")
+	}
+
+	if quest.CompletionSource != "progress" {
+		t.Errorf("Expected CompletionSource 'progress', got %q", quest.CompletionSource)
+	}
+}
+
+func TestCompletionSource_EmptyResponse(t *testing.T) {
+	// Two quests seen, then an empty response arrives - both should be disappeared
+	entries := []*LogEntry{
+		{
+			IsJSON:    true,
+			Timestamp: "[UnityCrossThreadLogger]2024-01-15 10:30:45",
+			JSON: map[string]interface{}{
+				"quests": []interface{}{
+					map[string]interface{}{
+						"questId":        "quest-alpha",
+						"locKey":         "Win 4 games",
+						"goal":           float64(4),
+						"canSwap":        true,
+						"endingProgress": float64(1),
+					},
+					map[string]interface{}{
+						"questId":        "quest-beta",
+						"locKey":         "Cast 10 spells",
+						"goal":           float64(10),
+						"canSwap":        true,
+						"endingProgress": float64(4),
+					},
+				},
+				"canSwap": true,
+			},
+		},
+		{
+			IsJSON:    true,
+			Timestamp: "[UnityCrossThreadLogger]2024-01-15 12:00:00",
+			JSON: map[string]interface{}{
+				// Empty quests without canSwap - all quests completed
+				"quests": []interface{}{},
+			},
+		},
+	}
+
+	quests, err := ParseQuests(entries)
+	if err != nil {
+		t.Fatalf("ParseQuests returned error: %v", err)
+	}
+
+	if len(quests) != 2 {
+		t.Fatalf("Expected 2 quests, got %d", len(quests))
+	}
+
+	for _, quest := range quests {
+		if !quest.Completed {
+			t.Errorf("Quest %s should be marked as completed", quest.QuestID)
+		}
+
+		if quest.CompletionSource != "disappeared" {
+			t.Errorf("Quest %s: expected CompletionSource 'disappeared', got %q", quest.QuestID, quest.CompletionSource)
+		}
+	}
+}
+
+func TestCompletionSource_NotSetOnReroll(t *testing.T) {
+	// First response has "Win 4 games" with progress, second has same questId but "Cast 20 spells"
+	// The original quest should be marked as Rerolled, NOT Completed, so CompletionSource must be ""
+	entries := []*LogEntry{
+		{
+			IsJSON:    true,
+			Timestamp: "[UnityCrossThreadLogger]2024-01-15 10:30:45",
+			JSON: map[string]interface{}{
+				"quests": []interface{}{
+					map[string]interface{}{
+						"questId":          "quest-reroll",
+						"locKey":           "Win 4 games",
+						"goal":             float64(4),
+						"canSwap":          true,
+						"startingProgress": float64(0),
+						"endingProgress":   float64(2),
+					},
+				},
+				"canSwap": true,
+			},
+		},
+		{
+			IsJSON:    true,
+			Timestamp: "[UnityCrossThreadLogger]2024-01-15 11:00:00",
+			JSON: map[string]interface{}{
+				"quests": []interface{}{
+					map[string]interface{}{
+						"questId":          "quest-reroll", // Same questId, different details
+						"locKey":           "Cast 20 spells",
+						"goal":             float64(20),
+						"canSwap":          true,
+						"startingProgress": float64(0),
+						"endingProgress":   float64(0),
+					},
+				},
+				"canSwap": true,
+			},
+		},
+	}
+
+	quests, err := ParseQuests(entries)
+	if err != nil {
+		t.Fatalf("ParseQuests returned error: %v", err)
+	}
+
+	// Should have 2 quests: original (rerolled) and the new one
+	if len(quests) != 2 {
+		t.Fatalf("Expected 2 quests (original rerolled + new), got %d", len(quests))
+	}
+
+	var originalQuest, newQuest *QuestData
+	for _, q := range quests {
+		if q.QuestType == "Win 4 games" {
+			originalQuest = q
+		} else if q.QuestType == "Cast 20 spells" {
+			newQuest = q
+		}
+	}
+
+	if originalQuest == nil {
+		t.Fatal("Original quest 'Win 4 games' not found")
+	}
+	if newQuest == nil {
+		t.Fatal("New quest 'Cast 20 spells' not found")
+	}
+
+	// Original quest should be rerolled, not completed
+	if !originalQuest.Rerolled {
+		t.Error("Original quest should be marked as rerolled")
+	}
+	if originalQuest.Completed {
+		t.Error("Original quest should NOT be marked as completed")
+	}
+
+	// CompletionSource must be empty because the quest was rerolled, not completed
+	if originalQuest.CompletionSource != "" {
+		t.Errorf("Original quest CompletionSource should be empty (not completed), got %q", originalQuest.CompletionSource)
+	}
+
+	// New quest should have no completion markings
+	if newQuest.Rerolled {
+		t.Error("New quest should NOT be marked as rerolled")
+	}
+	if newQuest.Completed {
+		t.Error("New quest should NOT be marked as completed")
+	}
+	if newQuest.CompletionSource != "" {
+		t.Errorf("New quest CompletionSource should be empty, got %q", newQuest.CompletionSource)
+	}
+}

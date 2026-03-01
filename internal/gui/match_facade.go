@@ -149,6 +149,14 @@ func (m *MatchFacade) GetQuestHistory(ctx context.Context, startDate, endDate st
 	return quests, nil
 }
 
+// HasAnyQuestData returns whether any quest data exists in the database.
+func (m *MatchFacade) HasAnyQuestData(ctx context.Context) bool {
+	if m.services.Storage == nil {
+		return false
+	}
+	return m.services.Storage.Quests().HasAnyQuestData()
+}
+
 // GetQuestStats returns quest statistics for the specified date range.
 func (m *MatchFacade) GetQuestStats(ctx context.Context, startDate, endDate string) (*models.QuestStats, error) {
 	if m.services.Storage == nil {

@@ -114,6 +114,11 @@ func (s *Service) Start() error {
 	// This periodically archives the active Player.log file
 	go s.monitorPlayerLogArchival()
 
+	// Set live session ID for the poller - recovery mode is already disabled by StartupRecovery's defer
+	liveSessionID := fmt.Sprintf("live-%s", time.Now().Format("20060102T150405"))
+	s.logProcessor.SetSessionID(liveSessionID)
+	log.Printf("Live monitoring session: %s", liveSessionID)
+
 	// Create and start log poller
 	pollerConfig := logreader.DefaultPollerConfig(logPath)
 	pollerConfig.Interval = s.config.PollInterval
@@ -553,6 +558,15 @@ func (s *Service) GetFlightRecorderEnabled() bool {
 func (s *Service) ReplayHistoricalLogs(clearData bool) error {
 	log.Println("Starting historical log replay...")
 
+	// Enable recovery mode for historical replay
+	sessionID := fmt.Sprintf("replay-%s", time.Now().Format("20060102T150405"))
+	s.logProcessor.SetRecoveryMode(true)
+	s.logProcessor.SetSessionID(sessionID)
+	defer func() {
+		s.logProcessor.SetRecoveryMode(false)
+		log.Printf("Replay session: %s", sessionID)
+	}()
+
 	// Broadcast replay start event
 	s.broadcastEvent(Event{
 		Type: "replay:started",
@@ -766,6 +780,15 @@ func (s *Service) ReplayHistoricalLogs(clearData bool) error {
 func (s *Service) StartupRecovery() error {
 	log.Println("Starting startup recovery to process any missed log files...")
 
+	// Enable recovery mode - suppress disappearance-based quest completions from old data
+	sessionID := fmt.Sprintf("startup-recovery-%s", time.Now().Format("20060102T150405"))
+	s.logProcessor.SetRecoveryMode(true)
+	s.logProcessor.SetSessionID(sessionID)
+	defer func() {
+		s.logProcessor.SetRecoveryMode(false)
+		log.Printf("Startup recovery session: %s", sessionID)
+	}()
+
 	// Discover all available log files
 	logFiles, err := s.discoverLogFiles()
 	if err != nil {
@@ -922,19 +945,39 @@ func (s *Service) checkForNewLogFiles() error {
 		// New UTC_Log file detected!
 		log.Printf("New UTC_Log file detected: %s", logFile.Name)
 
+		// Use recovery mode for files modified before daemon start time
+		isOldFile := logFile.ModTime.Before(s.startTime)
+		if isOldFile {
+			sessionID := fmt.Sprintf("utc-recovery-%s", time.Now().Format("20060102T150405"))
+			s.logProcessor.SetRecoveryMode(true)
+			s.logProcessor.SetSessionID(sessionID)
+		}
+
 		// Process it (same logic as StartupRecovery)
 		entries, err := s.readLogFile(logFile.Path)
 		if err != nil {
 			log.Printf("Warning: Failed to read %s: %v", logFile.Name, err)
+			if isOldFile {
+				s.logProcessor.SetRecoveryMode(false)
+			}
 			continue
 		}
 
 		if len(entries) == 0 {
 			log.Printf("Skipping %s (no entries found)", logFile.Name)
+			if isOldFile {
+				s.logProcessor.SetRecoveryMode(false)
+			}
 			continue
 		}
 
 		result, err := s.logProcessor.ProcessLogEntries(s.ctx, entries)
+
+		// Restore live mode if we switched to recovery for an old file
+		if isOldFile {
+			s.logProcessor.SetRecoveryMode(false)
+		}
+
 		if err != nil {
 			log.Printf("Warning: Failed to process %s: %v", logFile.Name, err)
 			continue
