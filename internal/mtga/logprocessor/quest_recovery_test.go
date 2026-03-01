@@ -254,6 +254,63 @@ func TestProcessQuests_RecoveryMode_SkipsRerollDetection(t *testing.T) {
 	}
 }
 
+// TestProcessQuests_LiveMode_EmptyQuestList_MarksRerolled verifies that when MTGA
+// returns an empty quest list in live mode, any incomplete quest in the DB is
+// marked as rerolled. This handles the case where a user has completed all quests
+// and the stale active quest should be cleaned up.
+func TestProcessQuests_LiveMode_EmptyQuestList_MarksRerolled(t *testing.T) {
+	storageService, cleanup := setupTestService(t)
+	defer cleanup()
+
+	ctx := context.Background()
+
+	// Pre-seed an incomplete quest in the DB (simulates quest stored during recovery)
+	now := time.Now().UTC()
+	lastSeen := now.Add(-1 * time.Hour)
+	seedQuest := &models.Quest{
+		QuestID:    "quest-stale-active",
+		QuestType:  "Quests/Quest_Daily_Win",
+		Goal:       5,
+		AssignedAt: now.Add(-2 * time.Hour),
+		LastSeenAt: &lastSeen,
+		Completed:  false,
+		Rerolled:   false,
+	}
+	if err := storageService.Quests().Save(seedQuest); err != nil {
+		t.Fatalf("Failed to pre-seed quest: %v", err)
+	}
+
+	// Process an empty QuestGetQuests response in live mode
+	processor := NewService(storageService)
+	// Recovery mode is OFF by default
+
+	ts := "2025-01-10 10:00:00"
+	entry := makeQuestEntry(ts, true, []map[string]interface{}{})
+
+	result, err := processor.ProcessLogEntries(ctx, []*logreader.LogEntry{entry})
+	if err != nil {
+		t.Fatalf("ProcessLogEntries failed: %v", err)
+	}
+
+	if len(result.Errors) > 0 {
+		t.Errorf("Unexpected errors: %v", result.Errors)
+	}
+
+	// The stale quest should now be marked as rerolled
+	retrieved, err := storageService.Quests().GetQuestByID(seedQuest.ID)
+	if err != nil {
+		t.Fatalf("GetQuestByID failed: %v", err)
+	}
+
+	if !retrieved.Rerolled {
+		t.Error("Quest should be marked as rerolled when MTGA returns empty quest list in live mode, but rerolled=false")
+	}
+
+	if result.QuestsRerolled != 1 {
+		t.Errorf("Expected 1 quest rerolled, got %d", result.QuestsRerolled)
+	}
+}
+
 // TestProcessQuests_SessionIDSet verifies that when a session ID is configured on
 // the processor, quests saved to the database carry that session ID.
 func TestProcessQuests_SessionIDSet(t *testing.T) {

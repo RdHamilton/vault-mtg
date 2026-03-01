@@ -1723,3 +1723,146 @@ func TestMatchRepository_GetMatchesForMLProcessing_IdempotencyCheck(t *testing.T
 		t.Errorf("expected 0 matches on second call (idempotent), got %d", len(unprocessed2))
 	}
 }
+
+// TestMatchRepository_GetDailyWins_TimezoneOffsetTimestamps verifies that GetDailyWins
+// correctly counts wins when timestamps are stored with timezone offset strings
+// (e.g. "2026-03-01 05:39:17.912 -0500 EST"), which is how MTGA timestamps are persisted.
+func TestMatchRepository_GetDailyWins_TimezoneOffsetTimestamps(t *testing.T) {
+	db := setupTestDB(t)
+	defer db.Close()
+
+	repo := NewMatchRepository(db)
+	ctx := context.Background()
+
+	// Calculate the current MTGA day boundaries
+	now := time.Now().UTC()
+	mtgaDayStart := time.Date(now.Year(), now.Month(), now.Day(), 9, 0, 0, 0, time.UTC)
+	if now.Hour() < 9 {
+		mtgaDayStart = mtgaDayStart.Add(-24 * time.Hour)
+	}
+	previousMtgaDay := mtgaDayStart.Add(-24 * time.Hour)
+
+	// Convert to local time and format as timezone-offset strings (simulating MTGA log format)
+	localTodayWin1 := mtgaDayStart.Add(1 * time.Hour).In(time.Local)
+	localTodayWin2 := mtgaDayStart.Add(3 * time.Hour).In(time.Local)
+	localTodayLoss := mtgaDayStart.Add(5 * time.Hour).In(time.Local)
+	localYesterdayWin := previousMtgaDay.Add(6 * time.Hour).In(time.Local)
+
+	_, offset := localTodayWin1.Zone()
+	offsetHours := offset / 3600
+	offsetMins := (offset % 3600) / 60
+	zoneName, _ := localTodayWin1.Zone()
+	offsetStr := fmt.Sprintf("%+03d%02d %s", offsetHours, abs(offsetMins), zoneName)
+
+	formatTS := func(t time.Time) string {
+		return fmt.Sprintf("%s %s", t.Format("2006-01-02 15:04:05.000"), offsetStr)
+	}
+
+	// Insert matches with timezone-offset timestamp strings directly via SQL
+	insertQuery := `INSERT INTO matches (id, account_id, event_id, event_name, timestamp,
+		player_wins, opponent_wins, player_team_id, format, result, created_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+
+	testMatches := []struct {
+		id     string
+		ts     string
+		result string
+	}{
+		{"tz-today-win-1", formatTS(localTodayWin1), "win"},
+		{"tz-today-win-2", formatTS(localTodayWin2), "win"},
+		{"tz-today-loss", formatTS(localTodayLoss), "loss"},
+		{"tz-yesterday-win", formatTS(localYesterdayWin), "win"},
+	}
+
+	for _, m := range testMatches {
+		_, err := db.ExecContext(ctx, insertQuery, m.id, 1, "evt", "Standard Ranked",
+			m.ts, 2, 0, 1, "Standard", m.result, now.Format(time.RFC3339))
+		if err != nil {
+			t.Fatalf("failed to insert match %s: %v", m.id, err)
+		}
+	}
+
+	dailyWins, err := repo.GetDailyWins(ctx, 0)
+	if err != nil {
+		t.Fatalf("failed to get daily wins: %v", err)
+	}
+
+	if dailyWins != 2 {
+		t.Errorf("expected 2 daily wins with timezone-offset timestamps, got %d", dailyWins)
+	}
+}
+
+// TestMatchRepository_GetWeeklyWins_TimezoneOffsetTimestamps verifies that GetWeeklyWins
+// correctly counts wins when timestamps are stored with timezone offset strings.
+func TestMatchRepository_GetWeeklyWins_TimezoneOffsetTimestamps(t *testing.T) {
+	db := setupTestDB(t)
+	defer db.Close()
+
+	repo := NewMatchRepository(db)
+	ctx := context.Background()
+
+	// Calculate the current MTGA week boundaries
+	now := time.Now().UTC()
+	daysSinceSunday := int(now.Weekday())
+	mtgaWeekStart := time.Date(now.Year(), now.Month(), now.Day()-daysSinceSunday, 9, 0, 0, 0, time.UTC)
+	if now.Weekday() == time.Sunday && now.Hour() < 9 {
+		mtgaWeekStart = mtgaWeekStart.Add(-7 * 24 * time.Hour)
+	}
+	previousWeek := mtgaWeekStart.Add(-24 * time.Hour)
+
+	// Convert to local time and format as timezone-offset strings
+	localThisWeekWin1 := mtgaWeekStart.Add(1 * time.Hour).In(time.Local)
+	localThisWeekWin2 := mtgaWeekStart.Add(25 * time.Hour).In(time.Local)
+	localThisWeekWin3 := mtgaWeekStart.Add(49 * time.Hour).In(time.Local)
+	localLastWeekWin := previousWeek.In(time.Local)
+
+	_, offset := localThisWeekWin1.Zone()
+	offsetHours := offset / 3600
+	offsetMins := (offset % 3600) / 60
+	zoneName, _ := localThisWeekWin1.Zone()
+	offsetStr := fmt.Sprintf("%+03d%02d %s", offsetHours, abs(offsetMins), zoneName)
+
+	formatTS := func(t time.Time) string {
+		return fmt.Sprintf("%s %s", t.Format("2006-01-02 15:04:05.000"), offsetStr)
+	}
+
+	insertQuery := `INSERT INTO matches (id, account_id, event_id, event_name, timestamp,
+		player_wins, opponent_wins, player_team_id, format, result, created_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+
+	testMatches := []struct {
+		id     string
+		ts     string
+		result string
+	}{
+		{"tz-week-win-1", formatTS(localThisWeekWin1), "win"},
+		{"tz-week-win-2", formatTS(localThisWeekWin2), "win"},
+		{"tz-week-win-3", formatTS(localThisWeekWin3), "win"},
+		{"tz-week-loss", formatTS(localThisWeekWin1), "loss"},
+		{"tz-lastweek-win", formatTS(localLastWeekWin), "win"},
+	}
+
+	for _, m := range testMatches {
+		_, err := db.ExecContext(ctx, insertQuery, m.id, 1, "evt", "Standard Ranked",
+			m.ts, 2, 0, 1, "Standard", m.result, now.Format(time.RFC3339))
+		if err != nil {
+			t.Fatalf("failed to insert match %s: %v", m.id, err)
+		}
+	}
+
+	weeklyWins, err := repo.GetWeeklyWins(ctx, 0)
+	if err != nil {
+		t.Fatalf("failed to get weekly wins: %v", err)
+	}
+
+	if weeklyWins != 3 {
+		t.Errorf("expected 3 weekly wins with timezone-offset timestamps, got %d", weeklyWins)
+	}
+}
+
+func abs(n int) int {
+	if n < 0 {
+		return -n
+	}
+	return n
+}

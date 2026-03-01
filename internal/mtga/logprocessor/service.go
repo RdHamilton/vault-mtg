@@ -479,7 +479,7 @@ func (s *Service) processQuests(ctx context.Context, entries []*logreader.LogEnt
 	// If we had a QuestGetQuests response, check for rerolled quests
 	// Any active quest in the database that's NOT in the current MTGA response was rerolled
 	// Skip reroll detection during recovery mode - old log data can't reliably indicate rerolls
-	if parseResult.HasQuestResponse && len(parseResult.CurrentQuestIDs) > 0 && !s.dryRun && !recoveryMode {
+	if parseResult.HasQuestResponse && !s.dryRun && !recoveryMode {
 		rerolledCount, err := s.markRerolledQuests(parseResult.CurrentQuestIDs)
 		if err != nil {
 			log.Printf("Warning: Failed to mark rerolled quests: %v", err)
