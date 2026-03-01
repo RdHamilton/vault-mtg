@@ -20,6 +20,7 @@ type QuestData struct {
 	LastSeenAt       *time.Time // Tracks when quest was last seen in QuestGetQuests response
 	Completed        bool
 	Rerolled         bool
+	CompletionSource string // How completion was detected: "disappeared", "progress", or "" (not completed)
 }
 
 // ParseQuestsResult contains the results of parsing quests from log entries.
@@ -128,6 +129,7 @@ func ParseQuests(entries []*LogEntry) ([]*QuestData, error) {
 						quest.CompletedAt = &completedAt
 						// Set progress to goal when completed
 						quest.EndingProgress = quest.Goal
+						quest.CompletionSource = "disappeared"
 						log.Printf("Quest parser: Quest %s completed (disappeared from response)", quest.QuestID)
 					}
 				}
@@ -276,6 +278,7 @@ func ParseQuestsDetailed(entries []*LogEntry) (*ParseQuestsResult, error) {
 						completedAt := logTimestamp
 						quest.CompletedAt = &completedAt
 						quest.EndingProgress = quest.Goal
+						quest.CompletionSource = "disappeared"
 						log.Printf("Quest parser: Quest %s completed (disappeared from response)", quest.QuestID)
 					}
 				}
@@ -426,6 +429,7 @@ func parseQuestFromMap(json map[string]interface{}, timestamp time.Time) *QuestD
 	if quest.Goal > 0 && quest.EndingProgress >= quest.Goal {
 		quest.Completed = true
 		quest.CompletedAt = &timestamp
+		quest.CompletionSource = "progress"
 		log.Printf("Quest parser: Quest %s marked completed by progress (%d/%d)",
 			quest.QuestID, quest.EndingProgress, quest.Goal)
 	}

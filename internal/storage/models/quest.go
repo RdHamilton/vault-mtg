@@ -18,6 +18,8 @@ type Quest struct {
 	LastSeenAt       *time.Time `json:"last_seen_at,omitempty"` // Tracks when quest was last seen in QuestGetQuests response
 	Rerolled         bool       `json:"rerolled"`
 	CreatedAt        time.Time  `json:"created_at"`
+	SessionID        string     `json:"session_id,omitempty"`
+	CompletionSource string     `json:"completion_source,omitempty"`
 }
 
 // IsComplete returns whether the quest has been completed

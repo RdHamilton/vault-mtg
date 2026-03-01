@@ -68,6 +68,16 @@ func (r *QuestRepository) Save(quest *models.Quest) error {
 			lastSeenAtStr = &formatted
 		}
 
+		// Format session_id and completion_source as nullable strings
+		var sessionIDStr *string
+		if quest.SessionID != "" {
+			sessionIDStr = &quest.SessionID
+		}
+		var completionSourceStr *string
+		if quest.CompletionSource != "" {
+			completionSourceStr = &quest.CompletionSource
+		}
+
 		updateQuery := `
 			UPDATE quests
 			SET ending_progress = ?,
@@ -75,7 +85,9 @@ func (r *QuestRepository) Save(quest *models.Quest) error {
 				completed_at = ?,
 				last_seen_at = ?,
 				can_swap = ?,
-				rerolled = 0
+				rerolled = 0,
+				session_id = COALESCE(?, session_id),
+				completion_source = ?
 			WHERE id = ?
 		`
 
@@ -85,6 +97,8 @@ func (r *QuestRepository) Save(quest *models.Quest) error {
 			completedAtStr,
 			lastSeenAtStr,
 			quest.CanSwap,
+			sessionIDStr,
+			completionSourceStr,
 			existingID,
 		)
 		if err != nil {
@@ -103,8 +117,9 @@ func (r *QuestRepository) Save(quest *models.Quest) error {
 	query := `
 		INSERT INTO quests (
 			quest_id, quest_type, goal, starting_progress, ending_progress,
-			completed, can_swap, rewards, assigned_at, completed_at, last_seen_at, rerolled
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+			completed, can_swap, rewards, assigned_at, completed_at, last_seen_at, rerolled,
+			session_id, completion_source
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 	`
 
 	// Format timestamps for SQLite (ISO 8601 without timezone suffix)
@@ -121,11 +136,22 @@ func (r *QuestRepository) Save(quest *models.Quest) error {
 		lastSeenAtStr = &formatted
 	}
 
+	// Format nullable string fields
+	var sessionIDStr *string
+	if quest.SessionID != "" {
+		sessionIDStr = &quest.SessionID
+	}
+	var completionSourceStr *string
+	if quest.CompletionSource != "" {
+		completionSourceStr = &quest.CompletionSource
+	}
+
 	result, err := r.db.Exec(query,
 		quest.QuestID, quest.QuestType, quest.Goal,
 		quest.StartingProgress, quest.EndingProgress,
 		quest.Completed, quest.CanSwap, quest.Rewards,
 		assignedAtStr, completedAtStr, lastSeenAtStr, quest.Rerolled,
+		sessionIDStr, completionSourceStr,
 	)
 	if err != nil {
 		return fmt.Errorf("failed to save quest: %w", err)
@@ -140,31 +166,26 @@ func (r *QuestRepository) Save(quest *models.Quest) error {
 	return nil
 }
 
-// GetActiveQuests returns all incomplete, non-rerolled quests (one per unique quest_id)
-// that were recently seen in a QuestGetQuests response (within 24 hours).
+// GetActiveQuests returns all incomplete, non-rerolled quests (one per unique quest_id).
 // This is used by the API to show currently active quests.
 //
-// The 24-hour filter prevents stale quest data from old log files from appearing,
-// while allowing quests from the current gaming session to show correctly.
-// Quests are marked as "seen" when they appear in a QuestGetQuests response.
+// With recovery mode preventing false completions during startup, incomplete quests
+// in the DB are genuinely incomplete and should always be shown without time filtering.
 func (r *QuestRepository) GetActiveQuests() ([]*models.Quest, error) {
 	query := `
 		SELECT q.id, q.quest_id, q.quest_type, q.goal, q.starting_progress, q.ending_progress,
-		       q.completed, q.can_swap, q.rewards, q.assigned_at, q.completed_at, q.last_seen_at, q.rerolled, q.created_at
+		       q.completed, q.can_swap, q.rewards, q.assigned_at, q.completed_at, q.last_seen_at,
+		       q.rerolled, q.created_at, q.session_id, q.completion_source
 		FROM quests q
 		INNER JOIN (
 			SELECT quest_id, MAX(created_at) as max_created
 			FROM quests
 			WHERE completed = 0
 			  AND rerolled = 0
-			  AND last_seen_at IS NOT NULL
-			  AND datetime(last_seen_at) >= datetime('now', '-24 hours')
 			GROUP BY quest_id
 		) latest ON q.quest_id = latest.quest_id AND q.created_at = latest.max_created
 		WHERE q.completed = 0
 		  AND q.rerolled = 0
-		  AND q.last_seen_at IS NOT NULL
-		  AND datetime(q.last_seen_at) >= datetime('now', '-24 hours')
 		ORDER BY q.assigned_at DESC
 	`
 
@@ -185,7 +206,8 @@ func (r *QuestRepository) GetActiveQuests() ([]*models.Quest, error) {
 func (r *QuestRepository) GetIncompleteQuests() ([]*models.Quest, error) {
 	query := `
 		SELECT q.id, q.quest_id, q.quest_type, q.goal, q.starting_progress, q.ending_progress,
-		       q.completed, q.can_swap, q.rewards, q.assigned_at, q.completed_at, q.last_seen_at, q.rerolled, q.created_at
+		       q.completed, q.can_swap, q.rewards, q.assigned_at, q.completed_at, q.last_seen_at,
+		       q.rerolled, q.created_at, q.session_id, q.completion_source
 		FROM quests q
 		INNER JOIN (
 			SELECT quest_id, MAX(created_at) as max_created
@@ -208,34 +230,29 @@ func (r *QuestRepository) GetIncompleteQuests() ([]*models.Quest, error) {
 	return r.scanQuests(rows)
 }
 
-// GetQuestHistory returns quest history with optional filters (one per unique quest_id)
+// GetQuestHistory returns quest history with optional filters.
+// Returns all quest records (including repeated quest_id assignments) filtered by assigned_at.
 func (r *QuestRepository) GetQuestHistory(startDate, endDate *time.Time, limit int) ([]*models.Quest, error) {
 	query := `
-		SELECT q.id, q.quest_id, q.quest_type, q.goal, q.starting_progress, q.ending_progress,
-		       q.completed, q.can_swap, q.rewards, q.assigned_at, q.completed_at, q.last_seen_at, q.rerolled, q.created_at
-		FROM quests q
-		INNER JOIN (
-			SELECT quest_id, MAX(created_at) as max_created
-			FROM quests
-			WHERE 1=1
+		SELECT id, quest_id, quest_type, goal, starting_progress, ending_progress,
+		       completed, can_swap, rewards, assigned_at, completed_at, last_seen_at,
+		       rerolled, created_at, session_id, completion_source
+		FROM quests
+		WHERE 1=1
 	`
 	args := []interface{}{}
 
 	if startDate != nil {
-		query += " AND DATE(created_at) >= ?"
+		query += " AND DATE(assigned_at) >= ?"
 		args = append(args, startDate.Format("2006-01-02"))
 	}
 
 	if endDate != nil {
-		query += " AND DATE(created_at) <= ?"
+		query += " AND DATE(assigned_at) <= ?"
 		args = append(args, endDate.Format("2006-01-02"))
 	}
 
-	query += `
-			GROUP BY quest_id
-		) latest ON q.quest_id = latest.quest_id AND q.created_at = latest.max_created
-		ORDER BY q.assigned_at DESC
-	`
+	query += " ORDER BY assigned_at DESC"
 
 	if limit > 0 {
 		query += " LIMIT ?"
@@ -251,43 +268,31 @@ func (r *QuestRepository) GetQuestHistory(startDate, endDate *time.Time, limit i
 	return r.scanQuests(rows)
 }
 
-// GetQuestStats returns analytics about quest completion (deduplicates quests by quest_id)
+// GetQuestStats returns analytics about quest completion.
+// Counts all quest instances individually (repeated quest_id assignments are separate).
 func (r *QuestRepository) GetQuestStats(startDate, endDate *time.Time) (*models.QuestStats, error) {
 	stats := &models.QuestStats{}
 
-	// Get deduplicated quests (latest entry per quest_id)
 	query := `
-		WITH latest_quests AS (
-			SELECT q.*
-			FROM quests q
-			INNER JOIN (
-				SELECT quest_id, MAX(created_at) as max_created
-				FROM quests
-				WHERE 1=1
+		SELECT
+			COUNT(*) as total,
+			COALESCE(SUM(CASE WHEN completed = 1 THEN 1 ELSE 0 END), 0) as completed,
+			COALESCE(SUM(CASE WHEN completed = 0 AND rerolled = 0 THEN 1 ELSE 0 END), 0) as active,
+			COALESCE(SUM(CASE WHEN rerolled = 1 THEN 1 ELSE 0 END), 0) as rerolled
+		FROM quests
+		WHERE 1=1
 	`
 	args := []interface{}{}
 
 	if startDate != nil {
-		query += " AND DATE(created_at) >= ?"
+		query += " AND DATE(assigned_at) >= ?"
 		args = append(args, startDate.Format("2006-01-02"))
 	}
 
 	if endDate != nil {
-		query += " AND DATE(created_at) <= ?"
+		query += " AND DATE(assigned_at) <= ?"
 		args = append(args, endDate.Format("2006-01-02"))
 	}
-
-	query += `
-				GROUP BY quest_id
-			) latest ON q.quest_id = latest.quest_id AND q.created_at = latest.max_created
-		)
-		SELECT
-			COUNT(*) as total,
-			COALESCE(SUM(CASE WHEN completed = 1 THEN 1 ELSE 0 END), 0) as completed,
-			COALESCE(SUM(CASE WHEN completed = 0 THEN 1 ELSE 0 END), 0) as active,
-			COALESCE(SUM(CASE WHEN rerolled = 1 THEN 1 ELSE 0 END), 0) as rerolled
-		FROM latest_quests
-	`
 
 	err := r.db.QueryRow(query, args...).Scan(
 		&stats.TotalQuests, &stats.CompletedQuests, &stats.ActiveQuests, &stats.RerollCount,
@@ -301,37 +306,25 @@ func (r *QuestRepository) GetQuestStats(startDate, endDate *time.Time) (*models.
 		stats.CompletionRate = float64(stats.CompletedQuests) / float64(stats.TotalQuests) * 100.0
 	}
 
-	// Average completion time (from deduplicated quests)
+	// Average completion time (from all completed quest instances)
 	query = `
-		WITH latest_quests AS (
-			SELECT q.*
-			FROM quests q
-			INNER JOIN (
-				SELECT quest_id, MAX(created_at) as max_created
-				FROM quests
-				WHERE completed = 1 AND completed_at IS NOT NULL
+		SELECT AVG(
+			CAST((julianday(completed_at) - julianday(assigned_at)) * 86400000 AS INTEGER)
+		)
+		FROM quests
+		WHERE completed = 1 AND completed_at IS NOT NULL
 	`
 	args = []interface{}{}
 
 	if startDate != nil {
-		query += " AND DATE(created_at) >= DATE(?)"
-		args = append(args, startDate)
+		query += " AND DATE(assigned_at) >= ?"
+		args = append(args, startDate.Format("2006-01-02"))
 	}
 
 	if endDate != nil {
-		query += " AND DATE(created_at) <= DATE(?)"
-		args = append(args, endDate)
+		query += " AND DATE(assigned_at) <= ?"
+		args = append(args, endDate.Format("2006-01-02"))
 	}
-
-	query += `
-				GROUP BY quest_id
-			) latest ON q.quest_id = latest.quest_id AND q.created_at = latest.max_created
-		)
-		SELECT AVG(
-			CAST((julianday(completed_at) - julianday(assigned_at)) * 86400000 AS INTEGER)
-		)
-		FROM latest_quests
-	`
 
 	var avgMS sql.NullFloat64
 	err = r.db.QueryRow(query, args...).Scan(&avgMS)
@@ -353,33 +346,21 @@ func (r *QuestRepository) GetQuestStats(startDate, endDate *time.Time) (*models.
 // Falls back to estimate of 500 gold per quest if parsing fails.
 func (r *QuestRepository) calculateTotalGoldEarned(startDate, endDate *time.Time) int {
 	query := `
-		WITH latest_quests AS (
-			SELECT q.*
-			FROM quests q
-			INNER JOIN (
-				SELECT quest_id, MAX(created_at) as max_created
-				FROM quests
-				WHERE completed = 1
+		SELECT COALESCE(rewards, '') as rewards
+		FROM quests
+		WHERE completed = 1
 	`
 	args := []interface{}{}
 
 	if startDate != nil {
-		query += " AND DATE(created_at) >= ?"
+		query += " AND DATE(assigned_at) >= ?"
 		args = append(args, startDate.Format("2006-01-02"))
 	}
 
 	if endDate != nil {
-		query += " AND DATE(created_at) <= ?"
+		query += " AND DATE(assigned_at) <= ?"
 		args = append(args, endDate.Format("2006-01-02"))
 	}
-
-	query += `
-				GROUP BY quest_id
-			) latest ON q.quest_id = latest.quest_id AND q.created_at = latest.max_created
-		)
-		SELECT COALESCE(rewards, '') as rewards
-		FROM latest_quests
-	`
 
 	rows, err := r.db.Query(query, args...)
 	if err != nil {
@@ -428,7 +409,8 @@ func parseGoldFromRewards(rewards string) int {
 func (r *QuestRepository) GetQuestByID(id int) (*models.Quest, error) {
 	query := `
 		SELECT id, quest_id, quest_type, goal, starting_progress, ending_progress,
-		       completed, can_swap, rewards, assigned_at, completed_at, last_seen_at, rerolled, created_at
+		       completed, can_swap, rewards, assigned_at, completed_at, last_seen_at,
+		       rerolled, created_at, session_id, completion_source
 		FROM quests
 		WHERE id = ?
 	`
@@ -438,12 +420,15 @@ func (r *QuestRepository) GetQuestByID(id int) (*models.Quest, error) {
 	var completedAt sql.NullString
 	var lastSeenAt sql.NullString
 	var createdAt string
+	var sessionID sql.NullString
+	var completionSource sql.NullString
 
 	err := r.db.QueryRow(query, id).Scan(
 		&quest.ID, &quest.QuestID, &quest.QuestType, &quest.Goal,
 		&quest.StartingProgress, &quest.EndingProgress, &quest.Completed,
 		&quest.CanSwap, &quest.Rewards, &assignedAt,
 		&completedAt, &lastSeenAt, &quest.Rerolled, &createdAt,
+		&sessionID, &completionSource,
 	)
 
 	if err == sql.ErrNoRows {
@@ -484,6 +469,14 @@ func (r *QuestRepository) GetQuestByID(id int) (*models.Quest, error) {
 		return nil, fmt.Errorf("failed to parse created_at: %w", err)
 	}
 	quest.CreatedAt = parsedCreatedAt
+
+	// Parse session_id and completion_source
+	if sessionID.Valid {
+		quest.SessionID = sessionID.String
+	}
+	if completionSource.Valid {
+		quest.CompletionSource = completionSource.String
+	}
 
 	return quest, nil
 }
@@ -534,7 +527,8 @@ func (r *QuestRepository) MarkQuestsCompletedByGraphState(completedQuestNumbers 
 	// This maps to Quest1-7 in the graph state
 	query := `
 		SELECT q.id, q.quest_id, q.quest_type, q.goal, q.starting_progress, q.ending_progress,
-		       q.completed, q.can_swap, q.rewards, q.assigned_at, q.completed_at, q.last_seen_at, q.rerolled, q.created_at
+		       q.completed, q.can_swap, q.rewards, q.assigned_at, q.completed_at, q.last_seen_at,
+		       q.rerolled, q.created_at, q.session_id, q.completion_source
 		FROM quests q
 		INNER JOIN (
 			SELECT quest_id, MAX(created_at) as max_created
@@ -664,12 +658,15 @@ func (r *QuestRepository) scanQuests(rows *sql.Rows) ([]*models.Quest, error) {
 		var completedAt sql.NullString
 		var lastSeenAt sql.NullString
 		var createdAt string
+		var sessionID sql.NullString
+		var completionSource sql.NullString
 
 		err := rows.Scan(
 			&quest.ID, &quest.QuestID, &quest.QuestType, &quest.Goal,
 			&quest.StartingProgress, &quest.EndingProgress, &quest.Completed,
 			&quest.CanSwap, &quest.Rewards, &assignedAt,
 			&completedAt, &lastSeenAt, &quest.Rerolled, &createdAt,
+			&sessionID, &completionSource,
 		)
 		if err != nil {
 			return nil, fmt.Errorf("failed to scan quest: %w", err)
@@ -707,6 +704,14 @@ func (r *QuestRepository) scanQuests(rows *sql.Rows) ([]*models.Quest, error) {
 		}
 		quest.CreatedAt = parsedCreatedAt
 
+		// Parse session_id and completion_source
+		if sessionID.Valid {
+			quest.SessionID = sessionID.String
+		}
+		if completionSource.Valid {
+			quest.CompletionSource = completionSource.String
+		}
+
 		quests = append(quests, quest)
 	}
 
@@ -715,4 +720,15 @@ func (r *QuestRepository) scanQuests(rows *sql.Rows) ([]*models.Quest, error) {
 	}
 
 	return quests, nil
+}
+
+// HasAnyQuestData returns true if any quest rows exist with a non-NULL last_seen_at.
+// This distinguishes "no quest data yet" from "all quests completed."
+func (r *QuestRepository) HasAnyQuestData() bool {
+	var count int
+	err := r.db.QueryRow("SELECT COUNT(*) FROM quests WHERE last_seen_at IS NOT NULL").Scan(&count)
+	if err != nil {
+		return false
+	}
+	return count > 0
 }

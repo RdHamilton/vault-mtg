@@ -16,7 +16,6 @@ func setupTestDB(t *testing.T) *sql.DB {
 		t.Fatalf("Failed to open test database: %v", err)
 	}
 
-	// Create quests table
 	_, err = db.Exec(`
 		CREATE TABLE quests (
 			id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -32,7 +31,9 @@ func setupTestDB(t *testing.T) *sql.DB {
 			completed_at TEXT,
 			last_seen_at TEXT,
 			rerolled INTEGER DEFAULT 0,
-			created_at TEXT DEFAULT CURRENT_TIMESTAMP
+			created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+			session_id TEXT,
+			completion_source TEXT
 		)
 	`)
 	if err != nil {
@@ -603,5 +604,292 @@ func TestSaveQuestAfterRerollCreatesNewRecord(t *testing.T) {
 	}
 	if newRerolled {
 		t.Error("New quest should not be rerolled")
+	}
+}
+
+func TestSaveQuest_WithSessionID(t *testing.T) {
+	db := setupTestDB(t)
+	defer db.Close()
+
+	repo := NewQuestRepository(db)
+	now := time.Now().UTC()
+
+	quest := &models.Quest{
+		QuestID:    "session-quest-1",
+		QuestType:  "Daily_Win",
+		Goal:       5,
+		AssignedAt: now,
+		SessionID:  "session-abc-123",
+	}
+
+	err := repo.Save(quest)
+	if err != nil {
+		t.Fatalf("Save failed: %v", err)
+	}
+
+	retrieved, err := repo.GetQuestByID(quest.ID)
+	if err != nil {
+		t.Fatalf("GetQuestByID failed: %v", err)
+	}
+
+	if retrieved.SessionID != "session-abc-123" {
+		t.Errorf("SessionID = %q, want %q", retrieved.SessionID, "session-abc-123")
+	}
+}
+
+func TestSaveQuest_WithCompletionSource(t *testing.T) {
+	db := setupTestDB(t)
+	defer db.Close()
+
+	repo := NewQuestRepository(db)
+	now := time.Now().UTC()
+	completedAt := now
+
+	quest := &models.Quest{
+		QuestID:          "completion-source-quest-1",
+		QuestType:        "Daily_Win",
+		Goal:             5,
+		EndingProgress:   5,
+		Completed:        true,
+		AssignedAt:       now.Add(-1 * time.Hour),
+		CompletedAt:      &completedAt,
+		CompletionSource: "progress",
+	}
+
+	err := repo.Save(quest)
+	if err != nil {
+		t.Fatalf("Save failed: %v", err)
+	}
+
+	retrieved, err := repo.GetQuestByID(quest.ID)
+	if err != nil {
+		t.Fatalf("GetQuestByID failed: %v", err)
+	}
+
+	if retrieved.CompletionSource != "progress" {
+		t.Errorf("CompletionSource = %q, want %q", retrieved.CompletionSource, "progress")
+	}
+}
+
+func TestGetActiveQuests_NoTimeFilter(t *testing.T) {
+	// Insert a quest with last_seen_at from 48 hours ago.
+	// With no 24-hour filter, GetActiveQuests should still return it.
+	db := setupTestDB(t)
+	defer db.Close()
+
+	repo := NewQuestRepository(db)
+	now := time.Now().UTC()
+
+	oldLastSeen := now.Add(-48 * time.Hour)
+	_, err := db.Exec(`
+		INSERT INTO quests (quest_id, quest_type, goal, ending_progress, completed, rerolled, rewards, assigned_at, last_seen_at, created_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+	`, "old-active-quest", "Daily_Win", 5, 2, 0, 0, "500",
+		now.Add(-48*time.Hour).Format("2006-01-02 15:04:05"),
+		oldLastSeen.Format("2006-01-02 15:04:05"),
+		now.Add(-48*time.Hour).Format("2006-01-02 15:04:05"))
+	if err != nil {
+		t.Fatalf("Failed to insert quest: %v", err)
+	}
+
+	quests, err := repo.GetActiveQuests()
+	if err != nil {
+		t.Fatalf("GetActiveQuests failed: %v", err)
+	}
+
+	if len(quests) != 1 {
+		t.Errorf("GetActiveQuests returned %d quests, want 1 (no time filter should apply)", len(quests))
+	}
+
+	if len(quests) > 0 && quests[0].QuestID != "old-active-quest" {
+		t.Errorf("QuestID = %q, want %q", quests[0].QuestID, "old-active-quest")
+	}
+}
+
+func TestGetActiveQuests_ExcludesCompleted(t *testing.T) {
+	db := setupTestDB(t)
+	defer db.Close()
+
+	repo := NewQuestRepository(db)
+	now := time.Now().UTC()
+
+	// Insert an incomplete quest
+	_, err := db.Exec(`
+		INSERT INTO quests (quest_id, quest_type, goal, ending_progress, completed, rerolled, rewards, assigned_at, created_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+	`, "incomplete-quest", "Daily_Win", 5, 2, 0, 0, "500",
+		now.Add(-1*time.Hour).Format("2006-01-02 15:04:05"),
+		now.Add(-1*time.Hour).Format("2006-01-02 15:04:05"))
+	if err != nil {
+		t.Fatalf("Failed to insert incomplete quest: %v", err)
+	}
+
+	// Insert a completed quest
+	completedAt := now.Format("2006-01-02 15:04:05")
+	_, err = db.Exec(`
+		INSERT INTO quests (quest_id, quest_type, goal, ending_progress, completed, rerolled, rewards, assigned_at, completed_at, created_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+	`, "completed-quest", "Daily_Win", 5, 5, 1, 0, "500",
+		now.Add(-2*time.Hour).Format("2006-01-02 15:04:05"),
+		completedAt,
+		now.Add(-2*time.Hour).Format("2006-01-02 15:04:05"))
+	if err != nil {
+		t.Fatalf("Failed to insert completed quest: %v", err)
+	}
+
+	quests, err := repo.GetActiveQuests()
+	if err != nil {
+		t.Fatalf("GetActiveQuests failed: %v", err)
+	}
+
+	if len(quests) != 1 {
+		t.Errorf("GetActiveQuests returned %d quests, want 1 (should exclude completed)", len(quests))
+	}
+
+	if len(quests) > 0 && quests[0].QuestID != "incomplete-quest" {
+		t.Errorf("QuestID = %q, want %q", quests[0].QuestID, "incomplete-quest")
+	}
+}
+
+func TestGetQuestHistory_AllInstances(t *testing.T) {
+	// Insert TWO quests with the SAME quest_id but different created_at and assigned_at.
+	// GetQuestHistory (with GROUP BY removed) should return BOTH.
+	db := setupTestDB(t)
+	defer db.Close()
+
+	repo := NewQuestRepository(db)
+	now := time.Now().UTC()
+
+	// First instance
+	_, err := db.Exec(`
+		INSERT INTO quests (quest_id, quest_type, goal, ending_progress, completed, rewards, assigned_at, created_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+	`, "reused-quest-id", "Daily_Win", 5, 5, 1, "500",
+		now.Add(-72*time.Hour).Format("2006-01-02 15:04:05"),
+		now.Add(-72*time.Hour).Format("2006-01-02 15:04:05"))
+	if err != nil {
+		t.Fatalf("Failed to insert first quest instance: %v", err)
+	}
+
+	// Second instance (same quest_id, different assigned_at)
+	_, err = db.Exec(`
+		INSERT INTO quests (quest_id, quest_type, goal, ending_progress, completed, rewards, assigned_at, created_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+	`, "reused-quest-id", "Daily_Win", 5, 2, 0, "500",
+		now.Add(-24*time.Hour).Format("2006-01-02 15:04:05"),
+		now.Add(-24*time.Hour).Format("2006-01-02 15:04:05"))
+	if err != nil {
+		t.Fatalf("Failed to insert second quest instance: %v", err)
+	}
+
+	history, err := repo.GetQuestHistory(nil, nil, 0)
+	if err != nil {
+		t.Fatalf("GetQuestHistory failed: %v", err)
+	}
+
+	if len(history) != 2 {
+		t.Errorf("GetQuestHistory returned %d quests, want 2 (no GROUP BY dedup)", len(history))
+	}
+}
+
+func TestGetQuestHistory_FiltersByAssignedAt(t *testing.T) {
+	db := setupTestDB(t)
+	defer db.Close()
+
+	repo := NewQuestRepository(db)
+
+	// Quest assigned in January 2024
+	_, err := db.Exec(`
+		INSERT INTO quests (quest_id, quest_type, goal, ending_progress, completed, rewards, assigned_at, created_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+	`, "jan-quest", "Daily_Win", 5, 5, 1, "500",
+		"2024-01-15 12:00:00",
+		"2024-01-15 12:00:00")
+	if err != nil {
+		t.Fatalf("Failed to insert January quest: %v", err)
+	}
+
+	// Quest assigned in November 2024
+	_, err = db.Exec(`
+		INSERT INTO quests (quest_id, quest_type, goal, ending_progress, completed, rewards, assigned_at, created_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+	`, "nov-quest", "Daily_Win", 5, 5, 1, "750",
+		"2024-11-15 12:00:00",
+		"2024-11-15 12:00:00")
+	if err != nil {
+		t.Fatalf("Failed to insert November quest: %v", err)
+	}
+
+	// Filter to only November
+	startDate := time.Date(2024, 11, 1, 0, 0, 0, 0, time.UTC)
+	endDate := time.Date(2024, 11, 30, 0, 0, 0, 0, time.UTC)
+
+	history, err := repo.GetQuestHistory(&startDate, &endDate, 0)
+	if err != nil {
+		t.Fatalf("GetQuestHistory with date filter failed: %v", err)
+	}
+
+	if len(history) != 1 {
+		t.Errorf("GetQuestHistory returned %d quests, want 1 (only November)", len(history))
+	}
+
+	if len(history) > 0 && history[0].QuestID != "nov-quest" {
+		t.Errorf("QuestID = %q, want %q", history[0].QuestID, "nov-quest")
+	}
+
+	// No filter should return both
+	all, err := repo.GetQuestHistory(nil, nil, 0)
+	if err != nil {
+		t.Fatalf("GetQuestHistory without filter failed: %v", err)
+	}
+
+	if len(all) != 2 {
+		t.Errorf("GetQuestHistory (no filter) returned %d quests, want 2", len(all))
+	}
+}
+
+func TestHasAnyQuestData(t *testing.T) {
+	db := setupTestDB(t)
+	defer db.Close()
+
+	repo := NewQuestRepository(db)
+
+	// Empty DB should return false
+	if repo.HasAnyQuestData() {
+		t.Error("HasAnyQuestData should return false on empty DB")
+	}
+
+	now := time.Now().UTC()
+
+	// Insert quest WITHOUT last_seen_at - should still return false
+	_, err := db.Exec(`
+		INSERT INTO quests (quest_id, quest_type, goal, ending_progress, completed, rewards, assigned_at, created_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+	`, "no-last-seen-quest", "Daily_Win", 5, 2, 0, "500",
+		now.Format("2006-01-02 15:04:05"),
+		now.Format("2006-01-02 15:04:05"))
+	if err != nil {
+		t.Fatalf("Failed to insert quest without last_seen_at: %v", err)
+	}
+
+	if repo.HasAnyQuestData() {
+		t.Error("HasAnyQuestData should return false when no quests have last_seen_at")
+	}
+
+	// Insert quest WITH last_seen_at - should now return true
+	lastSeen := now.Format("2006-01-02 15:04:05")
+	_, err = db.Exec(`
+		INSERT INTO quests (quest_id, quest_type, goal, ending_progress, completed, rewards, assigned_at, last_seen_at, created_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+	`, "seen-quest", "Daily_Win", 5, 2, 0, "500",
+		now.Format("2006-01-02 15:04:05"),
+		lastSeen,
+		now.Format("2006-01-02 15:04:05"))
+	if err != nil {
+		t.Fatalf("Failed to insert quest with last_seen_at: %v", err)
+	}
+
+	if !repo.HasAnyQuestData() {
+		t.Error("HasAnyQuestData should return true after inserting quest with last_seen_at")
 	}
 }

@@ -10,6 +10,7 @@ import './Quests.css';
 
 const Quests = () => {
   const [activeQuests, setActiveQuests] = useState<models.Quest[]>([]);
+  const [hasQuestData, setHasQuestData] = useState(false);
   const [questHistory, setQuestHistory] = useState<models.Quest[]>([]);
   const [currentAccount, setCurrentAccount] = useState<models.Account | null>(null);
   const [dailyWins, setDailyWins] = useState<number>(0);
@@ -18,7 +19,7 @@ const Quests = () => {
   const [error, setError] = useState<string | null>(null);
 
   // Filters for history
-  const [dateRange, setDateRange] = useState('30days');
+  const [dateRange, setDateRange] = useState('90days');
   const [customStartDate, setCustomStartDate] = useState('');
   const [customEndDate, setCustomEndDate] = useState('');
   const [historyLimit] = useState(50);
@@ -66,8 +67,9 @@ const Quests = () => {
 
       // Load quest data sequentially with better error reporting
       try {
-        const active = await quests.getActiveQuests();
-        setActiveQuests(active || []);
+        const activeResponse = await quests.getActiveQuests();
+        setActiveQuests(activeResponse.quests || []);
+        setHasQuestData(activeResponse.has_quest_data);
       } catch (activeErr) {
         console.error('Error loading active quests:', activeErr);
         throw new Error(`Failed to load active quests: ${activeErr instanceof Error ? activeErr.message : String(activeErr)}`);
@@ -154,8 +156,9 @@ const Quests = () => {
 
         // Load quest data sequentially with better error reporting
         try {
-          const active = await quests.getActiveQuests();
-          setActiveQuests(active || []);
+          const activeResponse = await quests.getActiveQuests();
+          setActiveQuests(activeResponse.quests || []);
+          setHasQuestData(activeResponse.has_quest_data);
         } catch (activeErr) {
           console.error('Error loading active quests:', activeErr);
           throw new Error(`Failed to load active quests: ${activeErr instanceof Error ? activeErr.message : String(activeErr)}`);
@@ -374,12 +377,19 @@ const Quests = () => {
           {/* Active Quests Section */}
           <div className="quests-section">
             <h2 className="section-title">Active Quests</h2>
-            {activeQuests.length === 0 ? (
+            {activeQuests.length === 0 && !hasQuestData ? (
               <EmptyState
                 icon="📋"
-                title="No active quests"
-                message="You don't have any active daily quests at the moment."
-                helpText="Daily quests reset daily. Make sure detailed logging is enabled in MTGA to track new quests."
+                title="Waiting for quest data"
+                message="Launch MTGA and play a game to see your quests here."
+                helpText="Quest data is captured from MTGA log files. Make sure detailed logging is enabled in MTGA: Options > View Account > Detailed Logs (Plugin Support)."
+              />
+            ) : activeQuests.length === 0 && hasQuestData ? (
+              <EmptyState
+                icon="📋"
+                title="All quests completed!"
+                message="Check back tomorrow for new quests."
+                helpText="Daily quests reset each day. Your completed quests are shown in the history below."
               />
             ) : (
               <div className="active-quests-grid">

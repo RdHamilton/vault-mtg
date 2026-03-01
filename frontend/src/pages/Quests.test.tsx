@@ -4,6 +4,7 @@ import Quests from './Quests';
 import { mockQuests, mockSystem } from '@/test/mocks/apiMock';
 import { AppProvider } from '../context/AppContext';
 import { models } from '@/types/models';
+import type { ActiveQuestsResponse } from '@/services/api/quests';
 
 // Helper function to create mock Quest
 function createMockQuest(overrides: Partial<models.Quest> = {}): models.Quest {
@@ -22,6 +23,14 @@ function createMockQuest(overrides: Partial<models.Quest> = {}): models.Quest {
     rerolled: false,
     ...overrides,
   });
+}
+
+// Helper to create a mock ActiveQuestsResponse
+function createActiveQuestsResponse(
+  quests: models.Quest[] = [],
+  has_quest_data = false
+): ActiveQuestsResponse {
+  return { quests, has_quest_data };
 }
 
 // Helper function to create mock Account
@@ -66,8 +75,8 @@ describe('Quests', () => {
 
   describe('Loading State', () => {
     it('should show loading spinner while fetching data', async () => {
-      let resolveQuests: (value: models.Quest[]) => void;
-      const loadingPromise = new Promise<models.Quest[]>((resolve) => {
+      let resolveQuests: (value: ActiveQuestsResponse) => void;
+      const loadingPromise = new Promise<ActiveQuestsResponse>((resolve) => {
         resolveQuests = resolve;
       });
       mockQuests.getActiveQuests.mockReturnValue(loadingPromise);
@@ -78,7 +87,7 @@ describe('Quests', () => {
 
       expect(screen.getByText('Loading quest data...')).toBeInTheDocument();
 
-      resolveQuests!([]);
+      resolveQuests!(createActiveQuestsResponse([], false));
       await waitFor(() => {
         expect(screen.queryByText('Loading quest data...')).not.toBeInTheDocument();
       });
@@ -100,7 +109,7 @@ describe('Quests', () => {
     });
 
     it('should show error state when GetQuestHistory fails', async () => {
-      mockQuests.getActiveQuests.mockResolvedValue([]);
+      mockQuests.getActiveQuests.mockResolvedValue(createActiveQuestsResponse([], true));
       mockQuests.getQuestHistory.mockRejectedValue(new Error('History error'));
       mockSystem.getCurrentAccount.mockResolvedValue(null);
 
@@ -113,14 +122,14 @@ describe('Quests', () => {
     });
 
     it('should continue loading when GetCurrentAccount fails (account is optional)', async () => {
-      mockQuests.getActiveQuests.mockResolvedValue([]);
+      mockQuests.getActiveQuests.mockResolvedValue(createActiveQuestsResponse([], true));
       mockQuests.getQuestHistory.mockResolvedValue([]);
       mockSystem.getCurrentAccount.mockRejectedValue(new Error('Account error'));
 
       renderWithProvider(<Quests />);
 
       await waitFor(() => {
-        expect(screen.getByText('No active quests')).toBeInTheDocument();
+        expect(screen.getByText('All quests completed!')).toBeInTheDocument();
       });
       // Should not show error since account is optional
       expect(screen.queryByRole('heading', { name: 'Failed to load quest data' })).not.toBeInTheDocument();
@@ -140,21 +149,33 @@ describe('Quests', () => {
   });
 
   describe('Empty State', () => {
-    it('should show empty state for active quests when none exist', async () => {
-      mockQuests.getActiveQuests.mockResolvedValue([]);
+    it('shows waiting for quest data message when has_quest_data is false', async () => {
+      mockQuests.getActiveQuests.mockResolvedValue(createActiveQuestsResponse([], false));
       mockQuests.getQuestHistory.mockResolvedValue([]);
       mockSystem.getCurrentAccount.mockResolvedValue(null);
 
       renderWithProvider(<Quests />);
 
       await waitFor(() => {
-        expect(screen.getByText('No active quests')).toBeInTheDocument();
+        expect(screen.getByText('Waiting for quest data')).toBeInTheDocument();
       });
-      expect(screen.getByText("You don't have any active daily quests at the moment.")).toBeInTheDocument();
+      expect(screen.getByText(/Launch MTGA/)).toBeInTheDocument();
+    });
+
+    it('shows all quests completed message when quests empty but has_quest_data is true', async () => {
+      mockQuests.getActiveQuests.mockResolvedValue(createActiveQuestsResponse([], true));
+      mockQuests.getQuestHistory.mockResolvedValue([]);
+      mockSystem.getCurrentAccount.mockResolvedValue(null);
+
+      renderWithProvider(<Quests />);
+
+      await waitFor(() => {
+        expect(screen.getByText('All quests completed!')).toBeInTheDocument();
+      });
     });
 
     it('should show empty state for quest history when none exist', async () => {
-      mockQuests.getActiveQuests.mockResolvedValue([]);
+      mockQuests.getActiveQuests.mockResolvedValue(createActiveQuestsResponse([], false));
       mockQuests.getQuestHistory.mockResolvedValue([]);
       mockSystem.getCurrentAccount.mockResolvedValue(null);
 
@@ -166,26 +187,26 @@ describe('Quests', () => {
       expect(screen.getByText('No completed quests found for the selected time period.')).toBeInTheDocument();
     });
 
-    it('should show empty state when API returns null', async () => {
-      mockQuests.getActiveQuests.mockResolvedValue(null);
+    it('should show empty state when API returns null for history', async () => {
+      mockQuests.getActiveQuests.mockResolvedValue(createActiveQuestsResponse([], false));
       mockQuests.getQuestHistory.mockResolvedValue(null);
       mockSystem.getCurrentAccount.mockResolvedValue(null);
 
       renderWithProvider(<Quests />);
 
       await waitFor(() => {
-        expect(screen.getByText('No active quests')).toBeInTheDocument();
+        expect(screen.getByText('Waiting for quest data')).toBeInTheDocument();
       });
     });
   });
 
   describe('Active Quests Display', () => {
-    it('should render active quest cards', async () => {
-      const quests = [
+    it('renders active quests when quests are present', async () => {
+      const activeQuests = [
         createMockQuest({ id: 1, quest_type: 'Quests/Quest_PlayCards', goal: 10, ending_progress: 5 }),
         createMockQuest({ id: 2, quest_type: 'Quests/Quest_WinGames', goal: 5, ending_progress: 2 }),
       ];
-      mockQuests.getActiveQuests.mockResolvedValue(quests);
+      mockQuests.getActiveQuests.mockResolvedValue(createActiveQuestsResponse(activeQuests, true));
       mockQuests.getQuestHistory.mockResolvedValue([]);
       mockSystem.getCurrentAccount.mockResolvedValue(null);
 
@@ -200,7 +221,7 @@ describe('Quests', () => {
 
     it('should display quest progress', async () => {
       const quest = createMockQuest({ goal: 10, ending_progress: 7 });
-      mockQuests.getActiveQuests.mockResolvedValue([quest]);
+      mockQuests.getActiveQuests.mockResolvedValue(createActiveQuestsResponse([quest], true));
       mockQuests.getQuestHistory.mockResolvedValue([]);
       mockSystem.getCurrentAccount.mockResolvedValue(null);
 
@@ -214,7 +235,7 @@ describe('Quests', () => {
 
     it('should display 750 gold reward badge', async () => {
       const quest = createMockQuest({ rewards: '750 Gold' });
-      mockQuests.getActiveQuests.mockResolvedValue([quest]);
+      mockQuests.getActiveQuests.mockResolvedValue(createActiveQuestsResponse([quest], true));
       mockQuests.getQuestHistory.mockResolvedValue([]);
       mockSystem.getCurrentAccount.mockResolvedValue(null);
 
@@ -227,7 +248,7 @@ describe('Quests', () => {
 
     it('should display 500 gold reward badge', async () => {
       const quest = createMockQuest({ rewards: '500 Gold' });
-      mockQuests.getActiveQuests.mockResolvedValue([quest]);
+      mockQuests.getActiveQuests.mockResolvedValue(createActiveQuestsResponse([quest], true));
       mockQuests.getQuestHistory.mockResolvedValue([]);
       mockSystem.getCurrentAccount.mockResolvedValue(null);
 
@@ -240,7 +261,7 @@ describe('Quests', () => {
 
     it('should display assigned date', async () => {
       const quest = createMockQuest({ assigned_at: new Date('2024-01-15T10:00:00').toISOString() });
-      mockQuests.getActiveQuests.mockResolvedValue([quest]);
+      mockQuests.getActiveQuests.mockResolvedValue(createActiveQuestsResponse([quest], true));
       mockQuests.getQuestHistory.mockResolvedValue([]);
       mockSystem.getCurrentAccount.mockResolvedValue(null);
 
@@ -253,7 +274,7 @@ describe('Quests', () => {
 
     it('should cap progress at 100%', async () => {
       const quest = createMockQuest({ goal: 10, ending_progress: 15 }); // Over 100%
-      mockQuests.getActiveQuests.mockResolvedValue([quest]);
+      mockQuests.getActiveQuests.mockResolvedValue(createActiveQuestsResponse([quest], true));
       mockQuests.getQuestHistory.mockResolvedValue([]);
       mockSystem.getCurrentAccount.mockResolvedValue(null);
 
@@ -266,7 +287,7 @@ describe('Quests', () => {
 
     it('should handle quest with zero goal', async () => {
       const quest = createMockQuest({ goal: 0, ending_progress: 0 });
-      mockQuests.getActiveQuests.mockResolvedValue([quest]);
+      mockQuests.getActiveQuests.mockResolvedValue(createActiveQuestsResponse([quest], true));
       mockQuests.getQuestHistory.mockResolvedValue([]);
       mockSystem.getCurrentAccount.mockResolvedValue(null);
 
@@ -285,7 +306,7 @@ describe('Quests', () => {
         createMockQuest({ id: 1, completed: true, completed_at: new Date('2024-01-16T12:00:00').toISOString() }),
         createMockQuest({ id: 2, completed: false }),
       ];
-      mockQuests.getActiveQuests.mockResolvedValue([]);
+      mockQuests.getActiveQuests.mockResolvedValue(createActiveQuestsResponse([], false));
       mockQuests.getQuestHistory.mockResolvedValue(history);
       mockSystem.getCurrentAccount.mockResolvedValue(null);
 
@@ -302,7 +323,7 @@ describe('Quests', () => {
         createMockQuest({ id: 1, completed: true, completed_at: new Date('2024-01-16T12:00:00').toISOString() }),
         createMockQuest({ id: 2, completed: false }),
       ];
-      mockQuests.getActiveQuests.mockResolvedValue([]);
+      mockQuests.getActiveQuests.mockResolvedValue(createActiveQuestsResponse([], false));
       mockQuests.getQuestHistory.mockResolvedValue(history);
       mockSystem.getCurrentAccount.mockResolvedValue(null);
 
@@ -320,7 +341,7 @@ describe('Quests', () => {
         assigned_at: new Date('2024-01-15T10:00:00').toISOString(),
         completed_at: new Date('2024-01-15T12:30:00').toISOString(), // 2.5 hours later
       });
-      mockQuests.getActiveQuests.mockResolvedValue([]);
+      mockQuests.getActiveQuests.mockResolvedValue(createActiveQuestsResponse([], false));
       mockQuests.getQuestHistory.mockResolvedValue([quest]);
       mockSystem.getCurrentAccount.mockResolvedValue(null);
 
@@ -333,7 +354,7 @@ describe('Quests', () => {
 
     it('should display N/A for incomplete quest duration', async () => {
       const quest = createMockQuest({ completed: false, completed_at: undefined });
-      mockQuests.getActiveQuests.mockResolvedValue([]);
+      mockQuests.getActiveQuests.mockResolvedValue(createActiveQuestsResponse([], false));
       mockQuests.getQuestHistory.mockResolvedValue([quest]);
       mockSystem.getCurrentAccount.mockResolvedValue(null);
 
@@ -350,7 +371,7 @@ describe('Quests', () => {
         assigned_at: new Date('2024-01-15T10:00:00').toISOString(),
         completed_at: new Date('2024-01-15T10:45:00').toISOString(), // 45 minutes
       });
-      mockQuests.getActiveQuests.mockResolvedValue([]);
+      mockQuests.getActiveQuests.mockResolvedValue(createActiveQuestsResponse([], false));
       mockQuests.getQuestHistory.mockResolvedValue([quest]);
       mockSystem.getCurrentAccount.mockResolvedValue(null);
 
@@ -367,7 +388,7 @@ describe('Quests', () => {
         createMockQuest({ id: 2, completed: false, rerolled: true }),
         createMockQuest({ id: 3, completed: false, rerolled: false }),
       ];
-      mockQuests.getActiveQuests.mockResolvedValue([]);
+      mockQuests.getActiveQuests.mockResolvedValue(createActiveQuestsResponse([], false));
       mockQuests.getQuestHistory.mockResolvedValue(history);
       mockSystem.getCurrentAccount.mockResolvedValue(null);
 
@@ -379,6 +400,50 @@ describe('Quests', () => {
       expect(screen.getByText('REROLLED')).toBeInTheDocument();
       expect(screen.getByText('INCOMPLETE')).toBeInTheDocument();
     });
+
+    it('history table shows multiple instances of same quest_id', async () => {
+      // Use a quest type with underscores so formatQuestType produces spaces
+      const history = [
+        createMockQuest({
+          id: 1,
+          quest_id: 'quest_daily_001',
+          quest_type: 'Quests/Quest_Play_Cards',
+          completed: true,
+          assigned_at: new Date('2024-01-14T08:00:00').toISOString(),
+          completed_at: new Date('2024-01-14T10:00:00').toISOString(),
+          ending_progress: 10,
+          goal: 10,
+        }),
+        createMockQuest({
+          id: 2,
+          quest_id: 'quest_daily_001',
+          quest_type: 'Quests/Quest_Play_Cards',
+          completed: false,
+          assigned_at: new Date('2024-01-15T08:00:00').toISOString(),
+          completed_at: undefined,
+          ending_progress: 3,
+          goal: 10,
+        }),
+      ];
+      mockQuests.getActiveQuests.mockResolvedValue(createActiveQuestsResponse([], false));
+      mockQuests.getQuestHistory.mockResolvedValue(history);
+      mockSystem.getCurrentAccount.mockResolvedValue(null);
+
+      renderWithProvider(<Quests />);
+
+      await waitFor(() => {
+        expect(screen.getByRole('table')).toBeInTheDocument();
+      });
+
+      // Both rows should appear even though they share the same quest_id.
+      // formatQuestType('Quests/Quest_Play_Cards') → 'Play Cards'
+      const rows = screen.getAllByText('Play Cards');
+      expect(rows).toHaveLength(2);
+
+      // One completed, one incomplete
+      expect(screen.getByText('COMPLETED')).toBeInTheDocument();
+      expect(screen.getByText('INCOMPLETE')).toBeInTheDocument();
+    });
   });
 
   describe('Pagination', () => {
@@ -386,7 +451,7 @@ describe('Quests', () => {
       const history = Array.from({ length: 15 }, (_, i) =>
         createMockQuest({ id: i + 1, completed: true, completed_at: new Date().toISOString() })
       );
-      mockQuests.getActiveQuests.mockResolvedValue([]);
+      mockQuests.getActiveQuests.mockResolvedValue(createActiveQuestsResponse([], false));
       mockQuests.getQuestHistory.mockResolvedValue(history);
       mockSystem.getCurrentAccount.mockResolvedValue(null);
 
@@ -405,7 +470,7 @@ describe('Quests', () => {
       const history = Array.from({ length: 15 }, (_, i) =>
         createMockQuest({ id: i + 1, completed: true, completed_at: new Date().toISOString() })
       );
-      mockQuests.getActiveQuests.mockResolvedValue([]);
+      mockQuests.getActiveQuests.mockResolvedValue(createActiveQuestsResponse([], false));
       mockQuests.getQuestHistory.mockResolvedValue(history);
       mockSystem.getCurrentAccount.mockResolvedValue(null);
 
@@ -426,7 +491,7 @@ describe('Quests', () => {
       const history = Array.from({ length: 25 }, (_, i) =>
         createMockQuest({ id: i + 1, completed: true, completed_at: new Date().toISOString() })
       );
-      mockQuests.getActiveQuests.mockResolvedValue([]);
+      mockQuests.getActiveQuests.mockResolvedValue(createActiveQuestsResponse([], false));
       mockQuests.getQuestHistory.mockResolvedValue(history);
       mockSystem.getCurrentAccount.mockResolvedValue(null);
 
@@ -447,7 +512,7 @@ describe('Quests', () => {
       const history = Array.from({ length: 15 }, (_, i) =>
         createMockQuest({ id: i + 1, completed: true, completed_at: new Date().toISOString() })
       );
-      mockQuests.getActiveQuests.mockResolvedValue([]);
+      mockQuests.getActiveQuests.mockResolvedValue(createActiveQuestsResponse([], false));
       mockQuests.getQuestHistory.mockResolvedValue(history);
       mockSystem.getCurrentAccount.mockResolvedValue(null);
 
@@ -472,7 +537,7 @@ describe('Quests', () => {
       const history = Array.from({ length: 25 }, (_, i) =>
         createMockQuest({ id: i + 1, completed: true, completed_at: new Date().toISOString() })
       );
-      mockQuests.getActiveQuests.mockResolvedValue([]);
+      mockQuests.getActiveQuests.mockResolvedValue(createActiveQuestsResponse([], false));
       mockQuests.getQuestHistory.mockResolvedValue(history);
       mockSystem.getCurrentAccount.mockResolvedValue(null);
 
@@ -497,7 +562,7 @@ describe('Quests', () => {
       const history = Array.from({ length: 15 }, (_, i) =>
         createMockQuest({ id: i + 1, completed: true, completed_at: new Date().toISOString() })
       );
-      mockQuests.getActiveQuests.mockResolvedValue([]);
+      mockQuests.getActiveQuests.mockResolvedValue(createActiveQuestsResponse([], false));
       mockQuests.getQuestHistory.mockResolvedValue(history);
       mockSystem.getCurrentAccount.mockResolvedValue(null);
 
@@ -513,7 +578,7 @@ describe('Quests', () => {
       const history = Array.from({ length: 15 }, (_, i) =>
         createMockQuest({ id: i + 1, completed: true, completed_at: new Date().toISOString() })
       );
-      mockQuests.getActiveQuests.mockResolvedValue([]);
+      mockQuests.getActiveQuests.mockResolvedValue(createActiveQuestsResponse([], false));
       mockQuests.getQuestHistory.mockResolvedValue(history);
       mockSystem.getCurrentAccount.mockResolvedValue(null);
 
@@ -535,7 +600,7 @@ describe('Quests', () => {
       const history = Array.from({ length: 8 }, (_, i) =>
         createMockQuest({ id: i + 1, completed: true, completed_at: new Date().toISOString() })
       );
-      mockQuests.getActiveQuests.mockResolvedValue([]);
+      mockQuests.getActiveQuests.mockResolvedValue(createActiveQuestsResponse([], false));
       mockQuests.getQuestHistory.mockResolvedValue(history);
       mockSystem.getCurrentAccount.mockResolvedValue(null);
 
@@ -549,8 +614,8 @@ describe('Quests', () => {
   });
 
   describe('Date Range Filter', () => {
-    it('should render date range filter with default value', async () => {
-      mockQuests.getActiveQuests.mockResolvedValue([]);
+    it('should render date range filter with default value of 90days', async () => {
+      mockQuests.getActiveQuests.mockResolvedValue(createActiveQuestsResponse([], false));
       mockQuests.getQuestHistory.mockResolvedValue([]);
       mockSystem.getCurrentAccount.mockResolvedValue(null);
 
@@ -558,12 +623,12 @@ describe('Quests', () => {
 
       await waitFor(() => {
         const dateRangeSelect = getSelectByLabel('Date Range');
-        expect(dateRangeSelect.value).toBe('30days');
+        expect(dateRangeSelect.value).toBe('90days');
       });
     });
 
     it('should show custom date inputs when custom range selected', async () => {
-      mockQuests.getActiveQuests.mockResolvedValue([]);
+      mockQuests.getActiveQuests.mockResolvedValue(createActiveQuestsResponse([], false));
       mockQuests.getQuestHistory.mockResolvedValue([]);
       mockSystem.getCurrentAccount.mockResolvedValue(null);
 
@@ -583,7 +648,7 @@ describe('Quests', () => {
     });
 
     it('should refetch data when date range changes', async () => {
-      mockQuests.getActiveQuests.mockResolvedValue([]);
+      mockQuests.getActiveQuests.mockResolvedValue(createActiveQuestsResponse([], false));
       mockQuests.getQuestHistory.mockResolvedValue([]);
       mockSystem.getCurrentAccount.mockResolvedValue(null);
 
@@ -604,7 +669,7 @@ describe('Quests', () => {
     });
 
     it('should have all date range options', async () => {
-      mockQuests.getActiveQuests.mockResolvedValue([]);
+      mockQuests.getActiveQuests.mockResolvedValue(createActiveQuestsResponse([], false));
       mockQuests.getQuestHistory.mockResolvedValue([]);
       mockSystem.getCurrentAccount.mockResolvedValue(null);
 
@@ -624,7 +689,7 @@ describe('Quests', () => {
 
   describe('Win Progress Section', () => {
     it('should display daily wins progress', async () => {
-      mockQuests.getActiveQuests.mockResolvedValue([]);
+      mockQuests.getActiveQuests.mockResolvedValue(createActiveQuestsResponse([], false));
       mockQuests.getQuestHistory.mockResolvedValue([]);
       mockSystem.getCurrentAccount.mockResolvedValue(createMockAccount());
       mockQuests.getDailyWins.mockResolvedValue({ wins: 7, goal: 15 });
@@ -639,7 +704,7 @@ describe('Quests', () => {
     });
 
     it('should display weekly wins progress', async () => {
-      mockQuests.getActiveQuests.mockResolvedValue([]);
+      mockQuests.getActiveQuests.mockResolvedValue(createActiveQuestsResponse([], false));
       mockQuests.getQuestHistory.mockResolvedValue([]);
       mockSystem.getCurrentAccount.mockResolvedValue(createMockAccount());
       mockQuests.getDailyWins.mockResolvedValue({ wins: 0, goal: 15 });
@@ -654,7 +719,7 @@ describe('Quests', () => {
     });
 
     it('should show goal message for under 5 daily wins', async () => {
-      mockQuests.getActiveQuests.mockResolvedValue([]);
+      mockQuests.getActiveQuests.mockResolvedValue(createActiveQuestsResponse([], false));
       mockQuests.getQuestHistory.mockResolvedValue([]);
       mockSystem.getCurrentAccount.mockResolvedValue(createMockAccount());
       mockQuests.getDailyWins.mockResolvedValue({ wins: 3, goal: 15 });
@@ -668,7 +733,7 @@ describe('Quests', () => {
     });
 
     it('should show gold reward message for 5+ daily wins', async () => {
-      mockQuests.getActiveQuests.mockResolvedValue([]);
+      mockQuests.getActiveQuests.mockResolvedValue(createActiveQuestsResponse([], false));
       mockQuests.getQuestHistory.mockResolvedValue([]);
       mockSystem.getCurrentAccount.mockResolvedValue(createMockAccount());
       mockQuests.getDailyWins.mockResolvedValue({ wins: 6, goal: 15 });
@@ -682,7 +747,7 @@ describe('Quests', () => {
     });
 
     it('should show win progress even when no account data', async () => {
-      mockQuests.getActiveQuests.mockResolvedValue([]);
+      mockQuests.getActiveQuests.mockResolvedValue(createActiveQuestsResponse([], false));
       mockQuests.getQuestHistory.mockResolvedValue([]);
       mockSystem.getCurrentAccount.mockResolvedValue(null);
       mockQuests.getDailyWins.mockResolvedValue({ wins: 0, goal: 15 });
@@ -691,7 +756,7 @@ describe('Quests', () => {
       renderWithProvider(<Quests />);
 
       await waitFor(() => {
-        expect(screen.getByText('No active quests')).toBeInTheDocument();
+        expect(screen.getByText('Waiting for quest data')).toBeInTheDocument();
       });
       // Win progress section is now always shown since it comes from match data, not account
       expect(screen.getByText('Win Progress')).toBeInTheDocument();
@@ -700,7 +765,7 @@ describe('Quests', () => {
 
   describe('Mastery Pass Summary', () => {
     it('should display mastery level', async () => {
-      mockQuests.getActiveQuests.mockResolvedValue([]);
+      mockQuests.getActiveQuests.mockResolvedValue(createActiveQuestsResponse([], false));
       mockQuests.getQuestHistory.mockResolvedValue([]);
       mockSystem.getCurrentAccount.mockResolvedValue(createMockAccount({ MasteryLevel: 75 }));
 
@@ -713,7 +778,7 @@ describe('Quests', () => {
     });
 
     it('should display pass type', async () => {
-      mockQuests.getActiveQuests.mockResolvedValue([]);
+      mockQuests.getActiveQuests.mockResolvedValue(createActiveQuestsResponse([], false));
       mockQuests.getQuestHistory.mockResolvedValue([]);
       mockSystem.getCurrentAccount.mockResolvedValue(createMockAccount({ MasteryPass: 'Premium' }));
 
@@ -726,7 +791,7 @@ describe('Quests', () => {
     });
 
     it('should display mastery progress percentage', async () => {
-      mockQuests.getActiveQuests.mockResolvedValue([]);
+      mockQuests.getActiveQuests.mockResolvedValue(createActiveQuestsResponse([], false));
       mockQuests.getQuestHistory.mockResolvedValue([]);
       mockSystem.getCurrentAccount.mockResolvedValue(
         createMockAccount({ MasteryLevel: 50, MasteryMax: 100 })
@@ -741,7 +806,7 @@ describe('Quests', () => {
     });
 
     it('should display N/A for progress when MasteryMax is 0', async () => {
-      mockQuests.getActiveQuests.mockResolvedValue([]);
+      mockQuests.getActiveQuests.mockResolvedValue(createActiveQuestsResponse([], false));
       mockQuests.getQuestHistory.mockResolvedValue([]);
       mockSystem.getCurrentAccount.mockResolvedValue(
         createMockAccount({ MasteryLevel: 50, MasteryMax: 0 })
@@ -758,7 +823,7 @@ describe('Quests', () => {
     });
 
     it('should display daily goal checkmark when >= 5 wins', async () => {
-      mockQuests.getActiveQuests.mockResolvedValue([]);
+      mockQuests.getActiveQuests.mockResolvedValue(createActiveQuestsResponse([], false));
       mockQuests.getQuestHistory.mockResolvedValue([]);
       mockSystem.getCurrentAccount.mockResolvedValue(createMockAccount({ MasteryMax: 100 }));
       mockQuests.getDailyWins.mockResolvedValue({ wins: 5, goal: 15 });
@@ -774,7 +839,7 @@ describe('Quests', () => {
     });
 
     it('should display daily goal progress when < 5 wins', async () => {
-      mockQuests.getActiveQuests.mockResolvedValue([]);
+      mockQuests.getActiveQuests.mockResolvedValue(createActiveQuestsResponse([], false));
       mockQuests.getQuestHistory.mockResolvedValue([]);
       mockSystem.getCurrentAccount.mockResolvedValue(createMockAccount({ MasteryMax: 100 }));
       mockQuests.getDailyWins.mockResolvedValue({ wins: 3, goal: 15 });
@@ -791,7 +856,7 @@ describe('Quests', () => {
 
   describe('Page Header', () => {
     it('should display page title', async () => {
-      mockQuests.getActiveQuests.mockResolvedValue([]);
+      mockQuests.getActiveQuests.mockResolvedValue(createActiveQuestsResponse([], false));
       mockQuests.getQuestHistory.mockResolvedValue([]);
       mockSystem.getCurrentAccount.mockResolvedValue(null);
 
@@ -806,7 +871,7 @@ describe('Quests', () => {
   describe('Quest Type Formatting', () => {
     it('should format quest type by removing prefix', async () => {
       const quest = createMockQuest({ quest_type: 'Quests/Quest_CastSpells' });
-      mockQuests.getActiveQuests.mockResolvedValue([quest]);
+      mockQuests.getActiveQuests.mockResolvedValue(createActiveQuestsResponse([quest], true));
       mockQuests.getQuestHistory.mockResolvedValue([]);
       mockSystem.getCurrentAccount.mockResolvedValue(null);
 
@@ -820,7 +885,7 @@ describe('Quests', () => {
 
     it('should replace underscores with spaces', async () => {
       const quest = createMockQuest({ quest_type: 'Quests/Quest_Kill_Creatures_Black' });
-      mockQuests.getActiveQuests.mockResolvedValue([quest]);
+      mockQuests.getActiveQuests.mockResolvedValue(createActiveQuestsResponse([quest], true));
       mockQuests.getQuestHistory.mockResolvedValue([]);
       mockSystem.getCurrentAccount.mockResolvedValue(null);
 
@@ -834,7 +899,7 @@ describe('Quests', () => {
 
     it('should handle empty quest type gracefully', async () => {
       const quest = createMockQuest({ quest_type: '' });
-      mockQuests.getActiveQuests.mockResolvedValue([quest]);
+      mockQuests.getActiveQuests.mockResolvedValue(createActiveQuestsResponse([quest], true));
       mockQuests.getQuestHistory.mockResolvedValue([]);
       mockSystem.getCurrentAccount.mockResolvedValue(null);
 
@@ -849,7 +914,7 @@ describe('Quests', () => {
 
   describe('API Calls', () => {
     it('should call GetQuestHistory with correct date parameters', async () => {
-      mockQuests.getActiveQuests.mockResolvedValue([]);
+      mockQuests.getActiveQuests.mockResolvedValue(createActiveQuestsResponse([], false));
       mockQuests.getQuestHistory.mockResolvedValue([]);
       mockSystem.getCurrentAccount.mockResolvedValue(null);
 
@@ -861,14 +926,14 @@ describe('Quests', () => {
 
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const call = mockQuests.getQuestHistory.mock.calls[0] as any[];
-      // Default is 30days, so dates should be strings
+      // Default is 90days, so dates should be strings
       expect(typeof call[0]).toBe('string'); // start date
       expect(typeof call[1]).toBe('string'); // end date
       expect(call[2]).toBe(50); // history limit
     });
 
     it('should call GetActiveQuests', async () => {
-      mockQuests.getActiveQuests.mockResolvedValue([]);
+      mockQuests.getActiveQuests.mockResolvedValue(createActiveQuestsResponse([], false));
       mockQuests.getQuestHistory.mockResolvedValue([]);
       mockSystem.getCurrentAccount.mockResolvedValue(null);
 
@@ -880,7 +945,7 @@ describe('Quests', () => {
     });
 
     it('should call GetCurrentAccount', async () => {
-      mockQuests.getActiveQuests.mockResolvedValue([]);
+      mockQuests.getActiveQuests.mockResolvedValue(createActiveQuestsResponse([], false));
       mockQuests.getQuestHistory.mockResolvedValue([]);
       mockSystem.getCurrentAccount.mockResolvedValue(null);
 
@@ -892,7 +957,7 @@ describe('Quests', () => {
     });
 
     it('should pass empty strings for all-time date range', async () => {
-      mockQuests.getActiveQuests.mockResolvedValue([]);
+      mockQuests.getActiveQuests.mockResolvedValue(createActiveQuestsResponse([], false));
       mockQuests.getQuestHistory.mockResolvedValue([]);
       mockSystem.getCurrentAccount.mockResolvedValue(null);
 
@@ -918,7 +983,7 @@ describe('Quests', () => {
   describe('Table Headers', () => {
     it('should display all table headers with tooltips', async () => {
       const history = [createMockQuest({ completed: true, completed_at: new Date().toISOString() })];
-      mockQuests.getActiveQuests.mockResolvedValue([]);
+      mockQuests.getActiveQuests.mockResolvedValue(createActiveQuestsResponse([], false));
       mockQuests.getQuestHistory.mockResolvedValue(history);
       mockSystem.getCurrentAccount.mockResolvedValue(null);
 
@@ -941,7 +1006,7 @@ describe('Quests', () => {
   describe('Quest History Filtering', () => {
     it('should display status and type filter controls', async () => {
       const history = [createMockQuest({ completed: true, completed_at: new Date().toISOString() })];
-      mockQuests.getActiveQuests.mockResolvedValue([]);
+      mockQuests.getActiveQuests.mockResolvedValue(createActiveQuestsResponse([], false));
       mockQuests.getQuestHistory.mockResolvedValue(history);
       mockSystem.getCurrentAccount.mockResolvedValue(null);
 
@@ -959,7 +1024,7 @@ describe('Quests', () => {
         createMockQuest({ id: 2, quest_type: 'Quest_Incomplete', completed: false, rerolled: false }),
         createMockQuest({ id: 3, quest_type: 'Quest_Rerolled', completed: false, rerolled: true }),
       ];
-      mockQuests.getActiveQuests.mockResolvedValue([]);
+      mockQuests.getActiveQuests.mockResolvedValue(createActiveQuestsResponse([], false));
       mockQuests.getQuestHistory.mockResolvedValue(history);
       mockSystem.getCurrentAccount.mockResolvedValue(null);
 
@@ -984,7 +1049,7 @@ describe('Quests', () => {
         createMockQuest({ id: 1, quest_type: 'Quests/Quest_Play_Cards', completed: true, completed_at: new Date().toISOString() }),
         createMockQuest({ id: 2, quest_type: 'Quests/Quest_Win_Games', completed: true, completed_at: new Date().toISOString() }),
       ];
-      mockQuests.getActiveQuests.mockResolvedValue([]);
+      mockQuests.getActiveQuests.mockResolvedValue(createActiveQuestsResponse([], false));
       mockQuests.getQuestHistory.mockResolvedValue(history);
       mockSystem.getCurrentAccount.mockResolvedValue(null);
 
@@ -1009,7 +1074,7 @@ describe('Quests', () => {
       const history = [
         createMockQuest({ id: 1, completed: true, completed_at: new Date().toISOString() }),
       ];
-      mockQuests.getActiveQuests.mockResolvedValue([]);
+      mockQuests.getActiveQuests.mockResolvedValue(createActiveQuestsResponse([], false));
       mockQuests.getQuestHistory.mockResolvedValue(history);
       mockSystem.getCurrentAccount.mockResolvedValue(null);
 

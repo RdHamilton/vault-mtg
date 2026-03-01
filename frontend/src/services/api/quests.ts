@@ -7,10 +7,19 @@ import { get } from '../apiClient';
 import { models } from '@/types/models';
 
 /**
- * Get active quests.
+ * Response shape for the active quests endpoint.
  */
-export async function getActiveQuests(): Promise<models.Quest[]> {
-  return get<models.Quest[]>('/quests/active');
+export interface ActiveQuestsResponse {
+  quests: models.Quest[];
+  has_quest_data: boolean;
+  last_updated?: string;
+}
+
+/**
+ * Get active quests with metadata.
+ */
+export async function getActiveQuests(): Promise<ActiveQuestsResponse> {
+  return get<ActiveQuestsResponse>('/quests/active');
 }
 
 /**

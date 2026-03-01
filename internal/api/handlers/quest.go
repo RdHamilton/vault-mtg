@@ -20,7 +20,14 @@ func NewQuestHandler(facade *gui.MatchFacade) *QuestHandler {
 	return &QuestHandler{facade: facade}
 }
 
-// GetActiveQuests returns active quests.
+// ActiveQuestsResponse is the response shape for the active quests endpoint.
+type ActiveQuestsResponse struct {
+	Quests       []*models.Quest `json:"quests"`
+	HasQuestData bool            `json:"has_quest_data"`
+	LastUpdated  *time.Time      `json:"last_updated,omitempty"`
+}
+
+// GetActiveQuests returns active quests with metadata about quest data availability.
 func (h *QuestHandler) GetActiveQuests(w http.ResponseWriter, r *http.Request) {
 	quests, err := h.facade.GetActiveQuests(r.Context())
 	if err != nil {
@@ -33,7 +40,23 @@ func (h *QuestHandler) GetActiveQuests(w http.ResponseWriter, r *http.Request) {
 		quests = []*models.Quest{}
 	}
 
-	response.Success(w, quests)
+	hasQuestData := h.facade.HasAnyQuestData(r.Context())
+
+	// Determine last updated time from the most recent quest's last_seen_at
+	var lastUpdated *time.Time
+	for _, q := range quests {
+		if q.LastSeenAt != nil {
+			if lastUpdated == nil || q.LastSeenAt.After(*lastUpdated) {
+				lastUpdated = q.LastSeenAt
+			}
+		}
+	}
+
+	response.Success(w, ActiveQuestsResponse{
+		Quests:       quests,
+		HasQuestData: hasQuestData,
+		LastUpdated:  lastUpdated,
+	})
 }
 
 // GetQuestHistory returns quest history.
@@ -52,7 +75,7 @@ func (h *QuestHandler) GetQuestHistory(w http.ResponseWriter, r *http.Request) {
 
 	// Default dates if not provided
 	if startDate == "" {
-		startDate = time.Now().AddDate(0, -1, 0).Format("2006-01-02") // 1 month ago
+		startDate = time.Now().Add(-90 * 24 * time.Hour).Format("2006-01-02") // 90 days ago
 	}
 	if endDate == "" {
 		endDate = time.Now().Format("2006-01-02")

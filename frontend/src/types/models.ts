@@ -3101,11 +3101,13 @@ export namespace models {
 	    last_seen_at?: time.Time;
 	    rerolled: boolean;
 	    created_at: time.Time;
-	
+	    session_id?: string;
+	    completion_source?: string;
+
 	    static createFrom(source: any = {}) {
 	        return new Quest(source);
 	    }
-	
+
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.id = source["id"];
@@ -3122,6 +3124,8 @@ export namespace models {
 	        this.last_seen_at = this.convertValues(source["last_seen_at"], time.Time);
 	        this.rerolled = source["rerolled"];
 	        this.created_at = this.convertValues(source["created_at"], time.Time);
+	        this.session_id = source["session_id"];
+	        this.completion_source = source["completion_source"];
 	    }
 	
 		convertValues(a: any, classs: any, asMap: boolean = false): any {
