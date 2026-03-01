@@ -1404,8 +1404,8 @@ func (d *DraftFacade) getCardWithRating(ctx context.Context, setCode, eventName,
 	// Try to get card info from SetCard repo
 	setCard, _ := d.services.Storage.SetCardRepo().GetCardByArenaID(ctx, cardID)
 
-	// Calculate tier from GIHWR (multiply by 100 as calculateTier expects percentage)
-	tier := calculateTier(rating.GIHWR * 100)
+	// Calculate tier from GIHWR (already stored as percentage from dataset service)
+	tier := calculateTier(rating.GIHWR)
 
 	// Parse colors
 	colors := parseColors(rating.Color)
@@ -1418,8 +1418,8 @@ func (d *DraftFacade) getCardWithRating(ctx context.Context, setCode, eventName,
 		Name:          rating.Name,
 		Rarity:        rating.Rarity,
 		Colors:        colors,
-		ManaCost:      rating.Color,       // Color field contains mana cost info
-		GIHWR:         rating.GIHWR * 100, // Convert to percentage
+		ManaCost:      rating.Color, // Color field contains mana cost info
+		GIHWR:         rating.GIHWR, // Already stored as percentage from dataset service
 		ALSA:          rating.ALSA,
 		Tier:          tier,
 		IsRecommended: false,
@@ -1454,8 +1454,8 @@ func (d *DraftFacade) calculatePickScore(rating *seventeenlands.CardRating, card
 	reasons := []string{}
 
 	// Factor 1: Raw card quality from GIHWR (50% weight)
-	// GIHWR typically ranges from 45% to 65%
-	qualityScore := (rating.GIHWR - 0.45) / 0.20 // Maps 45-65% to 0-1
+	// GIHWR is stored as percentage (45-65), not decimal (0.45-0.65)
+	qualityScore := (rating.GIHWR - 45) / 20 // Maps 45-65% to 0-1
 	if qualityScore < 0 {
 		qualityScore = 0
 	} else if qualityScore > 1 {

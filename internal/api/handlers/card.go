@@ -212,7 +212,7 @@ func (h *CardHandler) RefreshSetCards(w http.ResponseWriter, r *http.Request) {
 
 // FetchRatingsRequest represents a request to fetch ratings.
 type FetchRatingsRequest struct {
-	DraftFormat string `json:"draftFormat"`
+	DraftFormat string `json:"format"`
 }
 
 // FetchSetRatings fetches and caches 17Lands ratings for a set.

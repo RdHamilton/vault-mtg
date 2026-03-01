@@ -133,6 +133,9 @@ func main() {
 		storageService.DraftRatingsRepo(),
 	)
 
+	// Wire RatingsFetcher into SetFetcher so 17Lands fallback can fetch from API when local cache is empty
+	setFetcher.SetRatingsFetcher(ratingsFetcher)
+
 	// Initialize CardService for card metadata with caching
 	cardServiceConfig := cards.DefaultServiceConfig()
 	cardServiceConfig.EnableDB = false

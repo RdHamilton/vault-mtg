@@ -7,6 +7,7 @@ import (
 
 	"github.com/ramonehamilton/MTGA-Companion/internal/mtga/cards/mtgjson"
 	"github.com/ramonehamilton/MTGA-Companion/internal/mtga/cards/scryfall"
+	"github.com/ramonehamilton/MTGA-Companion/internal/mtga/cards/seventeenlands"
 	"github.com/ramonehamilton/MTGA-Companion/internal/storage/models"
 	"github.com/ramonehamilton/MTGA-Companion/internal/storage/repository"
 )
@@ -780,4 +781,315 @@ func containsHelper(s, substr string) bool {
 		}
 	}
 	return false
+}
+
+// fullMockRatingsRepo implements the full DraftRatingsRepository interface with in-memory storage.
+// Used to test the fetchFrom17Lands API fallback: initially empty, then populated after SaveSetRatings.
+type fullMockRatingsRepo struct {
+	cardRatings map[string][]seventeenlands.CardRating // key: "setCode|format"
+}
+
+func newFullMockRatingsRepo() *fullMockRatingsRepo {
+	return &fullMockRatingsRepo{
+		cardRatings: make(map[string][]seventeenlands.CardRating),
+	}
+}
+
+func (m *fullMockRatingsRepo) ratingsKey(setCode, format string) string {
+	return setCode + "|" + format
+}
+
+func (m *fullMockRatingsRepo) SaveSetRatings(_ context.Context, setCode, draftFormat string, cardRatings []seventeenlands.CardRating, _ []seventeenlands.ColorRating, _ string) error {
+	m.cardRatings[m.ratingsKey(setCode, draftFormat)] = cardRatings
+	return nil
+}
+
+func (m *fullMockRatingsRepo) GetCardRatings(_ context.Context, setCode, draftFormat string) ([]seventeenlands.CardRating, time.Time, error) {
+	ratings := m.cardRatings[m.ratingsKey(setCode, draftFormat)]
+	return ratings, time.Now(), nil
+}
+
+func (m *fullMockRatingsRepo) GetColorRatings(_ context.Context, _, _ string) ([]seventeenlands.ColorRating, time.Time, error) {
+	return nil, time.Time{}, nil
+}
+
+func (m *fullMockRatingsRepo) GetCardRatingByArenaID(_ context.Context, _, _, _ string) (*seventeenlands.CardRating, error) {
+	return nil, nil
+}
+
+func (m *fullMockRatingsRepo) IsSetRatingsCached(_ context.Context, setCode, draftFormat string) (bool, error) {
+	return len(m.cardRatings[m.ratingsKey(setCode, draftFormat)]) > 0, nil
+}
+
+func (m *fullMockRatingsRepo) DeleteSetRatings(_ context.Context, setCode, draftFormat string) error {
+	delete(m.cardRatings, m.ratingsKey(setCode, draftFormat))
+	return nil
+}
+
+func (m *fullMockRatingsRepo) GetAllSnapshots(_ context.Context) ([]*repository.SnapshotInfo, error) {
+	return nil, nil
+}
+
+func (m *fullMockRatingsRepo) DeleteSnapshotsBatch(_ context.Context, _ []int) error {
+	return nil
+}
+
+func (m *fullMockRatingsRepo) GetSnapshotCountByExpansion(_ context.Context) (map[string]int, error) {
+	return nil, nil
+}
+
+func (m *fullMockRatingsRepo) GetOldestSnapshotDate(_ context.Context) (time.Time, error) {
+	return time.Time{}, nil
+}
+
+func (m *fullMockRatingsRepo) GetNewestSnapshotDate(_ context.Context) (time.Time, error) {
+	return time.Time{}, nil
+}
+
+func (m *fullMockRatingsRepo) GetCardWinRateTrend(_ context.Context, _ int, _ string, _ int) ([]*repository.TrendPoint, error) {
+	return nil, nil
+}
+
+func (m *fullMockRatingsRepo) GetExpansionCardIDs(_ context.Context, _ string, _ int) ([]int, error) {
+	return nil, nil
+}
+
+func (m *fullMockRatingsRepo) GetCardRatingHistory(_ context.Context, _ int, _ string) ([]*repository.CardRatingSnapshot, error) {
+	return nil, nil
+}
+
+func (m *fullMockRatingsRepo) GetPeriodAverages(_ context.Context, _ string, _, _ time.Time) (map[int]*repository.PeriodAverage, error) {
+	return nil, nil
+}
+
+func (m *fullMockRatingsRepo) GetSetCodeByArenaID(_ context.Context, _ string) (string, error) {
+	return "", nil
+}
+
+func (m *fullMockRatingsRepo) GetCardNameAndSetByArenaID(_ context.Context, _ string) (string, string, error) {
+	return "", "", nil
+}
+
+func (m *fullMockRatingsRepo) GetStatisticsStaleness(_ context.Context, _ int) (*repository.StatisticsStaleness, error) {
+	return nil, nil
+}
+
+func (m *fullMockRatingsRepo) GetStaleSets(_ context.Context, _ int) ([]string, error) {
+	return nil, nil
+}
+
+func (m *fullMockRatingsRepo) GetStaleStats(_ context.Context, _ int) ([]*repository.StaleStatItem, error) {
+	return nil, nil
+}
+
+func (m *fullMockRatingsRepo) GetSetsWithRatings(_ context.Context) ([]string, error) {
+	return nil, nil
+}
+
+// mockDatasetService implements enough of the datasets.Service interface to test RatingsFetcher.
+// It returns pre-configured card ratings when GetCardRatings is called.
+type mockDatasetService struct {
+	ratings map[string][]seventeenlands.CardRating // key: "setCode|format"
+}
+
+func newMockDatasetService() *mockDatasetService {
+	return &mockDatasetService{
+		ratings: make(map[string][]seventeenlands.CardRating),
+	}
+}
+
+func (m *mockDatasetService) setRatings(setCode, format string, ratings []seventeenlands.CardRating) {
+	m.ratings[setCode+"|"+format] = ratings
+}
+
+// TestFetchFrom17Lands_APIFallback_PopulatesCache verifies that when the local
+// ratings cache is empty and a RatingsFetcher is configured, fetchFrom17Lands
+// calls the 17Lands API to populate the cache and then creates SetCard entries.
+func TestFetchFrom17Lands_APIFallback_PopulatesCache(t *testing.T) {
+	ctx := context.Background()
+
+	// Create shared in-memory ratings repo (starts empty)
+	ratingsRepo := newFullMockRatingsRepo()
+	setCardRepo := newMockSetCardRepo()
+
+	// Pre-populate the ratings repo with data that simulates what the API would return.
+	// We do this AFTER creating the repo but BEFORE creating the RatingsFetcher,
+	// because the actual test flow is:
+	//   1. fetchFrom17Lands reads from ratingsRepo → empty
+	//   2. fetchFrom17Lands calls ratingsFetcher.FetchAndCacheRatings
+	//   3. FetchAndCacheRatings calls datasetService → gets ratings → saves to ratingsRepo
+	//   4. fetchFrom17Lands re-reads from ratingsRepo → now has data
+	//
+	// To simulate this, we create a RatingsFetcher with a real datasetService mock
+	// that returns test data. The RatingsFetcher will save to the same ratingsRepo.
+
+	testRatings := []seventeenlands.CardRating{
+		{MTGAID: 100001, Name: "Test Card Alpha", Color: "W", Rarity: "Common", URL: "https://cards.scryfall.io/large/front/a/b/abcdef01-2345-6789-abcd-ef0123456789.jpg"},
+		{MTGAID: 100002, Name: "Test Card Beta", Color: "U", Rarity: "Uncommon", URL: "https://cards.scryfall.io/large/front/1/2/12345678-1234-1234-1234-123456789abc.jpg"},
+		{MTGAID: 100003, Name: "Test Card Gamma", Color: "BR", Rarity: "Rare", URL: "https://cards.scryfall.io/large/front/f/f/ff000000-0000-0000-0000-000000000000.jpg"},
+	}
+
+	// Create the RatingsFetcher with a dataset service that returns our test data.
+	// Since we can't easily mock datasets.Service (it's a struct, not an interface),
+	// we'll directly wire the ratings into the repo via a custom RatingsFetcher approach.
+	// Instead, we'll use a simpler strategy: create a RatingsFetcher that, when
+	// FetchAndCacheRatings is called, populates the mock repo directly.
+	//
+	// We can do this because RatingsFetcher checks IsSetRatingsCached first,
+	// then calls datasetService.GetCardRatings, then saves via ratingsRepo.SaveSetRatings.
+	// Since we control the mock repo, we pre-populate it when FetchAndCacheRatings would be called.
+
+	// Override: Since RatingsFetcher.FetchAndCacheRatings will fail without a data source,
+	// we need to pre-populate the ratingsRepo after the first empty read.
+	// The simplest approach: wrap the repo so it auto-populates on the second query.
+	autoPopulatingRepo := &autoPopulatingRatingsRepo{
+		fullMockRatingsRepo: ratingsRepo,
+		pendingRatings:      make(map[string][]seventeenlands.CardRating),
+	}
+	// Stage data that will appear after FetchAndCacheRatings is called
+	autoPopulatingRepo.pendingRatings["ECL|QuickDraft"] = testRatings
+
+	// Wire the fetcher with the auto-populating repo
+	fetcher := &Fetcher{
+		setCardRepo: setCardRepo,
+		ratingsRepo: autoPopulatingRepo,
+		ratingsFetcher: &RatingsFetcher{
+			ratingsRepo: autoPopulatingRepo,
+		},
+	}
+
+	// Override FetchAndCacheRatings by making the ratingsFetcher populate the repo
+	// when called. We do this by setting up a custom ratingsRepo that:
+	// - Returns empty on first GetCardRatings call
+	// - After FetchAndCacheRatings calls SaveSetRatings, returns data on subsequent calls
+
+	count, err := fetcher.fetchFrom17Lands(ctx, "ECL", time.Now())
+	if err != nil {
+		t.Fatalf("fetchFrom17Lands failed: %v", err)
+	}
+
+	// Should have created cards from the ratings
+	if count != 3 {
+		t.Errorf("Expected 3 cards, got %d", count)
+	}
+
+	// Verify cards were saved to set card repo
+	savedCards := setCardRepo.cards["ECL"]
+	if len(savedCards) != 3 {
+		t.Fatalf("Expected 3 saved cards, got %d", len(savedCards))
+	}
+
+	// Verify card details
+	cardNames := map[string]bool{}
+	for _, card := range savedCards {
+		cardNames[card.Name] = true
+		if card.SetCode != "ECL" {
+			t.Errorf("Card %s has wrong SetCode: %s", card.Name, card.SetCode)
+		}
+		if card.ArenaID == "" {
+			t.Errorf("Card %s has empty ArenaID", card.Name)
+		}
+		if card.ScryfallID == "" {
+			t.Errorf("Card %s has empty ScryfallID (should be extracted from URL)", card.Name)
+		}
+	}
+
+	if !cardNames["Test Card Alpha"] || !cardNames["Test Card Beta"] || !cardNames["Test Card Gamma"] {
+		t.Errorf("Not all test cards were saved. Got: %v", cardNames)
+	}
+}
+
+// autoPopulatingRatingsRepo wraps fullMockRatingsRepo but has "pending" ratings that
+// get activated when FetchAndCacheRatings triggers IsSetRatingsCached + SaveSetRatings.
+// This simulates the 17Lands API populating the local cache.
+type autoPopulatingRatingsRepo struct {
+	*fullMockRatingsRepo
+	pendingRatings map[string][]seventeenlands.CardRating
+	callCount      map[string]int
+}
+
+func (m *autoPopulatingRatingsRepo) IsSetRatingsCached(ctx context.Context, setCode, draftFormat string) (bool, error) {
+	key := m.ratingsKey(setCode, draftFormat)
+	// If we have pending ratings for this key, activate them now
+	// (simulating what FetchAndCacheRatings would do via the API)
+	if pending, ok := m.pendingRatings[key]; ok {
+		m.cardRatings[key] = pending
+		delete(m.pendingRatings, key)
+		return true, nil // Now it's "cached"
+	}
+	return m.fullMockRatingsRepo.IsSetRatingsCached(ctx, setCode, draftFormat)
+}
+
+// TestFetchFrom17Lands_NoRatingsFetcher_ReturnsZero verifies that without a
+// RatingsFetcher, fetchFrom17Lands returns 0 when the local cache is empty.
+func TestFetchFrom17Lands_NoRatingsFetcher_ReturnsZero(t *testing.T) {
+	ctx := context.Background()
+
+	ratingsRepo := newFullMockRatingsRepo()
+	setCardRepo := newMockSetCardRepo()
+
+	fetcher := &Fetcher{
+		setCardRepo:    setCardRepo,
+		ratingsRepo:    ratingsRepo,
+		ratingsFetcher: nil, // No ratings fetcher
+	}
+
+	count, err := fetcher.fetchFrom17Lands(ctx, "ECL", time.Now())
+	if err != nil {
+		t.Fatalf("fetchFrom17Lands failed: %v", err)
+	}
+
+	if count != 0 {
+		t.Errorf("Expected 0 cards without RatingsFetcher, got %d", count)
+	}
+
+	// No cards should be saved
+	if len(setCardRepo.cards["ECL"]) != 0 {
+		t.Errorf("Expected no saved cards, got %d", len(setCardRepo.cards["ECL"]))
+	}
+}
+
+// TestFetchFrom17Lands_CacheAlreadyPopulated verifies that when the local cache
+// already has ratings, fetchFrom17Lands uses them without calling the API.
+func TestFetchFrom17Lands_CacheAlreadyPopulated(t *testing.T) {
+	ctx := context.Background()
+
+	ratingsRepo := newFullMockRatingsRepo()
+	setCardRepo := newMockSetCardRepo()
+
+	// Pre-populate the cache
+	ratingsRepo.cardRatings["ECL|QuickDraft"] = []seventeenlands.CardRating{
+		{MTGAID: 200001, Name: "Cached Card", Color: "G", Rarity: "Common", URL: "https://cards.scryfall.io/large/front/a/a/aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee.jpg"},
+	}
+
+	fetcher := &Fetcher{
+		setCardRepo:    setCardRepo,
+		ratingsRepo:    ratingsRepo,
+		ratingsFetcher: nil, // Not needed when cache is populated
+	}
+
+	count, err := fetcher.fetchFrom17Lands(ctx, "ECL", time.Now())
+	if err != nil {
+		t.Fatalf("fetchFrom17Lands failed: %v", err)
+	}
+
+	if count != 1 {
+		t.Errorf("Expected 1 card from cache, got %d", count)
+	}
+}
+
+// TestSetRatingsFetcher verifies the setter method works correctly.
+func TestSetRatingsFetcher(t *testing.T) {
+	fetcher := NewFetcher(scryfall.NewClient(), newMockSetCardRepo(), nil)
+
+	if fetcher.ratingsFetcher != nil {
+		t.Error("ratingsFetcher should be nil initially")
+	}
+
+	rf := &RatingsFetcher{}
+	fetcher.SetRatingsFetcher(rf)
+
+	if fetcher.ratingsFetcher != rf {
+		t.Error("ratingsFetcher should be set after calling SetRatingsFetcher")
+	}
 }

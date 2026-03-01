@@ -193,7 +193,7 @@ type CreateDeckRequest struct {
 	Name         string  `json:"name"`
 	Format       string  `json:"format"`
 	Source       string  `json:"source"`
-	DraftEventID *string `json:"draftEventID,omitempty"`
+	DraftEventID *string `json:"draft_event_id,omitempty"`
 }
 
 // CreateDeck creates a new deck.
@@ -206,6 +206,11 @@ func (h *DeckHandler) CreateDeck(w http.ResponseWriter, r *http.Request) {
 
 	if req.Name == "" {
 		response.BadRequest(w, errors.New("deck name is required"))
+		return
+	}
+
+	if req.Source == "draft" && req.DraftEventID == nil {
+		response.BadRequest(w, errors.New("draft_event_id is required for draft decks"))
 		return
 	}
 
@@ -472,7 +477,7 @@ func (h *DeckHandler) ParseDeckList(w http.ResponseWriter, r *http.Request) {
 
 // SuggestDecksRequest represents a request for deck suggestions.
 type SuggestDecksRequest struct {
-	SessionID string `json:"sessionID"`
+	SessionID string `json:"session_id"`
 }
 
 // SuggestDecks suggests deck builds for a draft.
@@ -494,7 +499,7 @@ func (h *DeckHandler) SuggestDecks(w http.ResponseWriter, r *http.Request) {
 
 // AnalyzeDeckRequest represents a request for deck analysis.
 type AnalyzeDeckRequest struct {
-	DeckID string `json:"deckID"`
+	DeckID string `json:"deck_id"`
 }
 
 // AnalyzeDeck analyzes a deck (classifies archetype).
@@ -793,7 +798,7 @@ func (h *DeckHandler) ExplainRecommendation(w http.ResponseWriter, r *http.Reque
 
 // CloneDeckRequest represents a request to clone a deck.
 type CloneDeckRequest struct {
-	NewName string `json:"newName"`
+	NewName string `json:"name"`
 }
 
 // CloneDeck clones a deck with a new name.
@@ -890,7 +895,7 @@ func (h *DeckHandler) GetDeckLibrary(w http.ResponseWriter, r *http.Request) {
 
 // ClassifyDraftPoolRequest represents a request to classify a draft pool.
 type ClassifyDraftPoolRequest struct {
-	DraftEventID string `json:"draftEventID"`
+	DraftEventID string `json:"session_id"`
 }
 
 // ClassifyDraftPoolArchetype classifies the archetype of a draft pool.
@@ -912,7 +917,7 @@ func (h *DeckHandler) ClassifyDraftPoolArchetype(w http.ResponseWriter, r *http.
 
 // ApplySuggestedDeckRequest represents a request to apply a suggested deck.
 type ApplySuggestedDeckRequest struct {
-	DeckID     string                     `json:"deckID"`
+	DeckID     string                     `json:"deck_id"`
 	Suggestion *gui.SuggestedDeckResponse `json:"suggestion"`
 }
 
@@ -935,7 +940,7 @@ func (h *DeckHandler) ApplySuggestedDeck(w http.ResponseWriter, r *http.Request)
 // ExportSuggestedDeckRequest represents a request to export a suggested deck.
 type ExportSuggestedDeckRequest struct {
 	Suggestion *gui.SuggestedDeckResponse `json:"suggestion"`
-	DeckName   string                     `json:"deckName"`
+	DeckName   string                     `json:"deck_name"`
 }
 
 // ExportSuggestedDeck returns a suggested deck as exportable text.
@@ -957,11 +962,11 @@ func (h *DeckHandler) ExportSuggestedDeck(w http.ResponseWriter, r *http.Request
 
 // BuildAroundSeedRequest represents a request to build a deck around a seed card.
 type BuildAroundSeedRequest struct {
-	SeedCardID     int      `json:"seedCardID"`
-	MaxResults     int      `json:"maxResults,omitempty"`
-	BudgetMode     bool     `json:"budgetMode,omitempty"`
-	SetRestriction string   `json:"setRestriction,omitempty"`
-	AllowedSets    []string `json:"allowedSets,omitempty"`
+	SeedCardID     int      `json:"seed_card_id"`
+	MaxResults     int      `json:"max_results,omitempty"`
+	BudgetMode     bool     `json:"budget_mode,omitempty"`
+	SetRestriction string   `json:"set_restriction,omitempty"`
+	AllowedSets    []string `json:"allowed_sets,omitempty"`
 }
 
 // BuildAroundSeed generates deck suggestions based on a seed card.
@@ -996,12 +1001,12 @@ func (h *DeckHandler) BuildAroundSeed(w http.ResponseWriter, r *http.Request) {
 
 // IterativeBuildAroundRequest represents a request for iterative deck building suggestions.
 type IterativeBuildAroundRequest struct {
-	SeedCardID     int      `json:"seedCardID"`
-	DeckCardIDs    []int    `json:"deckCardIDs"`
-	MaxResults     int      `json:"maxResults,omitempty"`
-	BudgetMode     bool     `json:"budgetMode,omitempty"`
-	SetRestriction string   `json:"setRestriction,omitempty"`
-	AllowedSets    []string `json:"allowedSets,omitempty"`
+	SeedCardID     int      `json:"seed_card_id"`
+	DeckCardIDs    []int    `json:"deck_card_ids"`
+	MaxResults     int      `json:"max_results,omitempty"`
+	BudgetMode     bool     `json:"budget_mode,omitempty"`
+	SetRestriction string   `json:"set_restriction,omitempty"`
+	AllowedSets    []string `json:"allowed_sets,omitempty"`
 }
 
 // SuggestNextCards generates suggestions based on the current deck composition.
@@ -1039,11 +1044,11 @@ func (h *DeckHandler) SuggestNextCards(w http.ResponseWriter, r *http.Request) {
 
 // GenerateCompleteDeckRequest represents a request to generate a complete 60-card deck.
 type GenerateCompleteDeckRequest struct {
-	SeedCardID     int      `json:"seedCardID"`
-	Archetype      string   `json:"archetype"`                // "aggro", "midrange", "control"
-	BudgetMode     bool     `json:"budgetMode,omitempty"`     // Only collection cards
-	SetRestriction string   `json:"setRestriction,omitempty"` // "single", "multiple", "all"
-	AllowedSets    []string `json:"allowedSets,omitempty"`    // Specific set codes if "multiple"
+	SeedCardID     int      `json:"seed_card_id"`
+	Archetype      string   `json:"archetype"`                 // "aggro", "midrange", "control"
+	BudgetMode     bool     `json:"budget_mode,omitempty"`     // Only collection cards
+	SetRestriction string   `json:"set_restriction,omitempty"` // "single", "multiple", "all"
+	AllowedSets    []string `json:"allowed_sets,omitempty"`    // Specific set codes if "multiple"
 }
 
 // GenerateCompleteDeck generates a complete 60-card deck from a seed card and archetype.

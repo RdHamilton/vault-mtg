@@ -2,6 +2,9 @@
     padding: 1rem;
     background: var(--bg-secondary, #1a1a2e);
     border-radius: 8px;
+    overflow-y: auto;
+    flex: 1;
+    min-height: 0;
 }
 
 .current-pack-header {
