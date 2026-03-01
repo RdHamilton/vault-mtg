@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/ramonehamilton/MTGA-Companion/internal/mtga/logreader"
@@ -22,6 +23,7 @@ type Service struct {
 	replayMode bool // When true, keep draft sessions as "in_progress" for UI testing
 
 	// Recovery mode: suppress disappearance-based completion detection during old log processing
+	recoveryMu       sync.RWMutex
 	isRecoveryMode   bool
 	currentSessionID string
 
@@ -67,6 +69,8 @@ func (s *Service) SetReplayMode(enabled bool) {
 // In recovery mode, disappearance-based quest completion detection is suppressed
 // because we can't trust it from old log data. Only progress-based completions are trusted.
 func (s *Service) SetRecoveryMode(enabled bool) {
+	s.recoveryMu.Lock()
+	defer s.recoveryMu.Unlock()
 	s.isRecoveryMode = enabled
 	if enabled {
 		log.Println("Log processor in RECOVERY MODE - suppressing disappearance-based quest completions")
@@ -77,7 +81,28 @@ func (s *Service) SetRecoveryMode(enabled bool) {
 
 // SetSessionID sets the current session ID for tagging quest records.
 func (s *Service) SetSessionID(sessionID string) {
+	s.recoveryMu.Lock()
+	defer s.recoveryMu.Unlock()
 	s.currentSessionID = sessionID
+}
+
+// GetSessionID returns the current session ID (thread-safe).
+func (s *Service) GetSessionID() string {
+	s.recoveryMu.RLock()
+	defer s.recoveryMu.RUnlock()
+	return s.currentSessionID
+}
+
+// getRecoveryMode returns the current recovery mode state (thread-safe).
+func (s *Service) getRecoveryMode() bool {
+	s.recoveryMu.RLock()
+	defer s.recoveryMu.RUnlock()
+	return s.isRecoveryMode
+}
+
+// getSessionID returns the current session ID (thread-safe, internal).
+func (s *Service) getSessionID() string {
+	return s.GetSessionID()
 }
 
 // FlushAccumulatedPlays processes any accumulated GRE entries that haven't been stored yet.
@@ -371,6 +396,10 @@ func (s *Service) processRankUpdates(ctx context.Context, entries []*logreader.L
 // processQuests parses and stores quests from log entries.
 // It also detects and marks rerolled quests by comparing against current MTGA quest state.
 func (s *Service) processQuests(ctx context.Context, entries []*logreader.LogEntry, result *ProcessResult) error {
+	// Snapshot recovery state once at the start (thread-safe)
+	recoveryMode := s.getRecoveryMode()
+	sessionID := s.getSessionID()
+
 	parseResult, err := logreader.ParseQuestsDetailed(entries)
 	if err != nil {
 		log.Printf("Warning: Failed to parse quests: %v", err)
@@ -391,7 +420,7 @@ func (s *Service) processQuests(ctx context.Context, entries []*logreader.LogEnt
 		// We can't trust "quest disappeared from response" when replaying old logs because
 		// the final QuestGetQuests response may have had an empty array (all quests completed
 		// during that session), which falsely marks everything as completed.
-		if s.isRecoveryMode && questData.CompletionSource == "disappeared" {
+		if recoveryMode && questData.CompletionSource == "disappeared" {
 			log.Printf("Recovery mode: suppressing disappeared completion for quest %s", questData.QuestID)
 			questData.Completed = false
 			questData.CompletedAt = nil
@@ -425,7 +454,7 @@ func (s *Service) processQuests(ctx context.Context, entries []*logreader.LogEnt
 				CompletedAt:      questData.CompletedAt,
 				LastSeenAt:       questData.LastSeenAt,
 				Rerolled:         questData.Rerolled,
-				SessionID:        s.currentSessionID,
+				SessionID:        sessionID,
 				CompletionSource: questData.CompletionSource,
 			}
 
@@ -450,7 +479,7 @@ func (s *Service) processQuests(ctx context.Context, entries []*logreader.LogEnt
 	// If we had a QuestGetQuests response, check for rerolled quests
 	// Any active quest in the database that's NOT in the current MTGA response was rerolled
 	// Skip reroll detection during recovery mode - old log data can't reliably indicate rerolls
-	if parseResult.HasQuestResponse && len(parseResult.CurrentQuestIDs) > 0 && !s.dryRun && !s.isRecoveryMode {
+	if parseResult.HasQuestResponse && len(parseResult.CurrentQuestIDs) > 0 && !s.dryRun && !recoveryMode {
 		rerolledCount, err := s.markRerolledQuests(parseResult.CurrentQuestIDs)
 		if err != nil {
 			log.Printf("Warning: Failed to mark rerolled quests: %v", err)

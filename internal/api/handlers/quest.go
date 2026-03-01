@@ -75,7 +75,7 @@ func (h *QuestHandler) GetQuestHistory(w http.ResponseWriter, r *http.Request) {
 
 	// Default dates if not provided
 	if startDate == "" {
-		startDate = time.Now().AddDate(0, -3, 0).Format("2006-01-02") // 3 months ago
+		startDate = time.Now().Add(-90 * 24 * time.Hour).Format("2006-01-02") // 90 days ago
 	}
 	if endDate == "" {
 		endDate = time.Now().Format("2006-01-02")

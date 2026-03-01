@@ -559,11 +559,13 @@ func (s *Service) ReplayHistoricalLogs(clearData bool) error {
 	log.Println("Starting historical log replay...")
 
 	// Enable recovery mode for historical replay
+	previousSessionID := s.logProcessor.GetSessionID()
 	sessionID := fmt.Sprintf("replay-%s", time.Now().Format("20060102T150405"))
 	s.logProcessor.SetRecoveryMode(true)
 	s.logProcessor.SetSessionID(sessionID)
 	defer func() {
 		s.logProcessor.SetRecoveryMode(false)
+		s.logProcessor.SetSessionID(previousSessionID)
 		log.Printf("Replay session: %s", sessionID)
 	}()
 
@@ -947,7 +949,9 @@ func (s *Service) checkForNewLogFiles() error {
 
 		// Use recovery mode for files modified before daemon start time
 		isOldFile := logFile.ModTime.Before(s.startTime)
+		var previousSessionID string
 		if isOldFile {
+			previousSessionID = s.logProcessor.GetSessionID()
 			sessionID := fmt.Sprintf("utc-recovery-%s", time.Now().Format("20060102T150405"))
 			s.logProcessor.SetRecoveryMode(true)
 			s.logProcessor.SetSessionID(sessionID)
@@ -959,6 +963,7 @@ func (s *Service) checkForNewLogFiles() error {
 			log.Printf("Warning: Failed to read %s: %v", logFile.Name, err)
 			if isOldFile {
 				s.logProcessor.SetRecoveryMode(false)
+				s.logProcessor.SetSessionID(previousSessionID)
 			}
 			continue
 		}
@@ -967,15 +972,17 @@ func (s *Service) checkForNewLogFiles() error {
 			log.Printf("Skipping %s (no entries found)", logFile.Name)
 			if isOldFile {
 				s.logProcessor.SetRecoveryMode(false)
+				s.logProcessor.SetSessionID(previousSessionID)
 			}
 			continue
 		}
 
 		result, err := s.logProcessor.ProcessLogEntries(s.ctx, entries)
 
-		// Restore live mode if we switched to recovery for an old file
+		// Restore live mode and session ID if we switched to recovery for an old file
 		if isOldFile {
 			s.logProcessor.SetRecoveryMode(false)
+			s.logProcessor.SetSessionID(previousSessionID)
 		}
 
 		if err != nil {
