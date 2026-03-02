@@ -83,6 +83,13 @@ type Fetcher struct {
 	scryfallClient *scryfall.Client
 	setCardRepo    repository.SetCardRepository
 	ratingsRepo    repository.DraftRatingsRepository
+	ratingsFetcher *RatingsFetcher // Optional: if set, can fetch 17Lands data from API when local cache is empty
+}
+
+// SetRatingsFetcher sets an optional RatingsFetcher that enables the Fetcher to
+// call the 17Lands API when the local ratings cache is empty.
+func (f *Fetcher) SetRatingsFetcher(rf *RatingsFetcher) {
+	f.ratingsFetcher = rf
 }
 
 // NewFetcher creates a new set card fetcher.
@@ -643,8 +650,35 @@ func (f *Fetcher) fetchFrom17Lands(ctx context.Context, mtgaSetCode string, fetc
 	}
 
 	if len(ratings) == 0 {
-		log.Printf("[fetchFrom17Lands] No 17Lands ratings found for %s in any format", mtgaSetCode)
-		return 0, nil
+		// If local cache is empty and we have a ratings fetcher, try fetching from 17Lands API
+		if f.ratingsFetcher != nil {
+			log.Printf("[fetchFrom17Lands] Local cache empty for %s, fetching from 17Lands API...", mtgaSetCode)
+			// Try both formats - ignore errors (17Lands may not have data for one format)
+			if fetchErr := f.ratingsFetcher.FetchAndCacheRatings(ctx, mtgaSetCode, "PremierDraft"); fetchErr != nil {
+				log.Printf("[fetchFrom17Lands] PremierDraft API fetch failed: %v", fetchErr)
+			}
+			if fetchErr := f.ratingsFetcher.FetchAndCacheRatings(ctx, mtgaSetCode, "QuickDraft"); fetchErr != nil {
+				log.Printf("[fetchFrom17Lands] QuickDraft API fetch failed: %v", fetchErr)
+			}
+
+			// Re-read from cache after API fetch
+			premierRatings, _, _ = f.ratingsRepo.GetCardRatings(ctx, mtgaSetCode, "PremierDraft")
+			quickRatings, _, _ = f.ratingsRepo.GetCardRatings(ctx, mtgaSetCode, "QuickDraft")
+
+			// Re-select best format
+			if len(premierRatings) >= len(quickRatings) && len(premierRatings) > 0 {
+				ratings = premierRatings
+				formatUsed = "PremierDraft"
+			} else if len(quickRatings) > 0 {
+				ratings = quickRatings
+				formatUsed = "QuickDraft"
+			}
+		}
+
+		if len(ratings) == 0 {
+			log.Printf("[fetchFrom17Lands] No 17Lands ratings found for %s in any format", mtgaSetCode)
+			return 0, nil
+		}
 	}
 
 	log.Printf("[fetchFrom17Lands] Using %s with %d ratings", formatUsed, len(ratings))
@@ -746,8 +780,34 @@ func (f *Fetcher) fetchArenaExclusiveSet(ctx context.Context, mtgaSetCode, scryf
 	}
 
 	if len(ratings) == 0 {
-		log.Printf("[fetchArenaExclusiveSet] No 17Lands ratings found for %s in any format", mtgaSetCode)
-		return 0, nil
+		// If local cache is empty and we have a ratings fetcher, try fetching from 17Lands API
+		if f.ratingsFetcher != nil {
+			log.Printf("[fetchArenaExclusiveSet] Local cache empty for %s, fetching from 17Lands API...", mtgaSetCode)
+			if fetchErr := f.ratingsFetcher.FetchAndCacheRatings(ctx, mtgaSetCode, "PremierDraft"); fetchErr != nil {
+				log.Printf("[fetchArenaExclusiveSet] PremierDraft API fetch failed: %v", fetchErr)
+			}
+			if fetchErr := f.ratingsFetcher.FetchAndCacheRatings(ctx, mtgaSetCode, "QuickDraft"); fetchErr != nil {
+				log.Printf("[fetchArenaExclusiveSet] QuickDraft API fetch failed: %v", fetchErr)
+			}
+
+			// Re-read from cache after API fetch
+			premierRatings, _, _ = f.ratingsRepo.GetCardRatings(ctx, mtgaSetCode, "PremierDraft")
+			quickRatings, _, _ = f.ratingsRepo.GetCardRatings(ctx, mtgaSetCode, "QuickDraft")
+
+			// Re-select best format
+			if len(premierRatings) >= len(quickRatings) && len(premierRatings) > 0 {
+				ratings = premierRatings
+				formatUsed = "PremierDraft"
+			} else if len(quickRatings) > 0 {
+				ratings = quickRatings
+				formatUsed = "QuickDraft"
+			}
+		}
+
+		if len(ratings) == 0 {
+			log.Printf("[fetchArenaExclusiveSet] No 17Lands ratings found for %s in any format", mtgaSetCode)
+			return 0, nil
+		}
 	}
 
 	log.Printf("[fetchArenaExclusiveSet] Using %s with %d ratings (PremierDraft: %d, QuickDraft: %d)",

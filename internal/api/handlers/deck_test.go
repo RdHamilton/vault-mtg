@@ -567,6 +567,17 @@ func TestDeckHandler_CreateDeck(t *testing.T) {
 			mockErr:        nil,
 			expectedStatus: http.StatusBadRequest,
 		},
+		{
+			name:        "successful create draft deck with draft_event_id",
+			requestBody: `{"name":"ECL Draft","format":"limited","source":"draft","draft_event_id":"QuickDraft_ECL_20260223"}`,
+			mockDeck: &models.Deck{
+				ID:     "deck-draft",
+				Name:   "ECL Draft",
+				Format: "limited",
+			},
+			mockErr:        nil,
+			expectedStatus: http.StatusCreated,
+		},
 	}
 
 	for _, tt := range tests {
@@ -587,6 +598,24 @@ func TestDeckHandler_CreateDeck(t *testing.T) {
 				t.Errorf("expected status %d, got %d", tt.expectedStatus, rec.Code)
 			}
 		})
+	}
+}
+
+func TestCreateDeckRequest_DraftEventIDJsonField(t *testing.T) {
+	// Verify that the frontend's snake_case "draft_event_id" field is correctly deserialized
+	jsonBody := `{"name":"Draft Deck","format":"limited","source":"draft","draft_event_id":"QuickDraft_ECL_20260223"}`
+
+	var req CreateDeckRequest
+	err := json.Unmarshal([]byte(jsonBody), &req)
+	if err != nil {
+		t.Fatalf("failed to unmarshal request: %v", err)
+	}
+
+	if req.DraftEventID == nil {
+		t.Fatal("expected DraftEventID to be non-nil, got nil (JSON field name mismatch?)")
+	}
+	if *req.DraftEventID != "QuickDraft_ECL_20260223" {
+		t.Errorf("expected DraftEventID='QuickDraft_ECL_20260223', got '%s'", *req.DraftEventID)
 	}
 }
 
@@ -1022,7 +1051,7 @@ func TestDeckHandler_SuggestDecks(t *testing.T) {
 	}{
 		{
 			name:        "successful suggestions with session_id",
-			requestBody: `{"sessionID": "draft-session-123"}`,
+			requestBody: `{"session_id": "draft-session-123"}`,
 			mockSuggestions: &gui.SuggestDecksResponse{
 				Suggestions:  []*gui.SuggestedDeckResponse{},
 				TotalCombos:  32,
@@ -1033,7 +1062,7 @@ func TestDeckHandler_SuggestDecks(t *testing.T) {
 		},
 		{
 			name:        "suggestions with results",
-			requestBody: `{"sessionID": "draft-456"}`,
+			requestBody: `{"session_id": "draft-456"}`,
 			mockSuggestions: &gui.SuggestDecksResponse{
 				Suggestions: []*gui.SuggestedDeckResponse{
 					{
@@ -1058,7 +1087,7 @@ func TestDeckHandler_SuggestDecks(t *testing.T) {
 		},
 		{
 			name:           "empty session_id returns bad request",
-			requestBody:    `{"sessionID": ""}`,
+			requestBody:    `{"session_id": ""}`,
 			mockErr:        nil,
 			expectedStatus: http.StatusBadRequest,
 		},
@@ -1070,7 +1099,7 @@ func TestDeckHandler_SuggestDecks(t *testing.T) {
 		},
 		{
 			name:            "facade error returns internal server error",
-			requestBody:     `{"sessionID": "draft-error"}`,
+			requestBody:     `{"session_id": "draft-error"}`,
 			mockSuggestions: nil,
 			mockErr:         errors.New("no cards in draft pool"),
 			expectedStatus:  http.StatusInternalServerError,

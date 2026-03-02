@@ -55,7 +55,7 @@ func (h *MetaHandler) GetDeckAnalysis(w http.ResponseWriter, r *http.Request) {
 // IdentifyArchetypeRequest represents a request to identify an archetype.
 type IdentifyArchetypeRequest struct {
 	Colors   []string `json:"colors"`
-	CardIDs  []int    `json:"card_ids,omitempty"`
+	CardIDs  []int    `json:"cardIds,omitempty"`
 	DeckName string   `json:"deck_name,omitempty"`
 	Format   string   `json:"format,omitempty"`
 }

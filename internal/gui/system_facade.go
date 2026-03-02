@@ -139,6 +139,7 @@ func (s *SystemFacade) Initialize(ctx context.Context, dbPath string) error {
 	// Create a Fetcher for syncing set cards during set sync
 	// This enables auto-syncing of Standard set cards when set metadata is synced
 	setCardFetcher := setcache.NewFetcher(scryfallClient, setCardRepo, draftRatingsRepo)
+	setCardFetcher.SetRatingsFetcher(s.services.RatingsFetcher)
 	setSyncer.SetFetcher(setCardFetcher)
 
 	go func() {

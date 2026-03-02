@@ -1351,6 +1351,13 @@ func (r *matchRepository) GetDailyWins(ctx context.Context, accountID int) (int,
 	}
 	endOfDay := startOfDay.Add(24 * time.Hour)
 
+	// Format bounds in local time to match stored timestamp format.
+	// Timestamps are stored as Go time.Time strings with local timezone offsets
+	// (e.g. "2026-03-01 05:39:17 -0500 EST"). SQLite does lexicographic comparison,
+	// so both sides must use the same timezone prefix for correct results.
+	startStr := startOfDay.In(time.Local).Format("2006-01-02 15:04:05")
+	endStr := endOfDay.In(time.Local).Format("2006-01-02 15:04:05")
+
 	query := `
 		SELECT COUNT(*)
 		FROM matches
@@ -1358,7 +1365,7 @@ func (r *matchRepository) GetDailyWins(ctx context.Context, accountID int) (int,
 		AND timestamp >= ?
 		AND timestamp < ?
 	`
-	args := []interface{}{startOfDay, endOfDay}
+	args := []interface{}{startStr, endStr}
 
 	if accountID > 0 {
 		query = `
@@ -1399,6 +1406,10 @@ func (r *matchRepository) GetWeeklyWins(ctx context.Context, accountID int) (int
 	}
 	endOfWeek := startOfWeek.Add(7 * 24 * time.Hour)
 
+	// Format bounds in local time to match stored timestamp format (see GetDailyWins).
+	startStr := startOfWeek.In(time.Local).Format("2006-01-02 15:04:05")
+	endStr := endOfWeek.In(time.Local).Format("2006-01-02 15:04:05")
+
 	query := `
 		SELECT COUNT(*)
 		FROM matches
@@ -1406,7 +1417,7 @@ func (r *matchRepository) GetWeeklyWins(ctx context.Context, accountID int) (int
 		AND timestamp >= ?
 		AND timestamp < ?
 	`
-	args := []interface{}{startOfWeek, endOfWeek}
+	args := []interface{}{startStr, endStr}
 
 	if accountID > 0 {
 		query = `
