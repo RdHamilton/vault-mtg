@@ -71,7 +71,7 @@ jobs:
       run: go test -v -coverprofile=coverage.out -covermode=atomic ./...
 
     - name: Upload coverage to Codecov
-      uses: codecov/codecov-action@v5
+      uses: codecov/codecov-action@v6
       with:
         files: ./coverage.out
         flags: unittests
@@ -150,7 +150,7 @@ jobs:
         npm run test:coverage
 
     - name: Upload coverage to Codecov
-      uses: codecov/codecov-action@v5
+      uses: codecov/codecov-action@v6
       with:
         files: ./frontend/coverage/coverage-final.json
         flags: frontend
