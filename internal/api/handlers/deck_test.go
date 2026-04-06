@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strconv"
+	"strings"
 	"testing"
 
 	"github.com/go-chi/chi/v5"
@@ -215,6 +216,11 @@ func (h *testDeckHandler) CreateDeck(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if req.Source == "draft" && (req.DraftEventID == nil || strings.TrimSpace(*req.DraftEventID) == "") {
+		http.Error(w, `{"error":"draft_event_id is required for draft decks"}`, http.StatusBadRequest)
+		return
+	}
+
 	deck, err := h.facade.CreateDeck(r.Context(), req.Name, req.Format, req.Source, req.DraftEventID)
 	if err != nil {
 		http.Error(w, `{"error":"`+err.Error()+`"}`, http.StatusInternalServerError)
@@ -339,6 +345,7 @@ func (h *testDeckHandler) SuggestDecks(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	req.SessionID = strings.TrimSpace(req.SessionID)
 	if req.SessionID == "" {
 		http.Error(w, `{"error":"session_id is required"}`, http.StatusBadRequest)
 		return
@@ -563,6 +570,27 @@ func TestDeckHandler_CreateDeck(t *testing.T) {
 		{
 			name:           "invalid JSON",
 			requestBody:    `{invalid`,
+			mockDeck:       nil,
+			mockErr:        nil,
+			expectedStatus: http.StatusBadRequest,
+		},
+		{
+			name:           "draft deck missing draft_event_id",
+			requestBody:    `{"name":"ECL Draft","format":"limited","source":"draft"}`,
+			mockDeck:       nil,
+			mockErr:        nil,
+			expectedStatus: http.StatusBadRequest,
+		},
+		{
+			name:           "draft deck empty draft_event_id",
+			requestBody:    `{"name":"ECL Draft","format":"limited","source":"draft","draft_event_id":""}`,
+			mockDeck:       nil,
+			mockErr:        nil,
+			expectedStatus: http.StatusBadRequest,
+		},
+		{
+			name:           "draft deck whitespace draft_event_id",
+			requestBody:    `{"name":"ECL Draft","format":"limited","source":"draft","draft_event_id":"  "}`,
 			mockDeck:       nil,
 			mockErr:        nil,
 			expectedStatus: http.StatusBadRequest,
@@ -1088,6 +1116,12 @@ func TestDeckHandler_SuggestDecks(t *testing.T) {
 		{
 			name:           "empty session_id returns bad request",
 			requestBody:    `{"session_id": ""}`,
+			mockErr:        nil,
+			expectedStatus: http.StatusBadRequest,
+		},
+		{
+			name:           "whitespace session_id returns bad request",
+			requestBody:    `{"session_id": "   "}`,
 			mockErr:        nil,
 			expectedStatus: http.StatusBadRequest,
 		},

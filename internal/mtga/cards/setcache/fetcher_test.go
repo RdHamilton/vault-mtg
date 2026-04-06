@@ -886,22 +886,6 @@ func (m *fullMockRatingsRepo) GetSetsWithRatings(_ context.Context) ([]string, e
 	return nil, nil
 }
 
-// mockDatasetService implements enough of the datasets.Service interface to test RatingsFetcher.
-// It returns pre-configured card ratings when GetCardRatings is called.
-type mockDatasetService struct {
-	ratings map[string][]seventeenlands.CardRating // key: "setCode|format"
-}
-
-func newMockDatasetService() *mockDatasetService {
-	return &mockDatasetService{
-		ratings: make(map[string][]seventeenlands.CardRating),
-	}
-}
-
-func (m *mockDatasetService) setRatings(setCode, format string, ratings []seventeenlands.CardRating) {
-	m.ratings[setCode+"|"+format] = ratings
-}
-
 // TestFetchFrom17Lands_APIFallback_PopulatesCache verifies that when the local
 // ratings cache is empty and a RatingsFetcher is configured, fetchFrom17Lands
 // calls the 17Lands API to populate the cache and then creates SetCard entries.

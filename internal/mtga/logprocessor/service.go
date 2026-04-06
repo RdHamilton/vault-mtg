@@ -896,7 +896,15 @@ func (s *Service) splitCompletedDraftSessions(ctx context.Context, eventGroups m
 				continue
 			}
 
-			// No existing in_progress session found, create a new one with timestamp
+			// No existing in_progress session found — check if these are replayed events
+			// by comparing pick card IDs against the completed session's stored picks
+			if s.arePicksIdentical(ctx, groupKey, newDraftEvents) {
+				log.Printf("[splitCompletedDraftSessions] Events match completed session %s picks - skipping (replayed events)", groupKey)
+				// Route to existing completed session so storeDraftSession() does a no-op update
+				result[groupKey] = newDraftEvents
+				continue
+			}
+
 			newSessionID := fmt.Sprintf("%s_%d", groupKey, time.Now().UnixNano())
 			log.Printf("[splitCompletedDraftSessions] Detected new draft starting for completed session %s, creating new session: %s",
 				groupKey, newSessionID)
@@ -916,6 +924,12 @@ func (s *Service) splitCompletedDraftSessions(ctx context.Context, eventGroups m
 				log.Printf("[splitCompletedDraftSessions] Reusing existing in_progress session %s for events from full session %s",
 					existingInProgressSession.ID, groupKey)
 				result[existingInProgressSession.ID] = newDraftEvents
+				continue
+			}
+
+			if s.arePicksIdentical(ctx, groupKey, newDraftEvents) {
+				log.Printf("[splitCompletedDraftSessions] Events match full session %s picks - skipping (replayed events)", groupKey)
+				result[groupKey] = newDraftEvents
 				continue
 			}
 
@@ -979,6 +993,52 @@ func (s *Service) filterNewDraftEvents(events []*logreader.DraftSessionEvent, ne
 
 	log.Printf("[filterNewDraftEvents] Filtered %d events to %d", len(events), len(filtered))
 	return filtered
+}
+
+// arePicksIdentical checks if the pick_made events in the batch match the picks
+// already stored for a session. If they match, the events are replayed (not a new draft).
+func (s *Service) arePicksIdentical(ctx context.Context, sessionID string, events []*logreader.DraftSessionEvent) bool {
+	// Extract pick card IDs from the new events (pick_made events only)
+	var newPickCardIDs []string
+	for _, event := range events {
+		if event.Type == "pick_made" && len(event.SelectedCard) > 0 {
+			newPickCardIDs = append(newPickCardIDs, event.SelectedCard...)
+		}
+	}
+
+	if len(newPickCardIDs) == 0 {
+		// No picks in the batch — can't determine if it's the same draft
+		// This could be a draft that just started (only P0P0 so far)
+		// Fall through to existing behavior (create new session)
+		return false
+	}
+
+	// Get stored picks for the existing session
+	storedPicks, err := s.storage.DraftRepo().GetPicksBySession(ctx, sessionID)
+	if err != nil || len(storedPicks) == 0 {
+		return false
+	}
+
+	// Build a set of stored pick card IDs
+	storedCardIDs := make(map[string]bool, len(storedPicks))
+	for _, pick := range storedPicks {
+		storedCardIDs[pick.CardID] = true
+	}
+
+	// Check if ALL new pick card IDs exist in the stored picks
+	// If every new pick matches a stored pick, this is a replay
+	matchCount := 0
+	for _, cardID := range newPickCardIDs {
+		if storedCardIDs[cardID] {
+			matchCount++
+		}
+	}
+
+	// Consider it identical if the vast majority of picks match (>= 90%)
+	// Using a threshold instead of exact match handles edge cases like
+	// reconstructed picks that might differ slightly
+	threshold := float64(len(newPickCardIDs)) * 0.9
+	return float64(matchCount) >= threshold
 }
 
 // isUUID checks if a string looks like a UUID (e.g., "73e1c7a3-75ee-4b38-b32b-d6854e5c6c9c")

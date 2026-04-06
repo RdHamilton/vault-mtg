@@ -24,6 +24,7 @@ import (
 	"github.com/ramonehamilton/MTGA-Companion/internal/metrics"
 	"github.com/ramonehamilton/MTGA-Companion/internal/mtga/cards"
 	"github.com/ramonehamilton/MTGA-Companion/internal/mtga/cards/datasets"
+	"github.com/ramonehamilton/MTGA-Companion/internal/mtga/cards/mtgazone"
 	"github.com/ramonehamilton/MTGA-Companion/internal/mtga/cards/scryfall"
 	"github.com/ramonehamilton/MTGA-Companion/internal/mtga/cards/setcache"
 	"github.com/ramonehamilton/MTGA-Companion/internal/mtga/deckexport"
@@ -159,6 +160,16 @@ func main() {
 	ratingsRepo := storageService.DraftRatingsRepo()
 	recommendationEngine := recommendations.NewRuleBasedEngineWithSetRepo(cardService, setCardRepo, ratingsRepo)
 
+	// Initialize MTGAZoneFetcher for expert ratings (CFB/MTG Arena Zone)
+	cfbRepo := storageService.NewCFBRatingsRepo()
+	mtgazoneFetcher := mtgazone.NewFetcher(
+		cfbRepo,
+		setCardRepo,
+		mtgazone.FetcherOptions{
+			ScraperOptions: mtgazone.DefaultScraperOptions(),
+		},
+	)
+
 	// Initialize meta service
 	metaService := meta.NewService(nil)
 
@@ -194,6 +205,7 @@ func main() {
 		DeckExporter:         deckExporter,
 		RecommendationEngine: recommendationEngine,
 		DaemonService:        daemonService,
+		MTGAZoneFetcher:      mtgazoneFetcher,
 	}
 
 	// Create facades

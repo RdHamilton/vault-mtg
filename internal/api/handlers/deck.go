@@ -6,6 +6,7 @@ import (
 	"errors"
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/go-chi/chi/v5"
@@ -209,7 +210,7 @@ func (h *DeckHandler) CreateDeck(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if req.Source == "draft" && req.DraftEventID == nil {
+	if req.Source == "draft" && (req.DraftEventID == nil || strings.TrimSpace(*req.DraftEventID) == "") {
 		response.BadRequest(w, errors.New("draft_event_id is required for draft decks"))
 		return
 	}
@@ -485,6 +486,12 @@ func (h *DeckHandler) SuggestDecks(w http.ResponseWriter, r *http.Request) {
 	var req SuggestDecksRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		response.BadRequest(w, errors.New("invalid request body"))
+		return
+	}
+
+	req.SessionID = strings.TrimSpace(req.SessionID)
+	if req.SessionID == "" {
+		response.BadRequest(w, errors.New("missing required field: session_id"))
 		return
 	}
 

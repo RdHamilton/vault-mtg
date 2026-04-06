@@ -2,6 +2,7 @@ package logprocessor
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"path/filepath"
 	"testing"
@@ -2037,5 +2038,337 @@ func TestProcessGamePlays_MultiMatchBatch(t *testing.T) {
 	// activeMatchID should be empty (not tracking any single match)
 	if processor.activeMatchID != "" {
 		t.Errorf("Expected empty activeMatchID after multi-match batch, got '%s'", processor.activeMatchID)
+	}
+}
+
+func TestArePicksIdentical(t *testing.T) {
+	service, cleanup := setupTestService(t)
+	defer cleanup()
+
+	ctx := context.Background()
+	now := time.Now()
+	sessionID := "QuickDraft_TEST_20260301"
+
+	// Create a completed draft session with known picks
+	_, err := service.GetDB().ExecContext(ctx, `
+		INSERT INTO draft_sessions (id, event_name, set_code, draft_type, start_time, status, total_picks, created_at, updated_at)
+		VALUES (?, ?, 'TEST', 'QuickDraft', ?, 'completed', 42, ?, ?)
+	`, sessionID, sessionID, now, now, now)
+	if err != nil {
+		t.Fatalf("Failed to insert draft session: %v", err)
+	}
+
+	// Insert stored picks with specific card IDs
+	storedCardIDs := []string{"100", "200", "300", "400", "500"}
+	for i, cardID := range storedCardIDs {
+		_, err = service.GetDB().ExecContext(ctx, `
+			INSERT INTO draft_picks (session_id, pack_number, pick_number, card_id, timestamp)
+			VALUES (?, 0, ?, ?, ?)
+		`, sessionID, i+1, cardID, now)
+		if err != nil {
+			t.Fatalf("Failed to insert pick: %v", err)
+		}
+	}
+
+	processor := NewService(service)
+
+	t.Run("identical picks returns true", func(t *testing.T) {
+		events := []*logreader.DraftSessionEvent{
+			{Type: "pick_made", SelectedCard: []string{"100"}},
+			{Type: "pick_made", SelectedCard: []string{"200"}},
+			{Type: "pick_made", SelectedCard: []string{"300"}},
+			{Type: "pick_made", SelectedCard: []string{"400"}},
+			{Type: "pick_made", SelectedCard: []string{"500"}},
+		}
+		if !processor.arePicksIdentical(ctx, sessionID, events) {
+			t.Error("Expected arePicksIdentical to return true for identical picks")
+		}
+	})
+
+	t.Run("different picks returns false", func(t *testing.T) {
+		events := []*logreader.DraftSessionEvent{
+			{Type: "pick_made", SelectedCard: []string{"999"}},
+			{Type: "pick_made", SelectedCard: []string{"888"}},
+			{Type: "pick_made", SelectedCard: []string{"777"}},
+			{Type: "pick_made", SelectedCard: []string{"666"}},
+			{Type: "pick_made", SelectedCard: []string{"555"}},
+		}
+		if processor.arePicksIdentical(ctx, sessionID, events) {
+			t.Error("Expected arePicksIdentical to return false for different picks")
+		}
+	})
+
+	t.Run("no pick_made events returns false", func(t *testing.T) {
+		events := []*logreader.DraftSessionEvent{
+			{Type: "status_updated", PackNumber: 0, PickNumber: 0, DraftPack: []string{"card1"}},
+		}
+		if processor.arePicksIdentical(ctx, sessionID, events) {
+			t.Error("Expected arePicksIdentical to return false when no pick_made events")
+		}
+	})
+
+	t.Run("nonexistent session returns false", func(t *testing.T) {
+		events := []*logreader.DraftSessionEvent{
+			{Type: "pick_made", SelectedCard: []string{"100"}},
+		}
+		if processor.arePicksIdentical(ctx, "nonexistent_session", events) {
+			t.Error("Expected arePicksIdentical to return false for nonexistent session")
+		}
+	})
+
+	t.Run("partial match below threshold returns false", func(t *testing.T) {
+		// Only 1 of 5 match = 20% < 90% threshold
+		events := []*logreader.DraftSessionEvent{
+			{Type: "pick_made", SelectedCard: []string{"100"}},
+			{Type: "pick_made", SelectedCard: []string{"999"}},
+			{Type: "pick_made", SelectedCard: []string{"888"}},
+			{Type: "pick_made", SelectedCard: []string{"777"}},
+			{Type: "pick_made", SelectedCard: []string{"666"}},
+		}
+		if processor.arePicksIdentical(ctx, sessionID, events) {
+			t.Error("Expected arePicksIdentical to return false for low match rate")
+		}
+	})
+
+	t.Run("above threshold returns true", func(t *testing.T) {
+		// 9 of 10 match = 90% >= 90% threshold
+		events := []*logreader.DraftSessionEvent{
+			{Type: "pick_made", SelectedCard: []string{"100"}},
+			{Type: "pick_made", SelectedCard: []string{"200"}},
+			{Type: "pick_made", SelectedCard: []string{"300"}},
+			{Type: "pick_made", SelectedCard: []string{"400"}},
+			{Type: "pick_made", SelectedCard: []string{"500"}},
+			{Type: "pick_made", SelectedCard: []string{"100"}},
+			{Type: "pick_made", SelectedCard: []string{"200"}},
+			{Type: "pick_made", SelectedCard: []string{"300"}},
+			{Type: "pick_made", SelectedCard: []string{"400"}},
+			{Type: "pick_made", SelectedCard: []string{"999"}},
+		}
+		if !processor.arePicksIdentical(ctx, sessionID, events) {
+			t.Error("Expected arePicksIdentical to return true for 90% match")
+		}
+	})
+}
+
+func TestSplitCompletedDraftSessions_ReplayedEventsSkipped(t *testing.T) {
+	service, cleanup := setupTestService(t)
+	defer cleanup()
+
+	ctx := context.Background()
+	now := time.Now()
+	sessionID := "QuickDraft_ECL_20260223"
+
+	// Create a completed draft session
+	_, err := service.GetDB().ExecContext(ctx, `
+		INSERT INTO draft_sessions (id, event_name, set_code, draft_type, start_time, status, total_picks, created_at, updated_at)
+		VALUES (?, ?, 'ECL', 'QuickDraft', ?, 'completed', 42, ?, ?)
+	`, sessionID, sessionID, now, now, now)
+	if err != nil {
+		t.Fatalf("Failed to insert draft session: %v", err)
+	}
+
+	// Insert 42 picks with known card IDs
+	for i := 0; i < 42; i++ {
+		packNum := i / 14
+		pickNum := (i % 14) + 1
+		cardID := fmt.Sprintf("%d", 1000+i)
+		_, err = service.GetDB().ExecContext(ctx, `
+			INSERT INTO draft_picks (session_id, pack_number, pick_number, card_id, timestamp)
+			VALUES (?, ?, ?, ?, ?)
+		`, sessionID, packNum, pickNum, cardID, now)
+		if err != nil {
+			t.Fatalf("Failed to insert pick %d: %v", i, err)
+		}
+	}
+
+	// Create replayed events — same card IDs as stored picks, with P0P0 start
+	replayedEvents := []*logreader.DraftSessionEvent{
+		{
+			Type:       "status_updated",
+			EventName:  sessionID,
+			PackNumber: 0,
+			PickNumber: 0,
+			DraftPack:  []string{"card1", "card2", "card3"},
+			Timestamp:  now,
+		},
+	}
+	// Add pick_made events matching the stored picks
+	for i := 0; i < 42; i++ {
+		cardID := fmt.Sprintf("%d", 1000+i)
+		replayedEvents = append(replayedEvents, &logreader.DraftSessionEvent{
+			Type:         "pick_made",
+			EventName:    sessionID,
+			PackNumber:   i / 14,
+			PickNumber:   (i % 14) + 1,
+			SelectedCard: []string{cardID},
+			Timestamp:    now,
+		})
+	}
+
+	events := map[string][]*logreader.DraftSessionEvent{
+		sessionID: replayedEvents,
+	}
+
+	processor := NewService(service)
+	result := processor.splitCompletedDraftSessions(ctx, events)
+
+	// Should route to the original session ID (no timestamp suffix)
+	if len(result) != 1 {
+		t.Fatalf("Expected 1 result group, got %d", len(result))
+	}
+
+	for resultID := range result {
+		if resultID != sessionID {
+			t.Errorf("Expected events routed to original session %s, got %s", sessionID, resultID)
+		}
+	}
+}
+
+func TestSplitCompletedDraftSessions_NewDraftNotSkipped(t *testing.T) {
+	service, cleanup := setupTestService(t)
+	defer cleanup()
+
+	ctx := context.Background()
+	now := time.Now()
+	sessionID := "QuickDraft_ECL_20260223"
+
+	// Create a completed draft session
+	_, err := service.GetDB().ExecContext(ctx, `
+		INSERT INTO draft_sessions (id, event_name, set_code, draft_type, start_time, status, total_picks, created_at, updated_at)
+		VALUES (?, ?, 'ECL', 'QuickDraft', ?, 'completed', 42, ?, ?)
+	`, sessionID, sessionID, now, now, now)
+	if err != nil {
+		t.Fatalf("Failed to insert draft session: %v", err)
+	}
+
+	// Insert stored picks
+	for i := 0; i < 42; i++ {
+		packNum := i / 14
+		pickNum := (i % 14) + 1
+		cardID := fmt.Sprintf("%d", 1000+i)
+		_, err = service.GetDB().ExecContext(ctx, `
+			INSERT INTO draft_picks (session_id, pack_number, pick_number, card_id, timestamp)
+			VALUES (?, ?, ?, ?, ?)
+		`, sessionID, packNum, pickNum, cardID, now)
+		if err != nil {
+			t.Fatalf("Failed to insert pick %d: %v", i, err)
+		}
+	}
+
+	// Create events for a genuinely NEW draft — different card IDs
+	newDraftEvents := []*logreader.DraftSessionEvent{
+		{
+			Type:       "status_updated",
+			EventName:  sessionID,
+			PackNumber: 0,
+			PickNumber: 0,
+			DraftPack:  []string{"newcard1", "newcard2", "newcard3"},
+			Timestamp:  now,
+		},
+	}
+	for i := 0; i < 42; i++ {
+		cardID := fmt.Sprintf("%d", 9000+i) // Different card IDs
+		newDraftEvents = append(newDraftEvents, &logreader.DraftSessionEvent{
+			Type:         "pick_made",
+			EventName:    sessionID,
+			PackNumber:   i / 14,
+			PickNumber:   (i % 14) + 1,
+			SelectedCard: []string{cardID},
+			Timestamp:    now,
+		})
+	}
+
+	events := map[string][]*logreader.DraftSessionEvent{
+		sessionID: newDraftEvents,
+	}
+
+	processor := NewService(service)
+	result := processor.splitCompletedDraftSessions(ctx, events)
+
+	// Should create a new session with timestamp suffix
+	if len(result) != 1 {
+		t.Fatalf("Expected 1 result group, got %d", len(result))
+	}
+
+	for resultID := range result {
+		if resultID == sessionID {
+			t.Error("Expected new session ID (with timestamp suffix), but got the original session ID")
+		}
+		if len(resultID) <= len(sessionID) {
+			t.Errorf("Expected session ID longer than original (with suffix), got %s", resultID)
+		}
+	}
+}
+
+func TestSplitCompletedDraftSessions_FullSessionReplaySkipped(t *testing.T) {
+	service, cleanup := setupTestService(t)
+	defer cleanup()
+
+	ctx := context.Background()
+	now := time.Now()
+	sessionID := "QuickDraft_ECL_20260223"
+
+	// Create an in_progress session that has all expected picks (full)
+	_, err := service.GetDB().ExecContext(ctx, `
+		INSERT INTO draft_sessions (id, event_name, set_code, draft_type, start_time, status, total_picks, created_at, updated_at)
+		VALUES (?, ?, 'ECL', 'QuickDraft', ?, 'in_progress', 42, ?, ?)
+	`, sessionID, sessionID, now, now, now)
+	if err != nil {
+		t.Fatalf("Failed to insert draft session: %v", err)
+	}
+
+	// Insert 42 picks (makes it "full")
+	for i := 0; i < 42; i++ {
+		packNum := i / 14
+		pickNum := (i % 14) + 1
+		cardID := fmt.Sprintf("%d", 1000+i)
+		_, err = service.GetDB().ExecContext(ctx, `
+			INSERT INTO draft_picks (session_id, pack_number, pick_number, card_id, timestamp)
+			VALUES (?, ?, ?, ?, ?)
+		`, sessionID, packNum, pickNum, cardID, now)
+		if err != nil {
+			t.Fatalf("Failed to insert pick %d: %v", i, err)
+		}
+	}
+
+	// Create replayed events matching stored picks
+	replayedEvents := []*logreader.DraftSessionEvent{
+		{
+			Type:       "status_updated",
+			EventName:  sessionID,
+			PackNumber: 0,
+			PickNumber: 0,
+			DraftPack:  []string{"card1", "card2", "card3"},
+			Timestamp:  now,
+		},
+	}
+	for i := 0; i < 42; i++ {
+		cardID := fmt.Sprintf("%d", 1000+i)
+		replayedEvents = append(replayedEvents, &logreader.DraftSessionEvent{
+			Type:         "pick_made",
+			EventName:    sessionID,
+			PackNumber:   i / 14,
+			PickNumber:   (i % 14) + 1,
+			SelectedCard: []string{cardID},
+			Timestamp:    now,
+		})
+	}
+
+	events := map[string][]*logreader.DraftSessionEvent{
+		sessionID: replayedEvents,
+	}
+
+	processor := NewService(service)
+	result := processor.splitCompletedDraftSessions(ctx, events)
+
+	// Should route to the original session ID (replay detected)
+	if len(result) != 1 {
+		t.Fatalf("Expected 1 result group, got %d", len(result))
+	}
+
+	for resultID := range result {
+		if resultID != sessionID {
+			t.Errorf("Expected events routed to original session %s, got %s", sessionID, resultID)
+		}
 	}
 }

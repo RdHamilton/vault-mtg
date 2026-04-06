@@ -1808,7 +1808,7 @@ func TestMatchRepository_GetWeeklyWins_TimezoneOffsetTimestamps(t *testing.T) {
 	if now.Weekday() == time.Sunday && now.Hour() < 9 {
 		mtgaWeekStart = mtgaWeekStart.Add(-7 * 24 * time.Hour)
 	}
-	previousWeek := mtgaWeekStart.Add(-24 * time.Hour)
+	previousWeek := mtgaWeekStart.Add(-7 * 24 * time.Hour)
 
 	// Convert to local time and format as timezone-offset strings
 	localThisWeekWin1 := mtgaWeekStart.Add(1 * time.Hour).In(time.Local)
