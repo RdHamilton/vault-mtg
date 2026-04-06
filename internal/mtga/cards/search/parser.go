@@ -62,8 +62,12 @@ func Parse(query string) *ParsedQuery {
 	var bareWords []string
 	pos := 0
 
+	// Note: parsing uses byte indexing which is correct for the ASCII prefix
+	// operators (t:, o:, k:, quotes, whitespace). Multi-byte UTF-8 characters
+	// in search values are preserved correctly since we only split on ASCII
+	// delimiters and pass through value bytes untouched.
 	for pos < len(query) {
-		// Skip whitespace
+		// Skip whitespace (ASCII whitespace is single-byte, safe with byte indexing)
 		for pos < len(query) && unicode.IsSpace(rune(query[pos])) {
 			pos++
 		}
@@ -112,8 +116,9 @@ func Parse(query string) *ParsedQuery {
 
 // readValue reads the next value token starting at query[*pos].
 // If the value starts with a double quote, it reads until the closing quote
-// (or end of string). Otherwise, it reads until whitespace or a recognized
-// prefix pattern (to allow "t:creature bolt" to split correctly).
+// (or end of string). Otherwise, it reads until whitespace or end of string.
+// Tokens must be separated by whitespace; adjacent prefixes without spaces
+// (e.g., "t:creatureo:damage") will not be split.
 func readValue(query string, pos *int) string {
 	if *pos >= len(query) {
 		return ""

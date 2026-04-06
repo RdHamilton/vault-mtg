@@ -484,7 +484,7 @@ func (r *setCardRepository) SearchCards(ctx context.Context, query string, setCo
 			placeholders[i] = "?"
 			args = append(args, code)
 		}
-		whereClause += " AND set_code IN (" + joinStrings(placeholders, ",") + ")"
+		whereClause += " AND set_code IN (" + strings.Join(placeholders, ",") + ")"
 	}
 
 	// ORDER BY: prioritize name matches for the first FieldAll term
@@ -569,18 +569,6 @@ func (r *setCardRepository) SearchCards(ctx context.Context, query string, setCo
 	}
 
 	return cards, rows.Err()
-}
-
-// joinStrings joins strings with a separator (simple helper to avoid importing strings package).
-func joinStrings(strs []string, sep string) string {
-	if len(strs) == 0 {
-		return ""
-	}
-	result := strs[0]
-	for i := 1; i < len(strs); i++ {
-		result += sep + strs[i]
-	}
-	return result
 }
 
 // GetMetadataStaleness returns counts of fresh, stale, and very stale cards.
