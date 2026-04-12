@@ -38,6 +38,7 @@ func ExtractScryfallIDFromURL(url string) string {
 
 // MTGASetToScryfall maps MTGA set codes to Scryfall set codes.
 var MTGASetToScryfall = map[string]string{
+	"TMT": "tmt", // Teenage Mutant Ninja Turtles
 	"ECL": "ecl", // Lorwyn Eclipsed
 	"TLA": "tla", // Avatar: The Last Airbender
 	"TDM": "tdm", // Tarkir Dragonstorm

@@ -191,6 +191,10 @@ func TestExtractSetCode(t *testing.T) {
 		{"PremierDraft_OTJ_20240515", "OTJ"},
 		{"QuickDraft_MKM_20240201", "MKM"},
 		{"QuickDraft_TLA_20251127", "TLA"},
+		{"MWM_TMT_BotDraft_20260407", "TMT"},
+		{"MWM_ECL_Sealed_20260301", "ECL"},
+		{"CompDraft_ECL_20260301", "ECL"},
+		{"TradDraft_TDM_20260115", "TDM"},
 		{"invalid_format", ""},
 	}
 

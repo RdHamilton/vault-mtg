@@ -324,13 +324,25 @@ func parseEventJoin(entry *LogEntry) (*DraftSessionEvent, error) {
 }
 
 // extractSetCode extracts the set code from an event name.
-// Example: "QuickDraft_TDM_20251111" -> "TDM"
+// Supports multiple event name formats:
+//   - "QuickDraft_TDM_20251111" -> "TDM"
+//   - "PremierDraft_OTJ_20240515" -> "OTJ"
+//   - "MWM_TMT_BotDraft_20260407" -> "TMT" (Midweek Magic)
+//   - "CompDraft_ECL_20260301" -> "ECL"
 func extractSetCode(eventName string) string {
-	// Pattern: QuickDraft_XXX_YYYYMMDD or PremierDraft_XXX_YYYYMMDD
-	re := regexp.MustCompile(`(?:QuickDraft|PremierDraft)_([A-Z0-9]+)_\d+`)
+	// Standard format: {DraftType}_{SET}_{DATE}
+	re := regexp.MustCompile(`(?:QuickDraft|PremierDraft|CompDraft|TradDraft)_([A-Z0-9]+)_\d+`)
 	matches := re.FindStringSubmatch(eventName)
 	if len(matches) > 1 {
 		return matches[1]
 	}
+
+	// Midweek Magic format: MWM_{SET}_{DraftType}_{DATE}
+	re = regexp.MustCompile(`MWM_([A-Z0-9]+)_[A-Za-z]+_\d+`)
+	matches = re.FindStringSubmatch(eventName)
+	if len(matches) > 1 {
+		return matches[1]
+	}
+
 	return ""
 }

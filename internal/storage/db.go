@@ -36,7 +36,7 @@ type Config struct {
 	ConnMaxLifetime time.Duration
 
 	// BusyTimeout sets how long to wait when the database is locked.
-	// Default: 5 seconds
+	// Default: 15 seconds
 	BusyTimeout time.Duration
 
 	// JournalMode sets the SQLite journal mode.
@@ -61,7 +61,7 @@ func DefaultConfig(path string) *Config {
 		MaxOpenConns:    25,
 		MaxIdleConns:    5,
 		ConnMaxLifetime: 5 * time.Minute,
-		BusyTimeout:     5 * time.Second,
+		BusyTimeout:     15 * time.Second,
 		JournalMode:     "WAL",
 		Synchronous:     "NORMAL",
 	}
