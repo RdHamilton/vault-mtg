@@ -1067,62 +1067,9 @@ func (s *SystemFacade) GetReplayStatus(ctx context.Context) (*ReplayStatus, erro
 }
 
 // GetLogReplayProgress returns an empty LogReplayProgress struct.
-// This method exists to expose the type to Wails for TypeScript code generation.
-// Actual progress is delivered via 'replay:progress' events.
+// Actual progress is delivered via 'replay:progress' WebSocket events.
 func (s *SystemFacade) GetLogReplayProgress(ctx context.Context) (*LogReplayProgress, error) {
 	return &LogReplayProgress{}, nil
-}
-
-// ============================================================================
-// Event Type Exposers
-// These methods exist solely to expose event payload types to Wails for
-// TypeScript code generation. They return empty structs and are not called
-// at runtime. Actual event data is delivered via EventsEmit.
-// ============================================================================
-
-// GetStatsUpdatedEvent exposes StatsUpdatedEvent type to Wails.
-func (s *SystemFacade) GetStatsUpdatedEvent(ctx context.Context) (*StatsUpdatedEvent, error) {
-	return &StatsUpdatedEvent{}, nil
-}
-
-// GetRankUpdatedEvent exposes RankUpdatedEvent type to Wails.
-func (s *SystemFacade) GetRankUpdatedEvent(ctx context.Context) (*RankUpdatedEvent, error) {
-	return &RankUpdatedEvent{}, nil
-}
-
-// GetQuestUpdatedEvent exposes QuestUpdatedEvent type to Wails.
-func (s *SystemFacade) GetQuestUpdatedEvent(ctx context.Context) (*QuestUpdatedEvent, error) {
-	return &QuestUpdatedEvent{}, nil
-}
-
-// GetDraftUpdatedEvent exposes DraftUpdatedEvent type to Wails.
-func (s *SystemFacade) GetDraftUpdatedEvent(ctx context.Context) (*DraftUpdatedEvent, error) {
-	return &DraftUpdatedEvent{}, nil
-}
-
-// GetDeckUpdatedEvent exposes DeckUpdatedEvent type to Wails.
-func (s *SystemFacade) GetDeckUpdatedEvent(ctx context.Context) (*DeckUpdatedEvent, error) {
-	return &DeckUpdatedEvent{}, nil
-}
-
-// GetCollectionUpdatedEvent exposes CollectionUpdatedEvent type to Wails.
-func (s *SystemFacade) GetCollectionUpdatedEvent(ctx context.Context) (*CollectionUpdatedEvent, error) {
-	return &CollectionUpdatedEvent{}, nil
-}
-
-// GetDaemonErrorEvent exposes DaemonErrorEvent type to Wails.
-func (s *SystemFacade) GetDaemonErrorEvent(ctx context.Context) (*DaemonErrorEvent, error) {
-	return &DaemonErrorEvent{}, nil
-}
-
-// GetReplayErrorEvent exposes ReplayErrorEvent type to Wails.
-func (s *SystemFacade) GetReplayErrorEvent(ctx context.Context) (*ReplayErrorEvent, error) {
-	return &ReplayErrorEvent{}, nil
-}
-
-// GetReplayDraftDetectedEvent exposes ReplayDraftDetectedEvent type to Wails.
-func (s *SystemFacade) GetReplayDraftDetectedEvent(ctx context.Context) (*ReplayDraftDetectedEvent, error) {
-	return &ReplayDraftDetectedEvent{}, nil
 }
 
 // HealthStatus is an alias for daemon.HealthStatus.

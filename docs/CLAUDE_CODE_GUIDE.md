@@ -120,7 +120,7 @@ At the **end of each significant task** or **end of session**, ask yourself:
 MTGA-Companion is a **service-based application** with two components:
 
 1. **Headless Daemon** (Go) - Background service that monitors MTGA logs, collects data, and stores in SQLite
-2. **Desktop GUI** (Wails v2 + React) - Cross-platform UI that connects to daemon via WebSocket for real-time updates
+2. **REST API Server + React Frontend** - Go REST API with React SPA, communicates via REST endpoints and WebSocket for real-time updates
 
 **Architecture**: Service-oriented, NOT monolithic. Data collection (daemon) is separated from data presentation (GUI).
 
@@ -283,14 +283,14 @@ go vet ./...
 ### Project Context
 This is a companion application for MTGA with a modern desktop GUI, which requires:
 - **Log file parsing**: Reading and interpreting MTGA log files to track game state
-- **Desktop GUI**: Cross-platform desktop application with Wails + React
+- **Desktop GUI**: REST API server with React SPA frontend
 - **Real-time updates**: Live data updates while MTGA is running
 - **Data aggregation**: Tracking statistics, match history, decks, and game analytics
 
 ### Technology Stack
 
 **Backend (Go)**:
-- **Wails v2** - Desktop application framework (Go + Web UI)
+- **Chi** - HTTP router for REST API server
 - **SQLite** - Local database storage
 - **Log polling** - Real-time MTGA log file monitoring
 
@@ -304,9 +304,24 @@ This is a companion application for MTGA with a modern desktop GUI, which requir
 ### Project Structure
 ```
 MTGA-Companion/
-├── main.go                     # Wails entry point
-├── app.go                      # Go backend methods exposed to frontend
-├── frontend/                   # React frontend application
+├── cmd/
+│   ├── apiserver/             # REST API server entry point
+│   │   └── main.go
+│   └── mtga-companion/        # Daemon/CLI entry point
+│       └── main.go
+├── internal/                  # Private application code
+│   ├── api/                  # REST API layer
+│   │   ├── router.go        # Chi HTTP router
+│   │   ├── handlers/        # HTTP request handlers
+│   │   └── websocket/       # WebSocket handler
+│   ├── gui/                  # Facade layer (business logic)
+│   ├── mtga/                 # MTGA-specific logic
+│   │   ├── logreader/       # Log parsing
+│   │   └── draft/           # Draft overlay
+│   └── storage/             # Database and persistence
+│       ├── models/          # Data models
+│       └── repository/      # Data access layer
+├── frontend/                  # React frontend application
 │   ├── src/
 │   │   ├── components/        # Reusable React components
 │   │   │   ├── Layout.tsx    # App layout with navigation
@@ -317,32 +332,20 @@ MTGA-Companion/
 │   │   │   ├── WinRateTrend.tsx
 │   │   │   ├── DeckPerformance.tsx
 │   │   │   └── Settings.tsx
+│   │   ├── services/api/     # REST API client modules
 │   │   ├── App.tsx           # Root component with routing
 │   │   └── main.tsx          # Frontend entry point
-│   ├── wailsjs/              # Auto-generated Wails bindings
-│   │   ├── go/              # Go method bindings
-│   │   └── runtime/         # Wails runtime functions
 │   ├── package.json
 │   └── vite.config.ts
-├── internal/                  # Private application code
-│   ├── gui/                  # GUI-specific backend code
-│   ├── mtga/                 # MTGA-specific logic
-│   │   ├── logreader/       # Log parsing
-│   │   └── draft/           # Draft overlay
-│   └── storage/             # Database and persistence
-│       ├── models/          # Data models
-│       └── repository/      # Data access layer
-├── cmd/                      # CLI application (legacy)
-│   └── mtga-companion/
 └── scripts/                  # Build and development scripts
 ```
 
 ### Platform Considerations
 MTGA runs on both macOS and Windows. This application:
-- **Cross-platform GUI**: Wails compiles to native apps on macOS, Windows, and Linux
+- **Cross-platform**: REST API server runs on macOS, Windows, and Linux; React SPA runs in any browser
 - **Platform-agnostic**: Most code is platform-independent
 - **Platform-specific**: Log file paths and file system operations use platform detection
-- **Native performance**: Wails uses the system's native webview (no Electron overhead)
+- **Lightweight**: No embedded webview or Electron; uses the system's default browser
 
 ### Service-Based Architecture
 
@@ -369,12 +372,12 @@ MTGA runs on both macOS and Windows. This application:
 - **HEADLESS**: Outputs structured logs only, NO terminal display, charts, or formatted output
 - **Core commands**: `daemon`, `service`, `migrate`, `backup`, `replay` (testing)
 
-**2. GUI Application** (`main.go`, `app.go`):
-- Wails desktop app (Go backend + React frontend)
+**2. REST API Server + React Frontend** (`cmd/apiserver/`):
+- Go REST API server with React SPA frontend
 - Connects to daemon via WebSocket (port 9999)
 - Receives real-time events for data updates
 - Falls back to standalone mode if daemon unavailable
-- Memory: ~50-100 MB (includes WebView)
+- Memory: ~50-100 MB
 - **ALL presentation logic** - Charts, tables, statistics, draft recommendations
 - **UI-only**: No log polling or database writes (daemon handles that)
 
@@ -453,7 +456,7 @@ MTGA → Player.log → GUI (embedded poller + parser) → Database → User
 
 **Why this matters**:
 - Daemon runs as system service with no terminal
-- All presentation belongs in the Wails GUI (React components)
+- All presentation belongs in the React frontend (React components)
 - Mixing concerns makes the daemon bloated and defeats the architecture
 - Display code in daemon = architectural violation
 
@@ -504,7 +507,7 @@ The frontend is built with React and TypeScript, following modern best practices
 **Component Organization**:
 - **Pages** (`frontend/src/pages/`) - Top-level route components
   - Each page is a complete view (MatchHistory, WinRateTrend, DeckPerformance, etc.)
-  - Pages handle data fetching from backend via Wails bindings
+  - Pages handle data fetching from backend via REST API calls
   - Pages manage their own state and filters
 - **Components** (`frontend/src/components/`) - Reusable UI components
   - Layout components (Layout, Footer, ToastContainer)
@@ -512,15 +515,15 @@ The frontend is built with React and TypeScript, following modern best practices
   - Follow single responsibility principle
 
 **Data Flow**:
-1. **Frontend → Backend**: Call Go methods via `wailsjs/go/main/App`
+1. **Frontend → Backend**: Call REST API endpoints via typed client modules
    ```typescript
-   import { GetMatches, GetStats } from '../../wailsjs/go/main/App';
-   const matches = await GetMatches(filter);
+   import { matchesApi } from '../services/api/matches';
+   const matches = await matchesApi.getMatches(filter);
    ```
-2. **Backend → Frontend**: Event emission for real-time updates
+2. **Backend → Frontend**: WebSocket for real-time updates
    ```typescript
-   import { EventsOn } from '../../wailsjs/runtime/runtime';
-   EventsOn('stats:updated', () => { /* refresh data */ });
+   import { useWebSocket } from '../hooks/useWebSocket';
+   // WebSocket automatically receives 'stats:updated' events and triggers refresh
    ```
 3. **State Management**: React hooks (useState, useEffect)
    - Local component state for UI state
@@ -539,15 +542,15 @@ The frontend is built with React and TypeScript, following modern best practices
 
 **TypeScript**:
 - Use TypeScript for all frontend code
-- Import models from `wailsjs/go/models`
+- Import API client modules from `services/api/`
 - Avoid `any` types - use proper typing
 - Use interfaces for component props
 
-**Wails Bindings**:
-- Auto-generated in `frontend/wailsjs/` - **DO NOT EDIT MANUALLY**
-- Regenerate with `wails generate module`
-- Go methods in `app.go` are automatically exposed to frontend
-- Models from `internal/storage/models` are automatically converted to TypeScript
+**REST API Client**:
+- Typed client modules in `frontend/src/services/api/`
+- Each domain has its own module (matches.ts, drafts.ts, decks.ts, etc.)
+- Endpoints map to backend handler routes defined in `internal/api/router.go`
+- Models are defined as TypeScript interfaces in the frontend
 
 ## Responsive Design Principles
 
@@ -638,23 +641,25 @@ While we follow our own dark theme, we should adopt Material Design principles:
 - **Transitions**: Smooth animations (200-300ms) for state changes
 - **Feedback**: Visual feedback for all interactive elements (hover, active, focus states)
 
-## Wails Development
+## REST API + Frontend Development
 
 ### Building and Running
 
-**Development mode** (with hot reload):
+**Start API server** (development):
 ```bash
-wails dev
+go run ./cmd/apiserver
+```
+
+**Start frontend dev server** (with hot reload):
+```bash
+cd frontend
+npm run dev
 ```
 
 **Production build**:
 ```bash
-wails build
-```
-
-**Generate bindings** (after changing Go methods):
-```bash
-wails generate module
+go build -o bin/apiserver ./cmd/apiserver
+cd frontend && npm run build
 ```
 
 ### Frontend Development
@@ -677,26 +682,26 @@ cd frontend
 npm run build
 ```
 
-### Wails Project Configuration
+### API Server Configuration
 
 Key files:
-- `wails.json` - Wails project configuration
-- `main.go` - Application entry point with window configuration
-- `app.go` - Backend methods exposed to frontend
+- `cmd/apiserver/main.go` - API server entry point
+- `internal/api/router.go` - HTTP route definitions
+- `internal/api/handlers/` - Request handlers per domain
 
-**Adding new backend methods**:
-1. Add method to `App` struct in `app.go`
-2. Method must be exported (capital first letter)
-3. Run `wails generate module` to update bindings
-4. Import from `wailsjs/go/main/App` in frontend
+**Adding new API endpoints**:
+1. Add handler function in `internal/api/handlers/`
+2. Register route in `internal/api/router.go`
+3. Add corresponding API client function in `frontend/src/services/api/`
+4. Define TypeScript interfaces for request/response types
 
 **Real-time events**:
 ```go
-// Backend (Go)
-runtime.EventsEmit(a.ctx, "stats:updated", data)
+// Backend (Go) - via WebSocket broadcast
+wsHub.Broadcast("stats:updated", data)
 
-// Frontend (TypeScript)
-EventsOn('stats:updated', (data) => { /* handle update */ });
+// Frontend (TypeScript) - via WebSocket client
+websocket.on('stats:updated', (data) => { /* handle update */ });
 ```
 
 ## Design Patterns (v1.2 Refactoring)
@@ -707,7 +712,7 @@ EventsOn('stats:updated', (data) => { /* handle update */ });
 
 **Location**: `internal/gui/*_facade.go`
 
-**Purpose**: Simplify complex subsystem interactions and provide a clean interface between the Wails frontend and backend services.
+**Purpose**: Simplify complex subsystem interactions and provide a clean interface between the REST API handlers and backend services.
 
 **When to use**:
 - Creating new major feature areas (e.g., if adding a tournament feature, create `TournamentFacade`)
@@ -777,7 +782,7 @@ err := export.NewExportBuilder().
 - Broadcasting events to multiple destinations (frontend, IPC, logging, analytics)
 
 **Existing Observers**:
-- `WailsObserver` - Forwards events to Wails frontend
+- `WebSocketObserver` - Forwards events to frontend via WebSocket
 - `IPCObserver` - Forwards events to IPC daemon
 - `LoggingObserver` - Logs events for debugging
 
@@ -797,7 +802,7 @@ dispatcher.Dispatch(events.Event{
 })
 ```
 
-**IMPORTANT**: Never use `wailsruntime.EventsEmit` directly. Always use the EventDispatcher.
+**IMPORTANT**: Never broadcast events directly. Always use the EventDispatcher.
 
 ### 5. Command Pattern
 
@@ -825,10 +830,10 @@ err := executor.Execute(ctx, cmd)
 
 ### Pattern Implementation Guidelines
 
-**For Event Emission** - Use EventDispatcher, not EventsEmit:
+**For Event Emission** - Use EventDispatcher, not direct WebSocket broadcast:
 ```go
 // ❌ Don't do this
-wailsruntime.EventsEmit(ctx, "stats:updated", data)
+wsHub.Broadcast("stats:updated", data)
 
 // ✅ Do this
 facade.eventDispatcher.Dispatch(events.Event{
@@ -1008,4 +1013,4 @@ Follow the guidelines from https://go.dev/doc/effective_go:
 - Run ./scripts/dev.sh before creating the PR
 - Can you also try to make sure that we adhere to material design standards.  We should aim for simplicity but control design that is aesteticly pleasing.
 - When creating issues always cleanly organize them by version and milestone.  If an appropriate project doesn't exist create it.
-- We are using wails desktop for the UI not web
+- We are using a REST API server with a React SPA frontend (browser-based)

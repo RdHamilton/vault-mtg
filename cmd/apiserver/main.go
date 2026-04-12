@@ -1,5 +1,5 @@
 // Package main provides the MTGA Companion server with integrated REST API and log processing daemon.
-// This server can run standalone (without the Wails desktop runtime), making it suitable for:
+// This is the primary application entry point, suitable for:
 // - Development with hot-reload frontend
 // - E2E testing
 // - Headless deployment (e.g., server mode)

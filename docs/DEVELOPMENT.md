@@ -21,25 +21,12 @@ This guide covers setting up your development environment, understanding the cod
 **Required**:
 - **Go 1.23+** - [Download](https://go.dev/dl/)
 - **Node.js 20+** - [Download](https://nodejs.org/)
-- **Wails CLI** - Desktop app framework
 - **Git** - Version control
 
 **Optional but Recommended**:
 - **GoLand** or **VS Code** - IDEs with Go support
 - **golangci-lint** - Go linter
 - **gofumpt** - Go code formatter
-
-### Installing Wails
-
-```bash
-go install github.com/wailsapp/wails/v2/cmd/wails@latest
-```
-
-Verify installation:
-```bash
-wails version
-# Should show: v2.11.0 or higher
-```
 
 ### Installing Development Tools
 
@@ -76,35 +63,38 @@ cd ..
 ### Verifying Setup
 
 ```bash
-# Check Wails can build the project
-wails doctor
+# Verify Go installation
+go version
 
-# Should show all green checks for:
-# - Go installation
-# - Node installation
-# - Platform-specific dependencies
+# Verify Node.js installation
+node --version
+
+# Build the API server
+go build ./cmd/apiserver
+
+# Build the frontend
+cd frontend && npm run build
 ```
 
 ## Project Structure
 
 ```
 MTGA-Companion/
-├── main.go                  # Wails entry point (GUI app)
-├── app.go                   # Wails backend API
+├── cmd/
+│   ├── apiserver/
+│   │   └── main.go         # REST API server entry point
+│   └── mtga-companion/
+│       ├── main.go         # CLI entry point
+│       ├── daemon.go       # Daemon mode implementation
+│       └── service.go      # Service management commands
 ├── frontend/                # React + TypeScript frontend
 │   ├── src/
 │   │   ├── components/     # Reusable UI components
 │   │   ├── pages/          # Page components (routes)
 │   │   ├── App.tsx         # Root component
 │   │   └── main.tsx        # Frontend entry point
-│   ├── wailsjs/            # Auto-generated Wails bindings
 │   ├── package.json
 │   └── vite.config.ts
-├── cmd/                     # CLI commands
-│   └── mtga-companion/
-│       ├── main.go         # CLI entry point
-│       ├── daemon.go       # Daemon mode implementation
-│       └── service.go      # Service management commands
 ├── internal/                # Private application code
 │   ├── gui/                # GUI-specific backend code
 │   ├── mtga/               # MTGA-specific logic
@@ -123,10 +113,9 @@ MTGA-Companion/
 
 ### Key Files
 
-**Wails Application**:
-- `main.go` - Entry point for GUI app, initializes Wails
-- `app.go` - Go backend methods callable from TypeScript frontend
-- `frontend/` - React frontend code
+**REST API Server**:
+- `cmd/apiserver/main.go` - Entry point for the REST API server
+- `frontend/` - React frontend code (communicates via REST API)
 
 **CLI Application**:
 - `cmd/mtga-companion/main.go` - Entry point for CLI
@@ -134,9 +123,9 @@ MTGA-Companion/
 - `cmd/mtga-companion/service.go` - Service installation/management
 
 **Shared Code**:
-- `internal/mtga/logprocessor/` - Log parsing (used by both GUI and daemon)
+- `internal/mtga/logprocessor/` - Log parsing (used by both API server and daemon)
 - `internal/storage/` - Database access (shared)
-- `internal/ipc/` - WebSocket IPC (client in GUI, server in daemon)
+- `internal/ipc/` - WebSocket IPC (client/server)
 
 ## Development Workflow
 
@@ -185,35 +174,25 @@ MTGA-Companion/
 
 ## Running the Application
 
-### GUI Development Mode (Recommended)
+### Development Mode (Recommended)
 
-**Run with hot reload**:
+Run the REST API server and frontend dev server in two terminals:
+
+**Terminal 1 (API Server)**:
 ```bash
-wails dev
+go run ./cmd/apiserver
 ```
 
-This starts:
-- Wails development server
-- Frontend dev server (Vite) with hot reload
-- Go backend with live reload
-- Opens app in development mode
+**Terminal 2 (Frontend)**:
+```bash
+cd frontend && npm run dev
+```
 
 **Access**:
-- App window opens automatically
-- Frontend runs on http://localhost:34115 (internal)
+- Frontend runs on http://localhost:5173 (Vite dev server with hot reload)
+- REST API server runs on http://localhost:8080
 - Changes to frontend files reload instantly
-- Changes to Go files rebuild and restart
-
-### GUI in Standalone Mode
-
-When daemon is not running, GUI automatically falls back to standalone mode with embedded log poller.
-
-**To develop standalone mode**:
-```bash
-# Just run wails dev - it will start in standalone mode
-# if no daemon is detected
-wails dev
-```
+- Changes to Go files require restarting the API server
 
 ### Daemon Development Mode
 
@@ -229,19 +208,22 @@ go build -o bin/mtga-companion ./cmd/mtga-companion
 ./bin/mtga-companion daemon --debug-mode
 ```
 
-**Run daemon + GUI together**:
+**Run daemon + API server + frontend together**:
 
 Terminal 1 (Daemon):
 ```bash
 ./bin/mtga-companion daemon --debug-mode
 ```
 
-Terminal 2 (GUI):
+Terminal 2 (API Server):
 ```bash
-wails dev
+go run ./cmd/apiserver
 ```
 
-GUI will connect to daemon via WebSocket.
+Terminal 3 (Frontend):
+```bash
+cd frontend && npm run dev
+```
 
 ### CLI Development
 
@@ -254,25 +236,29 @@ go build -o bin/mtga-companion ./cmd/mtga-companion
 
 ### GoLand/IDE Configuration
 
-**For Wails GUI Development**:
-
-1. **Create Run Configuration**:
-   - Name: "Wails Dev"
-   - Type: Shell Script
-   - Execute: `wails dev`
+1. **API Server Run Configuration**:
+   - Name: "API Server"
+   - Type: Go Build
+   - Package path: `github.com/ramonehamilton/MTGA-Companion/cmd/apiserver`
    - Working directory: `$PROJECT_DIR$`
 
-2. **For Daemon Development**:
+2. **Daemon Run Configuration**:
    - Name: "Daemon"
    - Type: Go Build
    - Package path: `github.com/ramonehamilton/MTGA-Companion/cmd/mtga-companion`
    - Program arguments: `daemon --debug-mode`
    - Working directory: `$PROJECT_DIR$`
 
-3. **Compound Configuration** (Run Both):
+3. **Frontend Run Configuration**:
+   - Name: "Frontend Dev"
+   - Type: npm
+   - Script: `dev`
+   - Package.json: `$PROJECT_DIR$/frontend/package.json`
+
+4. **Compound Configuration** (Run All):
    - Create compound configuration
-   - Add "Daemon" and "Wails Dev"
-   - Run both simultaneously
+   - Add "Daemon", "API Server", and "Frontend Dev"
+   - Run simultaneously
 
 ## Debugging
 
@@ -287,7 +273,7 @@ log.Printf("[DEBUG] Variable value: %+v", variable)
 
 **Use debugger in IDE**:
 - Set breakpoints in Go code
-- Run `wails dev` in debug mode
+- Run the API server in debug mode from your IDE
 - Debugger attaches to Go backend process
 
 **Enable debug mode**:
@@ -295,8 +281,8 @@ log.Printf("[DEBUG] Variable value: %+v", variable)
 # Daemon
 ./bin/mtga-companion daemon --debug-mode
 
-# GUI (set environment variable)
-DEBUG=true wails dev
+# API Server (set environment variable)
+DEBUG=true go run ./cmd/apiserver
 ```
 
 ### Frontend Debugging (React)
@@ -312,11 +298,10 @@ console.log('Debug info:', data);
 console.error('Error occurred:', error);
 ```
 
-**Wails runtime events**:
+**WebSocket events in frontend**:
 ```typescript
-import { EventsOn, EventsOff } from '../wailsjs/runtime';
-
-EventsOn('debug:event', (data) => {
+// Subscribe to real-time events via WebSocket
+websocket.on('debug:event', (data) => {
   console.log('Event received:', data);
 });
 ```
@@ -484,8 +469,9 @@ npm run test:coverage
 
 **E2E Tests (Playwright)**:
 ```bash
-# Start the Wails dev server first
-wails dev
+# Start the API server and frontend dev server first
+# Terminal 1: go run ./cmd/apiserver
+# Terminal 2: cd frontend && npm run dev
 
 # In another terminal:
 cd frontend
@@ -508,16 +494,15 @@ npx playwright show-report
 import { describe, it, expect, vi } from 'vitest';
 import { screen, waitFor } from '@testing-library/react';
 import { render } from '../test/utils/testUtils';
-import { mockWailsApp } from '../test/mocks/wailsApp';
 import Footer from './Footer';
 
 describe('Footer', () => {
   it('should display match statistics', async () => {
-    // Mock the backend response
-    mockWailsApp.GetStats.mockResolvedValue({
+    // Mock the REST API response
+    fetchMock.mockResponseOnce(JSON.stringify({
       TotalMatches: 100,
       WinRate: 0.6,
-    });
+    }));
 
     render(<Footer />);
 
@@ -546,7 +531,7 @@ test('should navigate to draft view', async ({ page }) => {
 **Testing Best Practices**:
 - Test user behavior, not implementation details
 - Use meaningful test descriptions: "should [do X] when [Y condition]"
-- Mock all Wails backend calls using `mockWailsApp`
+- Mock REST API calls appropriately
 - Use `waitFor` for async operations, not fixed timeouts
 - Test loading states, error states, and empty states
 - Keep tests isolated and independent
@@ -633,17 +618,17 @@ const loadMatches = async () => {
 };
 ```
 
-**Event listeners**:
+**Event listeners (WebSocket)**:
 ```typescript
 useEffect(() => {
-    // Subscribe to events
-    EventsOn('match:new', () => {
+    // Subscribe to real-time events via WebSocket
+    const unsubscribe = websocket.on('match:new', () => {
         loadMatches(); // Refresh data
     });
 
     // Cleanup
     return () => {
-        EventsOff('match:new');
+        unsubscribe();
     };
 }, []);
 ```
@@ -660,26 +645,26 @@ server.Broadcast("inventory:updated", map[string]interface{}{
 })
 ```
 
-**2. Handle in GUI backend** (`app.go`):
+**2. Handle in API server** (`cmd/apiserver/main.go` or handler):
 ```go
-func (a *App) handleInventoryUpdate(data map[string]interface{}) {
+func (h *Handler) handleInventoryUpdate(data map[string]interface{}) {
     // Process data
     log.Printf("Inventory updated: %+v", data)
 
-    // Forward to frontend
-    runtime.EventsEmit(a.ctx, "inventory:updated", data)
+    // Broadcast to connected WebSocket clients
+    h.wsHub.Broadcast("inventory:updated", data)
 }
 ```
 
 **3. Listen in frontend** (`frontend/src/pages/Inventory.tsx`):
 ```typescript
 useEffect(() => {
-    EventsOn('inventory:updated', (data: any) => {
+    const unsubscribe = websocket.on('inventory:updated', (data: any) => {
         setInventory(data);
     });
 
     return () => {
-        EventsOff('inventory:updated');
+        unsubscribe();
     };
 }, []);
 ```
@@ -734,26 +719,30 @@ func (r *inventoryRepository) GetLatest() (*models.Inventory, error) {
 ./bin/mtga-companion migrate up
 ```
 
-### Adding a New Wails Backend Method
+### Adding a New REST API Endpoint
 
-**1. Add method to App** (`app.go`):
+**1. Add handler** (in your API handler file):
 ```go
 // GetInventory returns current inventory
-func (a *App) GetInventory() (*models.Inventory, error) {
-    return a.db.Inventory.GetLatest()
+func (h *Handler) GetInventory(w http.ResponseWriter, r *http.Request) {
+    inv, err := h.db.Inventory.GetLatest()
+    if err != nil {
+        http.Error(w, err.Error(), http.StatusInternalServerError)
+        return
+    }
+    json.NewEncoder(w).Encode(inv)
 }
 ```
 
-**2. Generate TypeScript bindings**:
-```bash
-wails generate module
+**2. Register route** (in your router setup):
+```go
+mux.HandleFunc("GET /api/inventory", handler.GetInventory)
 ```
 
-**3. Use in frontend**:
+**3. Call from frontend**:
 ```typescript
-import { GetInventory } from '../wailsjs/go/main/App';
-
-const inventory = await GetInventory();
+const response = await fetch('/api/inventory');
+const inventory = await response.json();
 ```
 
 ## Contributing Guidelines
@@ -808,24 +797,17 @@ const inventory = await GetInventory();
 
 ## Common Development Tasks
 
-### Regenerate Wails Bindings
-
-After changing Go backend methods in `app.go`:
-```bash
-wails generate module
-```
-
-This regenerates:
-- `frontend/wailsjs/go/main/App.js`
-- `frontend/wailsjs/go/main/App.d.ts`
-
 ### Build Production Binary
 
-**Wails app** (GUI):
+**API server**:
 ```bash
-wails build
-# Output: build/bin/MTGA-Companion.app (macOS)
-# Output: build/bin/MTGA-Companion.exe (Windows)
+go build -o bin/apiserver ./cmd/apiserver
+```
+
+**Frontend**:
+```bash
+cd frontend && npm run build
+# Output: frontend/dist/
 ```
 
 **CLI binary**:
@@ -915,15 +897,6 @@ go test -race ./...
 - No sensitive data logged
 
 ## Troubleshooting Development Issues
-
-### "Wails not found"
-
-```bash
-# Ensure Go bin is in PATH
-export PATH=$PATH:$(go env GOPATH)/bin
-
-# Or add to ~/.zshrc or ~/.bashrc
-```
 
 ### "Frontend dependencies missing"
 

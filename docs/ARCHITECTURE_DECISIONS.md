@@ -100,7 +100,7 @@ This document records significant architectural decisions made during the develo
 
 ## ADR-004: Wails v2 for Desktop GUI (2024-11)
 
-**Status**: ✅ Accepted
+**Status**: ⚠️ Superseded -- The application has migrated from Wails to a REST API + WebSocket architecture. The Go backend now runs as a standalone HTTP server (`cmd/apiserver/main.go`) and the React frontend communicates via REST endpoints and WebSocket for real-time events. This ADR is preserved for historical context.
 
 **Context**:
 - Need cross-platform desktop GUI
@@ -156,7 +156,7 @@ This document records significant architectural decisions made during the develo
 - **Ecosystem**: Excellent libraries (React Router, Recharts)
 - **Documentation**: Extensive resources and community support
 - **Team familiarity**: React is widely known
-- **Wails support**: First-class TypeScript bindings generation
+- **API integration**: Works well with REST API data fetching patterns
 
 **Alternatives Considered**:
 - **Vue 3**: Comparable, but React has better charting libraries
@@ -250,35 +250,35 @@ This document records significant architectural decisions made during the develo
 
 ## ADR-008: Real-time Updates via Event System (2024-11)
 
-**Status**: ✅ Accepted
+**Status**: ✅ Accepted (updated -- now uses WebSocket instead of Wails events)
 
 **Context**:
 - Need to update GUI when new matches are detected
 - Polling from frontend would be inefficient
-- Wails provides event system for backend→frontend communication
+- Real-time push from backend to frontend is essential
 
-**Decision**: Use Wails event system for real-time updates
+**Decision**: Use WebSocket for real-time backend-to-frontend updates
 
 **Pattern**:
 ```go
-// Backend emits event when data changes
-runtime.EventsEmit(ctx, "stats:updated", data)
+// Backend broadcasts event when data changes
+wsHub.Broadcast("stats:updated", data)
 ```
 
 ```typescript
-// Frontend listens and refreshes
-EventsOn('stats:updated', () => { loadData() })
+// Frontend listens and refreshes via WebSocket
+websocket.on('stats:updated', () => { loadData() })
 ```
 
 **Rationale**:
 - **Efficient**: Backend pushes updates only when needed
 - **Decoupled**: Frontend doesn't need to poll
 - **Reactive**: UI updates automatically
-- **Simple**: Built into Wails, no additional libraries
+- **Standard protocol**: WebSocket is widely supported and well-understood
 
 **Alternatives Considered**:
 - **Frontend polling**: Wasteful, adds latency
-- **WebSockets**: Overkill for single-user desktop app
+- **Server-Sent Events**: One-directional, less flexible than WebSocket
 
 **Consequences**:
 - ✅ Instant updates when matches detected
@@ -435,7 +435,7 @@ internal/
 │   └── startup_command.go
 ├── events/            # Observer pattern (Phase 4)
 │   ├── dispatcher.go  # EventDispatcher
-│   └── observers.go   # WailsObserver, IPCObserver, LoggingObserver
+│   └── observers.go   # WebSocketObserver, IPCObserver, LoggingObserver
 ├── export/
 │   └── builder.go     # Builder pattern (Phase 3)
 ├── gui/               # Facade pattern (Phase 1)
@@ -453,8 +453,8 @@ frontend/               # Testing infrastructure (Phase 5)
 │   │   ├── utils/
 │   │   │   └── testUtils.tsx  # Custom render with router
 │   │   └── mocks/
-│   │       ├── wailsApp.ts    # Mock Go backend functions
-│   │       └── wailsRuntime.ts # Mock Wails runtime
+│   │       ├── api.ts         # Mock REST API client functions
+│   │       └── websocket.ts   # Mock WebSocket events
 │   └── components/
 │       ├── *.test.tsx         # 122 component tests
 │       └── ...
@@ -570,7 +570,7 @@ frontend/               # Testing infrastructure (Phase 5)
 1. **ADR-001**: SQLite for Local Database
 2. **ADR-002**: Pure Go SQLite Driver
 3. **ADR-003**: Golang-migrate for Migrations
-4. **ADR-004**: Wails v2 for Desktop GUI
+4. **ADR-004**: Wails v2 for Desktop GUI (Superseded -- migrated to REST API + WebSocket)
 5. **ADR-005**: React + TypeScript Frontend
 6. **ADR-006**: Dark Theme as Primary UI
 7. **ADR-007**: Responsive Design Principles

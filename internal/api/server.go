@@ -31,7 +31,7 @@ type Server struct {
 	// WebSocket hub for real-time events
 	wsHub *websocket.Hub
 
-	// Facades - same facades used by Wails
+	// Facades - domain-specific facades for API routes
 	matchFacade      *gui.MatchFacade
 	draftFacade      *gui.DraftFacade
 	cardFacade       *gui.CardFacade

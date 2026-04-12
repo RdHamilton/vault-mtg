@@ -271,7 +271,7 @@ MTGA-Companion uses a **REST API + Browser SPA** architecture (v1.4+) that decou
    │
    ↓
 10. GUI fetches updated data from database
-    │  (via Wails backend methods)
+    │  (via REST API)
     │
     ↓
 11. React components re-render with new data

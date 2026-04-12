@@ -47,7 +47,7 @@
 **Phase 4: Observer & Command Patterns**
 - ✅ **PR #483** - Implement Observer & Command Patterns
   - EventDispatcher for centralized event management
-  - WailsObserver, IPCObserver, LoggingObserver for decoupled event handling
+  - WebSocketObserver, IPCObserver, LoggingObserver for decoupled event handling
   - Command pattern for daemon operations (ReplayCommand, StartupCommand)
   - Reusable, testable, composable operations
 
@@ -57,7 +57,7 @@
 - ✅ **PR #485** - Phase 5: Add UI Testing Infrastructure (Issues #469-#471)
   - Vitest + React Testing Library setup
   - Test utilities and mocking system
-  - Comprehensive Wails runtime mocks
+  - Comprehensive REST API mocks
   - 15+ tests for Footer component
 - ✅ **PR #486** - Phase 5: Draft Component Tests (#472)
   - 16 tests for Draft.tsx
@@ -210,8 +210,9 @@
   - Removed unused daemon display files
   - Project cleanup for v1.1
 
-### v1.0 - Wails Desktop GUI & Service Architecture (Prior)
-- ✅ Complete desktop GUI with React + TypeScript + Wails v2
+### v1.0 - Desktop GUI & Service Architecture (Prior)
+*Note: v1.0 originally used Wails v2; the app has since migrated to a REST API + WebSocket architecture.*
+- ✅ Complete desktop GUI with React + TypeScript
 - ✅ Service-based architecture (daemon + GUI)
 - ✅ Match History, Win Rate Trends, Deck Performance
 - ✅ Rank Progression tracking
@@ -369,7 +370,7 @@
 - **Status**: ✅ All phases complete, ready for release
 - **CI**: All checks passing ✅ (frontend tests, security scans, backend tests)
 - **Platforms**: macOS, Windows, Linux
-- **Distribution**: Wails build creates native apps
+- **Distribution**: Go binary + bundled frontend assets
 - **Release Date**: 2025-11-21
 
 ### Next Release: v1.3
@@ -425,18 +426,18 @@
 ### Context for Claude:
 - **Current Version**: v1.2.0 (ready for release)
 - **Next Version**: v1.3 (Deck Builder with AI recommendations)
-- We use Wails v2 (Go backend + React frontend)
-- **Service-based architecture**: Daemon (background) + GUI (frontend)
+- We use a REST API server (Go) + React SPA frontend (browser-based)
+- **Service-based architecture**: Daemon (background) + API Server + React Frontend
 - **Daemon mode (recommended)**: 24/7 log monitoring, WebSocket events
-- **Standalone mode (fallback)**: GUI with embedded poller
+- **Standalone mode (fallback)**: API server with embedded poller
 - Follow responsive design principles (see docs/CLAUDE_CODE_GUIDE.md)
 - Material Design-inspired dark theme
 - All UI must work 800x600 to 1920x1080+
-- Real-time updates via WebSocket events (daemon) or EventsEmit (standalone)
+- Real-time updates via WebSocket events
 
 ### Architecture (v1.2):
 - **Daemon** (`cmd/mtga-companion/daemon.go`): Background service, WebSocket server
-- **GUI** (`main.go`, `app.go`): Wails app (~300 lines after refactor), delegates to facades
+- **API Server** (`cmd/apiserver/main.go`): REST API server, delegates to facades
 - **Facades** (`internal/gui/*_facade.go`): Domain-specific facades (Match, Draft, Deck, Card, Export, System)
 - **Patterns** (`internal/events/`, `internal/commands/`): Observer & Command patterns
 - **Strategies** (`internal/mtga/draft/insights/*_strategy.go`): Format-specific analysis

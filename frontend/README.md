@@ -1,6 +1,6 @@
 # MTGA-Companion Frontend
 
-Modern React + TypeScript frontend for the MTGA-Companion desktop application, built with Wails v2.
+Modern React + TypeScript frontend for the MTGA-Companion desktop application, using a REST API + WebSocket architecture.
 
 ## Technology Stack
 
@@ -9,7 +9,8 @@ Modern React + TypeScript frontend for the MTGA-Companion desktop application, b
 - **React Router** - Client-side routing
 - **Recharts** - Data visualization and charting
 - **Vite** - Build tool and dev server
-- **Wails Bindings** - Type-safe Go ↔ TypeScript communication
+- **REST API** - Backend communication via HTTP endpoints
+- **WebSocket** - Real-time event updates from the backend
 
 ## Project Structure
 
@@ -31,10 +32,6 @@ frontend/
 │   ├── App.tsx             # Root component with routing
 │   ├── App.css             # Global styles and theme
 │   └── main.tsx            # Frontend entry point
-├── wailsjs/                # Auto-generated Wails bindings (DO NOT EDIT)
-│   ├── go/                # Go method bindings
-│   │   └── main/App.ts   # App struct methods
-│   └── runtime/           # Wails runtime functions
 ├── index.html              # HTML entry point
 ├── package.json            # Dependencies and scripts
 ├── tsconfig.json           # TypeScript configuration
@@ -62,12 +59,15 @@ npm run dev
 ```
 Opens at `http://localhost:5173` - good for UI-only work
 
-**Option 2: Full Wails dev mode** (recommended):
+**Option 2: Full development mode** (recommended):
 ```bash
-cd ..
-wails dev
+# Terminal 1: Start the REST API server
+cd .. && go run ./cmd/apiserver
+
+# Terminal 2: Start the frontend dev server
+npm run dev
 ```
-Runs both Go backend and React frontend with hot reload
+Runs both Go REST API backend and React frontend with hot reload
 
 ### Build for Production
 
@@ -88,31 +88,29 @@ npm run type-check
 npm run lint
 ```
 
-## Wails Integration
+## REST API Integration
 
 ### Backend Communication
 
-Call Go methods from TypeScript:
+Call Go backend endpoints from TypeScript via the REST API:
 
 ```typescript
-import { GetMatches, GetStats } from '../../wailsjs/go/main/App';
-import { models } from '../../wailsjs/go/models';
+// Fetch matches from the REST API
+const response = await fetch('/api/matches?format=ranked');
+const matches = await response.json();
 
-// Call backend method
-const filter = new models.StatsFilter();
-const matches = await GetMatches(filter);
-const stats = await GetStats(filter);
+// Fetch stats from the REST API
+const statsResponse = await fetch('/api/stats');
+const stats = await statsResponse.json();
 ```
 
 ### Real-Time Events
 
-Listen for backend events:
+Listen for backend events via WebSocket:
 
 ```typescript
-import { EventsOn } from '../../wailsjs/runtime/runtime';
-
 useEffect(() => {
-  const unsubscribe = EventsOn('stats:updated', (data) => {
+  const unsubscribe = websocket.on('stats:updated', (data) => {
     console.log('Stats updated:', data);
     // Refresh data
   });
@@ -124,17 +122,6 @@ useEffect(() => {
   };
 }, []);
 ```
-
-### Regenerating Bindings
-
-After changing Go methods in `app.go`:
-
-```bash
-cd ..
-wails generate module
-```
-
-This updates `wailsjs/` with new TypeScript bindings.
 
 ## Design System
 
@@ -190,13 +177,15 @@ Use multiples of 4px or 8px for consistent spacing:
 
 ```typescript
 import { useState, useEffect } from 'react';
-import { EventsOn } from '../../wailsjs/runtime/runtime';
-import { GetMatches } from '../../wailsjs/go/main/App';
-import { models } from '../../wailsjs/go/models';
 import './PageName.css';
 
+interface Match {
+  id: string;
+  // ... other fields
+}
+
 const PageName = () => {
-  const [data, setData] = useState<models.Match[]>([]);
+  const [data, setData] = useState<Match[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -204,7 +193,8 @@ const PageName = () => {
     try {
       setLoading(true);
       setError(null);
-      const result = await GetMatches(new models.StatsFilter());
+      const response = await fetch('/api/matches');
+      const result = await response.json();
       setData(result || []);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load data');
@@ -217,9 +207,9 @@ const PageName = () => {
     loadData();
   }, []);
 
-  // Listen for real-time updates
+  // Listen for real-time updates via WebSocket
   useEffect(() => {
-    const unsubscribe = EventsOn('stats:updated', () => {
+    const unsubscribe = websocket.on('stats:updated', () => {
       loadData();
     });
     return () => {
@@ -293,7 +283,7 @@ tr:hover {
 ## Best Practices
 
 ### TypeScript
-- ✅ Use proper types from `wailsjs/go/models`
+- ✅ Use proper types for API responses
 - ✅ Define interfaces for component props
 - ❌ Avoid `any` types
 - ❌ Don't use `as` type assertions unless necessary
@@ -321,27 +311,15 @@ tr:hover {
 
 ## Troubleshooting
 
-### "Cannot find module wailsjs"
+### TypeScript errors after changing API response types
 
-Run from project root:
-```bash
-wails generate module
-```
-
-### TypeScript errors after changing Go models
-
-Regenerate bindings:
-```bash
-cd ..
-wails generate module
-```
+Ensure your frontend type definitions match the Go struct changes in the API server.
 
 ### Hot reload not working
 
-Restart `wails dev`:
+Restart the Vite dev server:
 ```bash
-cd ..
-wails dev
+npm run dev
 ```
 
 ### Chart not rendering
@@ -359,6 +337,5 @@ Ensure you're using `ResponsiveContainer`:
 
 - [React Documentation](https://react.dev/)
 - [TypeScript Handbook](https://www.typescriptlang.org/docs/)
-- [Wails Documentation](https://wails.io/docs/introduction)
 - [Recharts Documentation](https://recharts.org/en-US/)
 - [Vite Documentation](https://vite.dev/)

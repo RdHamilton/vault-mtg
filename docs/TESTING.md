@@ -12,7 +12,7 @@ This document provides comprehensive guidance on testing for the MTGA Companion 
 - [Running Tests](#running-tests)
 - [Writing Tests](#writing-tests)
 - [Test Utilities and Helpers](#test-utilities-and-helpers)
-- [Mocking Wails Bindings](#mocking-wails-bindings)
+- [Mocking REST API Calls](#mocking-rest-api-calls)
 - [Best Practices](#best-practices)
 - [Coverage Targets](#coverage-targets)
 - [Troubleshooting](#troubleshooting)
@@ -106,11 +106,11 @@ import { describe, it, expect } from 'vitest';
 import { screen } from '@testing-library/react';
 import { render } from '../test/utils/testUtils';
 import Footer from './Footer';
-import { mockWailsApp } from '../test/mocks/wailsApp';
+import { mockApi } from '../test/mocks/api';
 
 describe('Footer Component', () => {
   it('should display total matches count', async () => {
-    mockWailsApp.GetStats.mockResolvedValue({
+    mockApi.getStats.mockResolvedValue({
       TotalMatches: 100,
       WinRate: 0.6,
     });
@@ -132,10 +132,11 @@ E2E tests use Playwright to test the full application.
 
 **Running**:
 ```bash
-# First, start the Wails dev server
-wails dev
+# First, start the API server and frontend dev server
+go run ./cmd/apiserver &
+cd frontend && npm run dev &
 
-# In another terminal:
+# Then run E2E tests:
 cd frontend
 
 # Run E2E tests (headless)
@@ -184,7 +185,7 @@ describe('ComponentName', () => {
 
   it('should do something when condition', async () => {
     // Arrange: Set up test data and mocks
-    mockWailsApp.GetData.mockResolvedValue(testData);
+    mockApi.getData.mockResolvedValue(testData);
 
     // Act: Render component and interact
     render(<ComponentName />);
@@ -244,68 +245,68 @@ The custom render wraps components with:
 Create test data using model constructors:
 
 ```typescript
-import { models } from '../../wailsjs/go/models';
+import { Match } from '../types/models';
 
-function createMockMatch(overrides = {}) {
-  return new models.Match({
+function createMockMatch(overrides: Partial<Match> = {}): Match {
+  return {
     ID: 'test-match-1',
     Result: 'win',
     Format: 'Standard',
-    Timestamp: new Date(),
+    Timestamp: new Date().toISOString(),
     ...overrides,
-  });
+  };
 }
 
 // Use in tests
 const testMatch = createMockMatch({ Result: 'loss' });
 ```
 
-## Mocking Wails Bindings
+## Mocking REST API Calls
 
 ### Setup
 
-Wails bindings are mocked in `frontend/src/test/mocks/`:
+REST API calls are mocked in `frontend/src/test/mocks/`:
 
-- `wailsApp.ts`: Mocks Go backend functions
-- `wailsRuntime.ts`: Mocks Wails runtime functions (EventsOn, EventsEmit, etc.)
+- `api.ts`: Mocks REST API client functions
+- `websocket.ts`: Mocks WebSocket event handling
 
 ### Using Mocks
 
 ```typescript
-import { mockWailsApp } from '../test/mocks/wailsApp';
-import { mockEventEmitter } from '../test/mocks/wailsRuntime';
+import { mockApi } from '../test/mocks/api';
+import { mockWebSocket } from '../test/mocks/websocket';
 
 // Mock function return values
-mockWailsApp.GetStats.mockResolvedValue({
+mockApi.getStats.mockResolvedValue({
   TotalMatches: 100,
   WinRate: 0.6,
 });
 
 // Verify function calls
-expect(mockWailsApp.GetStats).toHaveBeenCalled();
+expect(mockApi.getStats).toHaveBeenCalled();
 
-// Emit events
-mockEventEmitter.emit('stats:updated', { matches: 5 });
+// Simulate WebSocket events
+mockWebSocket.emit('stats:updated', { matches: 5 });
 
 // Clear event listeners
-mockEventEmitter.clear();
+mockWebSocket.clear();
 ```
 
 ### Adding New Mocks
 
-When adding new Wails bindings:
+When adding new API endpoints:
 
-1. Add the mock function to `wailsApp.ts`:
+1. Add the mock function to `api.ts`:
 ```typescript
-export const mockWailsApp = {
+export const mockApi = {
   // ...existing mocks
-  NewFunction: vi.fn(() => Promise.resolve([] as any[])),
+  newFunction: vi.fn(() => Promise.resolve([] as any[])),
 };
 ```
 
-2. The mock is automatically available via `window.go.main.App`:
+2. The mock intercepts calls to the corresponding API client module:
 ```typescript
-// No additional setup needed, mocks are global
+// No additional setup needed, mocks are configured in test setup
 ```
 
 ## Best Practices
@@ -329,7 +330,7 @@ export const mockWailsApp = {
 ```typescript
 // Good: Tests behavior
 it('should show error message when fetch fails', async () => {
-  mockWailsApp.GetData.mockRejectedValue(new Error('Failed'));
+  mockApi.getData.mockRejectedValue(new Error('Failed'));
   render(<Component />);
   await waitFor(() => {
     expect(screen.getByText(/error/i)).toBeInTheDocument();
@@ -391,13 +392,13 @@ npm run test:coverage
 
 ### Common Issues
 
-#### "Cannot find module '@wailsio/runtime'"
+#### "Cannot find module 'services/api'"
 
-**Cause**: Wails runtime not properly mocked
+**Cause**: API client module not properly mocked
 
 **Solution**: Ensure test setup imports the mock:
 ```typescript
-import { mockEventEmitter } from '../test/mocks/wailsRuntime';
+import { mockApi } from '../test/mocks/api';
 ```
 
 #### "TypeError: Cannot read property 'then' of undefined"
@@ -406,8 +407,8 @@ import { mockEventEmitter } from '../test/mocks/wailsRuntime';
 
 **Solution**: Ensure mocks return Promises:
 ```typescript
-mockWailsApp.GetData.mockResolvedValue(data); // Good
-mockWailsApp.GetData.mockReturnValue(data);   // Bad - missing Promise
+mockApi.getData.mockResolvedValue(data); // Good
+mockApi.getData.mockReturnValue(data);   // Bad - missing Promise
 ```
 
 #### "Test times out waiting for element"
@@ -421,12 +422,13 @@ mockWailsApp.GetData.mockReturnValue(data);   // Bad - missing Promise
 
 #### "E2E tests fail with connection refused"
 
-**Cause**: Wails dev server not running
+**Cause**: API server or frontend dev server not running
 
-**Solution**: Start the dev server first:
+**Solution**: Start both servers first:
 ```bash
-wails dev
-# Wait for server to start
+go run ./cmd/apiserver &
+cd frontend && npm run dev &
+# Wait for servers to start
 # Then run E2E tests
 ```
 

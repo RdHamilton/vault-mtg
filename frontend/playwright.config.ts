@@ -3,8 +3,7 @@ import { defineConfig, devices } from '@playwright/test';
 /**
  * Playwright configuration for E2E testing of MTGA Companion
  *
- * This configuration uses the REST API backend for testing, which allows
- * E2E tests to run without the Wails runtime.
+ * This configuration uses the REST API backend for testing.
  *
  * Test Projects:
  * - smoke: Quick critical path tests (@smoke tagged) - for post-merge validation
