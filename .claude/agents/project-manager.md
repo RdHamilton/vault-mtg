@@ -337,11 +337,9 @@ gh project field-list <NUMBER> --owner RdHamilton --format json
 ## Commands Reference
 
 ```bash
-# Create issue
-gh issue create --title "<title>" --body "<body>" --label "<label1>,<label2>"
-
-# Add issue to project
-gh project item-add <PROJECT_NUMBER> --owner RdHamilton --url <ISSUE_URL>
+# Create issue — ALWAYS follow immediately with item-add (two-step, no exceptions)
+ISSUE_URL=$(gh issue create --title "<title>" --body "<body>" --label "<label1>,<label2>" --json url -q .url)
+gh project item-add 27 --owner RdHamilton --url "$ISSUE_URL"
 
 # Create project
 gh project create --owner RdHamilton --title "<title>"
@@ -393,7 +391,7 @@ gh api repos/RdHamilton/MTGA-Companion/milestones --method POST \
 1. NEVER create an issue without at least one label and an **Agent** field value in the body
 2. NEVER create a project without all 5 status columns configured
 3. Always use the existing label if one fits - check the list above first
-4. Always add new issues to the relevant project board
+4. **ALWAYS add every new issue to the v2.0 project board immediately after creating it** — run `gh project item-add 27 --owner RdHamilton --url <issue_url>` as the very next command after `gh issue create`. This is non-negotiable; issues not on the board are invisible to the team.
 5. Issue titles should be concise but descriptive (under 80 chars)
 6. Always include Acceptance Criteria in issue bodies
 7. Use conventional prefixes in issue titles when appropriate (e.g., "Fix:", "Add:", "Refactor:")
