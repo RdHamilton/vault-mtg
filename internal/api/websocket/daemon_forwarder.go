@@ -1,8 +1,10 @@
 package websocket
 
 import (
+	"encoding/json"
 	"log"
-	"reflect"
+
+	contract "github.com/ramonehamilton/mtga-contract"
 )
 
 // DaemonEventForwarder forwards daemon events to the API server's WebSocket hub.
@@ -18,46 +20,46 @@ func NewDaemonEventForwarder(hub *Hub) *DaemonEventForwarder {
 }
 
 // ForwardEvent forwards a daemon event to all connected WebSocket clients.
-// The event parameter should be a daemon.Event but we accept interface{}
-// to implement the daemon.EventForwarder interface without import cycles.
+// The event parameter must be a contract.DaemonEvent. The interface{} type is
+// retained to satisfy the daemon.EventForwarder interface without an import
+// cycle between the api and daemon packages. No reflection is used; the
+// value is decoded via a JSON round-trip into the strongly-typed envelope.
 func (f *DaemonEventForwarder) ForwardEvent(event interface{}) {
-	var eventType string
-	var eventData interface{}
+	var daemonEvent contract.DaemonEvent
 
-	// Extract Type and Data fields using reflection
-	// This avoids import cycles with the daemon package
-	if v, ok := getFieldByName(event, "Type"); ok {
-		eventType, _ = v.(string)
-	}
-	if v, ok := getFieldByName(event, "Data"); ok {
-		eventData = v
+	switch v := event.(type) {
+	case contract.DaemonEvent:
+		daemonEvent = v
+	case *contract.DaemonEvent:
+		if v == nil {
+			log.Printf("[DaemonForwarder] Warning: received nil *contract.DaemonEvent")
+			return
+		}
+		daemonEvent = *v
+	default:
+		// Fall back to a JSON round-trip for callers that still pass the old
+		// daemon.Event struct. This path will be removed once the daemon is
+		// migrated to emit contract.DaemonEvent directly.
+		data, err := json.Marshal(event)
+		if err != nil {
+			log.Printf("[DaemonForwarder] Warning: cannot marshal event %T: %v", event, err)
+			return
+		}
+		if err := json.Unmarshal(data, &daemonEvent); err != nil {
+			log.Printf("[DaemonForwarder] Warning: cannot decode event %T into DaemonEvent: %v", event, err)
+			return
+		}
 	}
 
-	if eventType == "" {
-		log.Printf("[DaemonForwarder] Warning: Could not extract event type from %T", event)
+	if daemonEvent.Type == "" {
+		log.Printf("[DaemonForwarder] Warning: received event with empty Type")
 		return
 	}
 
 	wsEvent := Event{
-		Type: eventType,
-		Data: eventData,
+		Type: daemonEvent.Type,
+		Data: daemonEvent,
 	}
 	f.hub.BroadcastEvent(wsEvent)
 	log.Printf("[DaemonForwarder] Forwarded event %s to %d clients", wsEvent.Type, f.hub.ClientCount())
-}
-
-// getFieldByName extracts a field value from a struct by name using reflection.
-func getFieldByName(obj interface{}, fieldName string) (interface{}, bool) {
-	v := reflect.ValueOf(obj)
-	if v.Kind() == reflect.Ptr {
-		v = v.Elem()
-	}
-	if v.Kind() != reflect.Struct {
-		return nil, false
-	}
-	f := v.FieldByName(fieldName)
-	if !f.IsValid() {
-		return nil, false
-	}
-	return f.Interface(), true
 }

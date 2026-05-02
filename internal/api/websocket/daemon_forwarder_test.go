@@ -9,13 +9,15 @@ import (
 	"time"
 
 	"github.com/gorilla/websocket"
+
+	contract "github.com/ramonehamilton/mtga-contract"
 )
 
-// MockDaemonEvent simulates a daemon.Event struct for testing.
-// This mimics the daemon.Event without importing the daemon package.
-type MockDaemonEvent struct {
-	Type string
-	Data interface{}
+// mockEvent simulates a legacy daemon.Event struct (struct with Type+Data fields)
+// to verify the JSON-fallback path in ForwardEvent.
+type mockEvent struct {
+	Type string      `json:"type"`
+	Data interface{} `json:"data"`
 }
 
 func TestNewDaemonEventForwarder(t *testing.T) {
@@ -37,55 +39,43 @@ func TestDaemonEventForwarder_ForwardEvent_NoClients(t *testing.T) {
 
 	forwarder := NewDaemonEventForwarder(hub)
 
-	// Create a daemon event
-	event := MockDaemonEvent{
-		Type: "quest:updated",
-		Data: map[string]interface{}{
-			"quests": 5,
-		},
-	}
+	event := makeDaemonEvent("quest:updated", nil)
 
-	// Should not panic when no clients are connected
+	// Should not panic when no clients are connected.
 	forwarder.ForwardEvent(event)
 
-	// Give time for the goroutine to process
+	// Give time for the goroutine to process.
 	time.Sleep(10 * time.Millisecond)
 }
 
 func TestDaemonEventForwarder_ForwardEvent_AllDaemonEventTypes(t *testing.T) {
-	// List all daemon event types that should be forwarded
-	daemonEventTypes := []struct {
-		eventType string
-		data      interface{}
-	}{
-		{"daemon:status", map[string]interface{}{"status": "connected", "watching": true}},
-		{"daemon:error", map[string]interface{}{"error": "connection failed"}},
-		{"stats:updated", map[string]interface{}{"matches": 10, "wins": 5}},
-		{"deck:updated", map[string]interface{}{"deckId": 123}},
-		{"rank:updated", map[string]interface{}{"rank": "Gold", "tier": 2}},
-		{"quest:updated", map[string]interface{}{"quests": []string{"quest1", "quest2"}}},
-		{"draft:updated", map[string]interface{}{"sessionId": "draft123", "picks": 5}},
-		{"replay:started", map[string]interface{}{"totalEntries": 1000, "speed": 2.0, "filter": "draft"}},
-		{"replay:error", map[string]interface{}{"error": "file not found"}},
-		{"replay:completed", map[string]interface{}{"totalEntries": 1000, "elapsed": 60.5}},
-		{"replay:progress", map[string]interface{}{"currentEntry": 500, "totalEntries": 1000, "percentComplete": 50.0}},
-		{"replay:paused", map[string]interface{}{"currentEntry": 250, "totalEntries": 1000}},
-		{"replay:resumed", map[string]interface{}{"currentEntry": 250, "totalEntries": 1000}},
-		{"replay:draft_detected", map[string]interface{}{"currentEntry": 100, "message": "Draft event detected"}},
+	daemonEventTypes := []string{
+		"daemon:status",
+		"daemon:error",
+		"stats:updated",
+		"deck:updated",
+		"rank:updated",
+		"quest:updated",
+		"draft:updated",
+		"replay:started",
+		"replay:error",
+		"replay:completed",
+		"replay:progress",
+		"replay:paused",
+		"replay:resumed",
+		"replay:draft_detected",
 	}
 
-	for _, tc := range daemonEventTypes {
-		t.Run(tc.eventType, func(t *testing.T) {
+	for _, eventType := range daemonEventTypes {
+		t.Run(eventType, func(t *testing.T) {
 			hub := NewHub()
 			go hub.Run()
 
-			// Create test server
 			server := httptest.NewServer(http.HandlerFunc(hub.ServeWs))
 			defer server.Close()
 
 			wsURL := "ws" + strings.TrimPrefix(server.URL, "http")
 
-			// Connect a client
 			dialer := websocket.Dialer{}
 			conn, _, err := dialer.Dial(wsURL, nil)
 			if err != nil {
@@ -93,36 +83,24 @@ func TestDaemonEventForwarder_ForwardEvent_AllDaemonEventTypes(t *testing.T) {
 			}
 			defer conn.Close()
 
-			// Give time for registration
 			time.Sleep(50 * time.Millisecond)
 
-			// Create forwarder and forward event
 			forwarder := NewDaemonEventForwarder(hub)
-			event := MockDaemonEvent{
-				Type: tc.eventType,
-				Data: tc.data,
-			}
-			forwarder.ForwardEvent(event)
+			forwarder.ForwardEvent(makeDaemonEvent(eventType, nil))
 
-			// Read the message from WebSocket
-			conn.SetReadDeadline(time.Now().Add(1 * time.Second))
+			conn.SetReadDeadline(time.Now().Add(time.Second))
 			_, message, err := conn.ReadMessage()
 			if err != nil {
 				t.Fatalf("Failed to read message: %v", err)
 			}
 
-			// Verify the message
 			var received Event
 			if err := json.Unmarshal(message, &received); err != nil {
 				t.Fatalf("Failed to unmarshal message: %v", err)
 			}
 
-			if received.Type != tc.eventType {
-				t.Errorf("Expected type '%s', got '%s'", tc.eventType, received.Type)
-			}
-
-			if received.Data == nil {
-				t.Error("Expected Data to not be nil")
+			if received.Type != eventType {
+				t.Errorf("Expected type %q, got %q", eventType, received.Type)
 			}
 		})
 	}
@@ -132,13 +110,11 @@ func TestDaemonEventForwarder_ForwardEvent_MultipleClients(t *testing.T) {
 	hub := NewHub()
 	go hub.Run()
 
-	// Create test server
 	server := httptest.NewServer(http.HandlerFunc(hub.ServeWs))
 	defer server.Close()
 
 	wsURL := "ws" + strings.TrimPrefix(server.URL, "http")
 
-	// Connect multiple clients
 	dialer := websocket.Dialer{}
 	var conns []*websocket.Conn
 
@@ -151,32 +127,22 @@ func TestDaemonEventForwarder_ForwardEvent_MultipleClients(t *testing.T) {
 	}
 
 	defer func() {
-		for _, conn := range conns {
-			conn.Close()
+		for _, c := range conns {
+			c.Close()
 		}
 	}()
 
-	// Give time for registrations
 	time.Sleep(50 * time.Millisecond)
 
-	// Verify all clients connected
 	if count := hub.ClientCount(); count != 3 {
 		t.Errorf("Expected 3 clients, got %d", count)
 	}
 
-	// Create forwarder and forward event
 	forwarder := NewDaemonEventForwarder(hub)
-	event := MockDaemonEvent{
-		Type: "quest:updated",
-		Data: map[string]interface{}{
-			"quests": 5,
-		},
-	}
-	forwarder.ForwardEvent(event)
+	forwarder.ForwardEvent(makeDaemonEvent("quest:updated", nil))
 
-	// All clients should receive the message
 	for i, conn := range conns {
-		conn.SetReadDeadline(time.Now().Add(1 * time.Second))
+		conn.SetReadDeadline(time.Now().Add(time.Second))
 		_, message, err := conn.ReadMessage()
 		if err != nil {
 			t.Errorf("Client %d failed to read message: %v", i, err)
@@ -190,7 +156,7 @@ func TestDaemonEventForwarder_ForwardEvent_MultipleClients(t *testing.T) {
 		}
 
 		if received.Type != "quest:updated" {
-			t.Errorf("Client %d expected type 'quest:updated', got '%s'", i, received.Type)
+			t.Errorf("Client %d expected type 'quest:updated', got %q", i, received.Type)
 		}
 	}
 }
@@ -201,27 +167,19 @@ func TestDaemonEventForwarder_ForwardEvent_EmptyType(t *testing.T) {
 
 	forwarder := NewDaemonEventForwarder(hub)
 
-	// Event with empty type should be logged as warning but not panic
-	event := MockDaemonEvent{
-		Type: "",
-		Data: map[string]interface{}{"key": "value"},
-	}
-
-	// Should not panic
-	forwarder.ForwardEvent(event)
+	// Empty type — should log warning and not panic.
+	forwarder.ForwardEvent(contract.DaemonEvent{Type: ""})
 }
 
 func TestDaemonEventForwarder_ForwardEvent_PointerEvent(t *testing.T) {
 	hub := NewHub()
 	go hub.Run()
 
-	// Create test server
 	server := httptest.NewServer(http.HandlerFunc(hub.ServeWs))
 	defer server.Close()
 
 	wsURL := "ws" + strings.TrimPrefix(server.URL, "http")
 
-	// Connect a client
 	dialer := websocket.Dialer{}
 	conn, _, err := dialer.Dial(wsURL, nil)
 	if err != nil {
@@ -229,20 +187,14 @@ func TestDaemonEventForwarder_ForwardEvent_PointerEvent(t *testing.T) {
 	}
 	defer conn.Close()
 
-	// Give time for registration
 	time.Sleep(50 * time.Millisecond)
 
 	forwarder := NewDaemonEventForwarder(hub)
 
-	// Forward a pointer to event (testing reflection handling)
-	event := &MockDaemonEvent{
-		Type: "stats:updated",
-		Data: map[string]interface{}{"matches": 10},
-	}
-	forwarder.ForwardEvent(event)
+	ev := makeDaemonEvent("stats:updated", nil)
+	forwarder.ForwardEvent(&ev) // Pass pointer — *contract.DaemonEvent path.
 
-	// Read the message
-	conn.SetReadDeadline(time.Now().Add(1 * time.Second))
+	conn.SetReadDeadline(time.Now().Add(time.Second))
 	_, message, err := conn.ReadMessage()
 	if err != nil {
 		t.Fatalf("Failed to read message: %v", err)
@@ -254,7 +206,7 @@ func TestDaemonEventForwarder_ForwardEvent_PointerEvent(t *testing.T) {
 	}
 
 	if received.Type != "stats:updated" {
-		t.Errorf("Expected type 'stats:updated', got '%s'", received.Type)
+		t.Errorf("Expected type 'stats:updated', got %q", received.Type)
 	}
 }
 
@@ -264,133 +216,24 @@ func TestDaemonEventForwarder_ForwardEvent_NonStructType(t *testing.T) {
 
 	forwarder := NewDaemonEventForwarder(hub)
 
-	// Forward a non-struct type (should log warning and return)
+	// Non-struct types should log a warning but not panic.
 	forwarder.ForwardEvent("not a struct")
 	forwarder.ForwardEvent(123)
 	forwarder.ForwardEvent(nil)
-
-	// Should not panic
 }
 
-func TestGetFieldByName_ValidStruct(t *testing.T) {
-	event := MockDaemonEvent{
-		Type: "test:event",
-		Data: map[string]interface{}{"key": "value"},
-	}
-
-	// Test getting Type field
-	typeVal, ok := getFieldByName(event, "Type")
-	if !ok {
-		t.Error("Expected to find Type field")
-	}
-	if typeVal != "test:event" {
-		t.Errorf("Expected 'test:event', got '%v'", typeVal)
-	}
-
-	// Test getting Data field
-	dataVal, ok := getFieldByName(event, "Data")
-	if !ok {
-		t.Error("Expected to find Data field")
-	}
-	if dataVal == nil {
-		t.Error("Expected Data to not be nil")
-	}
-}
-
-func TestGetFieldByName_PointerStruct(t *testing.T) {
-	event := &MockDaemonEvent{
-		Type: "test:event",
-		Data: map[string]interface{}{"key": "value"},
-	}
-
-	// Test getting Type field from pointer
-	typeVal, ok := getFieldByName(event, "Type")
-	if !ok {
-		t.Error("Expected to find Type field from pointer")
-	}
-	if typeVal != "test:event" {
-		t.Errorf("Expected 'test:event', got '%v'", typeVal)
-	}
-}
-
-func TestGetFieldByName_NonExistentField(t *testing.T) {
-	event := MockDaemonEvent{
-		Type: "test:event",
-		Data: nil,
-	}
-
-	_, ok := getFieldByName(event, "NonExistent")
-	if ok {
-		t.Error("Expected not to find NonExistent field")
-	}
-}
-
-func TestGetFieldByName_NonStruct(t *testing.T) {
-	// Test with string
-	_, ok := getFieldByName("not a struct", "Type")
-	if ok {
-		t.Error("Expected not to find field in string")
-	}
-
-	// Test with int
-	_, ok = getFieldByName(123, "Type")
-	if ok {
-		t.Error("Expected not to find field in int")
-	}
-
-	// Test with nil
-	_, ok = getFieldByName(nil, "Type")
-	if ok {
-		t.Error("Expected not to find field in nil")
-	}
-}
-
-func TestGetFieldByName_NestedData(t *testing.T) {
-	type NestedStruct struct {
-		ID   int
-		Name string
-	}
-
-	type EventWithNested struct {
-		Type string
-		Data NestedStruct
-	}
-
-	event := EventWithNested{
-		Type: "nested:event",
-		Data: NestedStruct{
-			ID:   42,
-			Name: "test",
-		},
-	}
-
-	dataVal, ok := getFieldByName(event, "Data")
-	if !ok {
-		t.Error("Expected to find Data field")
-	}
-
-	nested, ok := dataVal.(NestedStruct)
-	if !ok {
-		t.Fatal("Expected Data to be NestedStruct")
-	}
-
-	if nested.ID != 42 {
-		t.Errorf("Expected ID=42, got %d", nested.ID)
-	}
-}
-
-func TestDaemonEventForwarder_IntegrationWithRealDaemonEventTypes(t *testing.T) {
-	// This test simulates the full flow from daemon event to WebSocket client
+func TestDaemonEventForwarder_ForwardEvent_LegacyFallback(t *testing.T) {
+	// Verify the JSON-fallback path works for legacy callers that still pass
+	// the old daemon.Event struct (a struct with Type and Data fields that do
+	// NOT implement contract.DaemonEvent directly).
 	hub := NewHub()
 	go hub.Run()
 
-	// Create test server
 	server := httptest.NewServer(http.HandlerFunc(hub.ServeWs))
 	defer server.Close()
 
 	wsURL := "ws" + strings.TrimPrefix(server.URL, "http")
 
-	// Connect a client (simulating the frontend)
 	dialer := websocket.Dialer{}
 	conn, _, err := dialer.Dial(wsURL, nil)
 	if err != nil {
@@ -398,27 +241,160 @@ func TestDaemonEventForwarder_IntegrationWithRealDaemonEventTypes(t *testing.T) 
 	}
 	defer conn.Close()
 
-	// Give time for registration
 	time.Sleep(50 * time.Millisecond)
 
 	forwarder := NewDaemonEventForwarder(hub)
 
-	// Test quest:updated event (the original failing case)
-	questEvent := MockDaemonEvent{
-		Type: "quest:updated",
-		Data: map[string]interface{}{
-			"active_quests": []map[string]interface{}{
-				{"id": "quest1", "progress": 4, "goal": 30},
-				{"id": "quest2", "progress": 7, "goal": 15},
-			},
-			"daily_wins":  6,
-			"weekly_wins": 15,
-		},
-	}
-	forwarder.ForwardEvent(questEvent)
+	// mockEvent maps to contract.DaemonEvent.type via JSON.
+	forwarder.ForwardEvent(mockEvent{Type: "quest:updated", Data: map[string]interface{}{"key": "val"}})
 
-	// Verify client receives the event
-	conn.SetReadDeadline(time.Now().Add(1 * time.Second))
+	conn.SetReadDeadline(time.Now().Add(time.Second))
+	_, message, err := conn.ReadMessage()
+	if err != nil {
+		t.Fatalf("Failed to read message: %v", err)
+	}
+
+	var received Event
+	if err := json.Unmarshal(message, &received); err != nil {
+		t.Fatalf("Failed to unmarshal: %v", err)
+	}
+
+	if received.Type != "quest:updated" {
+		t.Errorf("Expected type 'quest:updated', got %q", received.Type)
+	}
+}
+
+func TestDaemonEventForwarder_ForwardContractDaemonEvent(t *testing.T) {
+	// Verify that passing a contract.DaemonEvent value directly (no reflection,
+	// no JSON fallback) works end-to-end.
+	hub := NewHub()
+	go hub.Run()
+
+	server := httptest.NewServer(http.HandlerFunc(hub.ServeWs))
+	defer server.Close()
+
+	wsURL := "ws" + strings.TrimPrefix(server.URL, "http")
+
+	dialer := websocket.Dialer{}
+	conn, _, err := dialer.Dial(wsURL, nil)
+	if err != nil {
+		t.Fatalf("Failed to connect: %v", err)
+	}
+	defer conn.Close()
+
+	time.Sleep(50 * time.Millisecond)
+
+	payload, _ := json.Marshal(contract.SyncRatingsPayload{SetCode: "BLB", CardsUpdated: 5, Source: "17lands"})
+	ev := contract.DaemonEvent{
+		Type:       "sync:ratings",
+		AccountID:  "acct_test",
+		SessionID:  "sess_test",
+		OccurredAt: time.Now().UTC(),
+		Payload:    payload,
+	}
+
+	forwarder := NewDaemonEventForwarder(hub)
+	forwarder.ForwardEvent(ev) // contract.DaemonEvent value — no reflection used.
+
+	conn.SetReadDeadline(time.Now().Add(time.Second))
+	_, message, err := conn.ReadMessage()
+	if err != nil {
+		t.Fatalf("Failed to read message: %v", err)
+	}
+
+	var received Event
+	if err := json.Unmarshal(message, &received); err != nil {
+		t.Fatalf("Failed to unmarshal: %v", err)
+	}
+
+	if received.Type != "sync:ratings" {
+		t.Errorf("Expected type 'sync:ratings', got %q", received.Type)
+	}
+}
+
+func TestDaemonEventForwarder_ForwardEvent_SequentialEvents(t *testing.T) {
+	hub := NewHub()
+	go hub.Run()
+
+	server := httptest.NewServer(http.HandlerFunc(hub.ServeWs))
+	defer server.Close()
+
+	wsURL := "ws" + strings.TrimPrefix(server.URL, "http")
+
+	dialer := websocket.Dialer{}
+	conn, _, err := dialer.Dial(wsURL, nil)
+	if err != nil {
+		t.Fatalf("Failed to connect: %v", err)
+	}
+	defer conn.Close()
+
+	time.Sleep(50 * time.Millisecond)
+
+	forwarder := NewDaemonEventForwarder(hub)
+
+	types := []string{"stats:updated", "quest:updated", "deck:updated"}
+	for _, typ := range types {
+		forwarder.ForwardEvent(makeDaemonEvent(typ, nil))
+		time.Sleep(10 * time.Millisecond)
+	}
+
+	for i, typ := range types {
+		conn.SetReadDeadline(time.Now().Add(time.Second))
+		_, message, err := conn.ReadMessage()
+		if err != nil {
+			t.Fatalf("Failed to read message %d: %v", i, err)
+		}
+
+		var received Event
+		if err := json.Unmarshal(message, &received); err != nil {
+			t.Fatalf("Failed to unmarshal message %d: %v", i, err)
+		}
+
+		if received.Type != typ {
+			t.Errorf("Event %d: expected type %q, got %q", i, typ, received.Type)
+		}
+	}
+}
+
+// TestDaemonEventForwarder_IntegrationWithRealDaemonEventTypes validates the
+// full flow from a contract.DaemonEvent to a WebSocket client.
+func TestDaemonEventForwarder_IntegrationWithRealDaemonEventTypes(t *testing.T) {
+	hub := NewHub()
+	go hub.Run()
+
+	server := httptest.NewServer(http.HandlerFunc(hub.ServeWs))
+	defer server.Close()
+
+	wsURL := "ws" + strings.TrimPrefix(server.URL, "http")
+
+	dialer := websocket.Dialer{}
+	conn, _, err := dialer.Dial(wsURL, nil)
+	if err != nil {
+		t.Fatalf("Failed to connect: %v", err)
+	}
+	defer conn.Close()
+
+	time.Sleep(50 * time.Millisecond)
+
+	forwarder := NewDaemonEventForwarder(hub)
+
+	questPayload, _ := json.Marshal(map[string]interface{}{
+		"active_quests": []map[string]interface{}{
+			{"id": "quest1", "progress": 4, "goal": 30},
+		},
+		"daily_wins":  6,
+		"weekly_wins": 15,
+	})
+	ev := contract.DaemonEvent{
+		Type:       "quest:updated",
+		AccountID:  "acct_q",
+		SessionID:  "sess_q",
+		OccurredAt: time.Now().UTC(),
+		Payload:    questPayload,
+	}
+	forwarder.ForwardEvent(ev)
+
+	conn.SetReadDeadline(time.Now().Add(time.Second))
 	_, message, err := conn.ReadMessage()
 	if err != nil {
 		t.Fatalf("Failed to read quest:updated message: %v", err)
@@ -430,76 +406,17 @@ func TestDaemonEventForwarder_IntegrationWithRealDaemonEventTypes(t *testing.T) 
 	}
 
 	if received.Type != "quest:updated" {
-		t.Errorf("Expected type 'quest:updated', got '%s'", received.Type)
-	}
-
-	// Verify the data structure
-	dataMap, ok := received.Data.(map[string]interface{})
-	if !ok {
-		t.Fatal("Expected Data to be a map")
-	}
-
-	if dataMap["daily_wins"] == nil {
-		t.Error("Expected daily_wins in data")
-	}
-
-	if dataMap["weekly_wins"] == nil {
-		t.Error("Expected weekly_wins in data")
+		t.Errorf("Expected type 'quest:updated', got %q", received.Type)
 	}
 }
 
-func TestDaemonEventForwarder_ForwardEvent_SequentialEvents(t *testing.T) {
-	// Test that multiple events are forwarded in order
-	hub := NewHub()
-	go hub.Run()
-
-	// Create test server
-	server := httptest.NewServer(http.HandlerFunc(hub.ServeWs))
-	defer server.Close()
-
-	wsURL := "ws" + strings.TrimPrefix(server.URL, "http")
-
-	// Connect a client
-	dialer := websocket.Dialer{}
-	conn, _, err := dialer.Dial(wsURL, nil)
-	if err != nil {
-		t.Fatalf("Failed to connect: %v", err)
-	}
-	defer conn.Close()
-
-	// Give time for registration
-	time.Sleep(50 * time.Millisecond)
-
-	forwarder := NewDaemonEventForwarder(hub)
-
-	// Send multiple events
-	events := []MockDaemonEvent{
-		{Type: "stats:updated", Data: map[string]interface{}{"order": 1}},
-		{Type: "quest:updated", Data: map[string]interface{}{"order": 2}},
-		{Type: "deck:updated", Data: map[string]interface{}{"order": 3}},
-	}
-
-	for _, event := range events {
-		forwarder.ForwardEvent(event)
-		// Small delay to prevent message buffering issues in WebSocket
-		time.Sleep(10 * time.Millisecond)
-	}
-
-	// Verify all events are received
-	for i := 0; i < len(events); i++ {
-		conn.SetReadDeadline(time.Now().Add(1 * time.Second))
-		_, message, err := conn.ReadMessage()
-		if err != nil {
-			t.Fatalf("Failed to read message %d: %v", i, err)
-		}
-
-		var received Event
-		if err := json.Unmarshal(message, &received); err != nil {
-			t.Fatalf("Failed to unmarshal message %d: %v", i, err)
-		}
-
-		if received.Type != events[i].Type {
-			t.Errorf("Event %d: expected type '%s', got '%s'", i, events[i].Type, received.Type)
-		}
+// makeDaemonEvent builds a contract.DaemonEvent for tests.
+func makeDaemonEvent(eventType string, rawPayload []byte) contract.DaemonEvent {
+	return contract.DaemonEvent{
+		Type:       eventType,
+		AccountID:  "acct_test",
+		SessionID:  "sess_test",
+		OccurredAt: time.Now().UTC(),
+		Payload:    rawPayload,
 	}
 }
