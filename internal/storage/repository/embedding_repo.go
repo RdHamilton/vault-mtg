@@ -48,7 +48,7 @@ func (r *embeddingRepo) UpsertEmbedding(ctx context.Context, embedding *models.C
 
 	query := `
 		INSERT INTO card_embeddings (arena_id, card_name, embedding, embedding_version, source, updated_at)
-		VALUES (?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+		VALUES ($1, $2, $3, $4, $5, CURRENT_TIMESTAMP)
 		ON CONFLICT(arena_id) DO UPDATE SET
 			card_name = excluded.card_name,
 			embedding = excluded.embedding,
@@ -73,7 +73,7 @@ func (r *embeddingRepo) GetEmbedding(ctx context.Context, arenaID int) (*models.
 	query := `
 		SELECT id, arena_id, card_name, embedding, embedding_version, source, created_at, updated_at
 		FROM card_embeddings
-		WHERE arena_id = ?
+		WHERE arena_id = $1
 	`
 
 	var e models.CardEmbedding
@@ -112,7 +112,7 @@ func (r *embeddingRepo) GetEmbeddings(ctx context.Context, arenaIDs []int) ([]*m
 		if i > 0 {
 			placeholders += ","
 		}
-		placeholders += "?"
+		placeholders += fmt.Sprintf("$%d", i+1)
 		args[i] = id
 	}
 
@@ -188,7 +188,7 @@ func (r *embeddingRepo) GetAllEmbeddings(ctx context.Context) ([]*models.CardEmb
 
 // DeleteEmbedding deletes an embedding by arena ID.
 func (r *embeddingRepo) DeleteEmbedding(ctx context.Context, arenaID int) error {
-	_, err := r.db.ExecContext(ctx, "DELETE FROM card_embeddings WHERE arena_id = ?", arenaID)
+	_, err := r.db.ExecContext(ctx, "DELETE FROM card_embeddings WHERE arena_id = $1", arenaID)
 	if err != nil {
 		return fmt.Errorf("failed to delete embedding: %w", err)
 	}
@@ -207,7 +207,7 @@ func (r *embeddingRepo) GetEmbeddingCount(ctx context.Context) (int, error) {
 
 // GetOutdatedEmbeddings returns arena IDs of embeddings with version < specified version.
 func (r *embeddingRepo) GetOutdatedEmbeddings(ctx context.Context, version int) ([]int, error) {
-	query := `SELECT arena_id FROM card_embeddings WHERE embedding_version < ?`
+	query := `SELECT arena_id FROM card_embeddings WHERE embedding_version < $1`
 
 	rows, err := r.db.QueryContext(ctx, query, version)
 	if err != nil {
@@ -231,7 +231,7 @@ func (r *embeddingRepo) GetOutdatedEmbeddings(ctx context.Context, version int) 
 func (r *embeddingRepo) UpsertSimilarity(ctx context.Context, similarity *models.CardSimilarity) error {
 	query := `
 		INSERT INTO card_similarity_cache (card_arena_id, similar_arena_id, similarity_score, rank)
-		VALUES (?, ?, ?, ?)
+		VALUES ($1, $2, $3, $4)
 		ON CONFLICT(card_arena_id, similar_arena_id) DO UPDATE SET
 			similarity_score = excluded.similarity_score,
 			rank = excluded.rank
@@ -262,7 +262,7 @@ func (r *embeddingRepo) BulkUpsertSimilarities(ctx context.Context, similarities
 
 	stmt, err := tx.PrepareContext(ctx, `
 		INSERT INTO card_similarity_cache (card_arena_id, similar_arena_id, similarity_score, rank)
-		VALUES (?, ?, ?, ?)
+		VALUES ($1, $2, $3, $4)
 		ON CONFLICT(card_arena_id, similar_arena_id) DO UPDATE SET
 			similarity_score = excluded.similarity_score,
 			rank = excluded.rank
@@ -292,9 +292,9 @@ func (r *embeddingRepo) GetSimilarCards(ctx context.Context, arenaID int, limit 
 		SELECT c.similar_arena_id, e.card_name, c.similarity_score, c.rank
 		FROM card_similarity_cache c
 		JOIN card_embeddings e ON c.similar_arena_id = e.arena_id
-		WHERE c.card_arena_id = ?
+		WHERE c.card_arena_id = $1
 		ORDER BY c.rank ASC
-		LIMIT ?
+		LIMIT $2
 	`
 
 	rows, err := r.db.QueryContext(ctx, query, arenaID, limit)
@@ -320,8 +320,8 @@ func (r *embeddingRepo) GetSimilarityBetween(ctx context.Context, arenaID1, aren
 	query := `
 		SELECT similarity_score
 		FROM card_similarity_cache
-		WHERE (card_arena_id = ? AND similar_arena_id = ?)
-		   OR (card_arena_id = ? AND similar_arena_id = ?)
+		WHERE (card_arena_id = $1 AND similar_arena_id = $2)
+		   OR (card_arena_id = $3 AND similar_arena_id = $4)
 		LIMIT 1
 	`
 
@@ -350,7 +350,7 @@ func (r *embeddingRepo) ClearSimilarityCache(ctx context.Context) error {
 // ClearSimilarityCacheForCard removes cached similarities for a specific card.
 func (r *embeddingRepo) ClearSimilarityCacheForCard(ctx context.Context, arenaID int) error {
 	_, err := r.db.ExecContext(ctx,
-		"DELETE FROM card_similarity_cache WHERE card_arena_id = ? OR similar_arena_id = ?",
+		"DELETE FROM card_similarity_cache WHERE card_arena_id = $1 OR similar_arena_id = $2",
 		arenaID, arenaID,
 	)
 	if err != nil {

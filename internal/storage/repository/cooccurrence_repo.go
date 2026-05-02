@@ -63,7 +63,7 @@ func (r *cooccurrenceRepo) UpsertCooccurrence(ctx context.Context, cardAArenaID,
 
 	query := `
 		INSERT INTO card_cooccurrence (card_a_arena_id, card_b_arena_id, format, count, last_updated)
-		VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP)
+		VALUES ($1, $2, $3, $4, CURRENT_TIMESTAMP)
 		ON CONFLICT(card_a_arena_id, card_b_arena_id, format) DO UPDATE SET
 			count = excluded.count,
 			last_updated = CURRENT_TIMESTAMP
@@ -86,7 +86,7 @@ func (r *cooccurrenceRepo) IncrementCooccurrence(ctx context.Context, cardAArena
 
 	query := `
 		INSERT INTO card_cooccurrence (card_a_arena_id, card_b_arena_id, format, count, last_updated)
-		VALUES (?, ?, ?, 1, CURRENT_TIMESTAMP)
+		VALUES ($1, $2, $3, 1, CURRENT_TIMESTAMP)
 		ON CONFLICT(card_a_arena_id, card_b_arena_id, format) DO UPDATE SET
 			count = card_cooccurrence.count + 1,
 			last_updated = CURRENT_TIMESTAMP
@@ -110,7 +110,7 @@ func (r *cooccurrenceRepo) GetCooccurrence(ctx context.Context, cardAArenaID, ca
 	query := `
 		SELECT id, card_a_arena_id, card_b_arena_id, format, count, pmi_score, last_updated
 		FROM card_cooccurrence
-		WHERE card_a_arena_id = ? AND card_b_arena_id = ? AND format = ?
+		WHERE card_a_arena_id = $1 AND card_b_arena_id = $2 AND format = $3
 	`
 
 	var cooc models.CardCooccurrence
@@ -134,9 +134,9 @@ func (r *cooccurrenceRepo) GetTopCooccurrences(ctx context.Context, cardArenaID 
 	query := `
 		SELECT id, card_a_arena_id, card_b_arena_id, format, count, pmi_score, last_updated
 		FROM card_cooccurrence
-		WHERE (card_a_arena_id = ? OR card_b_arena_id = ?) AND format = ?
+		WHERE (card_a_arena_id = $1 OR card_b_arena_id = $2) AND format = $3
 		ORDER BY pmi_score DESC
-		LIMIT ?
+		LIMIT $4
 	`
 
 	rows, err := r.db.QueryContext(ctx, query, cardArenaID, cardArenaID, format, limit)
@@ -172,7 +172,7 @@ func (r *cooccurrenceRepo) UpdatePMIScores(ctx context.Context, format string) e
 	// Get total deck count for this format from card_frequency
 	var totalDecks int
 	err := r.db.QueryRowContext(ctx, `
-		SELECT COALESCE(MAX(total_decks), 0) FROM card_frequency WHERE format = ?
+		SELECT COALESCE(MAX(total_decks), 0) FROM card_frequency WHERE format = $1
 	`, format).Scan(&totalDecks)
 	if err != nil {
 		return fmt.Errorf("failed to get total decks: %w", err)
@@ -194,7 +194,7 @@ func (r *cooccurrenceRepo) UpdatePMIScores(ctx context.Context, format string) e
 		SET pmi_score = (
 			SELECT CASE
 				WHEN freq_a.deck_count > 0 AND freq_b.deck_count > 0 THEN
-					log(1.0 * card_cooccurrence.count * ? / (freq_a.deck_count * freq_b.deck_count)) / log(2)
+					log(1.0 * card_cooccurrence.count * $1 / (freq_a.deck_count * freq_b.deck_count)) / log(2)
 				ELSE 0
 			END
 			FROM card_frequency freq_a, card_frequency freq_b
@@ -204,7 +204,7 @@ func (r *cooccurrenceRepo) UpdatePMIScores(ctx context.Context, format string) e
 			  AND freq_b.format = card_cooccurrence.format
 		),
 		last_updated = CURRENT_TIMESTAMP
-		WHERE format = ?
+		WHERE format = $2
 	`
 
 	_, err = r.db.ExecContext(ctx, query, totalDecks, format)
@@ -231,7 +231,7 @@ func (r *cooccurrenceRepo) GetCooccurrenceScore(ctx context.Context, cardAArenaI
 func (r *cooccurrenceRepo) UpsertCardFrequency(ctx context.Context, cardArenaID int, format string, deckCount, totalDecks int) error {
 	query := `
 		INSERT INTO card_frequency (card_arena_id, format, deck_count, total_decks, last_updated)
-		VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP)
+		VALUES ($1, $2, $3, $4, CURRENT_TIMESTAMP)
 		ON CONFLICT(card_arena_id, format) DO UPDATE SET
 			deck_count = excluded.deck_count,
 			total_decks = excluded.total_decks,
@@ -251,7 +251,7 @@ func (r *cooccurrenceRepo) GetCardFrequency(ctx context.Context, cardArenaID int
 	query := `
 		SELECT id, card_arena_id, format, deck_count, total_decks, frequency, last_updated
 		FROM card_frequency
-		WHERE card_arena_id = ? AND format = ?
+		WHERE card_arena_id = $1 AND format = $2
 	`
 
 	var freq models.CardFrequency
@@ -274,7 +274,7 @@ func (r *cooccurrenceRepo) GetCardFrequency(ctx context.Context, cardArenaID int
 func (r *cooccurrenceRepo) UpsertSource(ctx context.Context, sourceType, sourceID, format string, deckCount, cardCount int) error {
 	query := `
 		INSERT INTO cooccurrence_sources (source_type, source_id, format, deck_count, card_count, last_synced)
-		VALUES (?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+		VALUES ($1, $2, $3, $4, $5, CURRENT_TIMESTAMP)
 		ON CONFLICT(source_type, source_id, format) DO UPDATE SET
 			deck_count = excluded.deck_count,
 			card_count = excluded.card_count,
@@ -294,7 +294,7 @@ func (r *cooccurrenceRepo) GetSource(ctx context.Context, sourceType, sourceID, 
 	query := `
 		SELECT id, source_type, source_id, format, deck_count, card_count, last_synced
 		FROM cooccurrence_sources
-		WHERE source_type = ? AND source_id = ? AND format = ?
+		WHERE source_type = $1 AND source_id = $2 AND format = $3
 	`
 
 	var source models.CooccurrenceSource
@@ -321,17 +321,17 @@ func (r *cooccurrenceRepo) ClearFormat(ctx context.Context, format string) error
 	}
 	defer func() { _ = tx.Rollback() }()
 
-	_, err = tx.ExecContext(ctx, "DELETE FROM card_cooccurrence WHERE format = ?", format)
+	_, err = tx.ExecContext(ctx, "DELETE FROM card_cooccurrence WHERE format = $1", format)
 	if err != nil {
 		return fmt.Errorf("failed to clear co-occurrences: %w", err)
 	}
 
-	_, err = tx.ExecContext(ctx, "DELETE FROM card_frequency WHERE format = ?", format)
+	_, err = tx.ExecContext(ctx, "DELETE FROM card_frequency WHERE format = $1", format)
 	if err != nil {
 		return fmt.Errorf("failed to clear frequencies: %w", err)
 	}
 
-	_, err = tx.ExecContext(ctx, "DELETE FROM cooccurrence_sources WHERE format = ?", format)
+	_, err = tx.ExecContext(ctx, "DELETE FROM cooccurrence_sources WHERE format = $1", format)
 	if err != nil {
 		return fmt.Errorf("failed to clear sources: %w", err)
 	}

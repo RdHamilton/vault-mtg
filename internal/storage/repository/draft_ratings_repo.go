@@ -3,6 +3,7 @@ package repository
 import (
 	"context"
 	"database/sql"
+	"fmt"
 	"time"
 
 	"github.com/ramonehamilton/MTGA-Companion/internal/mtga/cards/seventeenlands"
@@ -150,7 +151,7 @@ func (r *draftRatingsRepository) SaveSetRatings(ctx context.Context, setCode, dr
 		INSERT INTO draft_card_ratings (
 			set_code, draft_format, arena_id, name, color, rarity,
 			gihwr, ohwr, alsa, ata, gih_count, data_source, cached_at, url, url_back
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
 		ON CONFLICT(set_code, draft_format, arena_id) DO UPDATE SET
 			name = excluded.name,
 			color = excluded.color,
@@ -200,7 +201,7 @@ func (r *draftRatingsRepository) SaveSetRatings(ctx context.Context, setCode, dr
 	colorStmt, err := tx.PrepareContext(ctx, `
 		INSERT INTO draft_color_ratings (
 			set_code, draft_format, color_combination, win_rate, games_played, cached_at
-		) VALUES (?, ?, ?, ?, ?, ?)
+		) VALUES ($1, $2, $3, $4, $5, $6)
 		ON CONFLICT(set_code, draft_format, color_combination) DO UPDATE SET
 			win_rate = excluded.win_rate,
 			games_played = excluded.games_played,
@@ -235,7 +236,7 @@ func (r *draftRatingsRepository) GetCardRatings(ctx context.Context, setCode, dr
 	query := `
 		SELECT arena_id, name, color, rarity, gihwr, ohwr, alsa, ata, gih_count, cached_at, url, url_back
 		FROM draft_card_ratings
-		WHERE set_code = ? AND draft_format = ?
+		WHERE set_code = $1 AND draft_format = $2
 		ORDER BY gihwr DESC
 	`
 	rows, err := r.db.QueryContext(ctx, query, setCode, draftFormat)
@@ -286,7 +287,7 @@ func (r *draftRatingsRepository) GetColorRatings(ctx context.Context, setCode, d
 	query := `
 		SELECT color_combination, win_rate, games_played, cached_at
 		FROM draft_color_ratings
-		WHERE set_code = ? AND draft_format = ?
+		WHERE set_code = $1 AND draft_format = $2
 		ORDER BY win_rate DESC
 	`
 	rows, err := r.db.QueryContext(ctx, query, setCode, draftFormat)
@@ -325,7 +326,7 @@ func (r *draftRatingsRepository) GetCardRatingByArenaID(ctx context.Context, set
 	query := `
 		SELECT arena_id, name, color, rarity, gihwr, ohwr, alsa, ata, gih_count
 		FROM draft_card_ratings
-		WHERE set_code = ? AND draft_format = ? AND arena_id = ?
+		WHERE set_code = $1 AND draft_format = $2 AND arena_id = $3
 	`
 	row := r.db.QueryRowContext(ctx, query, setCode, draftFormat, arenaID)
 
@@ -353,7 +354,7 @@ func (r *draftRatingsRepository) GetCardRatingByArenaID(ctx context.Context, set
 
 // IsSetRatingsCached checks if ratings for a set are cached.
 func (r *draftRatingsRepository) IsSetRatingsCached(ctx context.Context, setCode, draftFormat string) (bool, error) {
-	query := `SELECT COUNT(*) FROM draft_card_ratings WHERE set_code = ? AND draft_format = ?`
+	query := `SELECT COUNT(*) FROM draft_card_ratings WHERE set_code = $1 AND draft_format = $2`
 	var count int
 	err := r.db.QueryRowContext(ctx, query, setCode, draftFormat).Scan(&count)
 	if err != nil {
@@ -373,13 +374,13 @@ func (r *draftRatingsRepository) DeleteSetRatings(ctx context.Context, setCode, 
 	}()
 
 	// Delete card ratings
-	_, err = tx.ExecContext(ctx, `DELETE FROM draft_card_ratings WHERE set_code = ? AND draft_format = ?`, setCode, draftFormat)
+	_, err = tx.ExecContext(ctx, `DELETE FROM draft_card_ratings WHERE set_code = $1 AND draft_format = $2`, setCode, draftFormat)
 	if err != nil {
 		return err
 	}
 
 	// Delete color ratings
-	_, err = tx.ExecContext(ctx, `DELETE FROM draft_color_ratings WHERE set_code = ? AND draft_format = ?`, setCode, draftFormat)
+	_, err = tx.ExecContext(ctx, `DELETE FROM draft_color_ratings WHERE set_code = $1 AND draft_format = $2`, setCode, draftFormat)
 	if err != nil {
 		return err
 	}
@@ -451,14 +452,14 @@ func (r *draftRatingsRepository) DeleteSnapshotsBatch(ctx context.Context, ids [
 		return nil
 	}
 
-	// Build IN clause
+	// Build IN clause with positional placeholders
 	query := `DELETE FROM draft_card_ratings WHERE id IN (`
 	args := make([]interface{}, len(ids))
 	for i, id := range ids {
 		if i > 0 {
 			query += ","
 		}
-		query += "?"
+		query += fmt.Sprintf("$%d", i+1)
 		args[i] = id
 	}
 	query += ")"
@@ -534,9 +535,9 @@ func (r *draftRatingsRepository) GetCardWinRateTrend(ctx context.Context, arenaI
 	query := `
 		SELECT cached_at, gihwr, ohwr, alsa, ata, gih_count
 		FROM draft_card_ratings
-		WHERE arena_id = ?
-		  AND set_code = ?
-		  AND cached_at >= datetime('now', '-' || ? || ' days')
+		WHERE arena_id = $1
+		  AND set_code = $2
+		  AND cached_at >= NOW() - ($3 * INTERVAL '1 day')
 		ORDER BY cached_at ASC
 	`
 
@@ -586,8 +587,8 @@ func (r *draftRatingsRepository) GetExpansionCardIDs(ctx context.Context, expans
 	query := `
 		SELECT DISTINCT arena_id
 		FROM draft_card_ratings
-		WHERE set_code = ?
-		  AND cached_at >= datetime('now', '-' || ? || ' days')
+		WHERE set_code = $1
+		  AND cached_at >= NOW() - ($2 * INTERVAL '1 day')
 	`
 
 	rows, err := r.db.QueryContext(ctx, query, expansion, days)
@@ -614,8 +615,8 @@ func (r *draftRatingsRepository) GetCardRatingHistory(ctx context.Context, arena
 		SELECT id, arena_id, set_code, draft_format, color,
 			   gihwr, ohwr, alsa, ata, gih_count, cached_at
 		FROM draft_card_ratings
-		WHERE arena_id = ?
-		  AND set_code = ?
+		WHERE arena_id = $1
+		  AND set_code = $2
 		ORDER BY cached_at ASC
 	`
 
@@ -682,8 +683,8 @@ func (r *draftRatingsRepository) GetPeriodAverages(ctx context.Context, expansio
 	query := `
 		SELECT arena_id, AVG(gihwr) as avg_gihwr, SUM(gih_count) as total_gih, COUNT(*) as sample_size
 		FROM draft_card_ratings
-		WHERE set_code = ?
-		  AND cached_at BETWEEN ? AND ?
+		WHERE set_code = $1
+		  AND cached_at BETWEEN $2 AND $3
 		GROUP BY arena_id
 		HAVING total_gih > 100
 	`
@@ -720,7 +721,7 @@ func (r *draftRatingsRepository) GetPeriodAverages(ctx context.Context, expansio
 // GetSetCodeByArenaID returns the set code for a card by its Arena ID.
 // Returns empty string if not found.
 func (r *draftRatingsRepository) GetSetCodeByArenaID(ctx context.Context, arenaID string) (string, error) {
-	query := `SELECT DISTINCT set_code FROM draft_card_ratings WHERE arena_id = ? LIMIT 1`
+	query := `SELECT DISTINCT set_code FROM draft_card_ratings WHERE arena_id = $1 LIMIT 1`
 	var setCode string
 	err := r.db.QueryRowContext(ctx, query, arenaID).Scan(&setCode)
 	if err != nil {
@@ -736,7 +737,7 @@ func (r *draftRatingsRepository) GetSetCodeByArenaID(ctx context.Context, arenaI
 // This is useful for fallback fetching when Scryfall's arena ID endpoint doesn't support the card.
 // Returns empty strings if not found.
 func (r *draftRatingsRepository) GetCardNameAndSetByArenaID(ctx context.Context, arenaID string) (name, setCode string, err error) {
-	query := `SELECT name, set_code FROM draft_card_ratings WHERE arena_id = ? LIMIT 1`
+	query := `SELECT name, set_code FROM draft_card_ratings WHERE arena_id = $1 LIMIT 1`
 	err = r.db.QueryRowContext(ctx, query, arenaID).Scan(&name, &setCode)
 	if err != nil {
 		if err == sql.ErrNoRows {
@@ -751,9 +752,9 @@ func (r *draftRatingsRepository) GetCardNameAndSetByArenaID(ctx context.Context,
 func (r *draftRatingsRepository) GetStatisticsStaleness(ctx context.Context, staleAgeSeconds int) (*StatisticsStaleness, error) {
 	countQuery := `
 		SELECT
-			COUNT(DISTINCT arena_id || '-' || set_code || '-' || draft_format) as total,
-			COALESCE(SUM(CASE WHEN cached_at >= datetime('now', '-' || ? || ' seconds') THEN 1 ELSE 0 END), 0) as fresh,
-			COALESCE(SUM(CASE WHEN cached_at < datetime('now', '-' || ? || ' seconds') THEN 1 ELSE 0 END), 0) as stale
+			COUNT(DISTINCT arena_id::text || '-' || set_code || '-' || draft_format) as total,
+			COALESCE(SUM(CASE WHEN cached_at >= NOW() - ($1 * INTERVAL '1 second') THEN 1 ELSE 0 END), 0) as fresh,
+			COALESCE(SUM(CASE WHEN cached_at < NOW() - ($2 * INTERVAL '1 second') THEN 1 ELSE 0 END), 0) as stale
 		FROM draft_card_ratings
 		WHERE cached_at IS NOT NULL
 	`
@@ -784,7 +785,7 @@ func (r *draftRatingsRepository) GetStaleSets(ctx context.Context, staleAgeSecon
 	query := `
 		SELECT DISTINCT set_code
 		FROM draft_card_ratings
-		WHERE cached_at < datetime('now', '-' || ? || ' seconds')
+		WHERE cached_at < NOW() - ($1 * INTERVAL '1 second')
 		ORDER BY set_code
 	`
 
@@ -811,7 +812,7 @@ func (r *draftRatingsRepository) GetStaleStats(ctx context.Context, staleAgeSeco
 	query := `
 		SELECT DISTINCT set_code, draft_format, MAX(cached_at) as last_updated
 		FROM draft_card_ratings
-		WHERE cached_at < datetime('now', '-' || ? || ' seconds')
+		WHERE cached_at < NOW() - ($1 * INTERVAL '1 second')
 		GROUP BY set_code, draft_format
 		ORDER BY last_updated ASC
 	`

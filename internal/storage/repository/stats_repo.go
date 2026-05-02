@@ -40,16 +40,17 @@ func (r *statsRepository) Upsert(ctx context.Context, stats *models.PlayerStats)
 		INSERT INTO player_stats (
 			date, format, matches_played, matches_won,
 			games_played, games_won, created_at, updated_at
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
 		ON CONFLICT(date, format) DO UPDATE SET
 			matches_played = excluded.matches_played,
 			matches_won = excluded.matches_won,
 			games_played = excluded.games_played,
 			games_won = excluded.games_won,
 			updated_at = excluded.updated_at
+		RETURNING id
 	`
 
-	result, err := r.db.ExecContext(ctx, query,
+	err := r.db.QueryRowContext(ctx, query,
 		stats.Date,
 		stats.Format,
 		stats.MatchesPlayed,
@@ -58,17 +59,9 @@ func (r *statsRepository) Upsert(ctx context.Context, stats *models.PlayerStats)
 		stats.GamesWon,
 		stats.CreatedAt,
 		stats.UpdatedAt,
-	)
+	).Scan(&stats.ID)
 	if err != nil {
 		return fmt.Errorf("failed to upsert player stats: %w", err)
-	}
-
-	// If this is an insert, set the ID
-	if stats.ID == 0 {
-		id, err := result.LastInsertId()
-		if err == nil {
-			stats.ID = int(id)
-		}
 	}
 
 	return nil
@@ -81,7 +74,7 @@ func (r *statsRepository) GetByDate(ctx context.Context, date time.Time, format 
 			id, date, format, matches_played, matches_won,
 			games_played, games_won, created_at, updated_at
 		FROM player_stats
-		WHERE date = ? AND format = ?
+		WHERE date = $1 AND format = $2
 	`
 
 	stats := &models.PlayerStats{}
@@ -114,7 +107,7 @@ func (r *statsRepository) GetByDateRange(ctx context.Context, start, end time.Ti
 			id, date, format, matches_played, matches_won,
 			games_played, games_won, created_at, updated_at
 		FROM player_stats
-		WHERE date >= ? AND date <= ? AND format = ?
+		WHERE date >= $1 AND date <= $2 AND format = $3
 		ORDER BY date DESC
 	`
 
@@ -161,7 +154,7 @@ func (r *statsRepository) GetAllFormats(ctx context.Context, date time.Time) ([]
 			id, date, format, matches_played, matches_won,
 			games_played, games_won, created_at, updated_at
 		FROM player_stats
-		WHERE date = ?
+		WHERE date = $1
 		ORDER BY format ASC
 	`
 

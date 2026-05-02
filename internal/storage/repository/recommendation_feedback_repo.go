@@ -62,40 +62,20 @@ func (r *recommendationFeedbackRepository) Create(ctx context.Context, feedback 
 			recommended_archetype, context_data, action, alternate_choice_id,
 			outcome_match_id, outcome_result, recommendation_score, recommendation_rank,
 			recommended_at, responded_at, outcome_recorded_at, created_at
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)
+		RETURNING id
 	`
 
-	recommendedAtStr := feedback.RecommendedAt.UTC().Format("2006-01-02 15:04:05.999999")
-	createdAtStr := time.Now().UTC().Format("2006-01-02 15:04:05.999999")
-
-	var respondedAtStr *string
-	if feedback.RespondedAt != nil {
-		s := feedback.RespondedAt.UTC().Format("2006-01-02 15:04:05.999999")
-		respondedAtStr = &s
-	}
-
-	var outcomeRecordedAtStr *string
-	if feedback.OutcomeRecordedAt != nil {
-		s := feedback.OutcomeRecordedAt.UTC().Format("2006-01-02 15:04:05.999999")
-		outcomeRecordedAtStr = &s
-	}
-
-	result, err := r.db.ExecContext(ctx, query,
+	err := r.db.QueryRowContext(ctx, query,
 		feedback.AccountID, feedback.RecommendationType, feedback.RecommendationID,
 		feedback.RecommendedCardID, feedback.RecommendedArchetype, feedback.ContextData,
 		feedback.Action, feedback.AlternateChoiceID, feedback.OutcomeMatchID,
 		feedback.OutcomeResult, feedback.RecommendationScore, feedback.RecommendationRank,
-		recommendedAtStr, respondedAtStr, outcomeRecordedAtStr, createdAtStr,
-	)
+		feedback.RecommendedAt.UTC(), feedback.RespondedAt, feedback.OutcomeRecordedAt, time.Now().UTC(),
+	).Scan(&feedback.ID)
 	if err != nil {
 		return fmt.Errorf("failed to create recommendation feedback: %w", err)
 	}
-
-	id, err := result.LastInsertId()
-	if err != nil {
-		return fmt.Errorf("failed to get inserted feedback ID: %w", err)
-	}
-	feedback.ID = int(id)
 
 	return nil
 }
@@ -108,7 +88,7 @@ func (r *recommendationFeedbackRepository) GetByID(ctx context.Context, id int) 
 			   outcome_match_id, outcome_result, recommendation_score, recommendation_rank,
 			   recommended_at, responded_at, outcome_recorded_at, created_at
 		FROM recommendation_feedback
-		WHERE id = ?
+		WHERE id = $1
 	`
 
 	feedback := &models.RecommendationFeedback{}
@@ -151,7 +131,7 @@ func (r *recommendationFeedbackRepository) GetByRecommendationID(ctx context.Con
 			   outcome_match_id, outcome_result, recommendation_score, recommendation_rank,
 			   recommended_at, responded_at, outcome_recorded_at, created_at
 		FROM recommendation_feedback
-		WHERE recommendation_id = ?
+		WHERE recommendation_id = $1
 	`
 
 	feedback := &models.RecommendationFeedback{}
@@ -194,9 +174,9 @@ func (r *recommendationFeedbackRepository) GetByAccount(ctx context.Context, acc
 			   outcome_match_id, outcome_result, recommendation_score, recommendation_rank,
 			   recommended_at, responded_at, outcome_recorded_at, created_at
 		FROM recommendation_feedback
-		WHERE account_id = ?
+		WHERE account_id = $1
 		ORDER BY recommended_at DESC
-		LIMIT ?
+		LIMIT $2
 	`
 
 	rows, err := r.db.QueryContext(ctx, query, accountID, limit)
@@ -218,9 +198,9 @@ func (r *recommendationFeedbackRepository) GetByType(ctx context.Context, accoun
 			   outcome_match_id, outcome_result, recommendation_score, recommendation_rank,
 			   recommended_at, responded_at, outcome_recorded_at, created_at
 		FROM recommendation_feedback
-		WHERE account_id = ? AND recommendation_type = ?
+		WHERE account_id = $1 AND recommendation_type = $2
 		ORDER BY recommended_at DESC
-		LIMIT ?
+		LIMIT $3
 	`
 
 	rows, err := r.db.QueryContext(ctx, query, accountID, recType, limit)
@@ -238,8 +218,8 @@ func (r *recommendationFeedbackRepository) GetByType(ctx context.Context, accoun
 func (r *recommendationFeedbackRepository) UpdateAction(ctx context.Context, id int, action string, alternateChoiceID *int) error {
 	query := `
 		UPDATE recommendation_feedback
-		SET action = ?, alternate_choice_id = ?, responded_at = ?
-		WHERE id = ?
+		SET action = $1, alternate_choice_id = $2, responded_at = $3
+		WHERE id = $4
 	`
 
 	now := time.Now().UTC().Format("2006-01-02 15:04:05.999999")
@@ -256,8 +236,8 @@ func (r *recommendationFeedbackRepository) UpdateAction(ctx context.Context, id 
 func (r *recommendationFeedbackRepository) UpdateOutcome(ctx context.Context, id int, matchID string, result string) error {
 	query := `
 		UPDATE recommendation_feedback
-		SET outcome_match_id = ?, outcome_result = ?, outcome_recorded_at = ?
-		WHERE id = ?
+		SET outcome_match_id = $1, outcome_result = $2, outcome_recorded_at = $3
+		WHERE id = $4
 	`
 
 	now := time.Now().UTC().Format("2006-01-02 15:04:05.999999")
@@ -280,13 +260,13 @@ func (r *recommendationFeedbackRepository) GetStats(ctx context.Context, account
 			SUM(CASE WHEN action = 'ignored' THEN 1 ELSE 0 END) as ignored,
 			SUM(CASE WHEN action = 'alternate' THEN 1 ELSE 0 END) as alternate
 		FROM recommendation_feedback
-		WHERE account_id = ?
+		WHERE account_id = $1
 	`
 
 	args := []interface{}{accountID}
 
 	if recType != nil {
-		query += " AND recommendation_type = ?"
+		query += fmt.Sprintf(" AND recommendation_type = $%d", len(args)+1)
 		args = append(args, *recType)
 	}
 
@@ -311,12 +291,12 @@ func (r *recommendationFeedbackRepository) GetStats(ctx context.Context, account
 			COUNT(*) as total,
 			SUM(CASE WHEN outcome_result = 'win' THEN 1 ELSE 0 END) as wins
 		FROM recommendation_feedback
-		WHERE account_id = ? AND outcome_result IS NOT NULL
+		WHERE account_id = $1 AND outcome_result IS NOT NULL
 	`
 	winRateArgs := []interface{}{accountID}
 
 	if recType != nil {
-		winRateQuery += " AND recommendation_type = ?"
+		winRateQuery += fmt.Sprintf(" AND recommendation_type = $%d", len(args)+1)
 		winRateArgs = append(winRateArgs, *recType)
 	}
 
@@ -360,7 +340,7 @@ func (r *recommendationFeedbackRepository) GetStatsByDateRange(ctx context.Conte
 			SUM(CASE WHEN action = 'ignored' THEN 1 ELSE 0 END) as ignored,
 			SUM(CASE WHEN action = 'alternate' THEN 1 ELSE 0 END) as alternate
 		FROM recommendation_feedback
-		WHERE account_id = ? AND recommended_at BETWEEN ? AND ?
+		WHERE account_id = $1 AND recommended_at BETWEEN $2 AND $3
 	`
 
 	startStr := start.UTC().Format("2006-01-02 15:04:05.999999")
@@ -391,7 +371,7 @@ func (r *recommendationFeedbackRepository) GetPendingFeedback(ctx context.Contex
 			   outcome_match_id, outcome_result, recommendation_score, recommendation_rank,
 			   recommended_at, responded_at, outcome_recorded_at, created_at
 		FROM recommendation_feedback
-		WHERE account_id = ? AND responded_at IS NULL
+		WHERE account_id = $1 AND responded_at IS NULL
 		ORDER BY recommended_at DESC
 	`
 
@@ -416,7 +396,7 @@ func (r *recommendationFeedbackRepository) GetForMLTraining(ctx context.Context,
 		FROM recommendation_feedback
 		WHERE outcome_result IS NOT NULL AND responded_at IS NOT NULL
 		ORDER BY recommended_at DESC
-		LIMIT ?
+		LIMIT $1
 	`
 
 	rows, err := r.db.QueryContext(ctx, query, limit)

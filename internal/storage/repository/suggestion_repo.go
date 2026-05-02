@@ -59,13 +59,14 @@ func (r *suggestionRepository) CreateSuggestion(ctx context.Context, suggestion 
 			deck_id, suggestion_type, priority, title, description,
 			evidence, card_references, is_dismissed, created_at
 		)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+		RETURNING id
 	`
 
 	now := time.Now().UTC()
 	suggestion.CreatedAt = now
 
-	result, err := r.db.ExecContext(ctx, query,
+	err := r.db.QueryRowContext(ctx, query,
 		suggestion.DeckID,
 		suggestion.SuggestionType,
 		suggestion.Priority,
@@ -74,17 +75,11 @@ func (r *suggestionRepository) CreateSuggestion(ctx context.Context, suggestion 
 		suggestion.Evidence,
 		suggestion.CardReferences,
 		suggestion.IsDismissed,
-		now.Format("2006-01-02 15:04:05.999999"),
-	)
+		now,
+	).Scan(&suggestion.ID)
 	if err != nil {
 		return err
 	}
-
-	id, err := result.LastInsertId()
-	if err != nil {
-		return err
-	}
-	suggestion.ID = id
 
 	return nil
 }
@@ -95,7 +90,7 @@ func (r *suggestionRepository) GetSuggestionsByDeck(ctx context.Context, deckID 
 		SELECT id, deck_id, suggestion_type, priority, title, description,
 			   evidence, card_references, is_dismissed, created_at
 		FROM improvement_suggestions
-		WHERE deck_id = ?
+		WHERE deck_id = $1
 		ORDER BY
 			CASE priority
 				WHEN 'high' THEN 1
@@ -120,7 +115,7 @@ func (r *suggestionRepository) GetActiveSuggestions(ctx context.Context, deckID 
 		SELECT id, deck_id, suggestion_type, priority, title, description,
 			   evidence, card_references, is_dismissed, created_at
 		FROM improvement_suggestions
-		WHERE deck_id = ? AND is_dismissed = FALSE
+		WHERE deck_id = $1 AND is_dismissed = FALSE
 		ORDER BY
 			CASE priority
 				WHEN 'high' THEN 1
@@ -145,7 +140,7 @@ func (r *suggestionRepository) GetSuggestionByID(ctx context.Context, id int64) 
 		SELECT id, deck_id, suggestion_type, priority, title, description,
 			   evidence, card_references, is_dismissed, created_at
 		FROM improvement_suggestions
-		WHERE id = ?
+		WHERE id = $1
 	`
 
 	suggestion := &models.ImprovementSuggestion{}
@@ -183,7 +178,7 @@ func (r *suggestionRepository) GetSuggestionsByType(ctx context.Context, deckID,
 		SELECT id, deck_id, suggestion_type, priority, title, description,
 			   evidence, card_references, is_dismissed, created_at
 		FROM improvement_suggestions
-		WHERE deck_id = ? AND suggestion_type = ?
+		WHERE deck_id = $1 AND suggestion_type = $2
 		ORDER BY
 			CASE priority
 				WHEN 'high' THEN 1
@@ -204,35 +199,35 @@ func (r *suggestionRepository) GetSuggestionsByType(ctx context.Context, deckID,
 
 // DismissSuggestion marks a suggestion as dismissed.
 func (r *suggestionRepository) DismissSuggestion(ctx context.Context, id int64) error {
-	query := `UPDATE improvement_suggestions SET is_dismissed = TRUE WHERE id = ?`
+	query := `UPDATE improvement_suggestions SET is_dismissed = TRUE WHERE id = $1`
 	_, err := r.db.ExecContext(ctx, query, id)
 	return err
 }
 
 // UndismissSuggestion marks a suggestion as not dismissed.
 func (r *suggestionRepository) UndismissSuggestion(ctx context.Context, id int64) error {
-	query := `UPDATE improvement_suggestions SET is_dismissed = FALSE WHERE id = ?`
+	query := `UPDATE improvement_suggestions SET is_dismissed = FALSE WHERE id = $1`
 	_, err := r.db.ExecContext(ctx, query, id)
 	return err
 }
 
 // DeleteSuggestion deletes a suggestion by ID.
 func (r *suggestionRepository) DeleteSuggestion(ctx context.Context, id int64) error {
-	query := `DELETE FROM improvement_suggestions WHERE id = ?`
+	query := `DELETE FROM improvement_suggestions WHERE id = $1`
 	_, err := r.db.ExecContext(ctx, query, id)
 	return err
 }
 
 // DeleteSuggestionsByDeck deletes all suggestions for a deck.
 func (r *suggestionRepository) DeleteSuggestionsByDeck(ctx context.Context, deckID string) error {
-	query := `DELETE FROM improvement_suggestions WHERE deck_id = ?`
+	query := `DELETE FROM improvement_suggestions WHERE deck_id = $1`
 	_, err := r.db.ExecContext(ctx, query, deckID)
 	return err
 }
 
 // DeleteActiveSuggestionsByDeck deletes all non-dismissed suggestions for a deck.
 func (r *suggestionRepository) DeleteActiveSuggestionsByDeck(ctx context.Context, deckID string) error {
-	query := `DELETE FROM improvement_suggestions WHERE deck_id = ? AND is_dismissed = FALSE`
+	query := `DELETE FROM improvement_suggestions WHERE deck_id = $1 AND is_dismissed = FALSE`
 	_, err := r.db.ExecContext(ctx, query, deckID)
 	return err
 }

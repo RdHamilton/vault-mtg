@@ -5,14 +5,13 @@ import (
 	"errors"
 	"fmt"
 	"io/fs"
-	"path/filepath"
 
 	"github.com/golang-migrate/migrate/v4"
-	_ "github.com/golang-migrate/migrate/v4/database/sqlite"
+	_ "github.com/golang-migrate/migrate/v4/database/pgx/v5" // PostgreSQL driver for migrations
 	"github.com/golang-migrate/migrate/v4/source/iofs"
 )
 
-//go:embed migrations/*.sql
+//go:embed all:migrations/postgres
 var migrationsFS embed.FS
 
 // MigrationManager handles database schema migrations.
@@ -20,36 +19,46 @@ type MigrationManager struct {
 	migrate *migrate.Migrate
 }
 
-// NewMigrationManager creates a new migration manager.
-// The dbPath should be a file path to the SQLite database.
-func NewMigrationManager(dbPath string) (*MigrationManager, error) {
-	// Create io/fs from embedded files
-	migrationsDir, err := fs.Sub(migrationsFS, "migrations")
+// NewMigrationManager creates a new migration manager for PostgreSQL.
+// The dsn must be a PostgreSQL connection string.
+func NewMigrationManager(dsn string) (*MigrationManager, error) {
+	migrationsDir, err := fs.Sub(migrationsFS, "migrations/postgres")
 	if err != nil {
 		return nil, fmt.Errorf("failed to access migrations directory: %w", err)
 	}
 
-	// Create source driver from embedded filesystem
 	sourceDriver, err := iofs.New(migrationsDir, ".")
 	if err != nil {
 		return nil, fmt.Errorf("failed to create source driver: %w", err)
 	}
 
-	// Create database URL
-	// Convert Windows backslashes to forward slashes and ensure absolute paths have leading slash
-	normalizedPath := filepath.ToSlash(dbPath)
-	if filepath.IsAbs(dbPath) && normalizedPath[0] != '/' {
-		normalizedPath = "/" + normalizedPath
-	}
-	databaseURL := fmt.Sprintf("sqlite://%s", normalizedPath)
+	// golang-migrate pgx/v5 driver expects "pgx5://" scheme.
+	// If caller passes a standard postgres:// URL we normalise it.
+	databaseURL := normalizePgxURL(dsn)
 
-	// Create migrate instance
 	m, err := migrate.NewWithSourceInstance("iofs", sourceDriver, databaseURL)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create migration instance: %w", err)
 	}
 
 	return &MigrationManager{migrate: m}, nil
+}
+
+// normalizePgxURL converts a postgres:// or postgresql:// DSN to the
+// pgx5:// scheme expected by golang-migrate's pgx/v5 driver.
+// Key=value style DSNs are passed through unchanged (driver handles them).
+func normalizePgxURL(dsn string) string {
+	switch {
+	case len(dsn) >= 11 && dsn[:11] == "postgresql:":
+		return "pgx5:" + dsn[11:]
+	case len(dsn) >= 9 && dsn[:9] == "postgres:":
+		return "pgx5:" + dsn[9:]
+	case len(dsn) >= 5 && dsn[:5] == "pgx5:":
+		return dsn
+	default:
+		// Key=value DSN — wrap as pgx5://
+		return "pgx5://" + dsn
+	}
 }
 
 // Up applies all pending migrations.
@@ -98,7 +107,7 @@ func (mm *MigrationManager) Goto(version uint) error {
 }
 
 // Force sets the migration version without running migrations.
-// Use with caution - this is for recovering from failed migrations.
+// Use with caution — for recovering from failed migrations.
 func (mm *MigrationManager) Force(version int) error {
 	err := mm.migrate.Force(version)
 	if err != nil {

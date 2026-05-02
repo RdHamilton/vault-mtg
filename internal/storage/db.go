@@ -3,13 +3,12 @@ package storage
 
 import (
 	"database/sql"
+	"encoding/json"
 	"fmt"
 	"os"
-	"path/filepath"
-	"strings"
 	"time"
 
-	_ "modernc.org/sqlite" // SQLite driver
+	_ "github.com/jackc/pgx/v5/stdlib" // PostgreSQL driver
 )
 
 // DB wraps the database connection and provides access to repositories.
@@ -19,9 +18,30 @@ type DB struct {
 
 // Config holds database configuration settings.
 type Config struct {
-	// Path is the file path to the SQLite database.
-	// Use ":memory:" for an in-memory database (useful for testing).
-	Path string
+	// DatabaseURL is the PostgreSQL connection string (DSN).
+	// Example: postgres://user:pass@host:5432/dbname?sslmode=disable
+	// Takes precedence over individual fields if set.
+	DatabaseURL string
+
+	// Host is the PostgreSQL server host.
+	Host string
+
+	// Port is the PostgreSQL server port. Default: 5432
+	Port int
+
+	// User is the PostgreSQL username.
+	User string
+
+	// Password is the PostgreSQL password.
+	Password string
+
+	// DBName is the PostgreSQL database name.
+	DBName string
+
+	// SSLMode sets the PostgreSQL SSL mode.
+	// Options: disable, require, verify-ca, verify-full
+	// Default: require (for production)
+	SSLMode string
 
 	// MaxOpenConns sets the maximum number of open connections to the database.
 	// Default: 25
@@ -35,125 +55,118 @@ type Config struct {
 	// Default: 5 minutes
 	ConnMaxLifetime time.Duration
 
-	// BusyTimeout sets how long to wait when the database is locked.
-	// Default: 15 seconds
-	BusyTimeout time.Duration
-
-	// JournalMode sets the SQLite journal mode.
-	// Options: DELETE, TRUNCATE, PERSIST, MEMORY, WAL, OFF
-	// Default: WAL (Write-Ahead Logging) for better concurrency
-	JournalMode string
-
-	// Synchronous sets the SQLite synchronous mode.
-	// Options: OFF, NORMAL, FULL, EXTRA
-	// Default: NORMAL for good balance of safety and performance
-	Synchronous string
-
 	// AutoMigrate automatically runs pending database migrations on Open.
 	// Default: false (migrations must be run manually)
 	AutoMigrate bool
 }
 
+// secretsManagerPayload is the JSON structure returned by AWS Secrets Manager
+// for RDS credentials.
+type secretsManagerPayload struct {
+	Host     string `json:"host"`
+	Port     int    `json:"port"`
+	Username string `json:"username"`
+	Password string `json:"password"`
+	DBName   string `json:"dbname"`
+}
+
 // DefaultConfig returns a Config with sensible default values.
-func DefaultConfig(path string) *Config {
-	return &Config{
-		Path:            path,
+// It reads DATABASE_URL from the environment if set.
+func DefaultConfig() *Config {
+	cfg := &Config{
+		DatabaseURL:     os.Getenv("DATABASE_URL"),
+		Port:            5432,
+		SSLMode:         "require",
 		MaxOpenConns:    25,
 		MaxIdleConns:    5,
 		ConnMaxLifetime: 5 * time.Minute,
-		BusyTimeout:     15 * time.Second,
-		JournalMode:     "WAL",
-		Synchronous:     "NORMAL",
 	}
+	return cfg
+}
+
+// ConfigFromSecretsManager parses an AWS Secrets Manager JSON payload into a Config.
+// The payload must contain host, port, username, password, and dbname fields.
+func ConfigFromSecretsManager(secretJSON string) (*Config, error) {
+	var payload secretsManagerPayload
+	if err := json.Unmarshal([]byte(secretJSON), &payload); err != nil {
+		return nil, fmt.Errorf("failed to parse secrets manager payload: %w", err)
+	}
+	if payload.Host == "" {
+		return nil, fmt.Errorf("secrets manager payload missing 'host'")
+	}
+	port := payload.Port
+	if port == 0 {
+		port = 5432
+	}
+	cfg := DefaultConfig()
+	cfg.Host = payload.Host
+	cfg.Port = port
+	cfg.User = payload.Username
+	cfg.Password = payload.Password
+	cfg.DBName = payload.DBName
+	cfg.DatabaseURL = "" // Use individual fields; buildDSN will construct DSN
+	return cfg, nil
+}
+
+// buildDSN constructs a PostgreSQL DSN from individual config fields.
+func (c *Config) buildDSN() string {
+	if c.DatabaseURL != "" {
+		return c.DatabaseURL
+	}
+	sslMode := c.SSLMode
+	if sslMode == "" {
+		sslMode = "require"
+	}
+	return fmt.Sprintf(
+		"host=%s port=%d user=%s password=%s dbname=%s sslmode=%s",
+		c.Host, c.Port, c.User, c.Password, c.DBName, sslMode,
+	)
 }
 
 // Open creates a new database connection with the given configuration.
-// It configures connection pooling and SQLite-specific settings.
 func Open(config *Config) (*DB, error) {
 	if config == nil {
 		return nil, fmt.Errorf("config cannot be nil")
 	}
 
-	// Create parent directory if it doesn't exist (unless using in-memory database)
-	if config.Path != ":memory:" {
-		dir := filepath.Dir(config.Path)
-		if err := os.MkdirAll(dir, 0o755); err != nil {
-			return nil, fmt.Errorf("failed to create database directory: %w", err)
-		}
+	dsn := config.buildDSN()
+	if dsn == "" {
+		return nil, fmt.Errorf("no database connection string configured: set DATABASE_URL or provide host/user/password/dbname")
 	}
 
-	// Build DSN with pragma parameters
-	dsn := fmt.Sprintf("%s?_busy_timeout=%d&_journal_mode=%s&_synchronous=%s&_foreign_keys=on",
-		config.Path,
-		config.BusyTimeout.Milliseconds(),
-		config.JournalMode,
-		config.Synchronous,
-	)
-
-	// Open database connection
-	conn, err := sql.Open("sqlite", dsn)
+	conn, err := sql.Open("pgx", dsn)
 	if err != nil {
 		return nil, fmt.Errorf("failed to open database: %w", err)
 	}
 
-	// Configure connection pool
 	conn.SetMaxOpenConns(config.MaxOpenConns)
 	conn.SetMaxIdleConns(config.MaxIdleConns)
 	conn.SetConnMaxLifetime(config.ConnMaxLifetime)
 
-	// Verify connection
 	if err := conn.Ping(); err != nil {
-		if closeErr := conn.Close(); closeErr != nil {
-			return nil, fmt.Errorf("failed to close database after ping error: %w (original error: %v)", closeErr, err)
-		}
+		_ = conn.Close()
 		return nil, fmt.Errorf("failed to ping database: %w", err)
 	}
 
-	// Run migrations if auto-migrate is enabled
-	if config.AutoMigrate {
-		// Close the connection temporarily for migration
-		if err := conn.Close(); err != nil {
-			return nil, fmt.Errorf("failed to close database for migration: %w", err)
-		}
+	db := &DB{conn: conn}
 
-		// Run migrations
-		mgr, err := NewMigrationManager(config.Path)
+	if config.AutoMigrate {
+		mgr, err := NewMigrationManager(dsn)
 		if err != nil {
+			_ = conn.Close()
 			return nil, fmt.Errorf("failed to create migration manager: %w", err)
 		}
-
 		if err := mgr.Up(); err != nil {
-			if closeErr := mgr.Close(); closeErr != nil {
-				return nil, fmt.Errorf("failed to close migration manager after error: %w (original error: %v)", closeErr, err)
-			}
+			_ = conn.Close()
 			return nil, fmt.Errorf("failed to run migrations: %w", err)
 		}
-
 		if err := mgr.Close(); err != nil {
+			_ = conn.Close()
 			return nil, fmt.Errorf("failed to close migration manager: %w", err)
-		}
-
-		// Reopen the connection
-		conn, err = sql.Open("sqlite", dsn)
-		if err != nil {
-			return nil, fmt.Errorf("failed to reopen database after migrations: %w", err)
-		}
-
-		// Reconfigure connection pool
-		conn.SetMaxOpenConns(config.MaxOpenConns)
-		conn.SetMaxIdleConns(config.MaxIdleConns)
-		conn.SetConnMaxLifetime(config.ConnMaxLifetime)
-
-		// Verify connection again
-		if err := conn.Ping(); err != nil {
-			if closeErr := conn.Close(); closeErr != nil {
-				return nil, fmt.Errorf("failed to close database after ping error: %w (original error: %v)", closeErr, err)
-			}
-			return nil, fmt.Errorf("failed to ping database after migrations: %w", err)
 		}
 	}
 
-	return &DB{conn: conn}, nil
+	return db, nil
 }
 
 // Close closes the database connection.
@@ -165,7 +178,6 @@ func (db *DB) Close() error {
 }
 
 // Conn returns the underlying sql.DB connection.
-// This is useful for raw SQL queries or custom operations.
 func (db *DB) Conn() *sql.DB {
 	return db.conn
 }
@@ -173,43 +185,4 @@ func (db *DB) Conn() *sql.DB {
 // Ping verifies the database connection is alive.
 func (db *DB) Ping() error {
 	return db.conn.Ping()
-}
-
-// IsSQLiteBusy checks if an error is a SQLite SQLITE_BUSY error.
-func IsSQLiteBusy(err error) bool {
-	if err == nil {
-		return false
-	}
-	// Check for "database is locked" or "SQLITE_BUSY" in error message
-	errMsg := err.Error()
-	return strings.Contains(errMsg, "database is locked") || strings.Contains(errMsg, "SQLITE_BUSY")
-}
-
-// RetryOnBusy retries a function if it returns a SQLITE_BUSY error.
-// It uses exponential backoff with a maximum of 5 retries.
-func RetryOnBusy(fn func() error) error {
-	const maxRetries = 5
-	baseDelay := 10 * time.Millisecond
-
-	var lastErr error
-	for attempt := 0; attempt < maxRetries; attempt++ {
-		lastErr = fn()
-		if lastErr == nil {
-			return nil
-		}
-
-		// If it's not a SQLITE_BUSY error, return immediately
-		if !IsSQLiteBusy(lastErr) {
-			return lastErr
-		}
-
-		// Don't sleep on the last attempt
-		if attempt < maxRetries-1 {
-			// Exponential backoff: 10ms, 20ms, 40ms, 80ms
-			delay := baseDelay * time.Duration(1<<uint(attempt))
-			time.Sleep(delay)
-		}
-	}
-
-	return fmt.Errorf("operation failed after %d retries: %w", maxRetries, lastErr)
 }

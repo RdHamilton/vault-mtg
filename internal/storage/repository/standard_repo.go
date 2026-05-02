@@ -96,7 +96,7 @@ func (r *standardRepository) GetConfig(ctx context.Context) (*models.StandardCon
 func (r *standardRepository) UpdateConfig(ctx context.Context, config *models.StandardConfig) error {
 	query := `
 		INSERT INTO standard_config (id, next_rotation_date, rotation_enabled, updated_at)
-		VALUES (1, ?, ?, CURRENT_TIMESTAMP)
+		VALUES (1, $1, $2, CURRENT_TIMESTAMP)
 		ON CONFLICT(id) DO UPDATE SET
 			next_rotation_date = excluded.next_rotation_date,
 			rotation_enabled = excluded.rotation_enabled,
@@ -192,7 +192,7 @@ func (r *standardRepository) GetUpcomingRotation(ctx context.Context) (*models.U
 		FROM sets
 		WHERE is_standard_legal = TRUE
 		  AND rotation_date IS NOT NULL
-		  AND date(rotation_date) <= date(?)
+		  AND date(rotation_date) <= date($1)
 		ORDER BY released_at ASC
 	`
 
@@ -267,7 +267,7 @@ func (r *standardRepository) countAffectedDecks(ctx context.Context, rotatingSet
 		if i > 0 {
 			placeholders += ", "
 		}
-		placeholders += "?"
+		placeholders += fmt.Sprintf("$%d", i+1)
 	}
 
 	query := fmt.Sprintf(`
@@ -292,8 +292,8 @@ func (r *standardRepository) countAffectedDecks(ctx context.Context, rotatingSet
 func (r *standardRepository) UpdateSetStandardStatus(ctx context.Context, setCode string, isLegal bool, rotationDate *string) error {
 	query := `
 		UPDATE sets
-		SET is_standard_legal = ?, rotation_date = ?
-		WHERE code = ?
+		SET is_standard_legal = $1, rotation_date = $2
+		WHERE code = $3
 	`
 
 	_, err := r.db.ExecContext(ctx, query, isLegal, rotationDate, setCode)
@@ -309,7 +309,7 @@ func (r *standardRepository) GetCardLegality(ctx context.Context, arenaID string
 	query := `
 		SELECT legalities
 		FROM set_cards
-		WHERE arena_id = ?
+		WHERE arena_id = $1
 	`
 
 	var legalitiesJSON sql.NullString
@@ -347,7 +347,7 @@ func (r *standardRepository) GetCardsLegality(ctx context.Context, arenaIDs []st
 		if i > 0 {
 			placeholders += ", "
 		}
-		placeholders += "?"
+		placeholders += fmt.Sprintf("$%d", i+1)
 	}
 
 	query := fmt.Sprintf(`
@@ -395,8 +395,8 @@ func (r *standardRepository) UpdateCardLegality(ctx context.Context, arenaID str
 
 	query := `
 		UPDATE set_cards
-		SET legalities = ?
-		WHERE arena_id = ?
+		SET legalities = $1
+		WHERE arena_id = $2
 	`
 
 	_, err = r.db.ExecContext(ctx, query, string(legalitiesJSON), arenaID)
@@ -426,7 +426,7 @@ func (r *standardRepository) GetRotationAffectedDecks(ctx context.Context) ([]*m
 			FROM sets
 			WHERE is_standard_legal = TRUE
 			  AND rotation_date IS NOT NULL
-			  AND date(rotation_date) <= date(?)
+			  AND date(rotation_date) <= date($1)
 		),
 		deck_rotating_cards AS (
 			SELECT

@@ -52,29 +52,24 @@ func NewNotesRepository(db *sql.DB) NotesRepository {
 func (r *notesRepository) CreateDeckNote(ctx context.Context, note *models.DeckNote) error {
 	query := `
 		INSERT INTO deck_notes (deck_id, content, category, created_at, updated_at)
-		VALUES (?, ?, ?, ?, ?)
+		VALUES ($1, $2, $3, $4, $5)
+		RETURNING id
 	`
 
 	now := time.Now().UTC()
 	note.CreatedAt = now
 	note.UpdatedAt = now
 
-	result, err := r.db.ExecContext(ctx, query,
+	err := r.db.QueryRowContext(ctx, query,
 		note.DeckID,
 		note.Content,
 		note.Category,
-		now.Format("2006-01-02 15:04:05.999999"),
-		now.Format("2006-01-02 15:04:05.999999"),
-	)
+		now,
+		now,
+	).Scan(&note.ID)
 	if err != nil {
 		return err
 	}
-
-	id, err := result.LastInsertId()
-	if err != nil {
-		return err
-	}
-	note.ID = id
 
 	return nil
 }
@@ -84,7 +79,7 @@ func (r *notesRepository) GetDeckNotes(ctx context.Context, deckID string) ([]*m
 	query := `
 		SELECT id, deck_id, content, category, created_at, updated_at
 		FROM deck_notes
-		WHERE deck_id = ?
+		WHERE deck_id = $1
 		ORDER BY created_at DESC
 	`
 
@@ -102,7 +97,7 @@ func (r *notesRepository) GetDeckNotesByCategory(ctx context.Context, deckID, ca
 	query := `
 		SELECT id, deck_id, content, category, created_at, updated_at
 		FROM deck_notes
-		WHERE deck_id = ? AND category = ?
+		WHERE deck_id = $1 AND category = $2
 		ORDER BY created_at DESC
 	`
 
@@ -120,7 +115,7 @@ func (r *notesRepository) GetDeckNoteByID(ctx context.Context, id int64) (*model
 	query := `
 		SELECT id, deck_id, content, category, created_at, updated_at
 		FROM deck_notes
-		WHERE id = ?
+		WHERE id = $1
 	`
 
 	note := &models.DeckNote{}
@@ -148,8 +143,8 @@ func (r *notesRepository) GetDeckNoteByID(ctx context.Context, id int64) (*model
 func (r *notesRepository) UpdateDeckNote(ctx context.Context, note *models.DeckNote) error {
 	query := `
 		UPDATE deck_notes
-		SET content = ?, category = ?, updated_at = ?
-		WHERE id = ?
+		SET content = $1, category = $2, updated_at = $3
+		WHERE id = $4
 	`
 
 	note.UpdatedAt = time.Now().UTC()
@@ -165,14 +160,14 @@ func (r *notesRepository) UpdateDeckNote(ctx context.Context, note *models.DeckN
 
 // DeleteDeckNote deletes a note by ID.
 func (r *notesRepository) DeleteDeckNote(ctx context.Context, id int64) error {
-	query := `DELETE FROM deck_notes WHERE id = ?`
+	query := `DELETE FROM deck_notes WHERE id = $1`
 	_, err := r.db.ExecContext(ctx, query, id)
 	return err
 }
 
 // DeleteDeckNotesByDeck deletes all notes for a deck.
 func (r *notesRepository) DeleteDeckNotesByDeck(ctx context.Context, deckID string) error {
-	query := `DELETE FROM deck_notes WHERE deck_id = ?`
+	query := `DELETE FROM deck_notes WHERE deck_id = $1`
 	_, err := r.db.ExecContext(ctx, query, deckID)
 	return err
 }
@@ -181,8 +176,8 @@ func (r *notesRepository) DeleteDeckNotesByDeck(ctx context.Context, deckID stri
 func (r *notesRepository) UpdateMatchNotes(ctx context.Context, matchID string, notes string, rating int) error {
 	query := `
 		UPDATE matches
-		SET notes = ?, rating = ?
-		WHERE id = ?
+		SET notes = $1, rating = $2
+		WHERE id = $3
 	`
 
 	_, err := r.db.ExecContext(ctx, query, notes, rating, matchID)
@@ -194,7 +189,7 @@ func (r *notesRepository) GetMatchNotes(ctx context.Context, matchID string) (*m
 	query := `
 		SELECT id, COALESCE(notes, '') as notes, COALESCE(rating, 0) as rating
 		FROM matches
-		WHERE id = ?
+		WHERE id = $1
 	`
 
 	mn := &models.MatchNotes{}

@@ -28,7 +28,7 @@ func NewMLSuggestionRepository(db *sql.DB) *MLSuggestionRepository {
 func (r *MLSuggestionRepository) UpsertIndividualCardStats(ctx context.Context, stats *models.CardIndividualStats) error {
 	query := `
 		INSERT INTO card_individual_stats (card_id, format, total_games, wins, updated_at)
-		VALUES (?, ?, ?, ?, ?)
+		VALUES ($1, $2, $3, $4, $5)
 		ON CONFLICT(card_id, format) DO UPDATE SET
 			total_games = total_games + excluded.total_games,
 			wins = wins + excluded.wins,
@@ -46,7 +46,7 @@ func (r *MLSuggestionRepository) GetIndividualCardStats(ctx context.Context, car
 	query := `
 		SELECT card_id, format, total_games, wins, updated_at
 		FROM card_individual_stats
-		WHERE card_id = ? AND format = ?
+		WHERE card_id = $1 AND format = $2
 	`
 
 	var stats models.CardIndividualStats
@@ -88,11 +88,11 @@ func (r *MLSuggestionRepository) UpdateSeparateStatsFromIndividual(ctx context.C
 				WHEN COALESCE(i2.total_games, 0) - card_combination_stats.games_together <= 0 THEN 0
 				ELSE MAX(0, COALESCE(i2.wins, 0) - card_combination_stats.wins_together)
 			END,
-			updated_at = ?
+			updated_at = $1
 		FROM card_combination_stats AS ccs
 		LEFT JOIN card_individual_stats i1 ON i1.card_id = ccs.card_id_1 AND i1.format = ccs.format
 		LEFT JOIN card_individual_stats i2 ON i2.card_id = ccs.card_id_2 AND i2.format = ccs.format
-		WHERE card_combination_stats.id = ccs.id AND card_combination_stats.format = ?
+		WHERE card_combination_stats.id = ccs.id AND card_combination_stats.format = $2
 	`
 
 	_, err := r.db.ExecContext(ctx, query, time.Now(), format)
@@ -118,7 +118,7 @@ func (r *MLSuggestionRepository) RecordMatchStatsInTx(ctx context.Context, cardI
 	// Record individual card stats
 	individualQuery := `
 		INSERT INTO card_individual_stats (card_id, format, total_games, wins, updated_at)
-		VALUES (?, ?, 1, ?, ?)
+		VALUES ($1, $2, 1, $3, $4)
 		ON CONFLICT(card_id, format) DO UPDATE SET
 			total_games = total_games + 1,
 			wins = wins + excluded.wins,
@@ -142,7 +142,7 @@ func (r *MLSuggestionRepository) RecordMatchStatsInTx(ctx context.Context, cardI
 			games_together, games_card1_only, games_card2_only,
 			wins_together, wins_card1_only, wins_card2_only,
 			synergy_score, confidence_score, updated_at
-		) VALUES (?, ?, '', ?, 1, 0, 0, ?, 0, 0, 0, 0, ?)
+		) VALUES ($1, $2, '', $3, 1, 0, 0, $4, 0, 0, 0, 0, $5)
 		ON CONFLICT(card_id_1, card_id_2, deck_id, format) DO UPDATE SET
 			games_together = games_together + 1,
 			wins_together = wins_together + excluded.wins_together,
@@ -186,7 +186,7 @@ func (r *MLSuggestionRepository) UpsertCombinationStats(ctx context.Context, sta
 			games_together, games_card1_only, games_card2_only,
 			wins_together, wins_card1_only, wins_card2_only,
 			synergy_score, confidence_score, updated_at
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
 		ON CONFLICT(card_id_1, card_id_2, deck_id, format) DO UPDATE SET
 			games_together = games_together + excluded.games_together,
 			games_card1_only = games_card1_only + excluded.games_card1_only,
@@ -219,7 +219,7 @@ func (r *MLSuggestionRepository) GetCombinationStats(ctx context.Context, cardID
 			wins_together, wins_card1_only, wins_card2_only,
 			synergy_score, confidence_score, created_at, updated_at
 		FROM card_combination_stats
-		WHERE card_id_1 = ? AND card_id_2 = ? AND format = ?
+		WHERE card_id_1 = $1 AND card_id_2 = $2 AND format = $3
 	`
 
 	var stats models.CardCombinationStats
@@ -250,10 +250,10 @@ func (r *MLSuggestionRepository) GetTopSynergiesForCard(ctx context.Context, car
 			wins_together, wins_card1_only, wins_card2_only,
 			synergy_score, confidence_score, created_at, updated_at
 		FROM card_combination_stats
-		WHERE (card_id_1 = ? OR card_id_2 = ?) AND format = ?
+		WHERE (card_id_1 = $1 OR card_id_2 = $2) AND format = $3
 			AND games_together >= 5
 		ORDER BY synergy_score DESC
-		LIMIT ?
+		LIMIT $4
 	`
 
 	rows, err := r.db.QueryContext(ctx, query, cardID, cardID, format, limit)
@@ -301,8 +301,8 @@ func (r *MLSuggestionRepository) CalculateAndUpdateSynergyScores(ctx context.Con
 			) * (1.0 - 1.0 / (1.0 + SQRT(games_together)))
 		END,
 		confidence_score = 1.0 - 1.0 / (1.0 + SQRT(games_together)),
-		updated_at = ?
-		WHERE games_together >= ?
+		updated_at = $1
+		WHERE games_together >= $2
 	`
 
 	_, err := r.db.ExecContext(ctx, query, time.Now(), minGames)
@@ -321,26 +321,20 @@ func (r *MLSuggestionRepository) CreateSuggestion(ctx context.Context, suggestio
 			swap_for_card_id, swap_for_card_name,
 			confidence, expected_win_rate_change,
 			title, description, reasoning, evidence
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
 	`
 
-	result, err := r.db.ExecContext(ctx, query,
+	err := r.db.QueryRowContext(ctx, query+" RETURNING id",
 		suggestion.DeckID, suggestion.SuggestionType,
 		suggestion.CardID, suggestion.CardName,
 		suggestion.SwapForCardID, suggestion.SwapForCardName,
 		suggestion.Confidence, suggestion.ExpectedWinRateChange,
 		suggestion.Title, suggestion.Description,
 		suggestion.Reasoning, suggestion.Evidence,
-	)
+	).Scan(&suggestion.ID)
 	if err != nil {
 		return err
 	}
-
-	id, err := result.LastInsertId()
-	if err != nil {
-		return err
-	}
-	suggestion.ID = id
 	return nil
 }
 
@@ -354,7 +348,7 @@ func (r *MLSuggestionRepository) GetSuggestionsByDeck(ctx context.Context, deckI
 			is_dismissed, was_applied, outcome_win_rate_change,
 			created_at, applied_at, outcome_recorded_at
 		FROM ml_suggestions
-		WHERE deck_id = ?
+		WHERE deck_id = $1
 		ORDER BY confidence DESC, created_at DESC
 	`
 
@@ -377,7 +371,7 @@ func (r *MLSuggestionRepository) GetActiveSuggestions(ctx context.Context, deckI
 			is_dismissed, was_applied, outcome_win_rate_change,
 			created_at, applied_at, outcome_recorded_at
 		FROM ml_suggestions
-		WHERE deck_id = ? AND is_dismissed = FALSE AND was_applied = FALSE
+		WHERE deck_id = $1 AND is_dismissed = FALSE AND was_applied = FALSE
 		ORDER BY confidence DESC
 	`
 
@@ -392,14 +386,14 @@ func (r *MLSuggestionRepository) GetActiveSuggestions(ctx context.Context, deckI
 
 // DismissSuggestion marks a suggestion as dismissed.
 func (r *MLSuggestionRepository) DismissSuggestion(ctx context.Context, id int64) error {
-	query := `UPDATE ml_suggestions SET is_dismissed = TRUE WHERE id = ?`
+	query := `UPDATE ml_suggestions SET is_dismissed = TRUE WHERE id = $1`
 	_, err := r.db.ExecContext(ctx, query, id)
 	return err
 }
 
 // ApplySuggestion marks a suggestion as applied.
 func (r *MLSuggestionRepository) ApplySuggestion(ctx context.Context, id int64) error {
-	query := `UPDATE ml_suggestions SET was_applied = TRUE, applied_at = ? WHERE id = ?`
+	query := `UPDATE ml_suggestions SET was_applied = TRUE, applied_at = $1 WHERE id = $2`
 	_, err := r.db.ExecContext(ctx, query, time.Now(), id)
 	return err
 }
@@ -408,8 +402,8 @@ func (r *MLSuggestionRepository) ApplySuggestion(ctx context.Context, id int64) 
 func (r *MLSuggestionRepository) RecordSuggestionOutcome(ctx context.Context, id int64, winRateChange float64) error {
 	query := `
 		UPDATE ml_suggestions
-		SET outcome_win_rate_change = ?, outcome_recorded_at = ?
-		WHERE id = ?
+		SET outcome_win_rate_change = $1, outcome_recorded_at = $2
+		WHERE id = $3
 	`
 	_, err := r.db.ExecContext(ctx, query, winRateChange, time.Now(), id)
 	return err
@@ -417,7 +411,7 @@ func (r *MLSuggestionRepository) RecordSuggestionOutcome(ctx context.Context, id
 
 // DeleteSuggestionsByDeck removes all suggestions for a deck.
 func (r *MLSuggestionRepository) DeleteSuggestionsByDeck(ctx context.Context, deckID string) error {
-	query := `DELETE FROM ml_suggestions WHERE deck_id = ?`
+	query := `DELETE FROM ml_suggestions WHERE deck_id = $1`
 	_, err := r.db.ExecContext(ctx, query, deckID)
 	return err
 }
@@ -493,7 +487,7 @@ func (r *MLSuggestionRepository) UpsertCardAffinity(ctx context.Context, affinit
 		INSERT INTO card_affinity (
 			card_id_1, card_id_2, format,
 			affinity_score, sample_size, confidence, source, computed_at
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
 		ON CONFLICT(card_id_1, card_id_2, format) DO UPDATE SET
 			affinity_score = excluded.affinity_score,
 			sample_size = excluded.sample_size,
@@ -520,7 +514,7 @@ func (r *MLSuggestionRepository) GetCardAffinity(ctx context.Context, cardID1, c
 		SELECT id, card_id_1, card_id_2, format,
 			affinity_score, sample_size, confidence, source, computed_at
 		FROM card_affinity
-		WHERE card_id_1 = ? AND card_id_2 = ? AND format = ?
+		WHERE card_id_1 = $1 AND card_id_2 = $2 AND format = $3
 	`
 
 	var a models.CardAffinity
@@ -543,9 +537,9 @@ func (r *MLSuggestionRepository) GetTopAffinities(ctx context.Context, cardID in
 		SELECT id, card_id_1, card_id_2, format,
 			affinity_score, sample_size, confidence, source, computed_at
 		FROM card_affinity
-		WHERE (card_id_1 = ? OR card_id_2 = ?) AND format = ?
+		WHERE (card_id_1 = $1 OR card_id_2 = $2) AND format = $3
 		ORDER BY affinity_score DESC
-		LIMIT ?
+		LIMIT $4
 	`
 
 	rows, err := r.db.QueryContext(ctx, query, cardID, cardID, format, limit)
@@ -580,7 +574,7 @@ func (r *MLSuggestionRepository) UpsertUserPlayPatterns(ctx context.Context, pat
 			aggro_affinity, midrange_affinity, control_affinity, combo_affinity,
 			color_preferences, avg_game_length, aggression_score, interaction_score,
 			total_matches, total_decks, updated_at
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
 		ON CONFLICT(account_id) DO UPDATE SET
 			preferred_archetype = excluded.preferred_archetype,
 			aggro_affinity = excluded.aggro_affinity,
@@ -615,7 +609,7 @@ func (r *MLSuggestionRepository) GetUserPlayPatterns(ctx context.Context, accoun
 			color_preferences, avg_game_length, aggression_score, interaction_score,
 			total_matches, total_decks, created_at, updated_at
 		FROM user_play_patterns
-		WHERE account_id = ?
+		WHERE account_id = $1
 	`
 
 	var p models.UserPlayPatterns
@@ -651,7 +645,7 @@ func (r *MLSuggestionRepository) SaveModelMetadata(ctx context.Context, meta *mo
 		INSERT INTO ml_model_metadata (
 			model_name, model_version, training_samples, training_date,
 			accuracy, precision_score, recall, f1_score, is_active, model_data
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
 		ON CONFLICT(model_name, model_version) DO UPDATE SET
 			training_samples = excluded.training_samples,
 			training_date = excluded.training_date,
@@ -675,7 +669,7 @@ func (r *MLSuggestionRepository) SaveModelMetadata(ctx context.Context, meta *mo
 	// Query for the actual ID since LastInsertId doesn't work with ON CONFLICT DO UPDATE
 	var id int64
 	err = r.db.QueryRowContext(ctx,
-		"SELECT id FROM ml_model_metadata WHERE model_name = ? AND model_version = ?",
+		"SELECT id FROM ml_model_metadata WHERE model_name = $1 AND model_version = $2",
 		meta.ModelName, meta.ModelVersion,
 	).Scan(&id)
 	if err != nil {
@@ -691,7 +685,7 @@ func (r *MLSuggestionRepository) GetActiveModel(ctx context.Context, modelName s
 		SELECT id, model_name, model_version, training_samples, training_date,
 			accuracy, precision_score, recall, f1_score, is_active, model_data, created_at
 		FROM ml_model_metadata
-		WHERE model_name = ? AND is_active = TRUE
+		WHERE model_name = $1 AND is_active = TRUE
 		ORDER BY created_at DESC
 		LIMIT 1
 	`
@@ -857,10 +851,10 @@ func (r *MLSuggestionRepository) ClearLearnedDataByRetention(ctx context.Context
 	cutoff := time.Now().AddDate(0, 0, -retentionDays)
 
 	queries := []string{
-		"DELETE FROM card_combination_stats WHERE updated_at < ?",
-		"DELETE FROM card_individual_stats WHERE updated_at < ?",
-		"DELETE FROM ml_suggestions WHERE created_at < ?",
-		"DELETE FROM card_affinity WHERE computed_at < ?",
+		"DELETE FROM card_combination_stats WHERE updated_at < $1",
+		"DELETE FROM card_individual_stats WHERE updated_at < $1",
+		"DELETE FROM ml_suggestions WHERE created_at < $1",
+		"DELETE FROM card_affinity WHERE computed_at < $1",
 	}
 
 	tx, err := r.db.BeginTx(ctx, nil)

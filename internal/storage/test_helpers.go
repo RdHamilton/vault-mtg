@@ -2,20 +2,21 @@ package storage
 
 import (
 	"os"
-	"path/filepath"
 	"testing"
 )
 
-// setupTestService creates a test service with a temporary database file.
+// setupTestService creates a test service backed by a PostgreSQL database.
+// The DATABASE_URL environment variable must be set; otherwise the test is skipped.
 func setupTestService(t *testing.T) *Service {
 	t.Helper()
 
-	// Create temporary database file
-	tmpDir := t.TempDir()
-	dbPath := filepath.Join(tmpDir, "test.db")
+	dsn := os.Getenv("DATABASE_URL")
+	if dsn == "" {
+		t.Skip("DATABASE_URL not set; skipping integration test")
+	}
 
-	// Run migrations first
-	migrationMgr, err := NewMigrationManager(dbPath)
+	// Run migrations
+	migrationMgr, err := NewMigrationManager(dsn)
 	if err != nil {
 		t.Fatalf("Failed to create migration manager: %v", err)
 	}
@@ -24,11 +25,11 @@ func setupTestService(t *testing.T) *Service {
 		t.Fatalf("Failed to run migrations: %v", err)
 	}
 
-	// Close migration manager
 	_ = migrationMgr.Close()
 
 	// Open database
-	config := DefaultConfig(dbPath)
+	config := DefaultConfig()
+	config.DatabaseURL = dsn
 	db, err := Open(config)
 	if err != nil {
 		t.Fatalf("Failed to open test database: %v", err)
@@ -37,10 +38,8 @@ func setupTestService(t *testing.T) *Service {
 	// Create service
 	service := NewService(db)
 
-	// Cleanup function
 	t.Cleanup(func() {
 		_ = db.Close()
-		_ = os.Remove(dbPath)
 	})
 
 	return service

@@ -44,10 +44,11 @@ func (r *rankHistoryRepository) Create(ctx context.Context, rank *models.RankHis
 		INSERT INTO rank_history (
 			account_id, timestamp, format, season_ordinal,
 			rank_class, rank_level, rank_step, percentile, created_at
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+		RETURNING id
 	`
 
-	result, err := r.db.ExecContext(
+	err := r.db.QueryRowContext(
 		ctx, query,
 		rank.AccountID,
 		rank.Timestamp,
@@ -58,17 +59,11 @@ func (r *rankHistoryRepository) Create(ctx context.Context, rank *models.RankHis
 		rank.RankStep,
 		rank.Percentile,
 		rank.CreatedAt,
-	)
+	).Scan(&rank.ID)
 	if err != nil {
 		return err
 	}
 
-	id, err := result.LastInsertId()
-	if err != nil {
-		return err
-	}
-
-	rank.ID = int(id)
 	return nil
 }
 
@@ -79,7 +74,7 @@ func (r *rankHistoryRepository) GetByFormat(ctx context.Context, accountID int, 
 			id, account_id, timestamp, format, season_ordinal,
 			rank_class, rank_level, rank_step, percentile, created_at
 		FROM rank_history
-		WHERE account_id = ? AND format = ?
+		WHERE account_id = $1 AND format = $2
 		ORDER BY timestamp DESC
 	`
 
@@ -120,7 +115,7 @@ func (r *rankHistoryRepository) GetBySeason(ctx context.Context, accountID int, 
 			id, account_id, timestamp, format, season_ordinal,
 			rank_class, rank_level, rank_step, percentile, created_at
 		FROM rank_history
-		WHERE account_id = ? AND season_ordinal = ?
+		WHERE account_id = $1 AND season_ordinal = $2
 		ORDER BY timestamp DESC
 	`
 
@@ -161,7 +156,7 @@ func (r *rankHistoryRepository) GetByDateRange(ctx context.Context, accountID in
 			id, account_id, timestamp, format, season_ordinal,
 			rank_class, rank_level, rank_step, percentile, created_at
 		FROM rank_history
-		WHERE account_id = ? AND timestamp >= ? AND timestamp <= ?
+		WHERE account_id = $1 AND timestamp >= $2 AND timestamp <= $3
 		ORDER BY timestamp DESC
 	`
 
@@ -202,7 +197,7 @@ func (r *rankHistoryRepository) GetLatestByFormat(ctx context.Context, accountID
 			id, account_id, timestamp, format, season_ordinal,
 			rank_class, rank_level, rank_step, percentile, created_at
 		FROM rank_history
-		WHERE account_id = ? AND format = ?
+		WHERE account_id = $1 AND format = $2
 		ORDER BY timestamp DESC
 		LIMIT 1
 	`
@@ -238,7 +233,7 @@ func (r *rankHistoryRepository) GetAll(ctx context.Context, accountID int) ([]*m
 			id, account_id, timestamp, format, season_ordinal,
 			rank_class, rank_level, rank_step, percentile, created_at
 		FROM rank_history
-		WHERE account_id = ?
+		WHERE account_id = $1
 		ORDER BY timestamp DESC
 	`
 

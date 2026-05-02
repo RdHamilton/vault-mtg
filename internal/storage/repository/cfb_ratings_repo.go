@@ -54,13 +54,12 @@ func (r *cfbRatingsRepository) GetRating(ctx context.Context, cardName, setCode 
 		       constructed_rating, constructed_score, archetype_fit, commentary,
 		       source_url, author, imported_at, updated_at
 		FROM cfb_ratings
-		WHERE card_name = ? AND set_code = ?
+		WHERE card_name = $1 AND set_code = $2
 	`
 
 	rating := &models.CFBRating{}
 	var arenaID sql.NullInt64
 	var archetypeFit, commentary, sourceURL, author sql.NullString
-	var importedAt, updatedAt string
 
 	err := r.db.QueryRowContext(ctx, query, cardName, setCode).Scan(
 		&rating.ID,
@@ -75,8 +74,8 @@ func (r *cfbRatingsRepository) GetRating(ctx context.Context, cardName, setCode 
 		&commentary,
 		&sourceURL,
 		&author,
-		&importedAt,
-		&updatedAt,
+		&rating.ImportedAt,
+		&rating.UpdatedAt,
 	)
 	if err != nil {
 		if err == sql.ErrNoRows {
@@ -101,8 +100,6 @@ func (r *cfbRatingsRepository) GetRating(ctx context.Context, cardName, setCode 
 	if author.Valid {
 		rating.Author = author.String
 	}
-	rating.ImportedAt, _ = time.Parse("2006-01-02 15:04:05.999999", importedAt)
-	rating.UpdatedAt, _ = time.Parse("2006-01-02 15:04:05.999999", updatedAt)
 
 	return rating, nil
 }
@@ -114,13 +111,12 @@ func (r *cfbRatingsRepository) GetRatingByArenaID(ctx context.Context, arenaID i
 		       constructed_rating, constructed_score, archetype_fit, commentary,
 		       source_url, author, imported_at, updated_at
 		FROM cfb_ratings
-		WHERE arena_id = ?
+		WHERE arena_id = $1
 	`
 
 	rating := &models.CFBRating{}
 	var arenaIDVal sql.NullInt64
 	var archetypeFit, commentary, sourceURL, author sql.NullString
-	var importedAt, updatedAt string
 
 	err := r.db.QueryRowContext(ctx, query, arenaID).Scan(
 		&rating.ID,
@@ -135,8 +131,8 @@ func (r *cfbRatingsRepository) GetRatingByArenaID(ctx context.Context, arenaID i
 		&commentary,
 		&sourceURL,
 		&author,
-		&importedAt,
-		&updatedAt,
+		&rating.ImportedAt,
+		&rating.UpdatedAt,
 	)
 	if err != nil {
 		if err == sql.ErrNoRows {
@@ -161,8 +157,6 @@ func (r *cfbRatingsRepository) GetRatingByArenaID(ctx context.Context, arenaID i
 	if author.Valid {
 		rating.Author = author.String
 	}
-	rating.ImportedAt, _ = time.Parse("2006-01-02 15:04:05.999999", importedAt)
-	rating.UpdatedAt, _ = time.Parse("2006-01-02 15:04:05.999999", updatedAt)
 
 	return rating, nil
 }
@@ -174,7 +168,7 @@ func (r *cfbRatingsRepository) GetRatingsForSet(ctx context.Context, setCode str
 		       constructed_rating, constructed_score, archetype_fit, commentary,
 		       source_url, author, imported_at, updated_at
 		FROM cfb_ratings
-		WHERE set_code = ?
+		WHERE set_code = $1
 		ORDER BY card_name
 	`
 
@@ -194,7 +188,7 @@ func (r *cfbRatingsRepository) UpsertRating(ctx context.Context, rating *models.
 			card_name, set_code, arena_id, limited_rating, limited_score,
 			constructed_rating, constructed_score, archetype_fit, commentary,
 			source_url, author, imported_at, updated_at
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
 		ON CONFLICT(card_name, set_code) DO UPDATE SET
 			arena_id = excluded.arena_id,
 			limited_rating = excluded.limited_rating,
@@ -219,7 +213,8 @@ func (r *cfbRatingsRepository) UpsertRating(ctx context.Context, rating *models.
 		arenaID = *rating.ArenaID
 	}
 
-	result, err := r.db.ExecContext(ctx, query,
+	queryWithReturning := query + " RETURNING id"
+	err := r.db.QueryRowContext(ctx, queryWithReturning,
 		rating.CardName,
 		rating.SetCode,
 		arenaID,
@@ -231,18 +226,11 @@ func (r *cfbRatingsRepository) UpsertRating(ctx context.Context, rating *models.
 		nullIfEmpty(rating.Commentary),
 		nullIfEmpty(rating.SourceURL),
 		nullIfEmpty(rating.Author),
-		rating.ImportedAt.Format("2006-01-02 15:04:05.999999"),
-		rating.UpdatedAt.Format("2006-01-02 15:04:05.999999"),
-	)
+		rating.ImportedAt.UTC(),
+		rating.UpdatedAt.UTC(),
+	).Scan(&rating.ID)
 	if err != nil {
 		return err
-	}
-
-	if rating.ID == 0 {
-		id, err := result.LastInsertId()
-		if err == nil {
-			rating.ID = id
-		}
 	}
 
 	return nil
@@ -260,14 +248,14 @@ func (r *cfbRatingsRepository) BulkUpsertRatings(ctx context.Context, ratings []
 
 // DeleteRatingsForSet deletes all CFB ratings for a set.
 func (r *cfbRatingsRepository) DeleteRatingsForSet(ctx context.Context, setCode string) error {
-	query := `DELETE FROM cfb_ratings WHERE set_code = ?`
+	query := `DELETE FROM cfb_ratings WHERE set_code = $1`
 	_, err := r.db.ExecContext(ctx, query, setCode)
 	return err
 }
 
 // GetRatingsCount returns the number of CFB ratings for a set.
 func (r *cfbRatingsRepository) GetRatingsCount(ctx context.Context, setCode string) (int, error) {
-	query := `SELECT COUNT(*) FROM cfb_ratings WHERE set_code = ?`
+	query := `SELECT COUNT(*) FROM cfb_ratings WHERE set_code = $1`
 	var count int
 	err := r.db.QueryRowContext(ctx, query, setCode).Scan(&count)
 	return count, err
@@ -279,8 +267,8 @@ func (r *cfbRatingsRepository) GetRatingsCount(ctx context.Context, setCode stri
 func (r *cfbRatingsRepository) LinkArenaIDs(ctx context.Context, setCode string, cardNameToArenaID map[string]int) (int, error) {
 	query := `
 		UPDATE cfb_ratings
-		SET arena_id = ?
-		WHERE LOWER(TRIM(card_name)) = ? AND set_code = ? AND arena_id IS NULL
+		SET arena_id = $1
+		WHERE LOWER(TRIM(card_name)) = $2 AND set_code = $3 AND arena_id IS NULL
 	`
 
 	linked := 0
@@ -306,7 +294,6 @@ func (r *cfbRatingsRepository) scanRatings(rows *sql.Rows) ([]*models.CFBRating,
 		rating := &models.CFBRating{}
 		var arenaID sql.NullInt64
 		var archetypeFit, commentary, sourceURL, author sql.NullString
-		var importedAt, updatedAt string
 
 		err := rows.Scan(
 			&rating.ID,
@@ -321,8 +308,8 @@ func (r *cfbRatingsRepository) scanRatings(rows *sql.Rows) ([]*models.CFBRating,
 			&commentary,
 			&sourceURL,
 			&author,
-			&importedAt,
-			&updatedAt,
+			&rating.ImportedAt,
+			&rating.UpdatedAt,
 		)
 		if err != nil {
 			return nil, err
@@ -344,8 +331,6 @@ func (r *cfbRatingsRepository) scanRatings(rows *sql.Rows) ([]*models.CFBRating,
 		if author.Valid {
 			rating.Author = author.String
 		}
-		rating.ImportedAt, _ = time.Parse("2006-01-02 15:04:05.999999", importedAt)
-		rating.UpdatedAt, _ = time.Parse("2006-01-02 15:04:05.999999", updatedAt)
 
 		ratings = append(ratings, rating)
 	}

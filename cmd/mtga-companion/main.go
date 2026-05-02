@@ -773,14 +773,8 @@ func runDaemonCommand() {
 	fmt.Println("=============================")
 	fmt.Println()
 
-	// Setup database path
-	finalDBPath := *dbPath
-	if finalDBPath == "" {
-		finalDBPath = getDBPath()
-	}
-
-	// Open database
-	config := storage.DefaultConfig(finalDBPath)
+	// Open database (connection configured via DATABASE_URL env var or storage defaults)
+	config := storage.DefaultConfig()
 	config.AutoMigrate = true
 	db, err := storage.Open(config)
 	if err != nil {
@@ -914,16 +908,11 @@ func runReplayCommand() {
 	fmt.Printf("Filter: %s\n", *filter)
 	fmt.Println()
 
-	// Setup database
-	finalDBPath := *dbPath
-	if finalDBPath == "" {
-		finalDBPath = getDBPath()
-	}
-
-	fmt.Printf("Opening database: %s\n", finalDBPath)
+	// Open database (connection configured via DATABASE_URL env var or storage defaults)
+	fmt.Println("Opening database connection...")
 
 	// Open database
-	storageConfig := storage.DefaultConfig(finalDBPath)
+	storageConfig := storage.DefaultConfig()
 	storageConfig.AutoMigrate = true
 	db, err := storage.Open(storageConfig)
 	if err != nil {

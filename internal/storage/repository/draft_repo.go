@@ -61,11 +61,20 @@ func NewDraftRepository(db *sql.DB) DraftRepository {
 }
 
 // CreateSession creates a new draft session.
-// Uses INSERT OR REPLACE to handle replays where the same draft session may be processed multiple times.
+// Uses INSERT ... ON CONFLICT DO UPDATE to handle replays where the same draft session may be processed multiple times.
 func (r *draftRepository) CreateSession(ctx context.Context, session *models.DraftSession) error {
 	query := `
-		INSERT OR REPLACE INTO draft_sessions (id, account_id, event_name, set_code, draft_type, start_time, status, total_picks, created_at, updated_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		INSERT INTO draft_sessions (id, account_id, event_name, set_code, draft_type, start_time, status, total_picks, created_at, updated_at)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+		ON CONFLICT(id) DO UPDATE SET
+			account_id = excluded.account_id,
+			event_name = excluded.event_name,
+			set_code = excluded.set_code,
+			draft_type = excluded.draft_type,
+			start_time = excluded.start_time,
+			status = excluded.status,
+			total_picks = excluded.total_picks,
+			updated_at = excluded.updated_at
 	`
 	_, err := r.db.ExecContext(ctx, query,
 		session.ID,
@@ -92,7 +101,7 @@ func (r *draftRepository) GetSession(ctx context.Context, id string) (*models.Dr
 			prediction_factors, predicted_at,
 			created_at, updated_at
 		FROM draft_sessions
-		WHERE id = ?
+		WHERE id = $1
 	`
 	row := r.db.QueryRowContext(ctx, query, id)
 
@@ -245,7 +254,7 @@ func (r *draftRepository) GetActiveSessionByIDPrefix(ctx context.Context, prefix
 	query := `
 		SELECT id, account_id, event_name, set_code, draft_type, start_time, end_time, status, total_picks, created_at, updated_at
 		FROM draft_sessions
-		WHERE status = 'in_progress' AND id LIKE ? || '%'
+		WHERE status = 'in_progress' AND id LIKE $1 || '%'
 		ORDER BY created_at DESC
 		LIMIT 1
 	`
@@ -292,7 +301,7 @@ func (r *draftRepository) GetCompletedSessions(ctx context.Context, limit int) (
 		FROM draft_sessions
 		WHERE status = 'completed'
 		ORDER BY start_time DESC
-		LIMIT ?
+		LIMIT $1
 	`
 	return r.scanSessions(r.db.QueryContext(ctx, query, limit))
 }
@@ -302,9 +311,9 @@ func (r *draftRepository) GetSessionsByAccount(ctx context.Context, accountID in
 	query := `
 		SELECT id, account_id, event_name, set_code, draft_type, start_time, end_time, status, total_picks, created_at, updated_at
 		FROM draft_sessions
-		WHERE account_id = ?
+		WHERE account_id = $1
 		ORDER BY start_time DESC
-		LIMIT ?
+		LIMIT $2
 	`
 	return r.scanSessions(r.db.QueryContext(ctx, query, accountID, limit))
 }
@@ -356,8 +365,8 @@ func (r *draftRepository) scanSessions(rows *sql.Rows, err error) ([]*models.Dra
 func (r *draftRepository) UpdateSessionStatus(ctx context.Context, id string, status string, endTime *time.Time) error {
 	query := `
 		UPDATE draft_sessions
-		SET status = ?, end_time = ?, updated_at = ?
-		WHERE id = ?
+		SET status = $1, end_time = $2, updated_at = $3
+		WHERE id = $4
 	`
 	_, err := r.db.ExecContext(ctx, query, status, endTime, time.Now(), id)
 	return err
@@ -367,8 +376,8 @@ func (r *draftRepository) UpdateSessionStatus(ctx context.Context, id string, st
 func (r *draftRepository) UpdateSessionTotalPicks(ctx context.Context, id string, totalPicks int) error {
 	query := `
 		UPDATE draft_sessions
-		SET total_picks = ?, updated_at = ?
-		WHERE id = ?
+		SET total_picks = $1, updated_at = $2
+		WHERE id = $3
 	`
 	_, err := r.db.ExecContext(ctx, query, totalPicks, time.Now(), id)
 	return err
@@ -378,36 +387,34 @@ func (r *draftRepository) UpdateSessionTotalPicks(ctx context.Context, id string
 func (r *draftRepository) IncrementSessionPicks(ctx context.Context, id string) error {
 	query := `
 		UPDATE draft_sessions
-		SET total_picks = total_picks + 1, updated_at = ?
-		WHERE id = ?
+		SET total_picks = total_picks + 1, updated_at = $1
+		WHERE id = $2
 	`
 	_, err := r.db.ExecContext(ctx, query, time.Now(), id)
 	return err
 }
 
 // SavePick saves a draft pick.
-// Uses INSERT OR REPLACE to handle replays where the same pick may be processed multiple times.
+// Uses ON CONFLICT DO UPDATE to handle replays where the same pick may be processed multiple times.
 func (r *draftRepository) SavePick(ctx context.Context, pick *models.DraftPickSession) error {
 	query := `
-		INSERT OR REPLACE INTO draft_picks (session_id, pack_number, pick_number, card_id, timestamp)
-		VALUES (?, ?, ?, ?, ?)
+		INSERT INTO draft_picks (session_id, pack_number, pick_number, card_id, timestamp)
+		VALUES ($1, $2, $3, $4, $5)
+		ON CONFLICT(session_id, pack_number, pick_number) DO UPDATE SET
+			card_id = excluded.card_id,
+			timestamp = excluded.timestamp
+		RETURNING id
 	`
-	result, err := r.db.ExecContext(ctx, query,
+	err := r.db.QueryRowContext(ctx, query,
 		pick.SessionID,
 		pick.PackNumber,
 		pick.PickNumber,
 		pick.CardID,
 		pick.Timestamp,
-	)
+	).Scan(&pick.ID)
 	if err != nil {
 		return err
 	}
-
-	id, err := result.LastInsertId()
-	if err != nil {
-		return err
-	}
-	pick.ID = int(id)
 
 	return nil
 }
@@ -418,7 +425,7 @@ func (r *draftRepository) GetPicksBySession(ctx context.Context, sessionID strin
 		SELECT id, session_id, pack_number, pick_number, card_id, timestamp,
 			pick_quality_grade, pick_quality_rank, pack_best_gihwr, picked_card_gihwr, alternatives_json
 		FROM draft_picks
-		WHERE session_id = ?
+		WHERE session_id = $1
 		ORDER BY pack_number, pick_number
 	`
 	rows, err := r.db.QueryContext(ctx, query, sessionID)
@@ -483,7 +490,7 @@ func (r *draftRepository) GetPickByNumber(ctx context.Context, sessionID string,
 	query := `
 		SELECT id, session_id, pack_number, pick_number, card_id, timestamp
 		FROM draft_picks
-		WHERE session_id = ? AND pack_number = ? AND pick_number = ?
+		WHERE session_id = $1 AND pack_number = $2 AND pick_number = $3
 	`
 	row := r.db.QueryRowContext(ctx, query, sessionID, packNum, pickNum)
 
@@ -519,26 +526,24 @@ func (r *draftRepository) SavePack(ctx context.Context, pack *models.DraftPackSe
 	}
 
 	query := `
-		INSERT OR REPLACE INTO draft_packs (session_id, pack_number, pick_number, card_ids, timestamp)
-		VALUES (?, ?, ?, ?, ?)
+		INSERT INTO draft_packs (session_id, pack_number, pick_number, card_ids, timestamp)
+		VALUES ($1, $2, $3, $4, $5)
+		ON CONFLICT(session_id, pack_number, pick_number) DO UPDATE SET
+			card_ids = excluded.card_ids,
+			timestamp = excluded.timestamp
+		RETURNING id
 	`
-	result, err := r.db.ExecContext(ctx, query,
+	err = r.db.QueryRowContext(ctx, query,
 		pack.SessionID,
 		pack.PackNumber,
 		pack.PickNumber,
 		string(cardIDsJSON),
 		pack.Timestamp,
-	)
+	).Scan(&pack.ID)
 	if err != nil {
 		log.Printf("[SavePack] ERROR saving pack: %v", err)
 		return err
 	}
-
-	id, err := result.LastInsertId()
-	if err != nil {
-		return err
-	}
-	pack.ID = int(id)
 
 	log.Printf("[SavePack] Successfully saved pack with ID=%d", pack.ID)
 	return nil
@@ -549,7 +554,7 @@ func (r *draftRepository) GetPacksBySession(ctx context.Context, sessionID strin
 	query := `
 		SELECT id, session_id, pack_number, pick_number, card_ids, timestamp
 		FROM draft_packs
-		WHERE session_id = ?
+		WHERE session_id = $1
 		ORDER BY pack_number, pick_number
 	`
 	rows, err := r.db.QueryContext(ctx, query, sessionID)
@@ -595,7 +600,7 @@ func (r *draftRepository) GetPack(ctx context.Context, sessionID string, packNum
 	query := `
 		SELECT id, session_id, pack_number, pick_number, card_ids, timestamp
 		FROM draft_packs
-		WHERE session_id = ? AND pack_number = ? AND pick_number = ?
+		WHERE session_id = $1 AND pack_number = $2 AND pick_number = $3
 	`
 	row := r.db.QueryRowContext(ctx, query, sessionID, packNum, pickNum)
 
@@ -633,12 +638,12 @@ func (r *draftRepository) GetPack(ctx context.Context, sessionID string, packNum
 func (r *draftRepository) UpdatePickQuality(ctx context.Context, pickID int, grade string, rank int, packBestGIHWR, pickedCardGIHWR float64, alternativesJSON string) error {
 	query := `
 		UPDATE draft_picks
-		SET pick_quality_grade = ?,
-			pick_quality_rank = ?,
-			pack_best_gihwr = ?,
-			picked_card_gihwr = ?,
-			alternatives_json = ?
-		WHERE id = ?
+		SET pick_quality_grade = $1,
+			pick_quality_rank = $2,
+			pack_best_gihwr = $3,
+			picked_card_gihwr = $4,
+			alternatives_json = $5
+		WHERE id = $6
 	`
 	_, err := r.db.ExecContext(ctx, query, grade, rank, packBestGIHWR, pickedCardGIHWR, alternativesJSON, pickID)
 	return err
@@ -648,14 +653,14 @@ func (r *draftRepository) UpdatePickQuality(ctx context.Context, pickID int, gra
 func (r *draftRepository) UpdateSessionGrade(ctx context.Context, sessionID string, overallGrade string, overallScore int, pickQuality, colorDiscipline, deckComposition, strategic float64) error {
 	query := `
 		UPDATE draft_sessions
-		SET overall_grade = ?,
-			overall_score = ?,
-			pick_quality_score = ?,
-			color_discipline_score = ?,
-			deck_composition_score = ?,
-			strategic_score = ?,
-			updated_at = ?
-		WHERE id = ?
+		SET overall_grade = $1,
+			overall_score = $2,
+			pick_quality_score = $3,
+			color_discipline_score = $4,
+			deck_composition_score = $5,
+			strategic_score = $6,
+			updated_at = $7
+		WHERE id = $8
 	`
 	_, err := r.db.ExecContext(ctx, query, overallGrade, overallScore, pickQuality, colorDiscipline, deckComposition, strategic, time.Now(), sessionID)
 	return err
@@ -665,13 +670,13 @@ func (r *draftRepository) UpdateSessionGrade(ctx context.Context, sessionID stri
 func (r *draftRepository) UpdateSessionPrediction(ctx context.Context, sessionID string, winRate, winRateMin, winRateMax float64, factorsJSON string, predictedAt time.Time) error {
 	query := `
 		UPDATE draft_sessions
-		SET predicted_win_rate = ?,
-		    predicted_win_rate_min = ?,
-		    predicted_win_rate_max = ?,
-		    prediction_factors = ?,
-		    predicted_at = ?,
+		SET predicted_win_rate = $1,
+		    predicted_win_rate_min = $2,
+		    predicted_win_rate_max = $3,
+		    prediction_factors = $4,
+		    predicted_at = $5,
 		    updated_at = CURRENT_TIMESTAMP
-		WHERE id = ?
+		WHERE id = $6
 	`
 	_, err := r.db.ExecContext(ctx, query, winRate, winRateMin, winRateMax, factorsJSON, predictedAt, sessionID)
 	return err

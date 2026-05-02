@@ -77,28 +77,21 @@ func (r *deckPerformanceRepository) CreateHistory(ctx context.Context, history *
 			archetype_confidence, color_identity, card_count, result,
 			games_won, games_lost, duration_seconds, format, event_type,
 			opponent_archetype, rank_tier, match_timestamp, created_at
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18)
+		RETURNING id
 	`
 
-	matchTimestampStr := history.MatchTimestamp.UTC().Format("2006-01-02 15:04:05.999999")
-	createdAtStr := time.Now().UTC().Format("2006-01-02 15:04:05.999999")
-
-	result, err := r.db.ExecContext(ctx, query,
+	err := r.db.QueryRowContext(ctx, query,
 		history.AccountID, history.DeckID, history.MatchID, history.Archetype,
 		history.SecondaryArchetype, history.ArchetypeConfidence, history.ColorIdentity,
 		history.CardCount, history.Result, history.GamesWon, history.GamesLost,
 		history.DurationSeconds, history.Format, history.EventType,
-		history.OpponentArchetype, history.RankTier, matchTimestampStr, createdAtStr,
-	)
+		history.OpponentArchetype, history.RankTier,
+		history.MatchTimestamp.UTC(), time.Now().UTC(),
+	).Scan(&history.ID)
 	if err != nil {
 		return fmt.Errorf("failed to create deck performance history: %w", err)
 	}
-
-	id, err := result.LastInsertId()
-	if err != nil {
-		return fmt.Errorf("failed to get inserted ID: %w", err)
-	}
-	history.ID = int(id)
 
 	return nil
 }
@@ -111,7 +104,7 @@ func (r *deckPerformanceRepository) GetHistoryByDeck(ctx context.Context, deckID
 			   games_won, games_lost, duration_seconds, format, event_type,
 			   opponent_archetype, rank_tier, match_timestamp, created_at
 		FROM deck_performance_history
-		WHERE deck_id = ?
+		WHERE deck_id = $1
 		ORDER BY match_timestamp DESC
 	`
 
@@ -134,7 +127,7 @@ func (r *deckPerformanceRepository) GetHistoryByArchetype(ctx context.Context, a
 			   games_won, games_lost, duration_seconds, format, event_type,
 			   opponent_archetype, rank_tier, match_timestamp, created_at
 		FROM deck_performance_history
-		WHERE archetype = ? AND format = ?
+		WHERE archetype = $1 AND format = $2
 		ORDER BY match_timestamp DESC
 	`
 
@@ -157,9 +150,9 @@ func (r *deckPerformanceRepository) GetHistoryByAccount(ctx context.Context, acc
 			   games_won, games_lost, duration_seconds, format, event_type,
 			   opponent_archetype, rank_tier, match_timestamp, created_at
 		FROM deck_performance_history
-		WHERE account_id = ?
+		WHERE account_id = $1
 		ORDER BY match_timestamp DESC
-		LIMIT ?
+		LIMIT $2
 	`
 
 	rows, err := r.db.QueryContext(ctx, query, accountID, limit)
@@ -181,7 +174,7 @@ func (r *deckPerformanceRepository) GetArchetypePerformance(ctx context.Context,
 			SUM(CASE WHEN result = 'win' THEN 1 ELSE 0 END) as total_wins,
 			AVG(duration_seconds) as avg_duration
 		FROM deck_performance_history
-		WHERE archetype = ? AND format = ?
+		WHERE archetype = $1 AND format = $2
 	`
 
 	var totalMatches, totalWins int
@@ -215,14 +208,11 @@ func (r *deckPerformanceRepository) GetPerformanceByDateRange(ctx context.Contex
 			   games_won, games_lost, duration_seconds, format, event_type,
 			   opponent_archetype, rank_tier, match_timestamp, created_at
 		FROM deck_performance_history
-		WHERE account_id = ? AND match_timestamp BETWEEN ? AND ?
+		WHERE account_id = $1 AND match_timestamp BETWEEN $2 AND $3
 		ORDER BY match_timestamp DESC
 	`
 
-	startStr := start.UTC().Format("2006-01-02 15:04:05.999999")
-	endStr := end.UTC().Format("2006-01-02 15:04:05.999999")
-
-	rows, err := r.db.QueryContext(ctx, query, accountID, startStr, endStr)
+	rows, err := r.db.QueryContext(ctx, query, accountID, start.UTC(), end.UTC())
 	if err != nil {
 		return nil, fmt.Errorf("failed to query performance by date range: %w", err)
 	}
@@ -239,21 +229,17 @@ func (r *deckPerformanceRepository) scanHistoryRows(rows *sql.Rows) ([]*models.D
 
 	for rows.Next() {
 		h := &models.DeckPerformanceHistory{}
-		var matchTimestamp, createdAt string
 
 		err := rows.Scan(
 			&h.ID, &h.AccountID, &h.DeckID, &h.MatchID, &h.Archetype,
 			&h.SecondaryArchetype, &h.ArchetypeConfidence, &h.ColorIdentity,
 			&h.CardCount, &h.Result, &h.GamesWon, &h.GamesLost,
 			&h.DurationSeconds, &h.Format, &h.EventType,
-			&h.OpponentArchetype, &h.RankTier, &matchTimestamp, &createdAt,
+			&h.OpponentArchetype, &h.RankTier, &h.MatchTimestamp, &h.CreatedAt,
 		)
 		if err != nil {
 			return nil, fmt.Errorf("failed to scan history row: %w", err)
 		}
-
-		h.MatchTimestamp, _ = time.Parse("2006-01-02 15:04:05.999999", matchTimestamp)
-		h.CreatedAt, _ = time.Parse("2006-01-02 15:04:05.999999", createdAt)
 
 		histories = append(histories, h)
 	}
@@ -272,26 +258,21 @@ func (r *deckPerformanceRepository) CreateArchetype(ctx context.Context, archety
 			name, set_code, format, color_identity, signature_cards,
 			synergy_patterns, total_matches, total_wins, avg_win_rate,
 			source, external_id, created_at, updated_at
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
+		RETURNING id
 	`
 
-	now := time.Now().UTC().Format("2006-01-02 15:04:05.999999")
+	now := time.Now().UTC()
 
-	result, err := r.db.ExecContext(ctx, query,
+	err := r.db.QueryRowContext(ctx, query,
 		archetype.Name, archetype.SetCode, archetype.Format, archetype.ColorIdentity,
 		archetype.SignatureCards, archetype.SynergyPatterns, archetype.TotalMatches,
 		archetype.TotalWins, archetype.AvgWinRate, archetype.Source,
 		archetype.ExternalID, now, now,
-	)
+	).Scan(&archetype.ID)
 	if err != nil {
 		return fmt.Errorf("failed to create archetype: %w", err)
 	}
-
-	id, err := result.LastInsertId()
-	if err != nil {
-		return fmt.Errorf("failed to get inserted archetype ID: %w", err)
-	}
-	archetype.ID = int(id)
 
 	return nil
 }
@@ -303,17 +284,16 @@ func (r *deckPerformanceRepository) GetArchetypeByID(ctx context.Context, id int
 			   synergy_patterns, total_matches, total_wins, avg_win_rate,
 			   source, external_id, created_at, updated_at
 		FROM deck_archetypes
-		WHERE id = ?
+		WHERE id = $1
 	`
 
 	archetype := &models.DeckArchetype{}
-	var createdAt, updatedAt string
 
 	err := r.db.QueryRowContext(ctx, query, id).Scan(
 		&archetype.ID, &archetype.Name, &archetype.SetCode, &archetype.Format,
 		&archetype.ColorIdentity, &archetype.SignatureCards, &archetype.SynergyPatterns,
 		&archetype.TotalMatches, &archetype.TotalWins, &archetype.AvgWinRate,
-		&archetype.Source, &archetype.ExternalID, &createdAt, &updatedAt,
+		&archetype.Source, &archetype.ExternalID, &archetype.CreatedAt, &archetype.UpdatedAt,
 	)
 	if err == sql.ErrNoRows {
 		return nil, nil
@@ -321,9 +301,6 @@ func (r *deckPerformanceRepository) GetArchetypeByID(ctx context.Context, id int
 	if err != nil {
 		return nil, fmt.Errorf("failed to get archetype: %w", err)
 	}
-
-	archetype.CreatedAt, _ = time.Parse("2006-01-02 15:04:05.999999", createdAt)
-	archetype.UpdatedAt, _ = time.Parse("2006-01-02 15:04:05.999999", updatedAt)
 
 	return archetype, nil
 }
@@ -339,7 +316,7 @@ func (r *deckPerformanceRepository) GetArchetypeByName(ctx context.Context, name
 				   synergy_patterns, total_matches, total_wins, avg_win_rate,
 				   source, external_id, created_at, updated_at
 			FROM deck_archetypes
-			WHERE name = ? AND set_code IS NULL AND format = ?
+			WHERE name = $1 AND set_code IS NULL AND format = $2
 		`
 		args = []interface{}{name, format}
 	} else {
@@ -348,19 +325,18 @@ func (r *deckPerformanceRepository) GetArchetypeByName(ctx context.Context, name
 				   synergy_patterns, total_matches, total_wins, avg_win_rate,
 				   source, external_id, created_at, updated_at
 			FROM deck_archetypes
-			WHERE name = ? AND set_code = ? AND format = ?
+			WHERE name = $1 AND set_code = $2 AND format = $3
 		`
 		args = []interface{}{name, *setCode, format}
 	}
 
 	archetype := &models.DeckArchetype{}
-	var createdAt, updatedAt string
 
 	err := r.db.QueryRowContext(ctx, query, args...).Scan(
 		&archetype.ID, &archetype.Name, &archetype.SetCode, &archetype.Format,
 		&archetype.ColorIdentity, &archetype.SignatureCards, &archetype.SynergyPatterns,
 		&archetype.TotalMatches, &archetype.TotalWins, &archetype.AvgWinRate,
-		&archetype.Source, &archetype.ExternalID, &createdAt, &updatedAt,
+		&archetype.Source, &archetype.ExternalID, &archetype.CreatedAt, &archetype.UpdatedAt,
 	)
 	if err == sql.ErrNoRows {
 		return nil, nil
@@ -368,9 +344,6 @@ func (r *deckPerformanceRepository) GetArchetypeByName(ctx context.Context, name
 	if err != nil {
 		return nil, fmt.Errorf("failed to get archetype by name: %w", err)
 	}
-
-	archetype.CreatedAt, _ = time.Parse("2006-01-02 15:04:05.999999", createdAt)
-	archetype.UpdatedAt, _ = time.Parse("2006-01-02 15:04:05.999999", updatedAt)
 
 	return archetype, nil
 }
@@ -388,12 +361,12 @@ func (r *deckPerformanceRepository) ListArchetypes(ctx context.Context, setCode 
 	var args []interface{}
 
 	if setCode != nil {
-		query += " AND set_code = ?"
+		query += fmt.Sprintf(" AND set_code = $%d", len(args)+1)
 		args = append(args, *setCode)
 	}
 
 	if format != nil {
-		query += " AND format = ?"
+		query += fmt.Sprintf(" AND format = $%d", len(args)+1)
 		args = append(args, *format)
 	}
 
@@ -411,20 +384,16 @@ func (r *deckPerformanceRepository) ListArchetypes(ctx context.Context, setCode 
 
 	for rows.Next() {
 		a := &models.DeckArchetype{}
-		var createdAt, updatedAt string
 
 		err := rows.Scan(
 			&a.ID, &a.Name, &a.SetCode, &a.Format, &a.ColorIdentity,
 			&a.SignatureCards, &a.SynergyPatterns, &a.TotalMatches,
 			&a.TotalWins, &a.AvgWinRate, &a.Source, &a.ExternalID,
-			&createdAt, &updatedAt,
+			&a.CreatedAt, &a.UpdatedAt,
 		)
 		if err != nil {
 			return nil, fmt.Errorf("failed to scan archetype row: %w", err)
 		}
-
-		a.CreatedAt, _ = time.Parse("2006-01-02 15:04:05.999999", createdAt)
-		a.UpdatedAt, _ = time.Parse("2006-01-02 15:04:05.999999", updatedAt)
 
 		archetypes = append(archetypes, a)
 	}
@@ -446,14 +415,12 @@ func (r *deckPerformanceRepository) UpdateArchetypeStats(ctx context.Context, ar
 
 	query := `
 		UPDATE deck_archetypes
-		SET total_matches = ?, total_wins = ?, avg_win_rate = ?,
-			updated_at = ?
-		WHERE id = ?
+		SET total_matches = $1, total_wins = $2, avg_win_rate = $3,
+			updated_at = $4
+		WHERE id = $5
 	`
 
-	now := time.Now().UTC().Format("2006-01-02 15:04:05.999999")
-
-	_, err := r.db.ExecContext(ctx, query, totalMatches, totalWins, avgWinRate, now, archetypeID)
+	_, err := r.db.ExecContext(ctx, query, totalMatches, totalWins, avgWinRate, time.Now().UTC(), archetypeID)
 	if err != nil {
 		return fmt.Errorf("failed to update archetype stats: %w", err)
 	}
@@ -466,28 +433,19 @@ func (r *deckPerformanceRepository) CreateCardWeight(ctx context.Context, weight
 	query := `
 		INSERT INTO archetype_card_weights (
 			archetype_id, card_id, weight, is_signature, source, created_at, updated_at
-		) VALUES (?, ?, ?, ?, ?, ?, ?)
+		) VALUES ($1, $2, $3, $4, $5, $6, $7)
+		RETURNING id
 	`
 
-	now := time.Now().UTC().Format("2006-01-02 15:04:05.999999")
-	isSignature := 0
-	if weight.IsSignature {
-		isSignature = 1
-	}
+	now := time.Now().UTC()
 
-	result, err := r.db.ExecContext(ctx, query,
-		weight.ArchetypeID, weight.CardID, weight.Weight, isSignature,
+	err := r.db.QueryRowContext(ctx, query,
+		weight.ArchetypeID, weight.CardID, weight.Weight, weight.IsSignature,
 		weight.Source, now, now,
-	)
+	).Scan(&weight.ID)
 	if err != nil {
 		return fmt.Errorf("failed to create card weight: %w", err)
 	}
-
-	id, err := result.LastInsertId()
-	if err != nil {
-		return fmt.Errorf("failed to get inserted card weight ID: %w", err)
-	}
-	weight.ID = int(id)
 
 	return nil
 }
@@ -497,7 +455,7 @@ func (r *deckPerformanceRepository) GetCardWeights(ctx context.Context, archetyp
 	query := `
 		SELECT id, archetype_id, card_id, weight, is_signature, source, created_at, updated_at
 		FROM archetype_card_weights
-		WHERE archetype_id = ?
+		WHERE archetype_id = $1
 		ORDER BY weight DESC
 	`
 
@@ -517,7 +475,7 @@ func (r *deckPerformanceRepository) GetCardWeightsByCard(ctx context.Context, ca
 	query := `
 		SELECT id, archetype_id, card_id, weight, is_signature, source, created_at, updated_at
 		FROM archetype_card_weights
-		WHERE card_id = ?
+		WHERE card_id = $1
 		ORDER BY weight DESC
 	`
 
@@ -537,7 +495,7 @@ func (r *deckPerformanceRepository) UpsertCardWeight(ctx context.Context, weight
 	query := `
 		INSERT INTO archetype_card_weights (
 			archetype_id, card_id, weight, is_signature, source, created_at, updated_at
-		) VALUES (?, ?, ?, ?, ?, ?, ?)
+		) VALUES ($1, $2, $3, $4, $5, $6, $7)
 		ON CONFLICT(archetype_id, card_id) DO UPDATE SET
 			weight = excluded.weight,
 			is_signature = excluded.is_signature,
@@ -545,14 +503,10 @@ func (r *deckPerformanceRepository) UpsertCardWeight(ctx context.Context, weight
 			updated_at = excluded.updated_at
 	`
 
-	now := time.Now().UTC().Format("2006-01-02 15:04:05.999999")
-	isSignature := 0
-	if weight.IsSignature {
-		isSignature = 1
-	}
+	now := time.Now().UTC()
 
 	_, err := r.db.ExecContext(ctx, query,
-		weight.ArchetypeID, weight.CardID, weight.Weight, isSignature,
+		weight.ArchetypeID, weight.CardID, weight.Weight, weight.IsSignature,
 		weight.Source, now, now,
 	)
 	if err != nil {
@@ -564,7 +518,7 @@ func (r *deckPerformanceRepository) UpsertCardWeight(ctx context.Context, weight
 
 // DeleteCardWeight removes a card weight association.
 func (r *deckPerformanceRepository) DeleteCardWeight(ctx context.Context, archetypeID, cardID int) error {
-	query := `DELETE FROM archetype_card_weights WHERE archetype_id = ? AND card_id = ?`
+	query := `DELETE FROM archetype_card_weights WHERE archetype_id = $1 AND card_id = $2`
 
 	_, err := r.db.ExecContext(ctx, query, archetypeID, cardID)
 	if err != nil {
@@ -580,20 +534,14 @@ func (r *deckPerformanceRepository) scanCardWeightRows(rows *sql.Rows) ([]*model
 
 	for rows.Next() {
 		w := &models.ArchetypeCardWeight{}
-		var isSignature int
-		var createdAt, updatedAt string
 
 		err := rows.Scan(
-			&w.ID, &w.ArchetypeID, &w.CardID, &w.Weight, &isSignature,
-			&w.Source, &createdAt, &updatedAt,
+			&w.ID, &w.ArchetypeID, &w.CardID, &w.Weight, &w.IsSignature,
+			&w.Source, &w.CreatedAt, &w.UpdatedAt,
 		)
 		if err != nil {
 			return nil, fmt.Errorf("failed to scan card weight row: %w", err)
 		}
-
-		w.IsSignature = isSignature == 1
-		w.CreatedAt, _ = time.Parse("2006-01-02 15:04:05.999999", createdAt)
-		w.UpdatedAt, _ = time.Parse("2006-01-02 15:04:05.999999", updatedAt)
 
 		weights = append(weights, w)
 	}

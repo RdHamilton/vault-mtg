@@ -122,18 +122,8 @@ func (r *deckRepository) Create(ctx context.Context, deck *models.Deck) error {
 			matches_played, matches_won, games_played, games_won,
 			created_at, modified_at, last_played,
 			is_app_created, created_method, seed_card_id
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18)
 	`
-
-	// Format timestamps using UTC ISO 8601 without timezone suffixes (SQLite best practice)
-	createdAtStr := deck.CreatedAt.UTC().Format("2006-01-02 15:04:05.999999")
-	modifiedAtStr := deck.ModifiedAt.UTC().Format("2006-01-02 15:04:05.999999")
-
-	var lastPlayedStr *string
-	if deck.LastPlayed != nil {
-		formatted := deck.LastPlayed.UTC().Format("2006-01-02 15:04:05.999999")
-		lastPlayedStr = &formatted
-	}
 
 	// Default created_method to "imported" if not set
 	createdMethod := deck.CreatedMethod
@@ -154,9 +144,9 @@ func (r *deckRepository) Create(ctx context.Context, deck *models.Deck) error {
 		deck.MatchesWon,
 		deck.GamesPlayed,
 		deck.GamesWon,
-		createdAtStr,
-		modifiedAtStr,
-		lastPlayedStr,
+		deck.CreatedAt.UTC(),
+		deck.ModifiedAt.UTC(),
+		deck.LastPlayed,
 		deck.IsAppCreated,
 		createdMethod,
 		deck.SeedCardID,
@@ -172,18 +162,10 @@ func (r *deckRepository) Create(ctx context.Context, deck *models.Deck) error {
 func (r *deckRepository) Update(ctx context.Context, deck *models.Deck) error {
 	query := `
 		UPDATE decks
-		SET name = ?, format = ?, description = ?, color_identity = ?, source = ?,
-		    modified_at = ?, last_played = ?
-		WHERE id = ?
+		SET name = $1, format = $2, description = $3, color_identity = $4, source = $5,
+		    modified_at = $6, last_played = $7
+		WHERE id = $8
 	`
-
-	modifiedAtStr := deck.ModifiedAt.UTC().Format("2006-01-02 15:04:05.999999")
-
-	var lastPlayedStr *string
-	if deck.LastPlayed != nil {
-		formatted := deck.LastPlayed.UTC().Format("2006-01-02 15:04:05.999999")
-		lastPlayedStr = &formatted
-	}
 
 	_, err := r.db.ExecContext(ctx, query,
 		deck.Name,
@@ -191,8 +173,8 @@ func (r *deckRepository) Update(ctx context.Context, deck *models.Deck) error {
 		deck.Description,
 		deck.ColorIdentity,
 		deck.Source,
-		modifiedAtStr,
-		lastPlayedStr,
+		deck.ModifiedAt.UTC(),
+		deck.LastPlayed,
 		deck.ID,
 	)
 	if err != nil {
@@ -210,7 +192,7 @@ func (r *deckRepository) GetByID(ctx context.Context, id string) (*models.Deck, 
 		       created_at, modified_at, last_played, current_permutation_id,
 		       is_app_created, created_method, seed_card_id
 		FROM decks
-		WHERE id = ?
+		WHERE id = $1
 	`
 
 	deck := &models.Deck{}
@@ -254,7 +236,7 @@ func (r *deckRepository) List(ctx context.Context, accountID int) ([]*models.Dec
 		       created_at, modified_at, last_played, current_permutation_id,
 		       is_app_created, created_method, seed_card_id
 		FROM decks
-		WHERE account_id = ?
+		WHERE account_id = $1
 		ORDER BY modified_at DESC
 	`
 
@@ -277,7 +259,7 @@ func (r *deckRepository) GetByFormat(ctx context.Context, accountID int, format 
 		       created_at, modified_at, last_played, current_permutation_id,
 		       is_app_created, created_method, seed_card_id
 		FROM decks
-		WHERE account_id = ? AND format = ?
+		WHERE account_id = $1 AND format = $2
 		ORDER BY modified_at DESC
 	`
 
@@ -294,7 +276,7 @@ func (r *deckRepository) GetByFormat(ctx context.Context, accountID int, format 
 
 // Delete deletes a deck by its ID.
 func (r *deckRepository) Delete(ctx context.Context, id string) error {
-	query := `DELETE FROM decks WHERE id = ?`
+	query := `DELETE FROM decks WHERE id = $1`
 
 	_, err := r.db.ExecContext(ctx, query, id)
 	if err != nil {
@@ -309,7 +291,7 @@ func (r *deckRepository) Delete(ctx context.Context, id string) error {
 func (r *deckRepository) DeleteBySourceExcluding(ctx context.Context, accountID int, source string, excludeIDs []string) (int, error) {
 	if len(excludeIDs) == 0 {
 		// No exclusions - delete all decks with this source
-		query := `DELETE FROM decks WHERE account_id = ? AND source = ?`
+		query := `DELETE FROM decks WHERE account_id = $1 AND source = $2`
 		result, err := r.db.ExecContext(ctx, query, accountID, source)
 		if err != nil {
 			return 0, fmt.Errorf("failed to delete decks by source: %w", err)
@@ -318,19 +300,18 @@ func (r *deckRepository) DeleteBySourceExcluding(ctx context.Context, accountID 
 		return int(affected), nil
 	}
 
-	// Build query with exclusion list using placeholders
-	// SQLite doesn't support arrays, so we build a parameterized IN clause
+	// Build query with exclusion list using positional placeholders
 	placeholders := make([]string, len(excludeIDs))
 	args := make([]interface{}, 0, len(excludeIDs)+2)
 	args = append(args, accountID, source)
 
 	for i, id := range excludeIDs {
-		placeholders[i] = "?"
+		placeholders[i] = fmt.Sprintf("$%d", len(args)+1)
 		args = append(args, id)
 	}
 
 	query := fmt.Sprintf(
-		`DELETE FROM decks WHERE account_id = ? AND source = ? AND id NOT IN (%s)`,
+		`DELETE FROM decks WHERE account_id = $1 AND source = $2 AND id NOT IN (%s)`,
 		strings.Join(placeholders, ", "),
 	)
 
@@ -347,7 +328,7 @@ func (r *deckRepository) DeleteBySourceExcluding(ctx context.Context, accountID 
 func (r *deckRepository) AddCard(ctx context.Context, card *models.DeckCard) error {
 	query := `
 		INSERT INTO deck_cards (deck_id, card_id, quantity, board, from_draft_pick)
-		VALUES (?, ?, ?, ?, ?)
+		VALUES ($1, $2, $3, $4, $5)
 		ON CONFLICT(deck_id, card_id, board) DO UPDATE SET
 			quantity = quantity + excluded.quantity,
 			from_draft_pick = excluded.from_draft_pick
@@ -358,7 +339,7 @@ func (r *deckRepository) AddCard(ctx context.Context, card *models.DeckCard) err
 		fromDraftPickInt = 1
 	}
 
-	result, err := r.db.ExecContext(ctx, query,
+	_, err := r.db.ExecContext(ctx, query,
 		card.DeckID,
 		card.CardID,
 		card.Quantity,
@@ -369,14 +350,6 @@ func (r *deckRepository) AddCard(ctx context.Context, card *models.DeckCard) err
 		return fmt.Errorf("failed to add card to deck: %w", err)
 	}
 
-	// If this is an insert, set the ID
-	if card.ID == 0 {
-		id, err := result.LastInsertId()
-		if err == nil {
-			card.ID = int(id)
-		}
-	}
-
 	return nil
 }
 
@@ -385,7 +358,7 @@ func (r *deckRepository) GetCards(ctx context.Context, deckID string) ([]*models
 	query := `
 		SELECT id, deck_id, card_id, quantity, board, from_draft_pick
 		FROM deck_cards
-		WHERE deck_id = ?
+		WHERE deck_id = $1
 		ORDER BY board, card_id
 	`
 
@@ -431,7 +404,7 @@ func (r *deckRepository) RemoveCard(ctx context.Context, deckID string, cardID i
 	updateQuery := `
 		UPDATE deck_cards
 		SET quantity = quantity - 1
-		WHERE deck_id = ? AND card_id = ? AND board = ? AND quantity > 0
+		WHERE deck_id = $1 AND card_id = $2 AND board = $3 AND quantity > 0
 	`
 
 	result, err := r.db.ExecContext(ctx, updateQuery, deckID, cardID, board)
@@ -449,7 +422,7 @@ func (r *deckRepository) RemoveCard(ctx context.Context, deckID string, cardID i
 	}
 
 	// Delete any rows where quantity is now 0
-	deleteQuery := `DELETE FROM deck_cards WHERE deck_id = ? AND card_id = ? AND board = ? AND quantity <= 0`
+	deleteQuery := `DELETE FROM deck_cards WHERE deck_id = $1 AND card_id = $2 AND board = $3 AND quantity <= 0`
 	_, err = r.db.ExecContext(ctx, deleteQuery, deckID, cardID, board)
 	if err != nil {
 		return fmt.Errorf("failed to clean up zero quantity card: %w", err)
@@ -460,7 +433,7 @@ func (r *deckRepository) RemoveCard(ctx context.Context, deckID string, cardID i
 
 // RemoveAllCopies removes all copies of a card from a deck.
 func (r *deckRepository) RemoveAllCopies(ctx context.Context, deckID string, cardID int, board string) error {
-	query := `DELETE FROM deck_cards WHERE deck_id = ? AND card_id = ? AND board = ?`
+	query := `DELETE FROM deck_cards WHERE deck_id = $1 AND card_id = $2 AND board = $3`
 
 	_, err := r.db.ExecContext(ctx, query, deckID, cardID, board)
 	if err != nil {
@@ -472,7 +445,7 @@ func (r *deckRepository) RemoveAllCopies(ctx context.Context, deckID string, car
 
 // ClearCards removes all cards from a deck.
 func (r *deckRepository) ClearCards(ctx context.Context, deckID string) error {
-	query := `DELETE FROM deck_cards WHERE deck_id = ?`
+	query := `DELETE FROM deck_cards WHERE deck_id = $1`
 
 	_, err := r.db.ExecContext(ctx, query, deckID)
 	if err != nil {
@@ -490,7 +463,7 @@ func (r *deckRepository) GetBySource(ctx context.Context, accountID int, source 
 		       created_at, modified_at, last_played, current_permutation_id,
 		       is_app_created, created_method, seed_card_id
 		FROM decks
-		WHERE account_id = ? AND source = ?
+		WHERE account_id = $1 AND source = $2
 		ORDER BY modified_at DESC
 	`
 
@@ -513,7 +486,7 @@ func (r *deckRepository) GetByDraftEvent(ctx context.Context, draftEventID strin
 		       created_at, modified_at, last_played, current_permutation_id,
 		       is_app_created, created_method, seed_card_id
 		FROM decks
-		WHERE draft_event_id = ?
+		WHERE draft_event_id = $1
 	`
 
 	deck := &models.Deck{}
@@ -554,12 +527,12 @@ func (r *deckRepository) UpdatePerformance(ctx context.Context, deckID string, m
 	query := `
 		UPDATE decks
 		SET matches_played = matches_played + 1,
-		    matches_won = matches_won + ?,
-		    games_played = games_played + ?,
-		    games_won = games_won + ?,
-		    last_played = ?,
-		    modified_at = ?
-		WHERE id = ?
+		    matches_won = matches_won + $1,
+		    games_played = games_played + $2,
+		    games_won = games_won + $3,
+		    last_played = $4,
+		    modified_at = $5
+		WHERE id = $6
 	`
 
 	matchWonInt := 0
@@ -567,7 +540,7 @@ func (r *deckRepository) UpdatePerformance(ctx context.Context, deckID string, m
 		matchWonInt = 1
 	}
 
-	now := time.Now().UTC().Format("2006-01-02 15:04:05.999999")
+	now := time.Now().UTC()
 	totalGames := gamesWon + gamesLost
 
 	_, err := r.db.ExecContext(ctx, query,
@@ -593,13 +566,11 @@ func (r *deckRepository) ResetPerformance(ctx context.Context, deckID string) er
 		    matches_won = 0,
 		    games_played = 0,
 		    games_won = 0,
-		    modified_at = ?
-		WHERE id = ?
+		    modified_at = $1
+		WHERE id = $2
 	`
 
-	now := time.Now().UTC().Format("2006-01-02 15:04:05.999999")
-
-	_, err := r.db.ExecContext(ctx, query, now, deckID)
+	_, err := r.db.ExecContext(ctx, query, time.Now().UTC(), deckID)
 	if err != nil {
 		return fmt.Errorf("failed to reset deck performance: %w", err)
 	}
@@ -613,7 +584,7 @@ func (r *deckRepository) GetPerformance(ctx context.Context, deckID string) (*mo
 	deckQuery := `
 		SELECT matches_played, matches_won, games_played, games_won, last_played
 		FROM decks
-		WHERE id = ?
+		WHERE id = $1
 	`
 
 	perf := &models.DeckPerformance{DeckID: deckID}
@@ -644,7 +615,7 @@ func (r *deckRepository) GetPerformance(ctx context.Context, deckID string) (*mo
 	streakQuery := `
 		SELECT result, duration_seconds
 		FROM matches
-		WHERE deck_id = ?
+		WHERE deck_id = $1
 		ORDER BY timestamp DESC
 	`
 
@@ -737,7 +708,7 @@ func (r *deckRepository) GetDraftCards(ctx context.Context, draftEventID string)
 	query := `
 		SELECT DISTINCT CAST(card_id AS INTEGER) as card_id_int
 		FROM draft_picks
-		WHERE session_id = ?
+		WHERE session_id = $1
 		ORDER BY card_id_int
 	`
 
@@ -861,22 +832,13 @@ func (r *deckRepository) ValidateDraftDeck(ctx context.Context, deckID string) (
 func (r *deckRepository) AddTag(ctx context.Context, tag *models.DeckTag) error {
 	query := `
 		INSERT INTO deck_tags (deck_id, tag, created_at)
-		VALUES (?, ?, ?)
+		VALUES ($1, $2, $3)
 		ON CONFLICT(deck_id, tag) DO NOTHING
 	`
 
-	createdAtStr := tag.CreatedAt.UTC().Format("2006-01-02 15:04:05.999999")
-
-	result, err := r.db.ExecContext(ctx, query, tag.DeckID, tag.Tag, createdAtStr)
+	_, err := r.db.ExecContext(ctx, query, tag.DeckID, tag.Tag, tag.CreatedAt.UTC())
 	if err != nil {
 		return fmt.Errorf("failed to add deck tag: %w", err)
-	}
-
-	if tag.ID == 0 {
-		id, err := result.LastInsertId()
-		if err == nil {
-			tag.ID = int(id)
-		}
 	}
 
 	return nil
@@ -887,7 +849,7 @@ func (r *deckRepository) GetTags(ctx context.Context, deckID string) ([]*models.
 	query := `
 		SELECT id, deck_id, tag, created_at
 		FROM deck_tags
-		WHERE deck_id = ?
+		WHERE deck_id = $1
 		ORDER BY tag
 	`
 
@@ -918,7 +880,7 @@ func (r *deckRepository) GetTags(ctx context.Context, deckID string) ([]*models.
 
 // RemoveTag removes a tag from a deck.
 func (r *deckRepository) RemoveTag(ctx context.Context, deckID string, tag string) error {
-	query := `DELETE FROM deck_tags WHERE deck_id = ? AND tag = ?`
+	query := `DELETE FROM deck_tags WHERE deck_id = $1 AND tag = $2`
 
 	_, err := r.db.ExecContext(ctx, query, deckID, tag)
 	if err != nil {
@@ -1024,14 +986,7 @@ func (r *deckRepository) GetByTags(ctx context.Context, accountID int, tags []st
 		query += fmt.Sprintf(" INNER JOIN deck_tags dt%d ON d.id = dt%d.deck_id", i, i)
 	}
 
-	query += " WHERE d.account_id = ?"
-
-	// Add conditions for each tag
-	for i := range tags {
-		query += fmt.Sprintf(" AND dt%d.tag = ?", i)
-	}
-
-	query += " ORDER BY d.modified_at DESC"
+	query += " WHERE d.account_id = $1"
 
 	// Build args: accountID + all tags
 	args := make([]interface{}, 0, len(tags)+1)
@@ -1039,6 +994,13 @@ func (r *deckRepository) GetByTags(ctx context.Context, accountID int, tags []st
 	for _, tag := range tags {
 		args = append(args, tag)
 	}
+
+	// Add conditions for each tag (args already contains accountID + tags)
+	for i := range tags {
+		query += fmt.Sprintf(" AND dt%d.tag = $%d", i, i+2)
+	}
+
+	query += " ORDER BY d.modified_at DESC"
 
 	rows, err := r.db.QueryContext(ctx, query, args...)
 	if err != nil {
@@ -1074,24 +1036,24 @@ func (r *deckRepository) GetByFilters(ctx context.Context, filter *DeckFilter) (
 	}
 
 	// WHERE clause
-	query += " WHERE d.account_id = ?"
+	query += " WHERE d.account_id = $1"
 	args := []interface{}{filter.AccountID}
 
 	// Add format filter
 	if filter.Format != nil {
-		query += " AND d.format = ?"
+		query += fmt.Sprintf(" AND d.format = $%d", len(args)+1)
 		args = append(args, *filter.Format)
 	}
 
 	// Add source filter
 	if filter.Source != nil {
-		query += " AND d.source = ?"
+		query += fmt.Sprintf(" AND d.source = $%d", len(args)+1)
 		args = append(args, *filter.Source)
 	}
 
 	// Add tag conditions
 	for i, tag := range filter.Tags {
-		query += fmt.Sprintf(" AND dt%d.tag = ?", i)
+		query += fmt.Sprintf(" AND dt%d.tag = $%d", i, len(args)+1)
 		args = append(args, tag)
 	}
 
@@ -1175,7 +1137,7 @@ func (r *deckRepository) GetCardCountsByAccount(ctx context.Context, accountID i
 		SELECT dc.card_id, SUM(dc.quantity) as total_qty
 		FROM deck_cards dc
 		JOIN decks d ON dc.deck_id = d.id
-		WHERE d.account_id = ?
+		WHERE d.account_id = $1
 		GROUP BY dc.card_id
 	`
 

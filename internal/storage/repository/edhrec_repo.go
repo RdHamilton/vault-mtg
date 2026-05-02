@@ -50,7 +50,7 @@ func NewEDHRECRepository(db *sql.DB) EDHRECRepository {
 func (r *edhrecRepo) UpsertSynergy(ctx context.Context, synergy *models.EDHRECSynergy) error {
 	query := `
 		INSERT INTO edhrec_synergy (card_name, synergy_card_name, synergy_score, inclusion_count, num_decks, lift, last_updated)
-		VALUES (?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+		VALUES ($1, $2, $3, $4, $5, $6, CURRENT_TIMESTAMP)
 		ON CONFLICT(card_name, synergy_card_name) DO UPDATE SET
 			synergy_score = excluded.synergy_score,
 			inclusion_count = excluded.inclusion_count,
@@ -84,7 +84,7 @@ func (r *edhrecRepo) BulkUpsertSynergies(ctx context.Context, synergies []*model
 
 	stmt, err := tx.PrepareContext(ctx, `
 		INSERT INTO edhrec_synergy (card_name, synergy_card_name, synergy_score, inclusion_count, num_decks, lift, last_updated)
-		VALUES (?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+		VALUES ($1, $2, $3, $4, $5, $6, CURRENT_TIMESTAMP)
 		ON CONFLICT(card_name, synergy_card_name) DO UPDATE SET
 			synergy_score = excluded.synergy_score,
 			inclusion_count = excluded.inclusion_count,
@@ -120,7 +120,7 @@ func (r *edhrecRepo) GetSynergiesForCard(ctx context.Context, cardName string, l
 	query := `
 		SELECT id, card_name, synergy_card_name, synergy_score, inclusion_count, num_decks, lift, last_updated
 		FROM edhrec_synergy
-		WHERE LOWER(card_name) = LOWER(?)
+		WHERE LOWER(card_name) = LOWER($1)
 		ORDER BY synergy_score DESC
 	`
 	if limit > 0 {
@@ -157,8 +157,8 @@ func (r *edhrecRepo) GetSynergyScore(ctx context.Context, cardName, synergyCardN
 	query := `
 		SELECT synergy_score
 		FROM edhrec_synergy
-		WHERE (LOWER(card_name) = LOWER(?) AND LOWER(synergy_card_name) = LOWER(?))
-		   OR (LOWER(card_name) = LOWER(?) AND LOWER(synergy_card_name) = LOWER(?))
+		WHERE (LOWER(card_name) = LOWER($1) AND LOWER(synergy_card_name) = LOWER($2))
+		   OR (LOWER(card_name) = LOWER($3) AND LOWER(synergy_card_name) = LOWER($4))
 	`
 
 	var score float64
@@ -180,7 +180,7 @@ func (r *edhrecRepo) GetTopSynergies(ctx context.Context, cardName string, limit
 
 // DeleteSynergiesForCard deletes all synergies for a card.
 func (r *edhrecRepo) DeleteSynergiesForCard(ctx context.Context, cardName string) error {
-	query := `DELETE FROM edhrec_synergy WHERE LOWER(card_name) = LOWER(?)`
+	query := `DELETE FROM edhrec_synergy WHERE LOWER(card_name) = LOWER($1)`
 
 	_, err := r.db.ExecContext(ctx, query, cardName)
 	if err != nil {
@@ -194,7 +194,7 @@ func (r *edhrecRepo) DeleteSynergiesForCard(ctx context.Context, cardName string
 func (r *edhrecRepo) UpsertMetadata(ctx context.Context, metadata *models.EDHRECCardMetadata) error {
 	query := `
 		INSERT INTO edhrec_card_metadata (card_name, sanitized_name, num_decks, salt_score, color_identity, last_updated)
-		VALUES (?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+		VALUES ($1, $2, $3, $4, $5, CURRENT_TIMESTAMP)
 		ON CONFLICT(card_name) DO UPDATE SET
 			sanitized_name = excluded.sanitized_name,
 			num_decks = excluded.num_decks,
@@ -219,7 +219,7 @@ func (r *edhrecRepo) GetMetadata(ctx context.Context, cardName string) (*models.
 	query := `
 		SELECT id, card_name, sanitized_name, num_decks, salt_score, color_identity, last_updated
 		FROM edhrec_card_metadata
-		WHERE LOWER(card_name) = LOWER(?)
+		WHERE LOWER(card_name) = LOWER($1)
 	`
 
 	var m models.EDHRECCardMetadata
@@ -252,7 +252,7 @@ func (r *edhrecRepo) GetMetadataCount(ctx context.Context) (int, error) {
 func (r *edhrecRepo) UpsertThemeCard(ctx context.Context, themeCard *models.EDHRECThemeCard) error {
 	query := `
 		INSERT INTO edhrec_theme_cards (theme_name, card_name, synergy_score, is_top_card, is_high_synergy, last_updated)
-		VALUES (?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+		VALUES ($1, $2, $3, $4, $5, CURRENT_TIMESTAMP)
 		ON CONFLICT(theme_name, card_name) DO UPDATE SET
 			synergy_score = excluded.synergy_score,
 			is_top_card = excluded.is_top_card,
@@ -285,7 +285,7 @@ func (r *edhrecRepo) BulkUpsertThemeCards(ctx context.Context, themeCards []*mod
 
 	stmt, err := tx.PrepareContext(ctx, `
 		INSERT INTO edhrec_theme_cards (theme_name, card_name, synergy_score, is_top_card, is_high_synergy, last_updated)
-		VALUES (?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+		VALUES ($1, $2, $3, $4, $5, CURRENT_TIMESTAMP)
 		ON CONFLICT(theme_name, card_name) DO UPDATE SET
 			synergy_score = excluded.synergy_score,
 			is_top_card = excluded.is_top_card,
@@ -319,7 +319,7 @@ func (r *edhrecRepo) GetCardsForTheme(ctx context.Context, themeName string, lim
 	query := `
 		SELECT id, theme_name, card_name, synergy_score, is_top_card, is_high_synergy, last_updated
 		FROM edhrec_theme_cards
-		WHERE LOWER(theme_name) = LOWER(?)
+		WHERE LOWER(theme_name) = LOWER($1)
 		ORDER BY synergy_score DESC
 	`
 	if limit > 0 {
@@ -356,7 +356,7 @@ func (r *edhrecRepo) GetThemesForCard(ctx context.Context, cardName string) ([]*
 	query := `
 		SELECT id, theme_name, card_name, synergy_score, is_top_card, is_high_synergy, last_updated
 		FROM edhrec_theme_cards
-		WHERE LOWER(card_name) = LOWER(?)
+		WHERE LOWER(card_name) = LOWER($1)
 		ORDER BY synergy_score DESC
 	`
 
@@ -387,7 +387,7 @@ func (r *edhrecRepo) GetThemesForCard(ctx context.Context, cardName string) ([]*
 
 // DeleteThemeCards deletes all cards for a theme.
 func (r *edhrecRepo) DeleteThemeCards(ctx context.Context, themeName string) error {
-	query := `DELETE FROM edhrec_theme_cards WHERE LOWER(theme_name) = LOWER(?)`
+	query := `DELETE FROM edhrec_theme_cards WHERE LOWER(theme_name) = LOWER($1)`
 
 	_, err := r.db.ExecContext(ctx, query, themeName)
 	if err != nil {

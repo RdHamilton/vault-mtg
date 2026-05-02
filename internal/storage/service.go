@@ -169,43 +169,18 @@ type BulkImportSettings struct {
 // EnableBulkImportMode configures the database for fast bulk imports.
 // This trades durability for speed - only use for recoverable operations like historical replay.
 // Always call RestoreSafeMode() when done (use defer).
+// For PostgreSQL, bulk import optimizations are handled at the session level.
 func (s *Service) EnableBulkImportMode(ctx context.Context) (*BulkImportSettings, error) {
 	db := s.db.Conn()
 
-	// Save current settings
-	settings := &BulkImportSettings{}
-
-	if err := db.QueryRowContext(ctx, "PRAGMA synchronous").Scan(&settings.Synchronous); err != nil {
-		return nil, fmt.Errorf("failed to get synchronous setting: %w", err)
+	// For PostgreSQL: set synchronous_commit=off for this session to speed up bulk inserts.
+	if _, err := db.ExecContext(ctx, "SET synchronous_commit = off"); err != nil {
+		log.Printf("Warning: failed to set synchronous_commit=off: %v", err)
 	}
 
-	if err := db.QueryRowContext(ctx, "PRAGMA journal_mode").Scan(&settings.JournalMode); err != nil {
-		return nil, fmt.Errorf("failed to get journal_mode setting: %w", err)
-	}
+	log.Println("Bulk import mode enabled: synchronous_commit=off")
 
-	if err := db.QueryRowContext(ctx, "PRAGMA cache_size").Scan(&settings.CacheSize); err != nil {
-		return nil, fmt.Errorf("failed to get cache_size setting: %w", err)
-	}
-
-	log.Printf("Enabling bulk import mode (saved settings: sync=%s, journal=%s, cache=%d)",
-		settings.Synchronous, settings.JournalMode, settings.CacheSize)
-
-	// Enable bulk import optimizations
-	if _, err := db.ExecContext(ctx, "PRAGMA synchronous = OFF"); err != nil {
-		return nil, fmt.Errorf("failed to set synchronous: %w", err)
-	}
-
-	if _, err := db.ExecContext(ctx, "PRAGMA journal_mode = MEMORY"); err != nil {
-		return nil, fmt.Errorf("failed to set journal_mode: %w", err)
-	}
-
-	if _, err := db.ExecContext(ctx, "PRAGMA cache_size = -64000"); err != nil {
-		return nil, fmt.Errorf("failed to set cache_size: %w", err)
-	}
-
-	log.Println("Bulk import mode enabled: synchronous=OFF, journal_mode=MEMORY, cache_size=64MB")
-
-	return settings, nil
+	return &BulkImportSettings{}, nil
 }
 
 // RestoreSafeMode restores the database to safe operation mode after bulk import.
@@ -216,28 +191,12 @@ func (s *Service) RestoreSafeMode(ctx context.Context, settings *BulkImportSetti
 
 	db := s.db.Conn()
 
-	log.Printf("Restoring safe mode (sync=%s, journal=%s, cache=%d)",
-		settings.Synchronous, settings.JournalMode, settings.CacheSize)
-
-	// Restore original settings
-	if _, err := db.ExecContext(ctx, fmt.Sprintf("PRAGMA synchronous = %s", settings.Synchronous)); err != nil {
-		return fmt.Errorf("failed to restore synchronous: %w", err)
+	// Restore synchronous_commit to the default (on).
+	if _, err := db.ExecContext(ctx, "SET synchronous_commit = on"); err != nil {
+		log.Printf("Warning: failed to restore synchronous_commit=on: %v", err)
 	}
 
-	if _, err := db.ExecContext(ctx, fmt.Sprintf("PRAGMA journal_mode = %s", settings.JournalMode)); err != nil {
-		return fmt.Errorf("failed to restore journal_mode: %w", err)
-	}
-
-	if _, err := db.ExecContext(ctx, fmt.Sprintf("PRAGMA cache_size = %d", settings.CacheSize)); err != nil {
-		return fmt.Errorf("failed to restore cache_size: %w", err)
-	}
-
-	// Force WAL checkpoint to ensure data is committed
-	if _, err := db.ExecContext(ctx, "PRAGMA wal_checkpoint(TRUNCATE)"); err != nil {
-		log.Printf("Warning: Failed to checkpoint WAL: %v", err)
-	}
-
-	log.Println("Safe mode restored and WAL checkpoint completed")
+	log.Println("Safe mode restored")
 
 	return nil
 }
@@ -775,7 +734,7 @@ func (s *Service) StoreMatch(ctx context.Context, match *Match, games []*Game) e
 }
 
 // BatchStoreMatches efficiently stores multiple matches in a single transaction.
-// Uses INSERT OR IGNORE to skip duplicates without SELECT queries (10-20x faster than StoreMatch loop).
+// Uses ON CONFLICT DO NOTHING to skip duplicates without SELECT queries (10-20x faster than StoreMatch loop).
 // Ideal for bulk imports like historical log replay.
 func (s *Service) BatchStoreMatches(ctx context.Context, matchesData []matchData) (int, error) {
 	if len(matchesData) == 0 {
@@ -796,11 +755,12 @@ func (s *Service) BatchStoreMatches(ctx context.Context, matchesData []matchData
 
 	// Prepare match insert statement
 	matchStmt, err := tx.PrepareContext(ctx, `
-		INSERT OR IGNORE INTO matches (
+		INSERT INTO matches (
 			id, account_id, event_id, event_name, timestamp, duration_seconds,
 			player_wins, opponent_wins, player_team_id, deck_id, rank_before, rank_after,
 			format, result, result_reason, opponent_name, opponent_id, created_at
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18)
+		ON CONFLICT(id) DO NOTHING
 	`)
 	if err != nil {
 		return 0, fmt.Errorf("failed to prepare match statement: %w", err)
@@ -811,9 +771,10 @@ func (s *Service) BatchStoreMatches(ctx context.Context, matchesData []matchData
 
 	// Prepare game insert statement
 	gameStmt, err := tx.PrepareContext(ctx, `
-		INSERT OR IGNORE INTO games (
+		INSERT INTO games (
 			match_id, game_number, result, duration_seconds, result_reason, created_at
-		) VALUES (?, ?, ?, ?, ?, ?)
+		) VALUES ($1, $2, $3, $4, $5, $6)
+		ON CONFLICT(match_id, game_number) DO NOTHING
 	`)
 	if err != nil {
 		return 0, fmt.Errorf("failed to prepare game statement: %w", err)
@@ -857,7 +818,7 @@ func (s *Service) BatchStoreMatches(ctx context.Context, matchesData []matchData
 			stored++
 		}
 
-		// Always try to insert games for this match (uses INSERT OR IGNORE)
+		// Always try to insert games for this match (uses ON CONFLICT DO NOTHING)
 		// This ensures games are created even if the match was previously stored
 		// without game records (which can happen with partial log processing)
 		for _, game := range matchData.Games {
@@ -2234,7 +2195,7 @@ func (s *Service) SetLastBulkDataUpdate(ctx context.Context, timestamp time.Time
 	timestampStr := timestamp.Format(time.RFC3339)
 	query := `
 		INSERT INTO metadata (key, value, updated_at)
-		VALUES ('bulk_data_last_update', ?, CURRENT_TIMESTAMP)
+		VALUES ('bulk_data_last_update', $1, CURRENT_TIMESTAMP)
 		ON CONFLICT(key) DO UPDATE SET
 			value = excluded.value,
 			updated_at = CURRENT_TIMESTAMP
@@ -2393,7 +2354,7 @@ func (s *Service) HasProcessedLogFile(ctx context.Context, filename string) (boo
 
 	var exists bool
 	err := db.QueryRowContext(ctx, `
-		SELECT EXISTS(SELECT 1 FROM processed_log_files WHERE filename = ?)
+		SELECT EXISTS(SELECT 1 FROM processed_log_files WHERE filename = $1)
 	`, filename).Scan(&exists)
 	if err != nil {
 		return false, fmt.Errorf("failed to check processed log file: %w", err)
@@ -2407,9 +2368,14 @@ func (s *Service) MarkLogFileProcessed(ctx context.Context, filename string, ent
 	db := s.db.Conn()
 
 	_, err := db.ExecContext(ctx, `
-		INSERT OR REPLACE INTO processed_log_files (
+		INSERT INTO processed_log_files (
 			filename, processed_at, entry_count, matches_found, file_size_bytes
-		) VALUES (?, ?, ?, ?, ?)
+		) VALUES ($1, $2, $3, $4, $5)
+		ON CONFLICT(filename) DO UPDATE SET
+			processed_at = excluded.processed_at,
+			entry_count = excluded.entry_count,
+			matches_found = excluded.matches_found,
+			file_size_bytes = excluded.file_size_bytes
 	`, filename, time.Now(), entryCount, matchesFound, fileSizeBytes)
 	if err != nil {
 		return fmt.Errorf("failed to mark log file as processed: %w", err)

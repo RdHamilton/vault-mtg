@@ -110,16 +110,16 @@ func (r *inventoryRepository) Update(ctx context.Context, newInv *Inventory, sou
 	// Update inventory
 	query := `
 		UPDATE inventory SET
-			gold = ?,
-			gems = ?,
-			wc_common = ?,
-			wc_uncommon = ?,
-			wc_rare = ?,
-			wc_mythic = ?,
-			vault_progress = ?,
-			draft_tokens = ?,
-			sealed_tokens = ?,
-			updated_at = ?
+			gold = $1,
+			gems = $2,
+			wc_common = $3,
+			wc_uncommon = $4,
+			wc_rare = $5,
+			wc_mythic = $6,
+			vault_progress = $7,
+			draft_tokens = $8,
+			sealed_tokens = $9,
+			updated_at = $10
 		WHERE id = 1
 	`
 
@@ -198,7 +198,7 @@ func (r *inventoryRepository) detectChanges(current, newInv *Inventory, source *
 func (r *inventoryRepository) recordChange(ctx context.Context, change *InventoryChange) error {
 	query := `
 		INSERT INTO inventory_history (field, previous_value, new_value, delta, source, created_at)
-		VALUES (?, ?, ?, ?, ?, ?)
+		VALUES ($1, $2, $3, $4, $5, $6)
 	`
 
 	_, err := r.db.ExecContext(ctx, query,
@@ -221,9 +221,9 @@ func (r *inventoryRepository) GetHistory(ctx context.Context, field string, limi
 	query := `
 		SELECT id, field, previous_value, new_value, delta, source, created_at
 		FROM inventory_history
-		WHERE field = ?
+		WHERE field = $1
 		ORDER BY created_at DESC
-		LIMIT ?
+		LIMIT $2
 	`
 
 	rows, err := r.db.QueryContext(ctx, query, field, limit)
@@ -244,7 +244,7 @@ func (r *inventoryRepository) GetRecentChanges(ctx context.Context, limit int) (
 		SELECT id, field, previous_value, new_value, delta, source, created_at
 		FROM inventory_history
 		ORDER BY created_at DESC
-		LIMIT ?
+		LIMIT $1
 	`
 
 	rows, err := r.db.QueryContext(ctx, query, limit)
@@ -264,7 +264,7 @@ func (r *inventoryRepository) GetChangesSince(ctx context.Context, since time.Ti
 	query := `
 		SELECT id, field, previous_value, new_value, delta, source, created_at
 		FROM inventory_history
-		WHERE created_at > ?
+		WHERE created_at > $1
 		ORDER BY created_at DESC
 	`
 

@@ -116,19 +116,22 @@ func buildFilterWhereClause(filter models.StatsFilter, tableAlias string) (where
 		return col
 	}
 
+	// pgN returns the next positional placeholder ($N) based on current args length.
+	pgN := func() string { return fmt.Sprintf("$%d", len(args)+1) }
+
 	// Account filter
 	if filter.AccountID != nil && *filter.AccountID > 0 {
-		where += fmt.Sprintf(" AND %s = ?", prefix("account_id"))
+		where += fmt.Sprintf(" AND %s = %s", prefix("account_id"), pgN())
 		args = append(args, *filter.AccountID)
 	}
 
 	// Date range filters
 	if filter.StartDate != nil {
-		where += fmt.Sprintf(" AND %s >= ?", prefix("timestamp"))
+		where += fmt.Sprintf(" AND %s >= %s", prefix("timestamp"), pgN())
 		args = append(args, *filter.StartDate)
 	}
 	if filter.EndDate != nil {
-		where += fmt.Sprintf(" AND %s <= ?", prefix("timestamp"))
+		where += fmt.Sprintf(" AND %s <= %s", prefix("timestamp"), pgN())
 		args = append(args, *filter.EndDate)
 	}
 
@@ -140,25 +143,25 @@ func buildFilterWhereClause(filter models.StatsFilter, tableAlias string) (where
 			if i > 0 {
 				placeholders += ", "
 			}
-			placeholders += "?"
+			placeholders += pgN()
 			args = append(args, format)
 		}
 		where += fmt.Sprintf(" AND %s IN (%s)", prefix("format"), placeholders)
 	} else if filter.Format != nil {
 		// Single format (backward compatibility)
-		where += fmt.Sprintf(" AND %s = ?", prefix("format"))
+		where += fmt.Sprintf(" AND %s = %s", prefix("format"), pgN())
 		args = append(args, *filter.Format)
 	}
 
 	// Deck filter
 	if filter.DeckID != nil {
-		where += fmt.Sprintf(" AND %s = ?", prefix("deck_id"))
+		where += fmt.Sprintf(" AND %s = %s", prefix("deck_id"), pgN())
 		args = append(args, *filter.DeckID)
 	}
 
 	// Deck format filter (requires JOIN with decks table)
 	if filter.DeckFormat != nil {
-		where += " AND d.format = ?"
+		where += fmt.Sprintf(" AND d.format = %s", pgN())
 		args = append(args, *filter.DeckFormat)
 	}
 
@@ -170,43 +173,45 @@ func buildFilterWhereClause(filter models.StatsFilter, tableAlias string) (where
 			if i > 0 {
 				placeholders += ", "
 			}
-			placeholders += "?"
+			placeholders += pgN()
 			args = append(args, eventName)
 		}
 		where += fmt.Sprintf(" AND %s IN (%s)", prefix("event_name"), placeholders)
 	} else if filter.EventName != nil {
 		// Single event name
-		where += fmt.Sprintf(" AND %s = ?", prefix("event_name"))
+		where += fmt.Sprintf(" AND %s = %s", prefix("event_name"), pgN())
 		args = append(args, *filter.EventName)
 	}
 
 	// Opponent filters
 	if filter.OpponentName != nil {
-		where += fmt.Sprintf(" AND %s = ?", prefix("opponent_name"))
+		where += fmt.Sprintf(" AND %s = %s", prefix("opponent_name"), pgN())
 		args = append(args, *filter.OpponentName)
 	}
 	if filter.OpponentID != nil {
-		where += fmt.Sprintf(" AND %s = ?", prefix("opponent_id"))
+		where += fmt.Sprintf(" AND %s = %s", prefix("opponent_id"), pgN())
 		args = append(args, *filter.OpponentID)
 	}
 
 	// Result filter
 	if filter.Result != nil {
-		where += fmt.Sprintf(" AND %s = ?", prefix("result"))
+		where += fmt.Sprintf(" AND %s = %s", prefix("result"), pgN())
 		args = append(args, *filter.Result)
 	}
 
 	// Result reason filter
 	if filter.ResultReason != nil {
-		where += fmt.Sprintf(" AND %s = ?", prefix("result_reason"))
+		where += fmt.Sprintf(" AND %s = %s", prefix("result_reason"), pgN())
 		args = append(args, *filter.ResultReason)
 	}
 
 	// Rank filters (uses LIKE for rank_before or rank_after)
 	if filter.RankClass != nil {
-		where += fmt.Sprintf(" AND (%s LIKE ? OR %s LIKE ?)", prefix("rank_before"), prefix("rank_after"))
-		rankPattern := "%" + *filter.RankClass + "%"
-		args = append(args, rankPattern, rankPattern)
+		n1, n2 := pgN(), ""
+		args = append(args, "%"+*filter.RankClass+"%")
+		n2 = pgN()
+		args = append(args, "%"+*filter.RankClass+"%")
+		where += fmt.Sprintf(" AND (%s LIKE %s OR %s LIKE %s)", prefix("rank_before"), n1, prefix("rank_after"), n2)
 	}
 	// Note: RankMinClass and RankMaxClass would require parsing rank strings
 	// which is complex (Bronze < Silver < Gold < Platinum < Diamond < Mythic)
@@ -223,7 +228,7 @@ func (r *matchRepository) Create(ctx context.Context, match *models.Match) error
 			player_wins, opponent_wins, player_team_id, deck_id,
 			rank_before, rank_after, format, result, result_reason,
 			opponent_name, opponent_id, created_at
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18)
 	`
 
 	_, err := r.db.ExecContext(ctx, query,
@@ -258,27 +263,22 @@ func (r *matchRepository) CreateGame(ctx context.Context, game *models.Game) err
 	query := `
 		INSERT INTO games (
 			match_id, game_number, result, duration_seconds, result_reason, created_at
-		) VALUES (?, ?, ?, ?, ?, ?)
+		) VALUES ($1, $2, $3, $4, $5, $6)
+		RETURNING id
 	`
 
-	result, err := r.db.ExecContext(ctx, query,
+	err := r.db.QueryRowContext(ctx, query,
 		game.MatchID,
 		game.GameNumber,
 		game.Result,
 		game.DurationSeconds,
 		game.ResultReason,
 		game.CreatedAt,
-	)
+	).Scan(&game.ID)
 	if err != nil {
 		return fmt.Errorf("failed to create game: %w", err)
 	}
 
-	id, err := result.LastInsertId()
-	if err != nil {
-		return fmt.Errorf("failed to get last insert id: %w", err)
-	}
-
-	game.ID = int(id)
 	return nil
 }
 
@@ -291,7 +291,7 @@ func (r *matchRepository) GetByID(ctx context.Context, id string) (*models.Match
 			rank_before, rank_after, format, result, result_reason,
 			opponent_name, opponent_id, created_at
 		FROM matches
-		WHERE id = ?
+		WHERE id = $1
 	`
 
 	match := &models.Match{}
@@ -336,12 +336,12 @@ func (r *matchRepository) GetByDateRange(ctx context.Context, start, end time.Ti
 			rank_before, rank_after, format, result, result_reason,
 			opponent_name, opponent_id, created_at
 		FROM matches
-		WHERE timestamp >= ? AND timestamp <= ?
+		WHERE timestamp >= $1 AND timestamp <= $2
 	`
 	args := []interface{}{start, end}
 
 	if accountID > 0 {
-		query += " AND account_id = ?"
+		query += fmt.Sprintf(" AND account_id = $%d", len(args)+1)
 		args = append(args, accountID)
 	}
 
@@ -402,12 +402,12 @@ func (r *matchRepository) GetByFormat(ctx context.Context, format string, accoun
 			rank_before, rank_after, format, result, result_reason,
 			opponent_name, opponent_id, created_at
 		FROM matches
-		WHERE format = ?
+		WHERE format = $1
 	`
 	args := []interface{}{format}
 
 	if accountID > 0 {
-		query += " AND account_id = ?"
+		query += fmt.Sprintf(" AND account_id = $%d", len(args)+1)
 		args = append(args, accountID)
 	}
 
@@ -622,11 +622,11 @@ func (r *matchRepository) GetRecentMatches(ctx context.Context, limit int, accou
 	args := make([]interface{}, 0)
 
 	if accountID > 0 {
-		query += " AND account_id = ?"
+		query += fmt.Sprintf(" AND account_id = $%d", len(args)+1)
 		args = append(args, accountID)
 	}
 
-	query += " ORDER BY timestamp DESC LIMIT ?"
+	query += fmt.Sprintf(" ORDER BY timestamp DESC LIMIT $%d", len(args)+1)
 	args = append(args, limit)
 
 	rows, err := r.db.QueryContext(ctx, query, args...)
@@ -688,7 +688,7 @@ func (r *matchRepository) GetLatestMatch(ctx context.Context, accountID int) (*m
 	args := make([]interface{}, 0)
 
 	if accountID > 0 {
-		query += " AND account_id = ?"
+		query += fmt.Sprintf(" AND account_id = $%d", len(args)+1)
 		args = append(args, accountID)
 	}
 
@@ -732,19 +732,19 @@ func (r *matchRepository) GetStatsByFormat(ctx context.Context, filter models.St
 	args := make([]interface{}, 0)
 
 	if filter.AccountID != nil && *filter.AccountID > 0 {
-		where += " AND account_id = ?"
+		where += fmt.Sprintf(" AND account_id = $%d", len(args)+1)
 		args = append(args, *filter.AccountID)
 	}
 	if filter.StartDate != nil {
-		where += " AND timestamp >= ?"
+		where += fmt.Sprintf(" AND timestamp >= $%d", len(args)+1)
 		args = append(args, *filter.StartDate)
 	}
 	if filter.EndDate != nil {
-		where += " AND timestamp <= ?"
+		where += fmt.Sprintf(" AND timestamp <= $%d", len(args)+1)
 		args = append(args, *filter.EndDate)
 	}
 	if filter.DeckID != nil {
-		where += " AND deck_id = ?"
+		where += fmt.Sprintf(" AND deck_id = $%d", len(args)+1)
 		args = append(args, *filter.DeckID)
 	}
 
@@ -806,8 +806,8 @@ func (r *matchRepository) GetStatsByFormat(ctx context.Context, filter models.St
 				SUM(CASE WHEN g.result = 'loss' THEN 1 ELSE 0 END) as losses
 			FROM games g
 			INNER JOIN matches m ON g.match_id = m.id
-			%s AND m.format = ?
-		`, where)
+			%s AND m.format = $%d
+		`, where, len(args)+1)
 
 		gameArgs := append(args, format)
 		err = r.db.QueryRowContext(ctx, gameQuery, gameArgs...).Scan(
@@ -835,15 +835,15 @@ func (r *matchRepository) GetStatsByDeck(ctx context.Context, filter models.Stat
 	args := make([]interface{}, 0)
 
 	if filter.AccountID != nil && *filter.AccountID > 0 {
-		where += " AND m.account_id = ?"
+		where += fmt.Sprintf(" AND m.account_id = $%d", len(args)+1)
 		args = append(args, *filter.AccountID)
 	}
 	if filter.StartDate != nil {
-		where += " AND m.timestamp >= ?"
+		where += fmt.Sprintf(" AND m.timestamp >= $%d", len(args)+1)
 		args = append(args, *filter.StartDate)
 	}
 	if filter.EndDate != nil {
-		where += " AND m.timestamp <= ?"
+		where += fmt.Sprintf(" AND m.timestamp <= $%d", len(args)+1)
 		args = append(args, *filter.EndDate)
 	}
 	// Format filters (support both single and multiple)
@@ -854,13 +854,13 @@ func (r *matchRepository) GetStatsByDeck(ctx context.Context, filter models.Stat
 			if i > 0 {
 				placeholders += ", "
 			}
-			placeholders += "?"
+			placeholders += fmt.Sprintf("$%d", len(args)+1)
 			args = append(args, format)
 		}
 		where += fmt.Sprintf(" AND m.format IN (%s)", placeholders)
 	} else if filter.Format != nil {
 		// Single format (backward compatibility)
-		where += " AND m.format = ?"
+		where += fmt.Sprintf(" AND m.format = $%d", len(args)+1)
 		args = append(args, *filter.Format)
 	}
 
@@ -981,7 +981,7 @@ func (r *matchRepository) GetGamesForMatch(ctx context.Context, matchID string) 
 	query := `
 		SELECT id, match_id, game_number, result, duration_seconds, result_reason, created_at
 		FROM games
-		WHERE match_id = ?
+		WHERE match_id = $1
 		ORDER BY game_number ASC
 	`
 
@@ -1022,7 +1022,7 @@ func (r *matchRepository) GetGamesForMatch(ctx context.Context, matchID string) 
 // GetGameIDByMatchAndNumber retrieves the database ID for a game by match ID and game number.
 // Returns 0 if not found.
 func (r *matchRepository) GetGameIDByMatchAndNumber(ctx context.Context, matchID string, gameNumber int) (int, error) {
-	query := `SELECT id FROM games WHERE match_id = ? AND game_number = ?`
+	query := `SELECT id FROM games WHERE match_id = $1 AND game_number = $2`
 	var gameID int
 	err := r.db.QueryRowContext(ctx, query, matchID, gameNumber).Scan(&gameID)
 	if err == sql.ErrNoRows {
@@ -1041,23 +1041,23 @@ func (r *matchRepository) GetPerformanceMetrics(ctx context.Context, filter mode
 	args := make([]interface{}, 0)
 
 	if filter.AccountID != nil && *filter.AccountID > 0 {
-		where += " AND account_id = ?"
+		where += fmt.Sprintf(" AND account_id = $%d", len(args)+1)
 		args = append(args, *filter.AccountID)
 	}
 	if filter.StartDate != nil {
-		where += " AND timestamp >= ?"
+		where += fmt.Sprintf(" AND timestamp >= $%d", len(args)+1)
 		args = append(args, *filter.StartDate)
 	}
 	if filter.EndDate != nil {
-		where += " AND timestamp <= ?"
+		where += fmt.Sprintf(" AND timestamp <= $%d", len(args)+1)
 		args = append(args, *filter.EndDate)
 	}
 	if filter.Format != nil {
-		where += " AND format = ?"
+		where += fmt.Sprintf(" AND format = $%d", len(args)+1)
 		args = append(args, *filter.Format)
 	}
 	if filter.DeckID != nil {
-		where += " AND deck_id = ?"
+		where += fmt.Sprintf(" AND deck_id = $%d", len(args)+1)
 		args = append(args, *filter.DeckID)
 	}
 
@@ -1256,7 +1256,7 @@ func (r *matchRepository) GetMatchesWithDeckID(ctx context.Context) (map[string]
 
 // UpdateDeckID updates the deck_id for a specific match.
 func (r *matchRepository) UpdateDeckID(ctx context.Context, matchID, deckID string) error {
-	query := `UPDATE matches SET deck_id = ? WHERE id = ?`
+	query := `UPDATE matches SET deck_id = $1 WHERE id = $2`
 
 	result, err := r.db.ExecContext(ctx, query, deckID, matchID)
 	if err != nil {
@@ -1295,7 +1295,7 @@ func (r *matchRepository) DeleteAll(ctx context.Context, accountID int) error {
 	var gamesQuery string
 	var gamesArgs []interface{}
 	if accountID > 0 {
-		gamesQuery = `DELETE FROM games WHERE match_id IN (SELECT id FROM matches WHERE account_id = ?)`
+		gamesQuery = `DELETE FROM games WHERE match_id IN (SELECT id FROM matches WHERE account_id = $1)`
 		gamesArgs = []interface{}{accountID}
 	} else {
 		gamesQuery = `DELETE FROM games`
@@ -1311,7 +1311,7 @@ func (r *matchRepository) DeleteAll(ctx context.Context, accountID int) error {
 	var matchesQuery string
 	var matchesArgs []interface{}
 	if accountID > 0 {
-		matchesQuery = `DELETE FROM matches WHERE account_id = ?`
+		matchesQuery = `DELETE FROM matches WHERE account_id = $1`
 		matchesArgs = []interface{}{accountID}
 	} else {
 		matchesQuery = `DELETE FROM matches`
@@ -1362,8 +1362,8 @@ func (r *matchRepository) GetDailyWins(ctx context.Context, accountID int) (int,
 		SELECT COUNT(*)
 		FROM matches
 		WHERE result = 'win'
-		AND timestamp >= ?
-		AND timestamp < ?
+		AND timestamp >= $1
+		AND timestamp < $2
 	`
 	args := []interface{}{startStr, endStr}
 
@@ -1372,9 +1372,9 @@ func (r *matchRepository) GetDailyWins(ctx context.Context, accountID int) (int,
 			SELECT COUNT(*)
 			FROM matches
 			WHERE result = 'win'
-			AND timestamp >= ?
-			AND timestamp < ?
-			AND account_id = ?
+			AND timestamp >= $1
+			AND timestamp < $2
+			AND account_id = $3
 		`
 		args = append(args, accountID)
 	}
@@ -1414,8 +1414,8 @@ func (r *matchRepository) GetWeeklyWins(ctx context.Context, accountID int) (int
 		SELECT COUNT(*)
 		FROM matches
 		WHERE result = 'win'
-		AND timestamp >= ?
-		AND timestamp < ?
+		AND timestamp >= $1
+		AND timestamp < $2
 	`
 	args := []interface{}{startStr, endStr}
 
@@ -1424,9 +1424,9 @@ func (r *matchRepository) GetWeeklyWins(ctx context.Context, accountID int) (int
 			SELECT COUNT(*)
 			FROM matches
 			WHERE result = 'win'
-			AND timestamp >= ?
-			AND timestamp < ?
-			AND account_id = ?
+			AND timestamp >= $1
+			AND timestamp < $2
+			AND account_id = $3
 		`
 		args = append(args, accountID)
 	}
@@ -1524,13 +1524,13 @@ func (r *matchRepository) MarkMatchesAsProcessedForML(ctx context.Context, match
 
 	// Build placeholders for IN clause
 	placeholders := ""
-	args := make([]interface{}, len(matchIDs))
+	args := make([]interface{}, 0, len(matchIDs))
 	for i, id := range matchIDs {
 		if i > 0 {
 			placeholders += ", "
 		}
-		placeholders += "?"
-		args[i] = id
+		args = append(args, id)
+		placeholders += fmt.Sprintf("$%d", len(args))
 	}
 
 	query := fmt.Sprintf(`UPDATE matches SET processed_for_ml = TRUE WHERE id IN (%s)`, placeholders)

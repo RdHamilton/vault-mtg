@@ -44,7 +44,7 @@ func NewSettingsRepository(db *sql.DB) SettingsRepository {
 // Get retrieves a setting value by key.
 func (r *settingsRepository) Get(ctx context.Context, key string) (string, error) {
 	var value string
-	err := r.db.QueryRowContext(ctx, "SELECT value FROM settings WHERE key = ?", key).Scan(&value)
+	err := r.db.QueryRowContext(ctx, "SELECT value FROM settings WHERE key = $1", key).Scan(&value)
 	if err != nil {
 		if err == sql.ErrNoRows {
 			return "", fmt.Errorf("setting not found: %s", key)
@@ -74,7 +74,7 @@ func (r *settingsRepository) Set(ctx context.Context, key string, value interfac
 	}
 
 	_, err = r.db.ExecContext(ctx, `
-		INSERT INTO settings (key, value, updated_at) VALUES (?, ?, ?)
+		INSERT INTO settings (key, value, updated_at) VALUES ($1, $2, $3)
 		ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at
 	`, key, string(jsonValue), time.Now())
 	if err != nil {
@@ -128,7 +128,7 @@ func (r *settingsRepository) SetMany(ctx context.Context, settings map[string]in
 	}()
 
 	stmt, err := tx.PrepareContext(ctx, `
-		INSERT INTO settings (key, value, updated_at) VALUES (?, ?, ?)
+		INSERT INTO settings (key, value, updated_at) VALUES ($1, $2, $3)
 		ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at
 	`)
 	if err != nil {
@@ -158,7 +158,7 @@ func (r *settingsRepository) SetMany(ctx context.Context, settings map[string]in
 
 // Delete removes a setting.
 func (r *settingsRepository) Delete(ctx context.Context, key string) error {
-	_, err := r.db.ExecContext(ctx, "DELETE FROM settings WHERE key = ?", key)
+	_, err := r.db.ExecContext(ctx, "DELETE FROM settings WHERE key = $1", key)
 	if err != nil {
 		return fmt.Errorf("failed to delete setting %s: %w", key, err)
 	}

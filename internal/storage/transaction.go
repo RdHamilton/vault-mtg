@@ -6,6 +6,13 @@ import (
 	"fmt"
 )
 
+// RetryOnBusy executes fn and returns its error.
+// Previously this retried on SQLite "database is locked" errors.
+// PostgreSQL handles concurrency natively so this is now a simple passthrough.
+func RetryOnBusy(fn func() error) error {
+	return fn()
+}
+
 // TxFunc is a function that runs within a transaction.
 type TxFunc func(*sql.Tx) error
 

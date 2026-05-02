@@ -51,8 +51,14 @@ func NewDraftAnalyticsRepository(db *sql.DB) DraftAnalyticsRepository {
 // SaveDraftMatchResult saves a draft match result.
 func (r *draftAnalyticsRepository) SaveDraftMatchResult(ctx context.Context, result *models.DraftMatchResult) error {
 	query := `
-		INSERT OR REPLACE INTO draft_match_results (session_id, match_id, result, opponent_colors, game_wins, game_losses, match_timestamp)
-		VALUES (?, ?, ?, ?, ?, ?, ?)
+		INSERT INTO draft_match_results (session_id, match_id, result, opponent_colors, game_wins, game_losses, match_timestamp)
+		VALUES ($1, $2, $3, $4, $5, $6, $7)
+		ON CONFLICT(session_id, match_id) DO UPDATE SET
+			result = excluded.result,
+			opponent_colors = excluded.opponent_colors,
+			game_wins = excluded.game_wins,
+			game_losses = excluded.game_losses,
+			match_timestamp = excluded.match_timestamp
 	`
 	_, err := r.db.ExecContext(ctx, query,
 		result.SessionID,
@@ -71,7 +77,7 @@ func (r *draftAnalyticsRepository) GetDraftMatchResults(ctx context.Context, ses
 	query := `
 		SELECT id, session_id, match_id, result, opponent_colors, game_wins, game_losses, match_timestamp
 		FROM draft_match_results
-		WHERE session_id = ?
+		WHERE session_id = $1
 		ORDER BY match_timestamp ASC
 	`
 	rows, err := r.db.QueryContext(ctx, query, sessionID)
@@ -88,7 +94,7 @@ func (r *draftAnalyticsRepository) GetDraftMatchResultsByTimeRange(ctx context.C
 	query := `
 		SELECT id, session_id, match_id, result, opponent_colors, game_wins, game_losses, match_timestamp
 		FROM draft_match_results
-		WHERE match_timestamp >= ? AND match_timestamp <= ?
+		WHERE match_timestamp >= $1 AND match_timestamp <= $2
 		ORDER BY match_timestamp ASC
 	`
 	rows, err := r.db.QueryContext(ctx, query, start, end)
@@ -139,7 +145,7 @@ func (r *draftAnalyticsRepository) GetArchetypeStats(ctx context.Context, setCod
 		SELECT id, set_code, color_combination, archetype_name, matches_played, matches_won,
 			drafts_count, avg_draft_grade, last_played_at, updated_at
 		FROM draft_archetype_stats
-		WHERE set_code = ?
+		WHERE set_code = $1
 		ORDER BY matches_won * 1.0 / CASE WHEN matches_played = 0 THEN 1 ELSE matches_played END DESC
 	`
 	rows, err := r.db.QueryContext(ctx, query, setCode)
@@ -173,7 +179,7 @@ func (r *draftAnalyticsRepository) UpsertArchetypeStats(ctx context.Context, sta
 	query := `
 		INSERT INTO draft_archetype_stats (set_code, color_combination, archetype_name, matches_played, matches_won,
 			drafts_count, avg_draft_grade, last_played_at, updated_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
 		ON CONFLICT(set_code, color_combination) DO UPDATE SET
 			archetype_name = excluded.archetype_name,
 			matches_played = excluded.matches_played,
@@ -203,9 +209,9 @@ func (r *draftAnalyticsRepository) GetBestArchetypes(ctx context.Context, minMat
 		SELECT id, set_code, color_combination, archetype_name, matches_played, matches_won,
 			drafts_count, avg_draft_grade, last_played_at, updated_at
 		FROM draft_archetype_stats
-		WHERE matches_played >= ?
+		WHERE matches_played >= $1
 		ORDER BY matches_won * 1.0 / matches_played DESC
-		LIMIT ?
+		LIMIT $2
 	`
 	rows, err := r.db.QueryContext(ctx, query, minMatches, limit)
 	if err != nil {
@@ -222,9 +228,9 @@ func (r *draftAnalyticsRepository) GetWorstArchetypes(ctx context.Context, minMa
 		SELECT id, set_code, color_combination, archetype_name, matches_played, matches_won,
 			drafts_count, avg_draft_grade, last_played_at, updated_at
 		FROM draft_archetype_stats
-		WHERE matches_played >= ?
+		WHERE matches_played >= $1
 		ORDER BY matches_won * 1.0 / matches_played ASC
-		LIMIT ?
+		LIMIT $2
 	`
 	rows, err := r.db.QueryContext(ctx, query, minMatches, limit)
 	if err != nil {
@@ -270,9 +276,16 @@ func scanArchetypeStats(rows *sql.Rows) ([]*models.DraftArchetypeStats, error) {
 // SaveTemporalTrend saves a temporal trend record.
 func (r *draftAnalyticsRepository) SaveTemporalTrend(ctx context.Context, trend *models.DraftTemporalTrend) error {
 	query := `
-		INSERT OR REPLACE INTO draft_temporal_trends (period_type, period_start, period_end, set_code,
+		INSERT INTO draft_temporal_trends (period_type, period_start, period_end, set_code,
 			drafts_count, matches_played, matches_won, avg_draft_grade, calculated_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+		ON CONFLICT(period_type, period_start, set_code) DO UPDATE SET
+			period_end = excluded.period_end,
+			drafts_count = excluded.drafts_count,
+			matches_played = excluded.matches_played,
+			matches_won = excluded.matches_won,
+			avg_draft_grade = excluded.avg_draft_grade,
+			calculated_at = excluded.calculated_at
 	`
 	_, err := r.db.ExecContext(ctx, query,
 		trend.PeriodType,
@@ -294,9 +307,9 @@ func (r *draftAnalyticsRepository) GetTemporalTrends(ctx context.Context, period
 		SELECT id, period_type, period_start, period_end, set_code, drafts_count,
 			matches_played, matches_won, avg_draft_grade, calculated_at
 		FROM draft_temporal_trends
-		WHERE period_type = ? AND set_code IS NULL
+		WHERE period_type = $1 AND set_code IS NULL
 		ORDER BY period_start DESC
-		LIMIT ?
+		LIMIT $2
 	`
 	rows, err := r.db.QueryContext(ctx, query, periodType, limit)
 	if err != nil {
@@ -313,9 +326,9 @@ func (r *draftAnalyticsRepository) GetTemporalTrendsBySet(ctx context.Context, s
 		SELECT id, period_type, period_start, period_end, set_code, drafts_count,
 			matches_played, matches_won, avg_draft_grade, calculated_at
 		FROM draft_temporal_trends
-		WHERE period_type = ? AND set_code = ?
+		WHERE period_type = $1 AND set_code = $2
 		ORDER BY period_start DESC
-		LIMIT ?
+		LIMIT $3
 	`
 	rows, err := r.db.QueryContext(ctx, query, periodType, setCode, limit)
 	if err != nil {
@@ -328,7 +341,7 @@ func (r *draftAnalyticsRepository) GetTemporalTrendsBySet(ctx context.Context, s
 
 // ClearTemporalTrends clears all temporal trends of a specific type.
 func (r *draftAnalyticsRepository) ClearTemporalTrends(ctx context.Context, periodType string) error {
-	_, err := r.db.ExecContext(ctx, "DELETE FROM draft_temporal_trends WHERE period_type = ?", periodType)
+	_, err := r.db.ExecContext(ctx, "DELETE FROM draft_temporal_trends WHERE period_type = $1", periodType)
 	return err
 }
 
@@ -367,9 +380,16 @@ func scanTemporalTrends(rows *sql.Rows) ([]*models.DraftTemporalTrend, error) {
 // SavePatternAnalysis saves a pattern analysis record.
 func (r *draftAnalyticsRepository) SavePatternAnalysis(ctx context.Context, analysis *models.DraftPatternAnalysis) error {
 	query := `
-		INSERT OR REPLACE INTO draft_pattern_analysis (set_code, color_preference_json, type_preference_json,
+		INSERT INTO draft_pattern_analysis (set_code, color_preference_json, type_preference_json,
 			pick_order_pattern_json, archetype_affinity_json, sample_size, calculated_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?)
+		VALUES ($1, $2, $3, $4, $5, $6, $7)
+		ON CONFLICT(set_code) DO UPDATE SET
+			color_preference_json = excluded.color_preference_json,
+			type_preference_json = excluded.type_preference_json,
+			pick_order_pattern_json = excluded.pick_order_pattern_json,
+			archetype_affinity_json = excluded.archetype_affinity_json,
+			sample_size = excluded.sample_size,
+			calculated_at = excluded.calculated_at
 	`
 	_, err := r.db.ExecContext(ctx, query,
 		analysis.SetCode,
@@ -392,7 +412,7 @@ func (r *draftAnalyticsRepository) GetPatternAnalysis(ctx context.Context, setCo
 			SELECT id, set_code, color_preference_json, type_preference_json,
 				pick_order_pattern_json, archetype_affinity_json, sample_size, calculated_at
 			FROM draft_pattern_analysis
-			WHERE set_code = ?
+			WHERE set_code = $1
 		`
 		args = append(args, *setCode)
 	} else {
@@ -447,9 +467,15 @@ func (r *draftAnalyticsRepository) GetPatternAnalysis(ctx context.Context, setCo
 // SaveCommunityComparison saves a community comparison record.
 func (r *draftAnalyticsRepository) SaveCommunityComparison(ctx context.Context, comparison *models.DraftCommunityComparison) error {
 	query := `
-		INSERT OR REPLACE INTO draft_community_comparison (set_code, draft_format, user_win_rate,
+		INSERT INTO draft_community_comparison (set_code, draft_format, user_win_rate,
 			community_avg_win_rate, percentile_rank, sample_size, calculated_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?)
+		VALUES ($1, $2, $3, $4, $5, $6, $7)
+		ON CONFLICT(set_code, draft_format) DO UPDATE SET
+			user_win_rate = excluded.user_win_rate,
+			community_avg_win_rate = excluded.community_avg_win_rate,
+			percentile_rank = excluded.percentile_rank,
+			sample_size = excluded.sample_size,
+			calculated_at = excluded.calculated_at
 	`
 	_, err := r.db.ExecContext(ctx, query,
 		comparison.SetCode,
@@ -469,7 +495,7 @@ func (r *draftAnalyticsRepository) GetCommunityComparison(ctx context.Context, s
 		SELECT id, set_code, draft_format, user_win_rate, community_avg_win_rate,
 			percentile_rank, sample_size, calculated_at
 		FROM draft_community_comparison
-		WHERE set_code = ? AND draft_format = ?
+		WHERE set_code = $1 AND draft_format = $2
 	`
 	row := r.db.QueryRowContext(ctx, query, setCode, draftFormat)
 

@@ -69,18 +69,18 @@ func NewGamePlayRepository(db *sql.DB) GamePlayRepository {
 }
 
 // CreatePlay inserts a new game play record.
-// Uses INSERT OR IGNORE to skip duplicates based on (game_id, sequence_number) unique constraint.
+// Uses ON CONFLICT DO NOTHING to skip duplicates based on (game_id, sequence_number) unique constraint.
 func (r *gamePlayRepository) CreatePlay(ctx context.Context, play *models.GamePlay) error {
 	query := `
-		INSERT OR IGNORE INTO game_plays (
+		INSERT INTO game_plays (
 			game_id, match_id, turn_number, phase, step, player_type, action_type,
 			card_id, card_name, zone_from, zone_to, life_from, life_to, timestamp, sequence_number
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
+		ON CONFLICT(game_id, sequence_number) DO NOTHING
+		RETURNING id
 	`
 
-	timestampStr := play.Timestamp.UTC().Format("2006-01-02 15:04:05.999999")
-
-	result, err := r.db.ExecContext(ctx, query,
+	err := r.db.QueryRowContext(ctx, query,
 		play.GameID,
 		play.MatchID,
 		play.TurnNumber,
@@ -94,32 +94,22 @@ func (r *gamePlayRepository) CreatePlay(ctx context.Context, play *models.GamePl
 		play.ZoneTo,
 		play.LifeFrom,
 		play.LifeTo,
-		timestampStr,
+		play.Timestamp.UTC(),
 		play.SequenceNumber,
-	)
+	).Scan(&play.ID)
+	if err == sql.ErrNoRows {
+		// Duplicate — skipped by ON CONFLICT DO NOTHING
+		return nil
+	}
 	if err != nil {
 		return fmt.Errorf("failed to create game play: %w", err)
-	}
-
-	rowsAffected, err := result.RowsAffected()
-	if err != nil {
-		return fmt.Errorf("failed to get rows affected: %w", err)
-	}
-
-	// Only get the ID if a row was actually inserted (not ignored due to duplicate)
-	if rowsAffected > 0 {
-		id, err := result.LastInsertId()
-		if err != nil {
-			return fmt.Errorf("failed to get last insert id: %w", err)
-		}
-		play.ID = int(id)
 	}
 
 	return nil
 }
 
 // CreatePlays inserts multiple game plays in a batch.
-// Uses INSERT OR IGNORE to skip duplicates based on (game_id, sequence_number) unique constraint.
+// Uses ON CONFLICT DO NOTHING to skip duplicates based on (game_id, sequence_number) unique constraint.
 func (r *gamePlayRepository) CreatePlays(ctx context.Context, plays []*models.GamePlay) error {
 	if len(plays) == 0 {
 		return nil
@@ -134,10 +124,12 @@ func (r *gamePlayRepository) CreatePlays(ctx context.Context, plays []*models.Ga
 	}()
 
 	query := `
-		INSERT OR IGNORE INTO game_plays (
+		INSERT INTO game_plays (
 			game_id, match_id, turn_number, phase, step, player_type, action_type,
 			card_id, card_name, zone_from, zone_to, life_from, life_to, timestamp, sequence_number
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
+		ON CONFLICT(game_id, sequence_number) DO NOTHING
+		RETURNING id
 	`
 
 	stmt, err := tx.PrepareContext(ctx, query)
@@ -149,8 +141,7 @@ func (r *gamePlayRepository) CreatePlays(ctx context.Context, plays []*models.Ga
 	}()
 
 	for _, play := range plays {
-		timestampStr := play.Timestamp.UTC().Format("2006-01-02 15:04:05.999999")
-		result, err := stmt.ExecContext(ctx,
+		scanErr := stmt.QueryRowContext(ctx,
 			play.GameID,
 			play.MatchID,
 			play.TurnNumber,
@@ -164,25 +155,13 @@ func (r *gamePlayRepository) CreatePlays(ctx context.Context, plays []*models.Ga
 			play.ZoneTo,
 			play.LifeFrom,
 			play.LifeTo,
-			timestampStr,
+			play.Timestamp.UTC(),
 			play.SequenceNumber,
-		)
-		if err != nil {
-			return fmt.Errorf("failed to insert game play: %w", err)
+		).Scan(&play.ID)
+		if scanErr != nil && scanErr != sql.ErrNoRows {
+			return fmt.Errorf("failed to insert game play: %w", scanErr)
 		}
-
-		// Only set ID if a row was actually inserted (not ignored due to duplicate)
-		rowsAffected, err := result.RowsAffected()
-		if err != nil {
-			return fmt.Errorf("failed to get rows affected: %w", err)
-		}
-		if rowsAffected > 0 {
-			id, err := result.LastInsertId()
-			if err != nil {
-				return fmt.Errorf("failed to get last insert id: %w", err)
-			}
-			play.ID = int(id)
-		}
+		// sql.ErrNoRows means duplicate skipped by ON CONFLICT DO NOTHING — that's fine
 	}
 
 	if err = tx.Commit(); err != nil {
@@ -199,7 +178,7 @@ func (r *gamePlayRepository) CreateSnapshot(ctx context.Context, snapshot *model
 			game_id, match_id, turn_number, active_player, player_life, opponent_life,
 			player_cards_in_hand, opponent_cards_in_hand, player_lands_in_play,
 			opponent_lands_in_play, board_state_json, timestamp
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
 		ON CONFLICT(game_id, turn_number) DO UPDATE SET
 			active_player = excluded.active_player,
 			player_life = excluded.player_life,
@@ -212,9 +191,9 @@ func (r *gamePlayRepository) CreateSnapshot(ctx context.Context, snapshot *model
 			timestamp = excluded.timestamp
 	`
 
-	timestampStr := snapshot.Timestamp.UTC().Format("2006-01-02 15:04:05.999999")
-
-	_, err := r.db.ExecContext(ctx, query,
+	// Use RETURNING id to get the upserted row's ID in one round-trip
+	queryWithReturning := query + " RETURNING id"
+	err := r.db.QueryRowContext(ctx, queryWithReturning,
 		snapshot.GameID,
 		snapshot.MatchID,
 		snapshot.TurnNumber,
@@ -226,22 +205,11 @@ func (r *gamePlayRepository) CreateSnapshot(ctx context.Context, snapshot *model
 		snapshot.PlayerLandsInPlay,
 		snapshot.OpponentLandsInPlay,
 		snapshot.BoardStateJSON,
-		timestampStr,
-	)
+		snapshot.Timestamp.UTC(),
+	).Scan(&snapshot.ID)
 	if err != nil {
 		return fmt.Errorf("failed to create game state snapshot: %w", err)
 	}
-
-	// Query for the actual ID since LastInsertId is unreliable for upserts
-	var id int64
-	err = r.db.QueryRowContext(ctx,
-		`SELECT id FROM game_state_snapshots WHERE game_id = ? AND turn_number = ?`,
-		snapshot.GameID, snapshot.TurnNumber,
-	).Scan(&id)
-	if err != nil {
-		return fmt.Errorf("failed to get snapshot id: %w", err)
-	}
-	snapshot.ID = int(id)
 
 	return nil
 }
@@ -265,7 +233,7 @@ func (r *gamePlayRepository) CreateSnapshots(ctx context.Context, snapshots []*m
 			game_id, match_id, turn_number, active_player, player_life, opponent_life,
 			player_cards_in_hand, opponent_cards_in_hand, player_lands_in_play,
 			opponent_lands_in_play, board_state_json, timestamp
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
 		ON CONFLICT(game_id, turn_number) DO UPDATE SET
 			active_player = excluded.active_player,
 			player_life = excluded.player_life,
@@ -309,7 +277,7 @@ func (r *gamePlayRepository) CreateSnapshots(ctx context.Context, snapshots []*m
 		// Query for the actual ID since LastInsertId is unreliable for upserts
 		var id int64
 		err = tx.QueryRowContext(ctx,
-			`SELECT id FROM game_state_snapshots WHERE game_id = ? AND turn_number = ?`,
+			`SELECT id FROM game_state_snapshots WHERE game_id = $1 AND turn_number = $2`,
 			snapshot.GameID, snapshot.TurnNumber,
 		).Scan(&id)
 		if err != nil {
@@ -330,7 +298,7 @@ func (r *gamePlayRepository) RecordOpponentCard(ctx context.Context, card *model
 	query := `
 		INSERT INTO opponent_cards_observed (
 			game_id, match_id, card_id, card_name, zone_observed, turn_first_seen, times_seen
-		) VALUES (?, ?, ?, ?, ?, ?, ?)
+		) VALUES ($1, $2, $3, $4, $5, $6, $7)
 		ON CONFLICT(game_id, card_id) DO UPDATE SET
 			times_seen = opponent_cards_observed.times_seen + 1,
 			zone_observed = excluded.zone_observed
@@ -352,7 +320,7 @@ func (r *gamePlayRepository) RecordOpponentCard(ctx context.Context, card *model
 	// Query for the actual ID since LastInsertId is unreliable for upserts
 	var id int64
 	err = r.db.QueryRowContext(ctx,
-		`SELECT id FROM opponent_cards_observed WHERE game_id = ? AND card_id = ?`,
+		`SELECT id FROM opponent_cards_observed WHERE game_id = $1 AND card_id = $2`,
 		card.GameID, card.CardID,
 	).Scan(&id)
 	if err != nil {
@@ -376,7 +344,7 @@ func (r *gamePlayRepository) GetPlaysByMatch(ctx context.Context, matchID string
 		FROM game_plays gp
 		LEFT JOIN set_cards sc ON CAST(gp.card_id AS TEXT) = sc.arena_id
 		LEFT JOIN (SELECT DISTINCT arena_id, name FROM draft_card_ratings) dcr ON CAST(gp.card_id AS TEXT) = dcr.arena_id
-		WHERE gp.match_id = ?
+		WHERE gp.match_id = $1
 		ORDER BY gp.sequence_number ASC
 	`
 
@@ -404,7 +372,7 @@ func (r *gamePlayRepository) GetPlaysByGame(ctx context.Context, gameID int) ([]
 		FROM game_plays gp
 		LEFT JOIN set_cards sc ON CAST(gp.card_id AS TEXT) = sc.arena_id
 		LEFT JOIN (SELECT DISTINCT arena_id, name FROM draft_card_ratings) dcr ON CAST(gp.card_id AS TEXT) = dcr.arena_id
-		WHERE gp.game_id = ?
+		WHERE gp.game_id = $1
 		ORDER BY gp.sequence_number ASC
 	`
 
@@ -426,7 +394,7 @@ func (r *gamePlayRepository) GetSnapshotsByMatch(ctx context.Context, matchID st
 		       player_cards_in_hand, opponent_cards_in_hand, player_lands_in_play,
 		       opponent_lands_in_play, board_state_json, timestamp
 		FROM game_state_snapshots
-		WHERE match_id = ?
+		WHERE match_id = $1
 		ORDER BY game_id ASC, turn_number ASC
 	`
 
@@ -448,7 +416,7 @@ func (r *gamePlayRepository) GetSnapshotsByGame(ctx context.Context, gameID int)
 		       player_cards_in_hand, opponent_cards_in_hand, player_lands_in_play,
 		       opponent_lands_in_play, board_state_json, timestamp
 		FROM game_state_snapshots
-		WHERE game_id = ?
+		WHERE game_id = $1
 		ORDER BY turn_number ASC
 	`
 
@@ -468,7 +436,7 @@ func (r *gamePlayRepository) GetOpponentCardsByMatch(ctx context.Context, matchI
 	query := `
 		SELECT id, game_id, match_id, card_id, card_name, zone_observed, turn_first_seen, times_seen
 		FROM opponent_cards_observed
-		WHERE match_id = ?
+		WHERE match_id = $1
 		ORDER BY turn_first_seen ASC
 	`
 
@@ -488,7 +456,7 @@ func (r *gamePlayRepository) GetOpponentCardsByGame(ctx context.Context, gameID 
 	query := `
 		SELECT id, game_id, match_id, card_id, card_name, zone_observed, turn_first_seen, times_seen
 		FROM opponent_cards_observed
-		WHERE game_id = ?
+		WHERE game_id = $1
 		ORDER BY turn_first_seen ASC
 	`
 
@@ -601,7 +569,7 @@ func (r *gamePlayRepository) GetPlaySummary(ctx context.Context, matchID string)
 			SUM(CASE WHEN action_type = 'land_drop' THEN 1 ELSE 0 END) as land_drops,
 			MAX(turn_number) as total_turns
 		FROM game_plays
-		WHERE match_id = ?
+		WHERE match_id = $1
 		GROUP BY match_id
 	`
 
@@ -626,7 +594,7 @@ func (r *gamePlayRepository) GetPlaySummary(ctx context.Context, matchID string)
 
 	// Get opponent cards count separately
 	opponentQuery := `
-		SELECT COUNT(*) FROM opponent_cards_observed WHERE match_id = ?
+		SELECT COUNT(*) FROM opponent_cards_observed WHERE match_id = $1
 	`
 	err = r.db.QueryRowContext(ctx, opponentQuery, matchID).Scan(&summary.OpponentCardsSeen)
 	if err != nil && err != sql.ErrNoRows {
@@ -647,19 +615,19 @@ func (r *gamePlayRepository) DeletePlaysByMatch(ctx context.Context, matchID str
 	}()
 
 	// Delete plays
-	_, err = tx.ExecContext(ctx, `DELETE FROM game_plays WHERE match_id = ?`, matchID)
+	_, err = tx.ExecContext(ctx, `DELETE FROM game_plays WHERE match_id = $1`, matchID)
 	if err != nil {
 		return fmt.Errorf("failed to delete plays: %w", err)
 	}
 
 	// Delete snapshots
-	_, err = tx.ExecContext(ctx, `DELETE FROM game_state_snapshots WHERE match_id = ?`, matchID)
+	_, err = tx.ExecContext(ctx, `DELETE FROM game_state_snapshots WHERE match_id = $1`, matchID)
 	if err != nil {
 		return fmt.Errorf("failed to delete snapshots: %w", err)
 	}
 
 	// Delete opponent cards
-	_, err = tx.ExecContext(ctx, `DELETE FROM opponent_cards_observed WHERE match_id = ?`, matchID)
+	_, err = tx.ExecContext(ctx, `DELETE FROM opponent_cards_observed WHERE match_id = $1`, matchID)
 	if err != nil {
 		return fmt.Errorf("failed to delete opponent cards: %w", err)
 	}
@@ -682,19 +650,19 @@ func (r *gamePlayRepository) DeletePlaysByGame(ctx context.Context, gameID int) 
 	}()
 
 	// Delete plays
-	_, err = tx.ExecContext(ctx, `DELETE FROM game_plays WHERE game_id = ?`, gameID)
+	_, err = tx.ExecContext(ctx, `DELETE FROM game_plays WHERE game_id = $1`, gameID)
 	if err != nil {
 		return fmt.Errorf("failed to delete plays: %w", err)
 	}
 
 	// Delete snapshots
-	_, err = tx.ExecContext(ctx, `DELETE FROM game_state_snapshots WHERE game_id = ?`, gameID)
+	_, err = tx.ExecContext(ctx, `DELETE FROM game_state_snapshots WHERE game_id = $1`, gameID)
 	if err != nil {
 		return fmt.Errorf("failed to delete snapshots: %w", err)
 	}
 
 	// Delete opponent cards
-	_, err = tx.ExecContext(ctx, `DELETE FROM opponent_cards_observed WHERE game_id = ?`, gameID)
+	_, err = tx.ExecContext(ctx, `DELETE FROM opponent_cards_observed WHERE game_id = $1`, gameID)
 	if err != nil {
 		return fmt.Errorf("failed to delete opponent cards: %w", err)
 	}

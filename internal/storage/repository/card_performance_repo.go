@@ -77,7 +77,7 @@ func (r *cardPerformanceRepository) GetCardPerformance(ctx context.Context, filt
 				m.result as match_result
 			FROM game_plays gp
 			INNER JOIN matches m ON gp.match_id = m.id
-			WHERE m.deck_id = ?
+			WHERE m.deck_id = $1
 			AND gp.player_type = 'player'
 			AND gp.action_type = 'play_card'
 			AND gp.card_id IS NOT NULL
@@ -92,7 +92,7 @@ func (r *cardPerformanceRepository) GetCardPerformance(ctx context.Context, filt
 				m.result as match_result
 			FROM game_plays gp
 			INNER JOIN matches m ON gp.match_id = m.id
-			WHERE m.deck_id = ?
+			WHERE m.deck_id = $2
 			AND gp.player_type = 'player'
 			AND gp.zone_to = 'hand'
 			AND gp.card_id IS NOT NULL
@@ -104,7 +104,7 @@ func (r *cardPerformanceRepository) GetCardPerformance(ctx context.Context, filt
 				gp.game_id
 			FROM game_plays gp
 			INNER JOIN matches m ON gp.match_id = m.id
-			WHERE m.deck_id = ?
+			WHERE m.deck_id = $3
 			AND gp.player_type = 'player'
 			AND gp.action_type = 'mulligan'
 			AND gp.card_id IS NOT NULL
@@ -122,7 +122,7 @@ func (r *cardPerformanceRepository) GetCardPerformance(ctx context.Context, filt
 		LEFT JOIN card_plays cp ON cd.card_id = cp.card_id AND cd.game_id = cp.game_id
 		LEFT JOIN card_mulligans cm ON cd.card_id = cm.card_id AND cd.game_id = cm.game_id
 		GROUP BY COALESCE(cp.card_id, cd.card_id), COALESCE(cp.card_name, cd.card_name)
-		HAVING games_drawn >= ?
+		HAVING games_drawn >= $4
 		ORDER BY games_drawn DESC
 	`
 
@@ -221,7 +221,7 @@ func (r *cardPerformanceRepository) GetDeckPerformanceAnalysis(ctx context.Conte
 
 	// Get deck info
 	var deckName string
-	err := r.db.QueryRowContext(ctx, `SELECT name FROM decks WHERE id = ?`, filter.DeckID).Scan(&deckName)
+	err := r.db.QueryRowContext(ctx, `SELECT name FROM decks WHERE id = $1`, filter.DeckID).Scan(&deckName)
 	if err != nil {
 		if err == sql.ErrNoRows {
 			return nil, ErrDeckNotFound
@@ -236,7 +236,7 @@ func (r *cardPerformanceRepository) GetDeckPerformanceAnalysis(ctx context.Conte
 			COUNT(*) as total,
 			COUNT(CASE WHEN result = 'win' THEN 1 END) as wins
 		FROM matches
-		WHERE deck_id = ?
+		WHERE deck_id = $1
 	`, filter.DeckID).Scan(&totalMatches, &matchesWon)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get match stats: %w", err)
@@ -248,7 +248,7 @@ func (r *cardPerformanceRepository) GetDeckPerformanceAnalysis(ctx context.Conte
 		SELECT COUNT(*)
 		FROM games g
 		INNER JOIN matches m ON g.match_id = m.id
-		WHERE m.deck_id = ?
+		WHERE m.deck_id = $1
 	`, filter.DeckID).Scan(&totalGames)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get game count: %w", err)
@@ -315,8 +315,8 @@ func (r *cardPerformanceRepository) GetCardPlayEvents(ctx context.Context, deckI
 			m.result as match_result
 		FROM game_plays gp
 		INNER JOIN matches m ON gp.match_id = m.id
-		WHERE m.deck_id = ?
-		AND gp.card_id = ?
+		WHERE m.deck_id = $1
+		AND gp.card_id = $2
 		AND gp.player_type = 'player'
 		AND gp.action_type = 'play_card'
 		ORDER BY m.timestamp DESC, gp.sequence_number ASC
@@ -423,7 +423,7 @@ func (r *cardPerformanceRepository) getDeckWinRate(ctx context.Context, deckID s
 			COUNT(*) as total,
 			COUNT(CASE WHEN result = 'win' THEN 1 END) as wins
 		FROM matches
-		WHERE deck_id = ?
+		WHERE deck_id = $1
 	`, deckID).Scan(&total, &wins)
 	if err != nil {
 		return 0, 0, err
@@ -506,8 +506,8 @@ func (r *cardPerformanceRepository) GetTurnPlayedDistribution(ctx context.Contex
 			COUNT(*) as count
 		FROM game_plays gp
 		INNER JOIN matches m ON gp.match_id = m.id
-		WHERE m.deck_id = ?
-		AND gp.card_id = ?
+		WHERE m.deck_id = $1
+		AND gp.card_id = $2
 		AND gp.player_type = 'player'
 		AND gp.action_type = 'play_card'
 		GROUP BY gp.turn_number
@@ -612,7 +612,7 @@ func (r *cardPerformanceRepository) getAddRecommendations(ctx context.Context, r
 	err := r.db.QueryRowContext(ctx, `
 		SELECT format, color_identity
 		FROM decks
-		WHERE id = ?
+		WHERE id = $1
 	`, req.DeckID).Scan(&format, &colorIdentity)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get deck info: %w", err)
@@ -628,7 +628,7 @@ func (r *cardPerformanceRepository) getAddRecommendations(ctx context.Context, r
 			SELECT DISTINCT card_id
 			FROM game_plays gp
 			INNER JOIN matches m ON gp.match_id = m.id
-			WHERE m.deck_id = ?
+			WHERE m.deck_id = $1
 			AND gp.player_type = 'player'
 			AND gp.card_id IS NOT NULL
 		),
@@ -636,8 +636,8 @@ func (r *cardPerformanceRepository) getAddRecommendations(ctx context.Context, r
 			SELECT d.id, d.name
 			FROM decks d
 			INNER JOIN matches m ON m.deck_id = d.id
-			WHERE d.format = ?
-			AND d.id != ?
+			WHERE d.format = $2
+			AND d.id != $3
 			GROUP BY d.id
 			HAVING AVG(CASE WHEN m.result = 'win' THEN 1.0 ELSE 0.0 END) > 0.55
 			AND COUNT(*) >= 10
@@ -661,7 +661,7 @@ func (r *cardPerformanceRepository) getAddRecommendations(ctx context.Context, r
 		SELECT card_id, card_name, games_played, win_rate
 		FROM candidate_cards
 		ORDER BY win_rate DESC, games_played DESC
-		LIMIT ?
+		LIMIT $4
 	`
 
 	maxResults := req.MaxResults

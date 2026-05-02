@@ -32,29 +32,24 @@ func NewAccountRepository(db *sql.DB) AccountRepository {
 func (r *accountRepository) Create(ctx context.Context, account *models.Account) error {
 	query := `
 		INSERT INTO accounts (name, screen_name, client_id, is_default, created_at, updated_at)
-		VALUES (?, ?, ?, ?, ?, ?)
+		VALUES ($1, $2, $3, $4, $5, $6)
+		RETURNING id
 	`
-	result, err := r.db.ExecContext(ctx, query,
+	err := r.db.QueryRowContext(ctx, query,
 		account.Name,
 		account.ScreenName,
 		account.ClientID,
 		account.IsDefault,
 		account.CreatedAt,
 		account.UpdatedAt,
-	)
+	).Scan(&account.ID)
 	if err != nil {
 		return err
 	}
-
-	id, err := result.LastInsertId()
-	if err != nil {
-		return err
-	}
-	account.ID = int(id)
 
 	// If this is the default account, unset other defaults
 	if account.IsDefault {
-		if err := r.setDefaultOnly(ctx, int(id)); err != nil {
+		if err := r.setDefaultOnly(ctx, account.ID); err != nil {
 			return err
 		}
 	}
@@ -67,7 +62,7 @@ func (r *accountRepository) GetByID(ctx context.Context, id int) (*models.Accoun
 	query := `
 		SELECT id, name, screen_name, client_id, daily_wins, weekly_wins, mastery_level, mastery_pass, mastery_max, is_default, created_at, updated_at
 		FROM accounts
-		WHERE id = ?
+		WHERE id = $1
 	`
 	row := r.db.QueryRowContext(ctx, query, id)
 
@@ -113,7 +108,7 @@ func (r *accountRepository) GetDefault(ctx context.Context) (*models.Account, er
 	query := `
 		SELECT id, name, screen_name, client_id, daily_wins, weekly_wins, mastery_level, mastery_pass, mastery_max, is_default, created_at, updated_at
 		FROM accounts
-		WHERE is_default = 1
+		WHERE is_default = TRUE
 		LIMIT 1
 	`
 	row := r.db.QueryRowContext(ctx, query)
@@ -219,8 +214,8 @@ func (r *accountRepository) GetAll(ctx context.Context) ([]*models.Account, erro
 func (r *accountRepository) Update(ctx context.Context, account *models.Account) error {
 	query := `
 		UPDATE accounts
-		SET name = ?, screen_name = ?, client_id = ?, daily_wins = ?, weekly_wins = ?, mastery_level = ?, mastery_pass = ?, mastery_max = ?, is_default = ?, updated_at = ?
-		WHERE id = ?
+		SET name = $1, screen_name = $2, client_id = $3, daily_wins = $4, weekly_wins = $5, mastery_level = $6, mastery_pass = $7, mastery_max = $8, is_default = $9, updated_at = $10
+		WHERE id = $11
 	`
 	_, err := r.db.ExecContext(ctx, query,
 		account.Name,
@@ -267,13 +262,13 @@ func (r *accountRepository) setDefaultOnly(ctx context.Context, id int) error {
 	}()
 
 	// Unset all defaults
-	_, err = tx.ExecContext(ctx, "UPDATE accounts SET is_default = 0")
+	_, err = tx.ExecContext(ctx, "UPDATE accounts SET is_default = FALSE")
 	if err != nil {
 		return err
 	}
 
 	// Set the specified account as default
-	_, err = tx.ExecContext(ctx, "UPDATE accounts SET is_default = 1 WHERE id = ?", id)
+	_, err = tx.ExecContext(ctx, "UPDATE accounts SET is_default = TRUE WHERE id = $1", id)
 	if err != nil {
 		return err
 	}
@@ -313,7 +308,7 @@ func (r *accountRepository) Delete(ctx context.Context, id int) error {
 		}
 	}
 
-	query := "DELETE FROM accounts WHERE id = ?"
+	query := "DELETE FROM accounts WHERE id = $1"
 	_, err = r.db.ExecContext(ctx, query, id)
 	return err
 }

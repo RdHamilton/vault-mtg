@@ -100,18 +100,10 @@ func (r *deckPermutationRepository) Create(ctx context.Context, perm *models.Dec
 		INSERT INTO deck_permutations (
 			deck_id, parent_permutation_id, cards, card_hash, version_number, version_name, change_summary,
 			matches_played, matches_won, games_played, games_won, created_at, last_played_at
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
 	`
 
-	createdAtStr := perm.CreatedAt.UTC().Format("2006-01-02 15:04:05.999999")
-
-	var lastPlayedStr *string
-	if perm.LastPlayedAt != nil {
-		formatted := perm.LastPlayedAt.UTC().Format("2006-01-02 15:04:05.999999")
-		lastPlayedStr = &formatted
-	}
-
-	result, err := r.db.ExecContext(ctx, query,
+	err := r.db.QueryRowContext(ctx, query+" RETURNING id",
 		perm.DeckID,
 		perm.ParentPermutationID,
 		perm.Cards,
@@ -123,18 +115,12 @@ func (r *deckPermutationRepository) Create(ctx context.Context, perm *models.Dec
 		perm.MatchesWon,
 		perm.GamesPlayed,
 		perm.GamesWon,
-		createdAtStr,
-		lastPlayedStr,
-	)
+		perm.CreatedAt.UTC(),
+		perm.LastPlayedAt,
+	).Scan(&perm.ID)
 	if err != nil {
 		return fmt.Errorf("failed to create deck permutation: %w", err)
 	}
-
-	id, err := result.LastInsertId()
-	if err != nil {
-		return fmt.Errorf("failed to get last insert id: %w", err)
-	}
-	perm.ID = int(id)
 
 	return nil
 }
@@ -145,7 +131,7 @@ func (r *deckPermutationRepository) GetByID(ctx context.Context, id int) (*model
 		SELECT id, deck_id, parent_permutation_id, cards, card_hash, version_number, version_name, change_summary,
 		       matches_played, matches_won, games_played, games_won, created_at, last_played_at
 		FROM deck_permutations
-		WHERE id = ?
+		WHERE id = $1
 	`
 
 	perm := &models.DeckPermutation{}
@@ -182,7 +168,7 @@ func (r *deckPermutationRepository) GetByDeckID(ctx context.Context, deckID stri
 		SELECT id, deck_id, parent_permutation_id, cards, card_hash, version_number, version_name, change_summary,
 		       matches_played, matches_won, games_played, games_won, created_at, last_played_at
 		FROM deck_permutations
-		WHERE deck_id = ?
+		WHERE deck_id = $1
 		ORDER BY version_number ASC
 	`
 
@@ -203,7 +189,7 @@ func (r *deckPermutationRepository) GetLatest(ctx context.Context, deckID string
 		SELECT id, deck_id, parent_permutation_id, cards, card_hash, version_number, version_name, change_summary,
 		       matches_played, matches_won, games_played, games_won, created_at, last_played_at
 		FROM deck_permutations
-		WHERE deck_id = ?
+		WHERE deck_id = $1
 		ORDER BY created_at DESC
 		LIMIT 1
 	`
@@ -244,7 +230,7 @@ func (r *deckPermutationRepository) GetCurrent(ctx context.Context, deckID strin
 		       dp.games_played, dp.games_won, dp.created_at, dp.last_played_at
 		FROM deck_permutations dp
 		JOIN decks d ON d.current_permutation_id = dp.id
-		WHERE d.id = ?
+		WHERE d.id = $1
 	`
 
 	perm := &models.DeckPermutation{}
@@ -282,7 +268,7 @@ func (r *deckPermutationRepository) GetByCardHash(ctx context.Context, deckID, c
 		SELECT id, deck_id, parent_permutation_id, cards, card_hash, version_number, version_name, change_summary,
 		       matches_played, matches_won, games_played, games_won, created_at, last_played_at
 		FROM deck_permutations
-		WHERE deck_id = ? AND card_hash = ?
+		WHERE deck_id = $1 AND card_hash = $2
 		ORDER BY created_at DESC
 		LIMIT 1
 	`
@@ -320,9 +306,9 @@ func (r *deckPermutationRepository) GetByCardHash(ctx context.Context, deckID, c
 func (r *deckPermutationRepository) SetCurrentPermutation(ctx context.Context, deckID string, permutationID int) error {
 	// Validate permutation belongs to this deck and update atomically
 	query := `
-		UPDATE decks SET current_permutation_id = ?
-		WHERE id = ? AND EXISTS (
-			SELECT 1 FROM deck_permutations WHERE id = ? AND deck_id = ?
+		UPDATE decks SET current_permutation_id = $1
+		WHERE id = $2 AND EXISTS (
+			SELECT 1 FROM deck_permutations WHERE id = $3 AND deck_id = $4
 		)
 	`
 
@@ -347,11 +333,11 @@ func (r *deckPermutationRepository) UpdatePerformance(ctx context.Context, permu
 	query := `
 		UPDATE deck_permutations
 		SET matches_played = matches_played + 1,
-		    matches_won = matches_won + ?,
-		    games_played = games_played + ?,
-		    games_won = games_won + ?,
-		    last_played_at = ?
-		WHERE id = ?
+		    matches_won = matches_won + $1,
+		    games_played = games_played + $2,
+		    games_won = games_won + $3,
+		    last_played_at = $4
+		WHERE id = $5
 	`
 
 	matchWonInt := 0
@@ -359,10 +345,9 @@ func (r *deckPermutationRepository) UpdatePerformance(ctx context.Context, permu
 		matchWonInt = 1
 	}
 
-	now := time.Now().UTC().Format("2006-01-02 15:04:05.999999")
 	totalGames := gamesWon + gamesLost
 
-	_, err := r.db.ExecContext(ctx, query, matchWonInt, totalGames, gamesWon, now, permutationID)
+	_, err := r.db.ExecContext(ctx, query, matchWonInt, totalGames, gamesWon, time.Now().UTC(), permutationID)
 	if err != nil {
 		return fmt.Errorf("failed to update permutation performance: %w", err)
 	}
@@ -379,7 +364,7 @@ func (r *deckPermutationRepository) ResetPerformance(ctx context.Context, permut
 		    games_played = 0,
 		    games_won = 0,
 		    last_played_at = NULL
-		WHERE id = ?
+		WHERE id = $1
 	`
 
 	_, err := r.db.ExecContext(ctx, query, permutationID)
@@ -399,7 +384,7 @@ func (r *deckPermutationRepository) ResetAllPerformanceForDeck(ctx context.Conte
 		    games_played = 0,
 		    games_won = 0,
 		    last_played_at = NULL
-		WHERE deck_id = ?
+		WHERE deck_id = $1
 	`
 
 	_, err := r.db.ExecContext(ctx, query, deckID)
@@ -416,7 +401,7 @@ func (r *deckPermutationRepository) GetPerformance(ctx context.Context, permutat
 		SELECT id, deck_id, version_number, version_name, matches_played, matches_won,
 		       games_played, games_won, last_played_at, created_at
 		FROM deck_permutations
-		WHERE id = ?
+		WHERE id = $1
 	`
 
 	perf := &models.DeckPermutationPerformance{}
@@ -457,7 +442,7 @@ func (r *deckPermutationRepository) GetAllPerformance(ctx context.Context, deckI
 		SELECT id, deck_id, version_number, version_name, matches_played, matches_won,
 		       games_played, games_won, last_played_at, created_at
 		FROM deck_permutations
-		WHERE deck_id = ?
+		WHERE deck_id = $1
 		ORDER BY version_number ASC
 	`
 
@@ -597,7 +582,7 @@ func (r *deckPermutationRepository) CreateFromCurrentDeck(ctx context.Context, d
 	cardQuery := `
 		SELECT card_id, quantity, board
 		FROM deck_cards
-		WHERE deck_id = ?
+		WHERE deck_id = $1
 		ORDER BY card_id, board
 	`
 
@@ -629,7 +614,7 @@ func (r *deckPermutationRepository) CreateFromCurrentDeck(ctx context.Context, d
 		SELECT id, deck_id, parent_permutation_id, cards, card_hash, version_number, version_name, change_summary,
 		       matches_played, matches_won, games_played, games_won, created_at, last_played_at
 		FROM deck_permutations
-		WHERE deck_id = ? AND card_hash = ?
+		WHERE deck_id = $1 AND card_hash = $2
 		LIMIT 1
 	`
 	existing := &models.DeckPermutation{}
@@ -652,8 +637,8 @@ func (r *deckPermutationRepository) CreateFromCurrentDeck(ctx context.Context, d
 	if err == nil {
 		// Permutation already exists - set it as current and return it
 		updateQuery := `
-			UPDATE decks SET current_permutation_id = ?
-			WHERE id = ? AND EXISTS (SELECT 1 FROM deck_permutations WHERE id = ? AND deck_id = ?)
+			UPDATE decks SET current_permutation_id = $1
+			WHERE id = $2 AND EXISTS (SELECT 1 FROM deck_permutations WHERE id = $3 AND deck_id = $4)
 		`
 		_, err = tx.ExecContext(ctx, updateQuery, existing.ID, deckID, existing.ID, deckID)
 		if err != nil {
@@ -675,7 +660,7 @@ func (r *deckPermutationRepository) CreateFromCurrentDeck(ctx context.Context, d
 	}
 
 	// Get next version number
-	versionQuery := `SELECT COALESCE(MAX(version_number), 0) + 1 FROM deck_permutations WHERE deck_id = ?`
+	versionQuery := `SELECT COALESCE(MAX(version_number), 0) + 1 FROM deck_permutations WHERE deck_id = $1`
 	var nextVersion int
 	if err = tx.QueryRowContext(ctx, versionQuery, deckID).Scan(&nextVersion); err != nil {
 		return nil, fmt.Errorf("failed to get next version number: %w", err)
@@ -686,7 +671,7 @@ func (r *deckPermutationRepository) CreateFromCurrentDeck(ctx context.Context, d
 	parentQuery := `
 		SELECT dp.id FROM deck_permutations dp
 		JOIN decks d ON d.current_permutation_id = dp.id
-		WHERE d.id = ?
+		WHERE d.id = $1
 	`
 	var parentIDVal int
 	err = tx.QueryRowContext(ctx, parentQuery, deckID).Scan(&parentIDVal)
@@ -698,19 +683,21 @@ func (r *deckPermutationRepository) CreateFromCurrentDeck(ctx context.Context, d
 
 	// Create the new permutation
 	createdAt := time.Now()
-	createdAtStr := createdAt.UTC().Format("2006-01-02 15:04:05.999999")
 
 	insertQuery := `
 		INSERT INTO deck_permutations (
 			deck_id, parent_permutation_id, cards, card_hash, version_number, version_name, change_summary,
 			matches_played, matches_won, games_played, games_won, created_at, last_played_at
-		) VALUES (?, ?, ?, ?, ?, ?, ?, 0, 0, 0, 0, ?, NULL)
+		) VALUES ($1, $2, $3, $4, $5, $6, $7, 0, 0, 0, 0, $8, NULL)
+		RETURNING id
 	`
-	result, err := tx.ExecContext(ctx, insertQuery,
-		deckID, parentID, string(cardsJSON), cardHash, nextVersion, versionName, changeSummary, createdAtStr)
+	var permID int64
+	err = tx.QueryRowContext(ctx, insertQuery,
+		deckID, parentID, string(cardsJSON), cardHash, nextVersion, versionName, changeSummary, createdAt.UTC()).Scan(&permID)
 	if err != nil {
 		// Handle UNIQUE constraint violation (concurrent insert race condition)
-		if strings.Contains(err.Error(), "UNIQUE constraint failed") {
+		if strings.Contains(err.Error(), "duplicate key value violates unique constraint") ||
+			strings.Contains(err.Error(), "UNIQUE constraint failed") {
 			// Another transaction inserted this permutation - query and return it
 			existing := &models.DeckPermutation{}
 			err = tx.QueryRowContext(ctx, existingQuery, deckID, cardHash).Scan(
@@ -725,7 +712,7 @@ func (r *deckPermutationRepository) CreateFromCurrentDeck(ctx context.Context, d
 				return nil, fmt.Errorf("failed to get concurrent permutation: %w", err)
 			}
 			// Set existing as current
-			_, err = tx.ExecContext(ctx, `UPDATE decks SET current_permutation_id = ? WHERE id = ?`,
+			_, err = tx.ExecContext(ctx, `UPDATE decks SET current_permutation_id = $1 WHERE id = $2`,
 				existing.ID, deckID)
 			if err != nil {
 				return nil, fmt.Errorf("failed to set concurrent permutation as current: %w", err)
@@ -738,15 +725,10 @@ func (r *deckPermutationRepository) CreateFromCurrentDeck(ctx context.Context, d
 		return nil, fmt.Errorf("failed to create permutation: %w", err)
 	}
 
-	permID, err := result.LastInsertId()
-	if err != nil {
-		return nil, fmt.Errorf("failed to get permutation id: %w", err)
-	}
-
 	// Set as current permutation (with validation)
 	updateQuery := `
-		UPDATE decks SET current_permutation_id = ?
-		WHERE id = ? AND EXISTS (SELECT 1 FROM deck_permutations WHERE id = ? AND deck_id = ?)
+		UPDATE decks SET current_permutation_id = $1
+		WHERE id = $2 AND EXISTS (SELECT 1 FROM deck_permutations WHERE id = $3 AND deck_id = $4)
 	`
 	updateResult, err := tx.ExecContext(ctx, updateQuery, permID, deckID, permID, deckID)
 	if err != nil {
@@ -782,7 +764,7 @@ func (r *deckPermutationRepository) CreateFromCurrentDeck(ctx context.Context, d
 
 // Delete removes a permutation.
 func (r *deckPermutationRepository) Delete(ctx context.Context, id int) error {
-	query := `DELETE FROM deck_permutations WHERE id = ?`
+	query := `DELETE FROM deck_permutations WHERE id = $1`
 
 	_, err := r.db.ExecContext(ctx, query, id)
 	if err != nil {
@@ -794,7 +776,7 @@ func (r *deckPermutationRepository) Delete(ctx context.Context, id int) error {
 
 // GetNextVersionNumber returns the next version number for a deck.
 func (r *deckPermutationRepository) GetNextVersionNumber(ctx context.Context, deckID string) (int, error) {
-	query := `SELECT COALESCE(MAX(version_number), 0) + 1 FROM deck_permutations WHERE deck_id = ?`
+	query := `SELECT COALESCE(MAX(version_number), 0) + 1 FROM deck_permutations WHERE deck_id = $1`
 
 	var nextVersion int
 	err := r.db.QueryRowContext(ctx, query, deckID).Scan(&nextVersion)

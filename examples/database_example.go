@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"log"
 	"os"
-	"path/filepath"
 
 	"github.com/ramonehamilton/MTGA-Companion/internal/mtga/logreader"
 	"github.com/ramonehamilton/MTGA-Companion/internal/storage"
@@ -21,22 +20,9 @@ import (
 //
 // NOTE: This requires database migrations to be run first (see issue #19).
 func main() {
-	// Get a path for the database
-	homeDir, err := os.UserHomeDir()
-	if err != nil {
-		log.Fatalf("Failed to get home directory: %v", err)
-	}
-
-	dbPath := filepath.Join(homeDir, ".mtga-companion", "data.db")
-
-	// Ensure the directory exists
-	if err := os.MkdirAll(filepath.Dir(dbPath), 0o755); err != nil {
-		log.Fatalf("Failed to create database directory: %v", err)
-	}
-
-	// Initialize database
+	// Initialize database (connection configured via DATABASE_URL env var)
 	fmt.Println("Initializing database...")
-	config := storage.DefaultConfig(dbPath)
+	config := storage.DefaultConfig()
 	db, err := storage.Open(config)
 	if err != nil {
 		log.Fatalf("Failed to open database: %v", err)

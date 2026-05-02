@@ -68,7 +68,7 @@ func (r *collectionRepository) UpsertCard(ctx context.Context, cardID int, quant
 	// Collection table has composite primary key (account_id, card_id) after migration 000002
 	query := `
 		INSERT INTO collection (account_id, card_id, quantity, updated_at)
-		VALUES (1, ?, ?, ?)
+		VALUES (1, $1, $2, $3)
 		ON CONFLICT(account_id, card_id) DO UPDATE SET
 			quantity = excluded.quantity,
 			updated_at = excluded.updated_at
@@ -84,7 +84,7 @@ func (r *collectionRepository) UpsertCard(ctx context.Context, cardID int, quant
 
 // GetCard retrieves the quantity of a specific card.
 func (r *collectionRepository) GetCard(ctx context.Context, cardID int) (int, error) {
-	query := `SELECT quantity FROM collection WHERE card_id = ?`
+	query := `SELECT quantity FROM collection WHERE card_id = $1`
 
 	var quantity int
 	err := r.db.QueryRowContext(ctx, query, cardID).Scan(&quantity)
@@ -110,7 +110,7 @@ func (r *collectionRepository) GetCards(ctx context.Context, cardIDs []int) (map
 	placeholders := make([]string, len(cardIDs))
 	args := make([]interface{}, len(cardIDs))
 	for i, id := range cardIDs {
-		placeholders[i] = "?"
+		placeholders[i] = fmt.Sprintf("$%d", i+1)
 		args[i] = id
 	}
 
@@ -197,7 +197,7 @@ func (r *collectionRepository) RecordChange(ctx context.Context, cardID int, del
 	query := `
 		INSERT INTO collection_history (
 			card_id, quantity_delta, quantity_after, timestamp, source, created_at
-		) VALUES (?, ?, ?, ?, ?, ?)
+		) VALUES ($1, $2, $3, $4, $5, $6)
 	`
 
 	_, err = r.db.ExecContext(ctx, query,
@@ -226,7 +226,7 @@ func (r *collectionRepository) RecordHistoryEntry(ctx context.Context, cardID in
 	query := `
 		INSERT INTO collection_history (
 			card_id, quantity_delta, quantity_after, timestamp, source, created_at
-		) VALUES (?, ?, ?, ?, ?, ?)
+		) VALUES ($1, $2, $3, $4, $5, $6)
 	`
 
 	_, err := r.db.ExecContext(ctx, query,
@@ -249,7 +249,7 @@ func (r *collectionRepository) GetHistory(ctx context.Context, cardID int) ([]*m
 	query := `
 		SELECT id, card_id, quantity_delta, quantity_after, timestamp, source, created_at
 		FROM collection_history
-		WHERE card_id = ?
+		WHERE card_id = $1
 		ORDER BY timestamp DESC
 	`
 
@@ -293,7 +293,7 @@ func (r *collectionRepository) GetRecentChanges(ctx context.Context, limit int) 
 		SELECT id, card_id, quantity_delta, quantity_after, timestamp, source, created_at
 		FROM collection_history
 		ORDER BY timestamp DESC
-		LIMIT ?
+		LIMIT $1
 	`
 
 	rows, err := r.db.QueryContext(ctx, query, limit)
@@ -351,7 +351,7 @@ func (r *collectionRepository) UpsertMany(ctx context.Context, entries []Collect
 	// Collection table has composite primary key (account_id, card_id) after migration 000002
 	stmt, err := tx.PrepareContext(ctx, `
 		INSERT INTO collection (account_id, card_id, quantity, updated_at)
-		VALUES (1, ?, ?, ?)
+		VALUES (1, $1, $2, $3)
 		ON CONFLICT(account_id, card_id) DO UPDATE SET
 			quantity = excluded.quantity,
 			updated_at = excluded.updated_at
@@ -384,7 +384,7 @@ func (r *collectionRepository) GetChangesSince(ctx context.Context, since time.T
 	query := `
 		SELECT id, card_id, quantity_delta, quantity_after, timestamp, source, created_at
 		FROM collection_history
-		WHERE timestamp > ?
+		WHERE timestamp > $1
 		ORDER BY timestamp DESC
 	`
 

@@ -4,7 +4,9 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"fmt"
 	"strings"
+	"time"
 
 	"github.com/ramonehamilton/MTGA-Companion/internal/mtga/cards/search"
 	"github.com/ramonehamilton/MTGA-Companion/internal/storage/models"
@@ -22,7 +24,7 @@ type MetadataStaleness struct {
 type StaleCard struct {
 	ArenaID     string
 	SetCode     string
-	LastUpdated string
+	LastUpdated time.Time
 }
 
 // SetRarityCount represents card counts for a set and rarity.
@@ -113,7 +115,7 @@ func (r *setCardRepository) SaveCard(ctx context.Context, card *models.SetCard) 
 			set_code, arena_id, scryfall_id, name, mana_cost, cmc, types, colors,
 			rarity, text, power, toughness, image_url, image_url_small, image_url_art, fetched_at,
 			price_usd, price_usd_foil, price_eur, price_eur_foil, price_tix, prices_updated_at, legalities
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23)
 		ON CONFLICT(set_code, arena_id) DO UPDATE SET
 			scryfall_id = excluded.scryfall_id,
 			name = excluded.name,
@@ -137,7 +139,7 @@ func (r *setCardRepository) SaveCard(ctx context.Context, card *models.SetCard) 
 			prices_updated_at = excluded.prices_updated_at,
 			legalities = excluded.legalities
 	`
-	result, err := r.db.ExecContext(ctx, query,
+	err = r.db.QueryRowContext(ctx, query+" RETURNING id",
 		card.SetCode,
 		card.ArenaID,
 		card.ScryfallID,
@@ -161,14 +163,9 @@ func (r *setCardRepository) SaveCard(ctx context.Context, card *models.SetCard) 
 		card.PriceTIX,
 		card.PricesUpdatedAt,
 		card.Legalities,
-	)
+	).Scan(&card.ID)
 	if err != nil {
 		return err
-	}
-
-	id, err := result.LastInsertId()
-	if err == nil {
-		card.ID = int(id)
 	}
 
 	return nil
@@ -190,7 +187,7 @@ func (r *setCardRepository) SaveCards(ctx context.Context, cards []*models.SetCa
 			set_code, arena_id, scryfall_id, name, mana_cost, cmc, types, colors,
 			rarity, text, power, toughness, image_url, image_url_small, image_url_art, fetched_at,
 			price_usd, price_usd_foil, price_eur, price_eur_foil, price_tix, prices_updated_at, legalities
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23)
 		ON CONFLICT(set_code, arena_id) DO UPDATE SET
 			scryfall_id = excluded.scryfall_id,
 			name = excluded.name,
@@ -272,7 +269,7 @@ func (r *setCardRepository) GetCardByArenaID(ctx context.Context, arenaID string
 			   rarity, text, power, toughness, image_url, image_url_small, image_url_art, fetched_at,
 			   price_usd, price_usd_foil, price_eur, price_eur_foil, price_tix, prices_updated_at, legalities
 		FROM set_cards
-		WHERE arena_id = ?
+		WHERE arena_id = $1
 		LIMIT 1
 	`
 	row := r.db.QueryRowContext(ctx, query, arenaID)
@@ -335,7 +332,7 @@ func (r *setCardRepository) GetCardsBySet(ctx context.Context, setCode string) (
 			   rarity, text, power, toughness, image_url, image_url_small, image_url_art, fetched_at,
 			   price_usd, price_usd_foil, price_eur, price_eur_foil, price_tix, prices_updated_at, legalities
 		FROM set_cards
-		WHERE set_code = ?
+		WHERE set_code = $1
 		ORDER BY name
 	`
 	rows, err := r.db.QueryContext(ctx, query, setCode)
@@ -401,7 +398,7 @@ func (r *setCardRepository) GetCardsBySet(ctx context.Context, setCode string) (
 
 // IsSetCached checks if a set has been cached.
 func (r *setCardRepository) IsSetCached(ctx context.Context, setCode string) (bool, error) {
-	query := `SELECT COUNT(*) FROM set_cards WHERE set_code = ?`
+	query := `SELECT COUNT(*) FROM set_cards WHERE set_code = $1`
 	var count int
 	err := r.db.QueryRowContext(ctx, query, setCode).Scan(&count)
 	if err != nil {
@@ -435,7 +432,7 @@ func (r *setCardRepository) GetCachedSets(ctx context.Context) ([]string, error)
 
 // DeleteSet removes all cards for a given set (for cache invalidation).
 func (r *setCardRepository) DeleteSet(ctx context.Context, setCode string) error {
-	query := `DELETE FROM set_cards WHERE set_code = ?`
+	query := `DELETE FROM set_cards WHERE set_code = $1`
 	_, err := r.db.ExecContext(ctx, query, setCode)
 	return err
 }
@@ -460,17 +457,25 @@ func (r *setCardRepository) SearchCards(ctx context.Context, query string, setCo
 	var conditions []string
 	var args []interface{}
 
+	// pgN returns the next positional placeholder ($N).
+	pgN := func() string { return fmt.Sprintf("$%d", len(args)+1) }
+
 	for _, term := range parsed.Terms {
 		pattern := "%" + term.Value + "%"
 		switch term.Field {
 		case search.FieldAll:
-			conditions = append(conditions, "(name LIKE ? OR text LIKE ? OR types LIKE ?)")
-			args = append(args, pattern, pattern, pattern)
+			n1, n2, n3 := pgN(), "", ""
+			args = append(args, pattern)
+			n2 = pgN()
+			args = append(args, pattern)
+			n3 = pgN()
+			args = append(args, pattern)
+			conditions = append(conditions, fmt.Sprintf("(name LIKE %s OR text LIKE %s OR types LIKE %s)", n1, n2, n3))
 		case search.FieldType:
-			conditions = append(conditions, "types LIKE ?")
+			conditions = append(conditions, fmt.Sprintf("types LIKE %s", pgN()))
 			args = append(args, pattern)
 		case search.FieldText, search.FieldKeyword:
-			conditions = append(conditions, "text LIKE ?")
+			conditions = append(conditions, fmt.Sprintf("text LIKE %s", pgN()))
 			args = append(args, pattern)
 		}
 	}
@@ -481,7 +486,7 @@ func (r *setCardRepository) SearchCards(ctx context.Context, query string, setCo
 	if len(setCodes) > 0 {
 		placeholders := make([]string, len(setCodes))
 		for i, code := range setCodes {
-			placeholders[i] = "?"
+			placeholders[i] = pgN()
 			args = append(args, code)
 		}
 		whereClause += " AND set_code IN (" + strings.Join(placeholders, ",") + ")"
@@ -492,12 +497,13 @@ func (r *setCardRepository) SearchCards(ctx context.Context, query string, setCo
 	for _, term := range parsed.Terms {
 		if term.Field == search.FieldAll {
 			namePattern := "%" + term.Value + "%"
-			orderClause = "CASE WHEN name LIKE ? THEN 0 ELSE 1 END, name"
+			orderClause = fmt.Sprintf("CASE WHEN name LIKE %s THEN 0 ELSE 1 END, name", pgN())
 			args = append(args, namePattern)
 			break
 		}
 	}
 
+	limitPlaceholder := pgN()
 	args = append(args, limit)
 
 	sqlQuery := `
@@ -507,7 +513,7 @@ func (r *setCardRepository) SearchCards(ctx context.Context, query string, setCo
 		FROM set_cards
 		WHERE ` + whereClause + `
 		ORDER BY ` + orderClause + `
-		LIMIT ?
+		LIMIT ` + limitPlaceholder + `
 	`
 
 	rows, err := r.db.QueryContext(ctx, sqlQuery, args...)
@@ -576,10 +582,10 @@ func (r *setCardRepository) GetMetadataStaleness(ctx context.Context, staleAgeSe
 	query := `
 		SELECT
 			COUNT(*) as total,
-			COALESCE(SUM(CASE WHEN fetched_at >= datetime('now', '-' || ? || ' seconds') THEN 1 ELSE 0 END), 0) as fresh,
-			COALESCE(SUM(CASE WHEN fetched_at < datetime('now', '-' || ? || ' seconds')
-				AND fetched_at >= datetime('now', '-' || ? || ' seconds') THEN 1 ELSE 0 END), 0) as stale,
-			COALESCE(SUM(CASE WHEN fetched_at < datetime('now', '-' || ? || ' seconds') THEN 1 ELSE 0 END), 0) as very_stale
+			COALESCE(SUM(CASE WHEN fetched_at >= NOW() - ($1 * INTERVAL '1 second') THEN 1 ELSE 0 END), 0) as fresh,
+			COALESCE(SUM(CASE WHEN fetched_at < NOW() - ($2 * INTERVAL '1 second')
+				AND fetched_at >= NOW() - ($3 * INTERVAL '1 second') THEN 1 ELSE 0 END), 0) as stale,
+			COALESCE(SUM(CASE WHEN fetched_at < NOW() - ($4 * INTERVAL '1 second') THEN 1 ELSE 0 END), 0) as very_stale
 		FROM set_cards
 		WHERE fetched_at IS NOT NULL
 	`
@@ -603,9 +609,9 @@ func (r *setCardRepository) GetStaleCards(ctx context.Context, staleAgeSeconds, 
 	query := `
 		SELECT arena_id, set_code, fetched_at
 		FROM set_cards
-		WHERE fetched_at < datetime('now', '-' || ? || ' seconds')
+		WHERE fetched_at < NOW() - ($1 * INTERVAL '1 second')
 		ORDER BY fetched_at ASC
-		LIMIT ?
+		LIMIT $2
 	`
 
 	rows, err := r.db.QueryContext(ctx, query, staleAgeSeconds, limit)
@@ -685,7 +691,7 @@ func (r *setCardRepository) GetAllCardSetInfo(ctx context.Context) ([]*CardSetIn
 
 // GetSetCardCount returns the number of cards cached for a given set.
 func (r *setCardRepository) GetSetCardCount(ctx context.Context, setCode string) (int, error) {
-	query := `SELECT COUNT(*) FROM set_cards WHERE set_code = ?`
+	query := `SELECT COUNT(*) FROM set_cards WHERE set_code = $1`
 	var count int
 	err := r.db.QueryRowContext(ctx, query, setCode).Scan(&count)
 	if err != nil {

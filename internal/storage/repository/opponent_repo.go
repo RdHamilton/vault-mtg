@@ -60,7 +60,7 @@ func (r *opponentRepository) CreateOrUpdateProfile(ctx context.Context, profile 
 			deck_style, cards_observed, estimated_deck_size, observed_card_ids,
 			inferred_card_ids, signature_cards, format, meta_archetype_id,
 			created_at, updated_at
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
 		ON CONFLICT(match_id) DO UPDATE SET
 			detected_archetype = excluded.detected_archetype,
 			archetype_confidence = excluded.archetype_confidence,
@@ -74,6 +74,7 @@ func (r *opponentRepository) CreateOrUpdateProfile(ctx context.Context, profile 
 			format = excluded.format,
 			meta_archetype_id = excluded.meta_archetype_id,
 			updated_at = excluded.updated_at
+		RETURNING id
 	`
 
 	now := time.Now()
@@ -82,22 +83,15 @@ func (r *opponentRepository) CreateOrUpdateProfile(ctx context.Context, profile 
 	}
 	profile.UpdatedAt = now
 
-	result, err := r.db.ExecContext(ctx, query,
+	err := r.db.QueryRowContext(ctx, query,
 		profile.MatchID, profile.DetectedArchetype, profile.ArchetypeConfidence,
 		profile.ColorIdentity, profile.DeckStyle, profile.CardsObserved,
 		profile.EstimatedDeckSize, profile.ObservedCardIDs, profile.InferredCardIDs,
 		profile.SignatureCards, profile.Format, profile.MetaArchetypeID,
 		profile.CreatedAt, profile.UpdatedAt,
-	)
+	).Scan(&profile.ID)
 	if err != nil {
 		return fmt.Errorf("failed to create/update opponent profile: %w", err)
-	}
-
-	if profile.ID == 0 {
-		id, err := result.LastInsertId()
-		if err == nil {
-			profile.ID = int(id)
-		}
 	}
 
 	return nil
@@ -111,7 +105,7 @@ func (r *opponentRepository) GetProfileByMatchID(ctx context.Context, matchID st
 			inferred_card_ids, signature_cards, format, meta_archetype_id,
 			created_at, updated_at
 		FROM opponent_deck_profiles
-		WHERE match_id = ?
+		WHERE match_id = $1
 	`
 
 	var profile models.OpponentDeckProfile
@@ -146,15 +140,15 @@ func (r *opponentRepository) ListProfiles(ctx context.Context, filter *OpponentP
 
 	if filter != nil {
 		if filter.Archetype != nil {
-			query += " AND detected_archetype = ?"
+			query += fmt.Sprintf(" AND detected_archetype = $%d", len(args)+1)
 			args = append(args, *filter.Archetype)
 		}
 		if filter.Format != nil {
-			query += " AND format = ?"
+			query += fmt.Sprintf(" AND format = $%d", len(args)+1)
 			args = append(args, *filter.Format)
 		}
 		if filter.MinConfidence != nil {
-			query += " AND archetype_confidence >= ?"
+			query += fmt.Sprintf(" AND archetype_confidence >= $%d", len(args)+1)
 			args = append(args, *filter.MinConfidence)
 		}
 	}
@@ -162,10 +156,10 @@ func (r *opponentRepository) ListProfiles(ctx context.Context, filter *OpponentP
 	query += " ORDER BY created_at DESC"
 
 	if filter != nil && filter.Limit > 0 {
-		query += " LIMIT ?"
+		query += fmt.Sprintf(" LIMIT $%d", len(args)+1)
 		args = append(args, filter.Limit)
 		if filter.Offset > 0 {
-			query += " OFFSET ?"
+			query += fmt.Sprintf(" OFFSET $%d", len(args)+1)
 			args = append(args, filter.Offset)
 		}
 	}
@@ -199,7 +193,7 @@ func (r *opponentRepository) ListProfiles(ctx context.Context, filter *OpponentP
 
 // DeleteProfile deletes an opponent profile.
 func (r *opponentRepository) DeleteProfile(ctx context.Context, matchID string) error {
-	query := `DELETE FROM opponent_deck_profiles WHERE match_id = ?`
+	query := `DELETE FROM opponent_deck_profiles WHERE match_id = $1`
 	_, err := r.db.ExecContext(ctx, query, matchID)
 	if err != nil {
 		return fmt.Errorf("failed to delete opponent profile: %w", err)
@@ -214,7 +208,7 @@ func (r *opponentRepository) RecordMatchup(ctx context.Context, stat *models.Mat
 			account_id, player_archetype, opponent_archetype, format,
 			total_matches, wins, losses, avg_game_duration, last_match_at,
 			created_at, updated_at
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
 		ON CONFLICT(account_id, player_archetype, opponent_archetype, format) DO UPDATE SET
 			total_matches = matchup_statistics.total_matches + excluded.total_matches,
 			wins = matchup_statistics.wins + excluded.wins,
@@ -249,7 +243,7 @@ func (r *opponentRepository) GetMatchupStats(ctx context.Context, accountID int,
 			total_matches, wins, losses, avg_game_duration, last_match_at,
 			created_at, updated_at
 		FROM matchup_statistics
-		WHERE account_id = ? AND player_archetype = ? AND opponent_archetype = ? AND format = ?
+		WHERE account_id = $1 AND player_archetype = $2 AND opponent_archetype = $3 AND format = $4
 	`
 
 	var stat models.MatchupStatistic
@@ -280,12 +274,12 @@ func (r *opponentRepository) ListMatchupStats(ctx context.Context, accountID int
 			total_matches, wins, losses, avg_game_duration, last_match_at,
 			created_at, updated_at
 		FROM matchup_statistics
-		WHERE account_id = ?
+		WHERE account_id = $1
 	`
 	args := []interface{}{accountID}
 
 	if format != nil {
-		query += " AND format = ?"
+		query += fmt.Sprintf(" AND format = $%d", len(args)+1)
 		args = append(args, *format)
 	}
 
@@ -327,9 +321,9 @@ func (r *opponentRepository) GetTopMatchups(ctx context.Context, accountID int, 
 			total_matches, wins, losses, avg_game_duration, last_match_at,
 			created_at, updated_at
 		FROM matchup_statistics
-		WHERE account_id = ? AND format = ?
+		WHERE account_id = $1 AND format = $2
 		ORDER BY total_matches DESC
-		LIMIT ?
+		LIMIT $3
 	`
 
 	rows, err := r.db.QueryContext(ctx, query, accountID, format, limit)
@@ -367,7 +361,7 @@ func (r *opponentRepository) UpsertExpectedCard(ctx context.Context, card *model
 		INSERT INTO archetype_expected_cards (
 			archetype_name, format, card_id, card_name, inclusion_rate,
 			avg_copies, is_signature, category, created_at
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
 		ON CONFLICT(archetype_name, format, card_id) DO UPDATE SET
 			card_name = excluded.card_name,
 			inclusion_rate = excluded.inclusion_rate,
@@ -398,7 +392,7 @@ func (r *opponentRepository) GetExpectedCards(ctx context.Context, archetypeName
 		SELECT id, archetype_name, format, card_id, card_name, inclusion_rate,
 			avg_copies, is_signature, category, created_at
 		FROM archetype_expected_cards
-		WHERE archetype_name = ? AND format = ?
+		WHERE archetype_name = $1 AND format = $2
 		ORDER BY inclusion_rate DESC, is_signature DESC
 	`
 
@@ -430,7 +424,7 @@ func (r *opponentRepository) GetExpectedCards(ctx context.Context, archetypeName
 
 // DeleteExpectedCards deletes expected cards for an archetype.
 func (r *opponentRepository) DeleteExpectedCards(ctx context.Context, archetypeName, format string) error {
-	query := `DELETE FROM archetype_expected_cards WHERE archetype_name = ? AND format = ?`
+	query := `DELETE FROM archetype_expected_cards WHERE archetype_name = $1 AND format = $2`
 	_, err := r.db.ExecContext(ctx, query, archetypeName, format)
 	if err != nil {
 		return fmt.Errorf("failed to delete expected cards: %w", err)
@@ -449,12 +443,12 @@ func (r *opponentRepository) GetOpponentHistorySummary(ctx context.Context, acco
 			SUM(CASE WHEN m.result = 'loss' THEN 1 ELSE 0 END) as losses
 		FROM opponent_deck_profiles odp
 		JOIN matches m ON m.id = odp.match_id
-		WHERE m.account_id = ?
+		WHERE m.account_id = $1
 	`
 	args := []interface{}{accountID}
 
 	if format != nil {
-		archetypeQuery += " AND odp.format = ?"
+		archetypeQuery += fmt.Sprintf(" AND odp.format = $%d", len(args)+1)
 		args = append(args, *format)
 	}
 
@@ -500,12 +494,12 @@ func (r *opponentRepository) GetOpponentHistorySummary(ctx context.Context, acco
 			SUM(CASE WHEN m.result = 'loss' THEN 1 ELSE 0 END) as losses
 		FROM opponent_deck_profiles odp
 		JOIN matches m ON m.id = odp.match_id
-		WHERE m.account_id = ?
+		WHERE m.account_id = $1
 	`
 	args = []interface{}{accountID}
 
 	if format != nil {
-		colorQuery += " AND odp.format = ?"
+		colorQuery += fmt.Sprintf(" AND odp.format = $%d", len(args)+1)
 		args = append(args, *format)
 	}
 

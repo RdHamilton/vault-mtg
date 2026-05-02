@@ -58,31 +58,23 @@ func NewMTGZoneRepository(db *sql.DB) MTGZoneRepository {
 func (r *mtgzoneRepo) UpsertArchetype(ctx context.Context, archetype *models.MTGZoneArchetype) (int64, error) {
 	query := `
 		INSERT INTO mtgzone_archetypes (name, format, tier, description, play_style, source_url, last_updated)
-		VALUES (?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+		VALUES ($1, $2, $3, $4, $5, $6, CURRENT_TIMESTAMP)
 		ON CONFLICT(name, format) DO UPDATE SET
 			tier = excluded.tier,
 			description = excluded.description,
 			play_style = excluded.play_style,
 			source_url = excluded.source_url,
 			last_updated = CURRENT_TIMESTAMP
+		RETURNING id
 	`
 
-	result, err := r.db.ExecContext(ctx, query,
+	var id int64
+	err := r.db.QueryRowContext(ctx, query,
 		archetype.Name, archetype.Format, archetype.Tier,
 		archetype.Description, archetype.PlayStyle, archetype.SourceURL,
-	)
+	).Scan(&id)
 	if err != nil {
 		return 0, fmt.Errorf("failed to upsert archetype: %w", err)
-	}
-
-	id, err := result.LastInsertId()
-	if err != nil {
-		// On conflict, get the existing ID
-		existing, err := r.GetArchetype(ctx, archetype.Name, archetype.Format)
-		if err != nil {
-			return 0, err
-		}
-		return existing.ID, nil
 	}
 
 	return id, nil
@@ -93,7 +85,7 @@ func (r *mtgzoneRepo) GetArchetype(ctx context.Context, name, format string) (*m
 	query := `
 		SELECT id, name, format, tier, description, play_style, source_url, last_updated
 		FROM mtgzone_archetypes
-		WHERE LOWER(name) = LOWER(?) AND LOWER(format) = LOWER(?)
+		WHERE LOWER(name) = LOWER($1) AND LOWER(format) = LOWER($2)
 	`
 
 	var a models.MTGZoneArchetype
@@ -123,7 +115,7 @@ func (r *mtgzoneRepo) GetArchetypeByID(ctx context.Context, id int64) (*models.M
 	query := `
 		SELECT id, name, format, tier, description, play_style, source_url, last_updated
 		FROM mtgzone_archetypes
-		WHERE id = ?
+		WHERE id = $1
 	`
 
 	var a models.MTGZoneArchetype
@@ -153,7 +145,7 @@ func (r *mtgzoneRepo) GetArchetypesByFormat(ctx context.Context, format string) 
 	query := `
 		SELECT id, name, format, tier, description, play_style, source_url, last_updated
 		FROM mtgzone_archetypes
-		WHERE LOWER(format) = LOWER(?)
+		WHERE LOWER(format) = LOWER($1)
 		ORDER BY tier ASC, name ASC
 	`
 
@@ -194,9 +186,9 @@ func (r *mtgzoneRepo) GetTopTierArchetypes(ctx context.Context, format string, l
 	query := `
 		SELECT id, name, format, tier, description, play_style, source_url, last_updated
 		FROM mtgzone_archetypes
-		WHERE LOWER(format) = LOWER(?) AND tier IN ('S', 'A', 'A+', 'A-')
+		WHERE LOWER(format) = LOWER($1) AND tier IN ('S', 'A', 'A+', 'A-')
 		ORDER BY tier ASC, name ASC
-		LIMIT ?
+		LIMIT $2
 	`
 
 	rows, err := r.db.QueryContext(ctx, query, format, limit)
@@ -229,7 +221,7 @@ func (r *mtgzoneRepo) GetTopTierArchetypes(ctx context.Context, format string, l
 
 // DeleteArchetype deletes an archetype by ID.
 func (r *mtgzoneRepo) DeleteArchetype(ctx context.Context, id int64) error {
-	_, err := r.db.ExecContext(ctx, "DELETE FROM mtgzone_archetypes WHERE id = ?", id)
+	_, err := r.db.ExecContext(ctx, "DELETE FROM mtgzone_archetypes WHERE id = $1", id)
 	if err != nil {
 		return fmt.Errorf("failed to delete archetype: %w", err)
 	}
@@ -240,7 +232,7 @@ func (r *mtgzoneRepo) DeleteArchetype(ctx context.Context, id int64) error {
 func (r *mtgzoneRepo) UpsertArchetypeCard(ctx context.Context, card *models.MTGZoneArchetypeCard) error {
 	query := `
 		INSERT INTO mtgzone_archetype_cards (archetype_id, card_name, role, copies, importance, notes, last_updated)
-		VALUES (?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+		VALUES ($1, $2, $3, $4, $5, $6, CURRENT_TIMESTAMP)
 		ON CONFLICT(archetype_id, card_name) DO UPDATE SET
 			role = excluded.role,
 			copies = excluded.copies,
@@ -265,7 +257,7 @@ func (r *mtgzoneRepo) GetArchetypeCards(ctx context.Context, archetypeID int64) 
 	query := `
 		SELECT id, archetype_id, card_name, role, copies, importance, notes, last_updated
 		FROM mtgzone_archetype_cards
-		WHERE archetype_id = ?
+		WHERE archetype_id = $1
 		ORDER BY role ASC, copies DESC
 	`
 
@@ -301,7 +293,7 @@ func (r *mtgzoneRepo) GetCoreCards(ctx context.Context, archetypeID int64) ([]*m
 	query := `
 		SELECT id, archetype_id, card_name, role, copies, importance, notes, last_updated
 		FROM mtgzone_archetype_cards
-		WHERE archetype_id = ? AND role = 'core'
+		WHERE archetype_id = $1 AND role = 'core'
 		ORDER BY copies DESC
 	`
 
@@ -338,7 +330,7 @@ func (r *mtgzoneRepo) GetArchetypesForCard(ctx context.Context, cardName string)
 		SELECT DISTINCT a.id, a.name, a.format, a.tier, a.description, a.play_style, a.source_url, a.last_updated
 		FROM mtgzone_archetypes a
 		JOIN mtgzone_archetype_cards ac ON a.id = ac.archetype_id
-		WHERE LOWER(ac.card_name) = LOWER(?)
+		WHERE LOWER(ac.card_name) = LOWER($1)
 		ORDER BY a.tier ASC, a.name ASC
 	`
 
@@ -372,7 +364,7 @@ func (r *mtgzoneRepo) GetArchetypesForCard(ctx context.Context, cardName string)
 
 // DeleteArchetypeCards deletes all cards for an archetype.
 func (r *mtgzoneRepo) DeleteArchetypeCards(ctx context.Context, archetypeID int64) error {
-	_, err := r.db.ExecContext(ctx, "DELETE FROM mtgzone_archetype_cards WHERE archetype_id = ?", archetypeID)
+	_, err := r.db.ExecContext(ctx, "DELETE FROM mtgzone_archetype_cards WHERE archetype_id = $1", archetypeID)
 	if err != nil {
 		return fmt.Errorf("failed to delete archetype cards: %w", err)
 	}
@@ -383,7 +375,7 @@ func (r *mtgzoneRepo) DeleteArchetypeCards(ctx context.Context, archetypeID int6
 func (r *mtgzoneRepo) UpsertSynergy(ctx context.Context, synergy *models.MTGZoneSynergy) error {
 	query := `
 		INSERT INTO mtgzone_synergies (card_a, card_b, reason, source_url, archetype_context, confidence, last_updated)
-		VALUES (?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+		VALUES ($1, $2, $3, $4, $5, $6, CURRENT_TIMESTAMP)
 		ON CONFLICT(card_a, card_b, archetype_context) DO UPDATE SET
 			reason = excluded.reason,
 			source_url = excluded.source_url,
@@ -407,7 +399,7 @@ func (r *mtgzoneRepo) GetSynergiesForCard(ctx context.Context, cardName string, 
 	query := `
 		SELECT id, card_a, card_b, reason, source_url, archetype_context, confidence, last_updated
 		FROM mtgzone_synergies
-		WHERE LOWER(card_a) = LOWER(?) OR LOWER(card_b) = LOWER(?)
+		WHERE LOWER(card_a) = LOWER($1) OR LOWER(card_b) = LOWER($2)
 		ORDER BY confidence DESC
 	`
 	if limit > 0 {
@@ -446,8 +438,8 @@ func (r *mtgzoneRepo) GetSynergyBetween(ctx context.Context, cardA, cardB string
 	query := `
 		SELECT id, card_a, card_b, reason, source_url, archetype_context, confidence, last_updated
 		FROM mtgzone_synergies
-		WHERE (LOWER(card_a) = LOWER(?) AND LOWER(card_b) = LOWER(?))
-		   OR (LOWER(card_a) = LOWER(?) AND LOWER(card_b) = LOWER(?))
+		WHERE (LOWER(card_a) = LOWER($1) AND LOWER(card_b) = LOWER($2))
+		   OR (LOWER(card_a) = LOWER($3) AND LOWER(card_b) = LOWER($4))
 		ORDER BY confidence DESC
 		LIMIT 1
 	`
@@ -478,7 +470,7 @@ func (r *mtgzoneRepo) GetSynergiesInArchetype(ctx context.Context, archetype str
 	query := `
 		SELECT id, card_a, card_b, reason, source_url, archetype_context, confidence, last_updated
 		FROM mtgzone_synergies
-		WHERE LOWER(archetype_context) = LOWER(?)
+		WHERE LOWER(archetype_context) = LOWER($1)
 		ORDER BY confidence DESC
 	`
 
@@ -511,7 +503,7 @@ func (r *mtgzoneRepo) GetSynergiesInArchetype(ctx context.Context, archetype str
 
 // DeleteSynergiesForArchetype deletes all synergies for an archetype.
 func (r *mtgzoneRepo) DeleteSynergiesForArchetype(ctx context.Context, archetype string) error {
-	_, err := r.db.ExecContext(ctx, "DELETE FROM mtgzone_synergies WHERE LOWER(archetype_context) = LOWER(?)", archetype)
+	_, err := r.db.ExecContext(ctx, "DELETE FROM mtgzone_synergies WHERE LOWER(archetype_context) = LOWER($1)", archetype)
 	if err != nil {
 		return fmt.Errorf("failed to delete synergies: %w", err)
 	}
@@ -522,7 +514,7 @@ func (r *mtgzoneRepo) DeleteSynergiesForArchetype(ctx context.Context, archetype
 func (r *mtgzoneRepo) UpsertArticle(ctx context.Context, article *models.MTGZoneArticle) error {
 	query := `
 		INSERT INTO mtgzone_articles (url, title, article_type, format, archetype, published_at, processed_at, cards_mentioned)
-		VALUES (?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, ?)
+		VALUES ($1, $2, $3, $4, $5, $6, CURRENT_TIMESTAMP, $7)
 		ON CONFLICT(url) DO UPDATE SET
 			title = excluded.title,
 			article_type = excluded.article_type,
@@ -549,7 +541,7 @@ func (r *mtgzoneRepo) GetArticle(ctx context.Context, url string) (*models.MTGZo
 	query := `
 		SELECT id, url, title, article_type, format, archetype, published_at, processed_at, cards_mentioned
 		FROM mtgzone_articles
-		WHERE url = ?
+		WHERE url = $1
 	`
 
 	var a models.MTGZoneArticle
@@ -584,7 +576,7 @@ func (r *mtgzoneRepo) GetArticlesByFormat(ctx context.Context, format string, li
 	query := `
 		SELECT id, url, title, article_type, format, archetype, published_at, processed_at, cards_mentioned
 		FROM mtgzone_articles
-		WHERE LOWER(format) = LOWER(?)
+		WHERE LOWER(format) = LOWER($1)
 		ORDER BY processed_at DESC
 	`
 	if limit > 0 {
