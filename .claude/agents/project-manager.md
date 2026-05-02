@@ -289,6 +289,19 @@ gh label create "<name>" --description "<description>" --color "<6-char hex with
 ```
 After creating a new label, **update the Label Standards section above** with the new entry.
 
+## Ticket Workflow (Required for All Agents)
+
+Every ticket must follow this exact progression — no skipping steps:
+
+| Stage | Status | Trigger |
+|---|---|---|
+| Work begins | **In Progress** (`9fd907f0`) | Immediately when agent starts the task |
+| PR opened | **PR Review** (`0ca4880d`) | As soon as `gh pr create` is run |
+| PR merged | **Done** (`7729b7fe`) | After merge is confirmed |
+
+Every ticket must end with a PR. Never leave work committed without one.
+When moving to PR Review, post a comment on the issue with the PR number.
+
 ## Status Transitions
 
 Move tickets through statuses using the cached IDs from the Project Registry above:

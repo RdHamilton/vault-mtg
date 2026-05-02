@@ -141,6 +141,21 @@ These rules apply when working in **Approach B (Go workspace multi-module)** —
 4. **Tag `mtga-contract` before depending on a new type.** When a new shared type is added to `services/contract`, publish a new tag (`v0.x.y`) and update consumer `go.mod` files in the same PR.
 5. **Enforcement**: PR reviewers (and CI) must reject any `go.work` diff that contains a `replace` pointing to a local filesystem path.
 
+## Ticket Workflow
+
+Every ticket assigned to this agent must follow this status progression on the v2.0 project board (project #27, repo RdHamilton/MTGA-Companion):
+
+1. **In Progress** (`9fd907f0`) — set immediately when work begins
+2. **PR Review** (`0ca4880d`) — set when a PR is opened
+3. **Done** (`7729b7fe`) — set when the PR is merged
+
+Every ticket must end with a PR. Never leave work committed without opening one.
+
+Use this GraphQL mutation pattern to update status:
+```bash
+gh api graphql -f query='mutation { updateProjectV2ItemFieldValue(input: { projectId: "PVT_kwHOABsZ684BMSNn" itemId: "ITEM_ID" fieldId: "PVTSSF_lAHOABsZ684BMSNnzg7nLOc" value: { singleSelectOptionId: "OPTION_ID" } }) { projectV2Item { id } } }'
+```
+
 ## Rules
 
 1. Never implement features — design them and create tickets for implementation agents
@@ -149,3 +164,4 @@ These rules apply when working in **Approach B (Go workspace multi-module)** —
 4. Prefer explicit service contracts (typed request/response structs) over implicit coupling
 5. Flag when a proposed change has cross-repo implications — those need coordinated tickets
 6. Check `docs/adr/` before designing anything — the decision may already be recorded
+7. Always follow the Ticket Workflow above — move ticket status at each stage
