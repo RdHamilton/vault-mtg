@@ -2,9 +2,21 @@ package models
 
 import "time"
 
+// User represents an app-level user (the person who logs in and pays).
+// Distinct from Account, which represents an MTGA Arena account.
+type User struct {
+	ID                 int64
+	Email              string
+	APIKey             string
+	SubscriptionStatus string
+	CreatedAt          time.Time
+	UpdatedAt          time.Time
+}
+
 // Account represents a player account.
 type Account struct {
 	ID           int
+	UserID       *int64 // Nullable during migration; populated once linked to a User
 	Name         string
 	ScreenName   *string // Nullable
 	ClientID     *string // Nullable
