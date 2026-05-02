@@ -14,8 +14,8 @@ require (
 	github.com/kardianos/service v1.2.4
 	github.com/mattn/go-sqlite3 v1.14.40
 	github.com/stretchr/testify v1.11.1
-	golang.org/x/crypto v0.49.0
-	golang.org/x/net v0.51.0
+	golang.org/x/crypto v0.50.0
+	golang.org/x/net v0.52.0
 	golang.org/x/time v0.15.0
 	modernc.org/sqlite v1.50.0
 )
@@ -30,8 +30,7 @@ require (
 	github.com/pmezard/go-difflib v1.0.1-0.20181226105442-5d4384ee4fb2 // indirect
 	github.com/remyoudompheng/bigfft v0.0.0-20230129092748-24d4a6f8daec // indirect
 	github.com/stretchr/objx v0.5.2 // indirect
-	golang.org/x/sync v0.20.0 // indirect
-	golang.org/x/sys v0.42.0 // indirect
+	golang.org/x/sys v0.43.0 // indirect
 	gopkg.in/check.v1 v1.0.0-20200227125254-8fa46927fb4f // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 	modernc.org/libc v1.72.0 // indirect
