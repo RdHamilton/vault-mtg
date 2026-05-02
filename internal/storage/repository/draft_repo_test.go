@@ -20,6 +20,7 @@ func setupDraftTestDB(t *testing.T) *sql.DB {
 	schema := `
 		CREATE TABLE draft_sessions (
 			id TEXT PRIMARY KEY,
+			account_id INTEGER,
 			event_name TEXT NOT NULL,
 			set_code TEXT NOT NULL,
 			draft_type TEXT DEFAULT 'quick_draft',

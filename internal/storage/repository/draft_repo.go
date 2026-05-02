@@ -19,6 +19,7 @@ type DraftRepository interface {
 	GetActiveSessions(ctx context.Context) ([]*models.DraftSession, error)
 	GetActiveSessionByIDPrefix(ctx context.Context, prefix string) (*models.DraftSession, error)
 	GetCompletedSessions(ctx context.Context, limit int) ([]*models.DraftSession, error)
+	GetSessionsByAccount(ctx context.Context, accountID int, limit int) ([]*models.DraftSession, error)
 	UpdateSessionStatus(ctx context.Context, id string, status string, endTime *time.Time) error
 	UpdateSessionTotalPicks(ctx context.Context, id string, totalPicks int) error
 	IncrementSessionPicks(ctx context.Context, id string) error
@@ -63,11 +64,12 @@ func NewDraftRepository(db *sql.DB) DraftRepository {
 // Uses INSERT OR REPLACE to handle replays where the same draft session may be processed multiple times.
 func (r *draftRepository) CreateSession(ctx context.Context, session *models.DraftSession) error {
 	query := `
-		INSERT OR REPLACE INTO draft_sessions (id, event_name, set_code, draft_type, start_time, status, total_picks, created_at, updated_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+		INSERT OR REPLACE INTO draft_sessions (id, account_id, event_name, set_code, draft_type, start_time, status, total_picks, created_at, updated_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 	`
 	_, err := r.db.ExecContext(ctx, query,
 		session.ID,
+		session.AccountID,
 		session.EventName,
 		session.SetCode,
 		session.DraftType,
@@ -83,7 +85,7 @@ func (r *draftRepository) CreateSession(ctx context.Context, session *models.Dra
 // GetSession retrieves a draft session by ID.
 func (r *draftRepository) GetSession(ctx context.Context, id string) (*models.DraftSession, error) {
 	query := `
-		SELECT id, event_name, set_code, draft_type, start_time, end_time, status, total_picks,
+		SELECT id, account_id, event_name, set_code, draft_type, start_time, end_time, status, total_picks,
 			overall_grade, overall_score, pick_quality_score, color_discipline_score,
 			deck_composition_score, strategic_score,
 			predicted_win_rate, predicted_win_rate_min, predicted_win_rate_max,
@@ -95,6 +97,7 @@ func (r *draftRepository) GetSession(ctx context.Context, id string) (*models.Dr
 	row := r.db.QueryRowContext(ctx, query, id)
 
 	session := &models.DraftSession{}
+	var accountID sql.NullInt64
 	var endTime sql.NullTime
 	var overallGrade sql.NullString
 	var overallScore sql.NullInt64
@@ -110,6 +113,7 @@ func (r *draftRepository) GetSession(ctx context.Context, id string) (*models.Dr
 
 	err := row.Scan(
 		&session.ID,
+		&accountID,
 		&session.EventName,
 		&session.SetCode,
 		&session.DraftType,
@@ -138,6 +142,9 @@ func (r *draftRepository) GetSession(ctx context.Context, id string) (*models.Dr
 		return nil, err
 	}
 
+	if accountID.Valid {
+		session.AccountID = int(accountID.Int64)
+	}
 	if endTime.Valid {
 		session.EndTime = &endTime.Time
 	}
@@ -182,7 +189,7 @@ func (r *draftRepository) GetSession(ctx context.Context, id string) (*models.Dr
 // GetActiveSessions retrieves all active draft sessions.
 func (r *draftRepository) GetActiveSessions(ctx context.Context) ([]*models.DraftSession, error) {
 	query := `
-		SELECT id, event_name, set_code, draft_type, start_time, end_time, status, total_picks, created_at, updated_at
+		SELECT id, account_id, event_name, set_code, draft_type, start_time, end_time, status, total_picks, created_at, updated_at
 		FROM draft_sessions
 		WHERE status = 'in_progress'
 		ORDER BY start_time DESC
@@ -198,10 +205,12 @@ func (r *draftRepository) GetActiveSessions(ctx context.Context) ([]*models.Draf
 	sessions := []*models.DraftSession{}
 	for rows.Next() {
 		session := &models.DraftSession{}
+		var accountID sql.NullInt64
 		var endTime sql.NullTime
 
 		err := rows.Scan(
 			&session.ID,
+			&accountID,
 			&session.EventName,
 			&session.SetCode,
 			&session.DraftType,
@@ -216,6 +225,9 @@ func (r *draftRepository) GetActiveSessions(ctx context.Context) ([]*models.Draf
 			return nil, err
 		}
 
+		if accountID.Valid {
+			session.AccountID = int(accountID.Int64)
+		}
 		if endTime.Valid {
 			session.EndTime = &endTime.Time
 		}
@@ -231,7 +243,7 @@ func (r *draftRepository) GetActiveSessions(ctx context.Context) ([]*models.Draf
 // Returns the most recently created session if multiple exist.
 func (r *draftRepository) GetActiveSessionByIDPrefix(ctx context.Context, prefix string) (*models.DraftSession, error) {
 	query := `
-		SELECT id, event_name, set_code, draft_type, start_time, end_time, status, total_picks, created_at, updated_at
+		SELECT id, account_id, event_name, set_code, draft_type, start_time, end_time, status, total_picks, created_at, updated_at
 		FROM draft_sessions
 		WHERE status = 'in_progress' AND id LIKE ? || '%'
 		ORDER BY created_at DESC
@@ -240,10 +252,12 @@ func (r *draftRepository) GetActiveSessionByIDPrefix(ctx context.Context, prefix
 	row := r.db.QueryRowContext(ctx, query, prefix)
 
 	session := &models.DraftSession{}
+	var accountID sql.NullInt64
 	var endTime sql.NullTime
 
 	err := row.Scan(
 		&session.ID,
+		&accountID,
 		&session.EventName,
 		&session.SetCode,
 		&session.DraftType,
@@ -261,6 +275,9 @@ func (r *draftRepository) GetActiveSessionByIDPrefix(ctx context.Context, prefix
 		return nil, err
 	}
 
+	if accountID.Valid {
+		session.AccountID = int(accountID.Int64)
+	}
 	if endTime.Valid {
 		session.EndTime = &endTime.Time
 	}
@@ -271,13 +288,28 @@ func (r *draftRepository) GetActiveSessionByIDPrefix(ctx context.Context, prefix
 // GetCompletedSessions retrieves completed draft sessions ordered by completion date.
 func (r *draftRepository) GetCompletedSessions(ctx context.Context, limit int) ([]*models.DraftSession, error) {
 	query := `
-		SELECT id, event_name, set_code, draft_type, start_time, end_time, status, total_picks, created_at, updated_at
+		SELECT id, account_id, event_name, set_code, draft_type, start_time, end_time, status, total_picks, created_at, updated_at
 		FROM draft_sessions
 		WHERE status = 'completed'
 		ORDER BY start_time DESC
 		LIMIT ?
 	`
-	rows, err := r.db.QueryContext(ctx, query, limit)
+	return r.scanSessions(r.db.QueryContext(ctx, query, limit))
+}
+
+// GetSessionsByAccount retrieves draft sessions for a specific account, ordered by start time.
+func (r *draftRepository) GetSessionsByAccount(ctx context.Context, accountID int, limit int) ([]*models.DraftSession, error) {
+	query := `
+		SELECT id, account_id, event_name, set_code, draft_type, start_time, end_time, status, total_picks, created_at, updated_at
+		FROM draft_sessions
+		WHERE account_id = ?
+		ORDER BY start_time DESC
+		LIMIT ?
+	`
+	return r.scanSessions(r.db.QueryContext(ctx, query, accountID, limit))
+}
+
+func (r *draftRepository) scanSessions(rows *sql.Rows, err error) ([]*models.DraftSession, error) {
 	if err != nil {
 		return nil, err
 	}
@@ -288,10 +320,12 @@ func (r *draftRepository) GetCompletedSessions(ctx context.Context, limit int) (
 	sessions := []*models.DraftSession{}
 	for rows.Next() {
 		session := &models.DraftSession{}
+		var accountID sql.NullInt64
 		var endTime sql.NullTime
 
-		err := rows.Scan(
+		if err := rows.Scan(
 			&session.ID,
+			&accountID,
 			&session.EventName,
 			&session.SetCode,
 			&session.DraftType,
@@ -301,11 +335,13 @@ func (r *draftRepository) GetCompletedSessions(ctx context.Context, limit int) (
 			&session.TotalPicks,
 			&session.CreatedAt,
 			&session.UpdatedAt,
-		)
-		if err != nil {
+		); err != nil {
 			return nil, err
 		}
 
+		if accountID.Valid {
+			session.AccountID = int(accountID.Int64)
+		}
 		if endTime.Valid {
 			session.EndTime = &endTime.Time
 		}

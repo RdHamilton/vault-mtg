@@ -318,6 +318,7 @@ type DoubleRankUp struct {
 // DraftSession represents a Quick Draft session parsed from MTGA logs.
 type DraftSession struct {
 	ID                   string
+	AccountID            int // Foreign key to accounts
 	EventName            string
 	SetCode              string
 	DraftType            string
