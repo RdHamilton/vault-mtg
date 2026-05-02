@@ -4,7 +4,7 @@ Modern React + TypeScript frontend for the MTGA-Companion desktop application, u
 
 ## Technology Stack
 
-- **React 18** - UI library with hooks
+- **React 19** - UI library with hooks
 - **TypeScript** - Type-safe JavaScript
 - **React Router** - Client-side routing
 - **Recharts** - Data visualization and charting
@@ -96,11 +96,11 @@ Call Go backend endpoints from TypeScript via the REST API:
 
 ```typescript
 // Fetch matches from the REST API
-const response = await fetch('/api/matches?format=ranked');
+const response = await fetch('/api/v1/matches?format=ranked');
 const matches = await response.json();
 
 // Fetch stats from the REST API
-const statsResponse = await fetch('/api/stats');
+const statsResponse = await fetch('/api/v1/stats');
 const stats = await statsResponse.json();
 ```
 
@@ -193,7 +193,7 @@ const PageName = () => {
     try {
       setLoading(true);
       setError(null);
-      const response = await fetch('/api/matches');
+      const response = await fetch('/api/v1/matches');
       const result = await response.json();
       setData(result || []);
     } catch (err) {

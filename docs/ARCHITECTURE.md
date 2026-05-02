@@ -558,24 +558,19 @@ Database migrations are managed with `golang-migrate/migrate`.
 
 ### Adding New Event Types
 
-1. **Define event in daemon** (`cmd/mtga-companion/daemon.go`):
+1. **Dispatch event via EventDispatcher** (in backend handler or facade):
    ```go
-   server.Broadcast("new:event", map[string]interface{}{
-       "data": eventData,
+   dispatcher := systemFacade.GetEventDispatcher()
+   dispatcher.Dispatch(events.Event{
+       Type:    "new:event",
+       Data:    map[string]interface{}{"data": eventData},
+       Context: ctx,
    })
    ```
 
-2. **Handle event in GUI** (`internal/gui/app.go`):
-   ```go
-   func (a *App) handleNewEvent(event map[string]interface{}) {
-       // Process event, update UI
-       runtime.EventsEmit(a.ctx, "new:event", event)
-   }
-   ```
-
-3. **Listen in frontend** (`frontend/src/components/Component.tsx`):
+2. **Listen in frontend** (`frontend/src/components/Component.tsx`):
    ```typescript
-   EventsOn('new:event', (data) => {
+   websocket.on('new:event', (data) => {
        // Update React state
    });
    ```

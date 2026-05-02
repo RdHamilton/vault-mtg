@@ -156,7 +156,7 @@ This document records significant architectural decisions made during the develo
 - **Ecosystem**: Excellent libraries (React Router, Recharts)
 - **Documentation**: Extensive resources and community support
 - **Team familiarity**: React is widely known
-- **API integration**: Works well with REST API data fetching patterns
+- **API integration**: Works well with REST API data-fetching patterns
 
 **Alternatives Considered**:
 - **Vue 3**: Comparable, but React has better charting libraries

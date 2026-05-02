@@ -489,7 +489,12 @@ npm run test:e2e:debug
 npx playwright show-report
 ```
 
-**Component Test Example**:
+**Mocking Strategy**:
+
+- **Fetch-level mocking** (`fetchMock.mockResponseOnce`): Use when the component calls `fetch` directly and you want to test the full data-fetching path including parsing and error handling. Prefer this for simple components without a dedicated API service layer.
+- **Module-level mocking** (`mockApi.matches.getStats.mockResolvedValue`): Use when the component calls a typed API service function (e.g., `api.matches.getStats`). This is the preferred approach for components using the REST API adapter, as it mocks at the service boundary and avoids coupling tests to HTTP details.
+
+**Component Test Example (fetch-level mocking)**:
 ```typescript
 import { describe, it, expect, vi } from 'vitest';
 import { screen, waitFor } from '@testing-library/react';
@@ -498,7 +503,7 @@ import Footer from './Footer';
 
 describe('Footer', () => {
   it('should display match statistics', async () => {
-    // Mock the REST API response
+    // Mock the REST API response at the fetch level
     fetchMock.mockResponseOnce(JSON.stringify({
       TotalMatches: 100,
       WinRate: 0.6,
@@ -507,6 +512,31 @@ describe('Footer', () => {
     render(<Footer />);
 
     // Wait for async data to load
+    await waitFor(() => {
+      expect(screen.getByText('100')).toBeInTheDocument();
+      expect(screen.getByText(/60%/)).toBeInTheDocument();
+    });
+  });
+});
+```
+
+**Component Test Example (module-level mocking)**:
+```typescript
+import { describe, it, expect } from 'vitest';
+import { screen, waitFor } from '@testing-library/react';
+import { render } from '../test/utils/testUtils';
+import { mockApi } from '../test/mocks/apiMock';
+import Footer from './Footer';
+
+describe('Footer', () => {
+  it('should display match statistics', async () => {
+    mockApi.matches.getStats.mockResolvedValue({
+      TotalMatches: 100,
+      WinRate: 0.6,
+    });
+
+    render(<Footer />);
+
     await waitFor(() => {
       expect(screen.getByText('100')).toBeInTheDocument();
       expect(screen.getByText(/60%/)).toBeInTheDocument();
@@ -721,11 +751,11 @@ func (r *inventoryRepository) GetLatest() (*models.Inventory, error) {
 
 ### Adding a New REST API Endpoint
 
-**1. Add handler** (in your API handler file):
+**1. Add handler** (in `internal/api/handlers/`):
 ```go
 // GetInventory returns current inventory
 func (h *Handler) GetInventory(w http.ResponseWriter, r *http.Request) {
-    inv, err := h.db.Inventory.GetLatest()
+    inv, err := h.facade.GetLatestInventory()
     if err != nil {
         http.Error(w, err.Error(), http.StatusInternalServerError)
         return
@@ -734,14 +764,16 @@ func (h *Handler) GetInventory(w http.ResponseWriter, r *http.Request) {
 }
 ```
 
-**2. Register route** (in your router setup):
+**2. Register route** (in `internal/api/router.go`):
 ```go
-mux.HandleFunc("GET /api/inventory", handler.GetInventory)
+r.Route("/api/v1", func(r chi.Router) {
+    r.Get("/inventory", handler.GetInventory)
+})
 ```
 
 **3. Call from frontend**:
 ```typescript
-const response = await fetch('/api/inventory');
+const response = await fetch('/api/v1/inventory');
 const inventory = await response.json();
 ```
 

@@ -248,13 +248,20 @@ Create test data using model constructors:
 import { Match } from '../types/models';
 
 function createMockMatch(overrides: Partial<Match> = {}): Match {
-  return {
+  return new Match({
     ID: 'test-match-1',
     Result: 'win',
     Format: 'Standard',
     Timestamp: new Date().toISOString(),
+    AccountID: 0,
+    EventID: '',
+    EventName: '',
+    PlayerWins: 0,
+    OpponentWins: 0,
+    PlayerTeamID: 0,
+    CreatedAt: new Date().toISOString(),
     ...overrides,
-  };
+  });
 }
 
 // Use in tests
@@ -273,23 +280,23 @@ REST API calls are mocked in `frontend/src/test/mocks/`:
 ### Using Mocks
 
 ```typescript
-import { mockApi } from '../test/mocks/api';
-import { mockWebSocket } from '../test/mocks/websocket';
+import { mockApi } from '../test/mocks/apiMock';
+import { mockEventEmitter } from '../test/mocks/websocketMock';
 
 // Mock function return values
-mockApi.getStats.mockResolvedValue({
+mockApi.matches.getStats.mockResolvedValue({
   TotalMatches: 100,
   WinRate: 0.6,
 });
 
 // Verify function calls
-expect(mockApi.getStats).toHaveBeenCalled();
+expect(mockApi.matches.getStats).toHaveBeenCalled();
 
 // Simulate WebSocket events
-mockWebSocket.emit('stats:updated', { matches: 5 });
+mockEventEmitter.emit('stats:updated', { matches: 5 });
 
 // Clear event listeners
-mockWebSocket.clear();
+mockEventEmitter.clear();
 ```
 
 ### Adding New Mocks

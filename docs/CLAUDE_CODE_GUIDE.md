@@ -697,8 +697,13 @@ Key files:
 
 **Real-time events**:
 ```go
-// Backend (Go) - via WebSocket broadcast
-wsHub.Broadcast("stats:updated", data)
+// Backend (Go) - via EventDispatcher
+dispatcher := systemFacade.GetEventDispatcher()
+dispatcher.Dispatch(events.Event{
+    Type:    "stats:updated",
+    Data:    data,
+    Context: ctx,
+})
 
 // Frontend (TypeScript) - via WebSocket client
 websocket.on('stats:updated', (data) => { /* handle update */ });
