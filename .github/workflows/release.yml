@@ -1,9 +1,8 @@
 name: Release
 
+# Disabled: architecture in flux — run manually when ready to cut a release
 on:
-  push:
-    tags:
-      - 'v*'
+  workflow_dispatch:
 
 permissions:
   contents: write

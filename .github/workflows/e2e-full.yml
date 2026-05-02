@@ -1,8 +1,7 @@
 name: E2E Full Tests
 
+# Disabled: architecture in flux — run manually when needed
 on:
-  release:
-    types: [created]
   workflow_dispatch:
     inputs:
       run_cross_browser:

@@ -1,10 +1,7 @@
 name: Generate Documentation Screenshots
 
+# Disabled: run manually when needed
 on:
-  # Run on releases
-  release:
-    types: [published]
-  # Allow manual trigger
   workflow_dispatch:
     inputs:
       commit_screenshots:

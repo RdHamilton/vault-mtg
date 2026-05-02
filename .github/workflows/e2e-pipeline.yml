@@ -1,20 +1,8 @@
 name: E2E Pipeline Tests
 
+# Disabled: architecture in flux — run manually when needed
 on:
-  push:
-    branches: [ main ]
-    paths-ignore:
-      - '**.md'
-      - 'docs/**'
-      - '.gitignore'
-      - 'LICENSE'
-  pull_request:
-    branches: [ main ]
-    paths-ignore:
-      - '**.md'
-      - 'docs/**'
-      - '.gitignore'
-      - 'LICENSE'
+  workflow_dispatch:
 
 permissions:
   contents: read

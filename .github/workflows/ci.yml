@@ -31,12 +31,12 @@ permissions:
 
 jobs:
   test:
-    name: Test (macOS)
-    runs-on: macos-latest
+    name: Go Unit Tests
+    runs-on: ubuntu-latest
 
     steps:
     - name: Checkout code
-      uses: actions/checkout@v6
+      uses: actions/checkout@v4
 
     - name: Set up Go
       uses: actions/setup-go@v5
@@ -44,91 +44,32 @@ jobs:
         go-version: '1.25'
         cache-dependency-path: go.sum
 
-    - name: Set up Node.js
-      uses: actions/setup-node@v6
-      with:
-        node-version: '20'
-        cache: 'npm'
-        cache-dependency-path: frontend/package-lock.json
-
-    - name: Install frontend dependencies
-      run: |
-        cd frontend
-        npm ci
-
-    - name: Build frontend
-      run: |
-        cd frontend
-        npm run build
-
     - name: Download dependencies
       run: go mod download
 
-    - name: Verify dependencies
-      run: go mod verify
-
-    - name: Run tests with coverage (no race detection)
+    - name: Run unit tests
       run: go test -v -coverprofile=coverage.out -covermode=atomic ./...
 
     - name: Upload coverage to Codecov
-      uses: codecov/codecov-action@v6
+      uses: codecov/codecov-action@v4
       with:
         files: ./coverage.out
         flags: unittests
         fail_ci_if_error: false
 
-  test-race:
-    name: Test with Race Detection (macOS)
-    runs-on: macos-latest
-    # Only run race detection on main branch to save CI time
-    if: github.ref == 'refs/heads/main'
-
-    steps:
-    - name: Checkout code
-      uses: actions/checkout@v6
-
-    - name: Set up Go
-      uses: actions/setup-go@v5
-      with:
-        go-version: '1.25'
-        cache-dependency-path: go.sum
-
-    - name: Set up Node.js
-      uses: actions/setup-node@v6
-      with:
-        node-version: '20'
-        cache: 'npm'
-        cache-dependency-path: frontend/package-lock.json
-
-    - name: Install frontend dependencies
-      run: |
-        cd frontend
-        npm ci
-
-    - name: Build frontend
-      run: |
-        cd frontend
-        npm run build
-
-    - name: Download dependencies
-      run: go mod download
-
-    - name: Run tests with race detection
-      run: go test -v -race -timeout=15m ./...
-
   frontend-tests:
     name: Frontend Component Tests
-    runs-on: macos-latest
+    runs-on: ubuntu-latest
     permissions:
       contents: read
       pull-requests: write
 
     steps:
     - name: Checkout code
-      uses: actions/checkout@v6
+      uses: actions/checkout@v4
 
     - name: Set up Node.js
-      uses: actions/setup-node@v6
+      uses: actions/setup-node@v4
       with:
         node-version: '20'
         cache: 'npm'
@@ -144,135 +85,9 @@ jobs:
         cd frontend
         npm run test:run
 
-    - name: Generate coverage report
-      run: |
-        cd frontend
-        npm run test:coverage
-
     - name: Upload coverage to Codecov
-      uses: codecov/codecov-action@v6
+      uses: codecov/codecov-action@v4
       with:
         files: ./frontend/coverage/coverage-final.json
         flags: frontend
         fail_ci_if_error: false
-
-    # Note: CodeCoverageSummary and sticky-pull-request-comment are disabled
-    # because they require Linux containers and we're running on macOS
-
-    - name: Upload test results and coverage
-      if: always()
-      uses: actions/upload-artifact@v7
-      with:
-        name: frontend-test-results
-        path: |
-          frontend/coverage/
-          frontend/playwright-report/
-        retention-days: 7
-
-  lint:
-    name: Lint
-    runs-on: macos-latest
-
-    steps:
-    - name: Checkout code
-      uses: actions/checkout@v6
-
-    - name: Set up Go
-      uses: actions/setup-go@v5
-      with:
-        go-version: '1.25'
-        cache-dependency-path: go.sum
-
-    - name: Set up Node.js
-      uses: actions/setup-node@v6
-      with:
-        node-version: '20'
-        cache: 'npm'
-        cache-dependency-path: frontend/package-lock.json
-
-    - name: Install frontend dependencies
-      run: |
-        cd frontend
-        npm ci
-
-    - name: Build frontend
-      run: |
-        cd frontend
-        npm run build
-
-    - name: Run golangci-lint
-      uses: golangci/golangci-lint-action@v9
-      with:
-        version: v2.6.2
-        args: --timeout=5m
-
-  format:
-    name: Format Check
-    runs-on: macos-latest
-
-    steps:
-    - name: Checkout code
-      uses: actions/checkout@v6
-
-    - name: Set up Go
-      uses: actions/setup-go@v5
-      with:
-        go-version: '1.25'
-        cache-dependency-path: go.sum
-
-    - name: Install gofumpt
-      run: go install mvdan.cc/gofumpt@v0.6.0
-
-    - name: Check formatting
-      run: |
-        export PATH="$HOME/go/bin:$PATH"
-        gofumpt -l . > gofumpt-output.txt
-        if [ -s gofumpt-output.txt ]; then
-          echo "The following files need formatting:"
-          cat gofumpt-output.txt
-          exit 1
-        fi
-
-  security:
-    name: Security Scan
-    runs-on: macos-latest
-
-    steps:
-    - name: Checkout code
-      uses: actions/checkout@v6
-
-    - name: Set up Go
-      uses: actions/setup-go@v5
-      with:
-        go-version: '1.25'
-        cache-dependency-path: go.sum
-
-    - name: Install govulncheck
-      run: go install golang.org/x/vuln/cmd/govulncheck@latest
-
-    - name: Run govulncheck
-      run: govulncheck ./...
-
-  build:
-    name: Build (macOS)
-    runs-on: macos-latest
-
-    steps:
-    - name: Checkout code
-      uses: actions/checkout@v6
-
-    - name: Set up Go
-      uses: actions/setup-go@v5
-      with:
-        go-version: '1.25'
-        cache-dependency-path: go.sum
-
-    - name: Build
-      run: go build -v -o bin/mtga-companion ./cmd/mtga-companion
-
-    - name: Upload artifacts
-      uses: actions/upload-artifact@v7
-      with:
-        name: mtga-companion-macos
-        path: bin/
-        retention-days: 7

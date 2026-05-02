@@ -57,6 +57,43 @@ And MUST have exactly these 2 views (in this order):
 1. **Task List** — table/list layout, Milestone column visible
 2. **Planning Board** — board layout grouped by Status
 
+### Agent Field Setup (one-time per project)
+
+Create a single-select "Agent" field on any project that needs agent assignment:
+
+```bash
+gh api graphql -f query='mutation {
+  addProjectV2Field(input: {
+    projectId: "<PROJECT_ID>"
+    dataType: SINGLE_SELECT
+    name: "Agent"
+    singleSelectOptions: [
+      {name: "architect",     color: PURPLE, description: "Architecture and design decisions"}
+      {name: "backend",       color: BLUE,   description: "Go API, repositories, migrations"}
+      {name: "daemon",        color: GRAY,   description: "Log parser, local daemon binary"}
+      {name: "frontend",      color: GREEN,  description: "React components, UI, Playwright E2E"}
+      {name: "infrastructure",color: ORANGE, description: "CloudFormation, EC2, nginx, CI/CD"}
+      {name: "dba",           color: YELLOW, description: "Schema design, PostgreSQL migrations"}
+      {name: "testing",       color: RED,    description: "Test coverage, integration, E2E strategy"}
+    ]
+  }) { projectV2Field { ... on ProjectV2SingleSelectField { id options { id name } } } }
+}'
+```
+
+After running, cache the field ID and option IDs in the Project Registry above.
+
+To assign an agent to a ticket:
+```bash
+gh api graphql -f query='mutation {
+  updateProjectV2ItemFieldValue(input: {
+    projectId: "<PROJECT_ID>"
+    itemId: "<ITEM_ID>"
+    fieldId: "<AGENT_FIELD_ID>"
+    value: { singleSelectOptionId: "<AGENT_OPTION_ID>" }
+  }) { projectV2Item { id } }
+}'
+```
+
 ### Project Creation Steps
 
 **Step 1 — Create the project:**
@@ -94,12 +131,14 @@ Cached project metadata for fast status transitions (no need to re-query field I
 - **Project ID**: `PVT_kwHOABsZ684BMSNn`
 - **Status Field ID**: `PVTSSF_lAHOABsZ684BMSNnzg7nLOc`
 - **Milestone Field ID**: `PVTF_lAHOABsZ684BMSNnzg7nLOo`
+- **Agent Field ID**: query with `gh project field-list 27 --owner RdHamilton --format json` after creating the Agent field (see Agent Field Setup below)
 - **Status Option IDs**:
   - Todo: `6263f412`
   - In Progress: `9fd907f0`
   - PR Review: `0ca4880d`
   - Done: `7729b7fe`
   - Released: `21c7bb87`
+- **Agent Option IDs**: query after field creation, cache here
 
 Note: Status options were re-created via `updateProjectV2Field` mutation (adding PR Review + Released reset all option IDs).
 
@@ -120,6 +159,8 @@ Note: Status options were re-created via `updateProjectV2Field` mutation (adding
 ```markdown
 ## Summary
 <1-2 sentence description of what this feature does and why>
+
+**Agent**: `<architect | backend | daemon | frontend | infrastructure | dba | testing>`
 
 ## Current State
 <What exists today, if anything>
@@ -142,6 +183,8 @@ Note: Status options were re-created via `updateProjectV2Field` mutation (adding
 ```markdown
 ## Problem
 <Clear description of the bug>
+
+**Agent**: `<architect | backend | daemon | frontend | infrastructure | dba | testing>`
 
 ### Steps to Reproduce
 1. <Step 1>
@@ -173,6 +216,8 @@ Note: Status options were re-created via `updateProjectV2Field` mutation (adding
 ```markdown
 ## Summary
 <What needs to change and why>
+
+**Agent**: `<architect | backend | daemon | frontend | infrastructure | dba | testing>`
 
 ## Current State
 | Category | Files | Status |
@@ -332,7 +377,7 @@ gh api repos/RdHamilton/MTGA-Companion/milestones --method POST \
 
 ## Rules
 
-1. NEVER create an issue without at least one label
+1. NEVER create an issue without at least one label and an **Agent** field value in the body
 2. NEVER create a project without all 5 status columns configured
 3. Always use the existing label if one fits - check the list above first
 4. Always add new issues to the relevant project board

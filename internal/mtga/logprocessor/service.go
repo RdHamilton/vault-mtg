@@ -1426,6 +1426,7 @@ func (s *Service) storeDraftSession(ctx context.Context, data *draftSessionData)
 	// Create draft session (first time or non-replay mode)
 	session := &models.DraftSession{
 		ID:         data.SessionID,
+		AccountID:  s.storage.CurrentAccountID(),
 		EventName:  data.EventName,
 		SetCode:    data.SetCode,
 		DraftType:  data.DraftType,

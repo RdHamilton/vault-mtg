@@ -914,3 +914,110 @@ func TestDraftRepository_UpdateSessionPrediction(t *testing.T) {
 		t.Errorf("PredictionFactors mismatch")
 	}
 }
+
+func TestDraftRepository_CreateSession_WithAccountID(t *testing.T) {
+	db := setupDraftTestDB(t)
+	defer func() {
+		if err := db.Close(); err != nil {
+			t.Errorf("Error closing database: %v", err)
+		}
+	}()
+
+	repo := NewDraftRepository(db)
+	ctx := context.Background()
+	now := time.Now()
+
+	session := &models.DraftSession{
+		ID:        "session-acct",
+		AccountID: 42,
+		EventName: "QuickDraft_FDN",
+		SetCode:   "FDN",
+		DraftType: "quick_draft",
+		StartTime: now,
+		Status:    "in_progress",
+		CreatedAt: now,
+		UpdatedAt: now,
+	}
+
+	if err := repo.CreateSession(ctx, session); err != nil {
+		t.Fatalf("CreateSession failed: %v", err)
+	}
+
+	retrieved, err := repo.GetSession(ctx, "session-acct")
+	if err != nil {
+		t.Fatalf("GetSession failed: %v", err)
+	}
+	if retrieved == nil {
+		t.Fatal("expected session, got nil")
+	}
+	if retrieved.AccountID != 42 {
+		t.Errorf("expected AccountID 42, got %d", retrieved.AccountID)
+	}
+}
+
+func TestDraftRepository_GetSessionsByAccount(t *testing.T) {
+	db := setupDraftTestDB(t)
+	defer func() {
+		if err := db.Close(); err != nil {
+			t.Errorf("Error closing database: %v", err)
+		}
+	}()
+
+	repo := NewDraftRepository(db)
+	ctx := context.Background()
+	now := time.Now()
+
+	// Create sessions for two different accounts
+	for i, accountID := range []int{1, 1, 2} {
+		session := &models.DraftSession{
+			ID:        "session-" + string(rune('a'+i)),
+			AccountID: accountID,
+			EventName: "QuickDraft_FDN",
+			SetCode:   "FDN",
+			DraftType: "quick_draft",
+			StartTime: now,
+			Status:    "completed",
+			CreatedAt: now,
+			UpdatedAt: now,
+		}
+		if err := repo.CreateSession(ctx, session); err != nil {
+			t.Fatalf("CreateSession failed: %v", err)
+		}
+	}
+
+	// Account 1 should have 2 sessions
+	sessions, err := repo.GetSessionsByAccount(ctx, 1, 10)
+	if err != nil {
+		t.Fatalf("GetSessionsByAccount failed: %v", err)
+	}
+	if len(sessions) != 2 {
+		t.Errorf("expected 2 sessions for account 1, got %d", len(sessions))
+	}
+
+	// Account 2 should have 1 session
+	sessions, err = repo.GetSessionsByAccount(ctx, 2, 10)
+	if err != nil {
+		t.Fatalf("GetSessionsByAccount failed: %v", err)
+	}
+	if len(sessions) != 1 {
+		t.Errorf("expected 1 session for account 2, got %d", len(sessions))
+	}
+
+	// Limit should be respected
+	sessions, err = repo.GetSessionsByAccount(ctx, 1, 1)
+	if err != nil {
+		t.Fatalf("GetSessionsByAccount with limit failed: %v", err)
+	}
+	if len(sessions) != 1 {
+		t.Errorf("expected 1 session with limit=1, got %d", len(sessions))
+	}
+
+	// Account with no sessions should return empty
+	sessions, err = repo.GetSessionsByAccount(ctx, 99, 10)
+	if err != nil {
+		t.Fatalf("GetSessionsByAccount for empty account failed: %v", err)
+	}
+	if len(sessions) != 0 {
+		t.Errorf("expected 0 sessions for unknown account, got %d", len(sessions))
+	}
+}

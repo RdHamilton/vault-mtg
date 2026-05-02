@@ -1,9 +1,7 @@
 name: Release GUI Application
 
+# Disabled: desktop GUI release deprecated in favour of cloud SaaS architecture
 on:
-  push:
-    tags:
-      - 'v*'
   workflow_dispatch:
     inputs:
       version:
