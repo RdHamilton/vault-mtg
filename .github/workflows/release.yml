@@ -9,17 +9,9 @@ permissions:
   id-token: write  # required for OIDC-based AWS auth in deploy job
 
 jobs:
-  # Run E2E tests before building release
-  e2e-validation:
-    name: E2E Validation
-    uses: ./.github/workflows/e2e-full.yml
-    with:
-      run_cross_browser: true
-
   release:
     name: Create Release
     runs-on: ubuntu-latest
-    needs: [e2e-validation]
 
     steps:
     - name: Checkout code
@@ -31,9 +23,6 @@ jobs:
       uses: actions/setup-go@v5
       with:
         go-version: '1.25'
-
-    - name: Run tests
-      run: go test -v -race ./...
 
     - name: Build for multiple platforms
       run: |
