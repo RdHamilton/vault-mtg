@@ -4,5 +4,6 @@ toolchain go1.25.9
 
 use (
 	.
+	./services/bff
 	./services/contract
 )
