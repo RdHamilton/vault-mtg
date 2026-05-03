@@ -34,20 +34,18 @@ permissions:
 # ---------------------------------------------------------------------------
 
 jobs:
-  # BFF unit tests — only when BFF or shared contract files change
-  bff-unit-tests:
-    name: BFF Unit Tests
+  detect-changes:
+    name: Detect Changed Modules
     runs-on: ubuntu-latest
-    if: |
-      github.event_name == 'pull_request' ||
-      github.event_name == 'push'
-
+    outputs:
+      bff: ${{ steps.filter.outputs.bff }}
+      frontend: ${{ steps.filter.outputs.frontend }}
     steps:
     - name: Checkout code
       uses: actions/checkout@v4
 
-    - name: Check for BFF/contract changes
-      id: changes
+    - name: Path filter
+      id: filter
       uses: dorny/paths-filter@v3
       with:
         filters: |
@@ -55,34 +53,44 @@ jobs:
             - 'services/bff/**'
             - 'services/contract/**'
             - '.github/workflows/ci.yml'
+          frontend:
+            - 'frontend/**'
+            - '.github/workflows/ci.yml'
+
+  bff-unit-tests:
+    name: BFF Unit Tests
+    needs: detect-changes
+    if: needs.detect-changes.outputs.bff == 'true'
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
 
     - name: Set up Go
-      if: steps.changes.outputs.bff == 'true'
       uses: actions/setup-go@v5
       with:
         go-version: '1.25'
 
     - name: Download dependencies
-      if: steps.changes.outputs.bff == 'true'
       working-directory: services/bff
       run: go mod download
 
     - name: Run BFF unit tests
-      if: steps.changes.outputs.bff == 'true'
       working-directory: services/bff
       run: go test -v -short -coverprofile=coverage.out -covermode=atomic ./...
 
     - name: Upload coverage to Codecov
-      if: steps.changes.outputs.bff == 'true'
       uses: codecov/codecov-action@v4
       with:
         files: ./services/bff/coverage.out
         flags: bff-unit
         fail_ci_if_error: false
 
-  # Frontend component tests — only when frontend files change
   frontend-component-tests:
     name: Frontend Component Tests
+    needs: detect-changes
+    if: needs.detect-changes.outputs.frontend == 'true'
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -92,17 +100,7 @@ jobs:
     - name: Checkout code
       uses: actions/checkout@v4
 
-    - name: Check for frontend changes
-      id: changes
-      uses: dorny/paths-filter@v3
-      with:
-        filters: |
-          frontend:
-            - 'frontend/**'
-            - '.github/workflows/ci.yml'
-
     - name: Set up Node.js
-      if: steps.changes.outputs.frontend == 'true'
       uses: actions/setup-node@v4
       with:
         node-version: '20'
@@ -110,25 +108,21 @@ jobs:
         cache-dependency-path: frontend/package-lock.json
 
     - name: Install frontend dependencies
-      if: steps.changes.outputs.frontend == 'true'
       run: |
         cd frontend
         npm ci
 
     - name: TypeScript type check
-      if: steps.changes.outputs.frontend == 'true'
       run: |
         cd frontend
         npx tsc --noEmit
 
     - name: Run component tests
-      if: steps.changes.outputs.frontend == 'true'
       run: |
         cd frontend
         npm run test:run
 
     - name: Upload coverage to Codecov
-      if: steps.changes.outputs.frontend == 'true'
       uses: codecov/codecov-action@v4
       with:
         files: ./frontend/coverage/coverage-final.json
