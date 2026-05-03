@@ -42,6 +42,19 @@ type Config struct {
 	// IngestPath is the BFF endpoint path for event ingestion.
 	// Default: /v1/ingest/events.
 	IngestPath string `json:"ingest_path"`
+
+	// LogArchiveDir is the directory where log snapshots are stored.
+	// Default: ~/.mtga-daemon/archives
+	LogArchiveDir string `json:"log_archive_dir"`
+
+	// LogArchiveMaxAge is how long to retain log snapshots before pruning.
+	// Default: 7 days.
+	LogArchiveMaxAge time.Duration `json:"log_archive_max_age"`
+
+	// LogPreserveOnStart controls whether a snapshot of Player.log is taken
+	// each time the daemon starts, before the poller begins reading.
+	// Default: true.
+	LogPreserveOnStart bool `json:"log_preserve_on_start"`
 }
 
 // Load reads daemon configuration. Sources in priority order:
@@ -67,12 +80,24 @@ func Load(path string) (*Config, error) {
 }
 
 func defaults() *Config {
+	archiveDir := defaultArchiveDir()
 	return &Config{
-		SyncEnabled:  true,
-		PollInterval: 2 * time.Second,
-		UseFSNotify:  true,
-		IngestPath:   "/v1/ingest/events",
+		SyncEnabled:        true,
+		PollInterval:       2 * time.Second,
+		UseFSNotify:        true,
+		IngestPath:         "/v1/ingest/events",
+		LogPreserveOnStart: true,
+		LogArchiveMaxAge:   7 * 24 * time.Hour,
+		LogArchiveDir:      archiveDir,
 	}
+}
+
+func defaultArchiveDir() string {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return os.TempDir() + "/mtga-daemon/archives"
+	}
+	return home + "/.mtga-daemon/archives"
 }
 
 func loadFile(cfg *Config, path string) error {
@@ -100,6 +125,9 @@ func applyEnv(cfg *Config) {
 	}
 	if v := os.Getenv("MTGA_DAEMON_ACCOUNT_ID"); v != "" {
 		cfg.AccountID = v
+	}
+	if v := os.Getenv("MTGA_DAEMON_LOG_ARCHIVE_DIR"); v != "" {
+		cfg.LogArchiveDir = v
 	}
 }
 

@@ -4,6 +4,7 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 
 	"github.com/ramonehamilton/mtga-daemon/internal/config"
 	"github.com/stretchr/testify/assert"
@@ -82,4 +83,37 @@ func TestSyncEnabledWithMissingAPIKeyNoError(t *testing.T) {
 	require.NoError(t, err)
 	assert.True(t, cfg.SyncEnabled)
 	assert.Empty(t, cfg.APIKey)
+}
+
+func TestDefaultLogPreserveOnStart(t *testing.T) {
+	t.Setenv("MTGA_DAEMON_CLOUD_API_URL", "http://localhost:9000")
+
+	cfg, err := config.Load("")
+	require.NoError(t, err)
+	assert.True(t, cfg.LogPreserveOnStart)
+}
+
+func TestDefaultLogArchiveMaxAge(t *testing.T) {
+	t.Setenv("MTGA_DAEMON_CLOUD_API_URL", "http://localhost:9000")
+
+	cfg, err := config.Load("")
+	require.NoError(t, err)
+	assert.Equal(t, 7*24*time.Hour, cfg.LogArchiveMaxAge)
+}
+
+func TestDefaultLogArchiveDirNonEmpty(t *testing.T) {
+	t.Setenv("MTGA_DAEMON_CLOUD_API_URL", "http://localhost:9000")
+
+	cfg, err := config.Load("")
+	require.NoError(t, err)
+	assert.NotEmpty(t, cfg.LogArchiveDir)
+}
+
+func TestLogArchiveDirEnvOverride(t *testing.T) {
+	t.Setenv("MTGA_DAEMON_CLOUD_API_URL", "http://localhost:9000")
+	t.Setenv("MTGA_DAEMON_LOG_ARCHIVE_DIR", "/custom/archive/dir")
+
+	cfg, err := config.Load("")
+	require.NoError(t, err)
+	assert.Equal(t, "/custom/archive/dir", cfg.LogArchiveDir)
 }

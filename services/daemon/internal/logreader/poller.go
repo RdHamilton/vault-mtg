@@ -243,6 +243,13 @@ func (p *Poller) pollWithEvents() {
 				}
 			case event.Has(fsnotify.Remove), event.Has(fsnotify.Rename):
 				fmt.Printf("[INFO] Log file rotation detected (%s event): %s\n", event.Op, event.Name)
+				// Drain remaining bytes from the old file while it may still be
+				// readable (e.g. on macOS a Rename fires before the path is gone).
+				// We must NOT call checkForUpdates() here because it reopens p.path
+				// which may already point to the new (empty) file written by MTGA.
+				if err := p.drainFile(); err != nil {
+					p.sendError(err)
+				}
 				p.mu.Lock()
 				p.lastPos = 0
 				p.lastSize = 0
@@ -403,6 +410,61 @@ func (p *Poller) checkForUpdates() error {
 	}
 
 	return nil
+}
+
+// drainFile reads any remaining lines from p.path starting at p.lastPos and
+// sends parsed JSON entries to p.updates. It is used exclusively during a
+// Remove/Rename event so that we do not reopen the path via checkForUpdates
+// (which might already point to a new file created by MTGA).
+// drainFile does NOT update p.lastPos/lastSize/lastMod — the caller resets
+// those to zero after draining.
+func (p *Poller) drainFile() error {
+	p.mu.RLock()
+	lastPos := p.lastPos
+	p.mu.RUnlock()
+
+	file, err := os.Open(p.path)
+	if err != nil {
+		if os.IsNotExist(err) {
+			// File already gone — nothing left to drain.
+			return nil
+		}
+		return fmt.Errorf("drain open file: %w", err)
+	}
+	defer func() { _ = file.Close() }()
+
+	stat, err := file.Stat()
+	if err != nil {
+		return fmt.Errorf("drain stat file: %w", err)
+	}
+
+	if stat.Size() <= lastPos {
+		return nil
+	}
+
+	if _, err := file.Seek(lastPos, io.SeekStart); err != nil {
+		return fmt.Errorf("drain seek: %w", err)
+	}
+
+	scanner := bufio.NewScanner(file)
+	const maxScanTokenSize = 10 * 1024 * 1024 // 10MB
+	buf := make([]byte, maxScanTokenSize)
+	scanner.Buffer(buf, maxScanTokenSize)
+
+	for scanner.Scan() {
+		line := scanner.Text()
+		entry := &LogEntry{Raw: line}
+		entry.parseJSON()
+		if entry.IsJSON {
+			select {
+			case p.updates <- entry:
+			case <-p.ctx.Done():
+				return p.ctx.Err()
+			}
+		}
+	}
+
+	return scanner.Err()
 }
 
 // Stop stops the poller and closes the updates channel.
