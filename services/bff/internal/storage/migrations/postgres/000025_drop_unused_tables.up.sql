@@ -12,4 +12,4 @@ DROP INDEX IF EXISTS idx_draft_events_status;
 
 DROP TABLE IF EXISTS cards;
 DROP TABLE IF EXISTS currency_history;
-DROP TABLE IF EXISTS draft_events;
+DROP TABLE IF EXISTS draft_events CASCADE;
