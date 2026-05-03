@@ -132,6 +132,57 @@ Every ticket must end with a PR. Never leave work committed without opening one.
 gh api graphql -f query='mutation { updateProjectV2ItemFieldValue(input: { projectId: "PVT_kwHOABsZ684BMSNn" itemId: "ITEM_ID" fieldId: "PVTSSF_lAHOABsZ684BMSNnzg7nLOc" value: { singleSelectOptionId: "OPTION_ID" } }) { projectV2Item { id } } }'
 ```
 
+## 17Lands / Scryfall Card ID Correlation
+
+### What 17Lands returns
+
+The 17Lands card ratings endpoint (`/card_ratings/data?expansion=<SET>&format=<FORMAT>`) returns a JSON array. Each element includes a field `mtga_id` (integer) which is the MTG Arena card ID. Example from BLB:
+
+```json
+{
+  "name": "Banishing Light",
+  "mtga_id": 91537,
+  "color": "W",
+  "rarity": "common",
+  "url": "https://cards.scryfall.io/large/front/2/5/25a06f82-ebdb-4dd6-bfe8-958018ce557c.jpg?...",
+  ...
+}
+```
+
+The `url` field also embeds the Scryfall UUID as a path segment, but `mtga_id` is the authoritative direct identifier.
+
+### What Scryfall returns
+
+The Scryfall card object includes `arena_id` (integer) — the MTG Arena card ID. Verified by fetching the card at the Scryfall UUID extracted from 17Lands image URLs:
+
+- 17Lands `mtga_id = 91537` (Banishing Light, BLB)
+- Scryfall `arena_id = 91537` (same card)
+
+They are identical values. No lookup or join is needed.
+
+### Current sync service state (as of 2026-05-03)
+
+The `CardRating` struct in `services/sync/internal/seventeenlands/rating.go` does NOT map `mtga_id` — the field is absent. `postgres_store.go` uses synthetic `arena_id = i+1` (loop index) with the comment "17Lands has no arena IDs". This is incorrect — 17Lands does return `mtga_id`.
+
+### Join path
+
+```
+draft_card_ratings.arena_id  ←→  set_cards.arena_id  ←→  Scryfall arena_id  ←→  17Lands mtga_id
+```
+
+All four are the same integer. The `set_cards` table stores `arena_id TEXT NOT NULL` (migration 000014); `draft_card_ratings` stores `arena_id INTEGER NOT NULL` (migration 000015). Note the type mismatch: `set_cards.arena_id` is TEXT, `draft_card_ratings.arena_id` is INTEGER. Any join between them requires a cast: `set_cards.arena_id::INTEGER = draft_card_ratings.arena_id`.
+
+### Recommended fix for the backend agent
+
+1. Add `MtgaID int \`json:"mtga_id"\`` to the `CardRating` struct in `rating.go`.
+2. In `postgres_store.go` `UpsertRatings`, replace `i+1` with `card.MtgaID` for the `arena_id` insert parameter.
+3. The `UNIQUE(set_code, draft_format, arena_id)` constraint then correctly deduplicates on the real Arena ID.
+
+### Caveats
+
+- Cards not on Arena (paper-only reprints in a set) may have `mtga_id = 0` or be absent from 17Lands entirely. The sync service should skip or handle zero-value `mtga_id`.
+- The `set_cards.arena_id` column type is TEXT (migration 000014). It should be cast when joining to `draft_card_ratings.arena_id` (INTEGER). A future schema cleanup migration should normalize both to INTEGER.
+
 ## Rules
 
 1. Never modify an existing migration — always add a new numbered migration

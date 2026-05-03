@@ -63,11 +63,16 @@ func (s *PostgresStore) UpsertRatings(ctx context.Context, ratings draftdata.Set
 		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
 	`
 
-	for i, card := range ratings.Cards {
+	for _, card := range ratings.Cards {
+		if card.MtgaID == 0 {
+			log.Printf("[sync] skipping paper-only card %q (no arena ID)", card.Name)
+			continue
+		}
+
 		if _, err := tx.Exec(ctx, insertQuery,
 			ratings.SetCode,
 			ratings.DraftFormat,
-			i+1, // synthetic 1-based position; 17Lands has no arena IDs
+			card.MtgaID,
 			card.Name,
 			card.GIHWR,
 			card.OHW,

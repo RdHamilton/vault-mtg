@@ -2,6 +2,7 @@ package seventeenlands
 
 // CardRating holds per-card statistics returned by the 17Lands card ratings API.
 type CardRating struct {
+	MtgaID    int     `json:"mtga_id"`
 	Name      string  `json:"name"`
 	ALSA      float64 `json:"avg_seen"`
 	ATA       float64 `json:"avg_pick"`

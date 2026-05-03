@@ -15,8 +15,8 @@ import (
 func TestFetchCardRatings(t *testing.T) {
 	t.Run("returns ratings on 200", func(t *testing.T) {
 		fixture := []seventeenlands.CardRating{
-			{Name: "Lightning Bolt", ALSA: 1.5, ATA: 1.8, GIHWR: 0.62, SeenCount: 1000},
-			{Name: "Island", ALSA: 8.0, ATA: 8.5, GIHWR: 0.55, SeenCount: 500},
+			{MtgaID: 12345, Name: "Lightning Bolt", ALSA: 1.5, ATA: 1.8, GIHWR: 0.62, SeenCount: 1000},
+			{MtgaID: 67890, Name: "Island", ALSA: 8.0, ATA: 8.5, GIHWR: 0.55, SeenCount: 500},
 		}
 
 		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -33,6 +33,7 @@ func TestFetchCardRatings(t *testing.T) {
 
 		require.NoError(t, err)
 		require.Len(t, ratings, 2)
+		assert.Equal(t, 12345, ratings[0].MtgaID)
 		assert.Equal(t, "Lightning Bolt", ratings[0].Name)
 		assert.InDelta(t, 1.5, ratings[0].ALSA, 0.001)
 	})

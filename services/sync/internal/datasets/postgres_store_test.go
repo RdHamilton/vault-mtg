@@ -50,7 +50,7 @@ func TestMockStore_RoundTrip(t *testing.T) {
 		DraftFormat: "PremierDraft",
 		FetchedAt:   time.Now().UTC().Truncate(time.Second),
 		Cards: []seventeenlands.CardRating{
-			{Name: "Lightning Bolt", ALSA: 1.5, ATA: 1.8, GIHWR: 0.62, SeenCount: 1000},
+			{MtgaID: 101, Name: "Lightning Bolt", ALSA: 1.5, ATA: 1.8, GIHWR: 0.62, SeenCount: 1000},
 		},
 	}
 
