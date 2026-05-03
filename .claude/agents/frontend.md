@@ -75,10 +75,23 @@ Every code change requires:
 - **Component tests**: for all React component changes (`.test.tsx` pattern)
 - **Playwright E2E tests**: for any new user flow or UI change affecting critical paths
 
-Run component tests: `npm run test:run -- -tsc`
+Run type check: `npx tsc --noEmit`
+Run component tests: `npm run test:run`
 Run E2E tests: `npx playwright test`
 
 **Never skip writing tests before committing.**
+
+## Pre-PR Checklist (Required — Never Skip)
+
+Before opening any pull request, run ALL of the following from `frontend/`. Every command must pass with no errors before the PR is opened:
+
+```bash
+npm run lint                  # must print nothing — fix any reported issues
+npx tsc --noEmit              # TypeScript type check must pass
+npm run test:run              # all component tests must pass
+```
+
+If any command fails, fix the issue first. Do not open the PR until all checks pass.
 
 ## Serving (EC2 + nginx)
 
@@ -109,7 +122,7 @@ gh api graphql -f query='mutation { updateProjectV2ItemFieldValue(input: { proje
 2. Always write Playwright E2E tests for new UI and UI changes
 3. Always write component tests for React component changes
 4. Use SSE (`EventSource`) for real-time updates — never WebSocket
-5. Run `npm run test:run -- -tsc` before committing
+5. Run `npx tsc --noEmit && npm run test:run` before committing
 6. `VITE_API_BASE_URL` is the only BFF coupling point — never hardcode the API URL
 7. Do NOT add Claude Code references to PRs or comments
 8. Always follow the Ticket Workflow above

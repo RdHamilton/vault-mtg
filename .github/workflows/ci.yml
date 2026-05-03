@@ -115,11 +115,17 @@ jobs:
         cd frontend
         npm ci
 
+    - name: TypeScript type check
+      if: steps.changes.outputs.frontend == 'true'
+      run: |
+        cd frontend
+        npx tsc --noEmit
+
     - name: Run component tests
       if: steps.changes.outputs.frontend == 'true'
       run: |
         cd frontend
-        npm run test:run -- --tsc
+        npm run test:run
 
     - name: Upload coverage to Codecov
       if: steps.changes.outputs.frontend == 'true'

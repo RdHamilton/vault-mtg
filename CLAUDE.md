@@ -1,6 +1,7 @@
 - Always write Playwright e2e tests for new UI and UI changes
 - Use the REST API adapter for new components (enables E2E testing)
-- Use -tsc when running npm test
+- Run `npx tsc --noEmit` for TypeScript type checking (separate from vitest)
+- Run `npm run test:run` to run vitest component tests
 
 ## Context Management - Use Subagents
 
