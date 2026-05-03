@@ -14,7 +14,7 @@ GRANT USAGE ON SCHEMA public TO mtga_sync;
 GRANT SELECT, INSERT, UPDATE ON draft_card_ratings TO mtga_sync;
 GRANT SELECT, INSERT, UPDATE ON draft_color_ratings TO mtga_sync;
 GRANT SELECT, INSERT, UPDATE ON dataset_metadata TO mtga_sync;
-GRANT SELECT ON cards TO mtga_sync;
+GRANT SELECT ON set_cards TO mtga_sync;
 GRANT SELECT ON sets TO mtga_sync;
 
 -- Explicitly deny write access to user-facing tables.
