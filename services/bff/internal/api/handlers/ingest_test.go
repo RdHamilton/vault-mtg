@@ -2,13 +2,18 @@ package handlers_test
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"testing"
 	"time"
 
+	"golang.org/x/crypto/bcrypt"
+
 	"github.com/ramonehamilton/mtga-bff/internal/api/handlers"
+	"github.com/ramonehamilton/mtga-bff/internal/api/middleware"
+	"github.com/ramonehamilton/mtga-bff/internal/storage/repository"
 	contract "github.com/ramonehamilton/mtga-contract"
 )
 
@@ -19,6 +24,33 @@ type mockBroadcaster struct {
 
 func (m *mockBroadcaster) BroadcastDaemonEvent(event contract.DaemonEvent) {
 	m.events = append(m.events, event)
+}
+
+// mockKeyLister satisfies the activeKeyLister interface used by middleware.APIKeyAuth.
+type mockKeyLister struct {
+	keys []repository.APIKey
+}
+
+func (m *mockKeyLister) ListAllActive(_ context.Context) ([]repository.APIKey, error) {
+	return m.keys, nil
+}
+
+func (m *mockKeyLister) UpdateLastUsedAt(_ context.Context, _ int64) error { return nil }
+
+// mustHash returns a bcrypt hash of token, fataling the test on error.
+func mustHash(t *testing.T, token string) string {
+	t.Helper()
+	hash, err := bcrypt.GenerateFromPassword([]byte(token), bcrypt.MinCost)
+	if err != nil {
+		t.Fatalf("bcrypt: %v", err)
+	}
+	return string(hash)
+}
+
+// buildHandler wraps IngestHandler with APIKeyAuth middleware backed by repo.
+func buildHandler(broadcaster handlers.EventBroadcaster, repo *mockKeyLister) http.Handler {
+	ih := handlers.NewIngestHandler(broadcaster)
+	return middleware.APIKeyAuth(repo)(http.HandlerFunc(ih.IngestEvent))
 }
 
 func ingestRequest(t *testing.T, token string, event contract.DaemonEvent) (*http.Request, *httptest.ResponseRecorder) {
@@ -52,14 +84,18 @@ func makeEvent(eventType string) contract.DaemonEvent {
 }
 
 func TestIngestEvent_Accepted(t *testing.T) {
-	t.Setenv("DAEMON_SECRET", "test-secret")
+	const token = "valid-test-token"
+
+	repo := &mockKeyLister{keys: []repository.APIKey{
+		{ID: 1, KeyHash: mustHash(t, token), UserID: 42},
+	}}
 
 	broadcaster := &mockBroadcaster{}
-	handler := handlers.NewIngestHandler(broadcaster)
+	handler := buildHandler(broadcaster, repo)
 
 	event := makeEvent("sync:ratings")
-	req, rr := ingestRequest(t, "test-secret", event)
-	handler.IngestEvent(rr, req)
+	req, rr := ingestRequest(t, token, event)
+	handler.ServeHTTP(rr, req)
 
 	if rr.Code != http.StatusAccepted {
 		t.Errorf("expected 202, got %d", rr.Code)
@@ -74,14 +110,15 @@ func TestIngestEvent_Accepted(t *testing.T) {
 	}
 }
 
-func TestIngestEvent_Unauthorized_EnvSecretUnset(t *testing.T) {
-	t.Setenv("DAEMON_SECRET", "")
+func TestIngestEvent_Unauthorized_NoKeysInDB(t *testing.T) {
+	// Empty key list — no valid tokens registered.
+	repo := &mockKeyLister{keys: nil}
 
-	handler := handlers.NewIngestHandler(&mockBroadcaster{})
+	handler := buildHandler(&mockBroadcaster{}, repo)
 
 	event := makeEvent("sync:ratings")
 	req, rr := ingestRequest(t, "anything", event)
-	handler.IngestEvent(rr, req)
+	handler.ServeHTTP(rr, req)
 
 	if rr.Code != http.StatusUnauthorized {
 		t.Errorf("expected 401, got %d", rr.Code)
@@ -89,13 +126,15 @@ func TestIngestEvent_Unauthorized_EnvSecretUnset(t *testing.T) {
 }
 
 func TestIngestEvent_Unauthorized_WrongToken(t *testing.T) {
-	t.Setenv("DAEMON_SECRET", "correct-secret")
+	repo := &mockKeyLister{keys: []repository.APIKey{
+		{ID: 1, KeyHash: mustHash(t, "correct-secret"), UserID: 42},
+	}}
 
-	handler := handlers.NewIngestHandler(&mockBroadcaster{})
+	handler := buildHandler(&mockBroadcaster{}, repo)
 
 	event := makeEvent("sync:ratings")
 	req, rr := ingestRequest(t, "wrong-secret", event)
-	handler.IngestEvent(rr, req)
+	handler.ServeHTTP(rr, req)
 
 	if rr.Code != http.StatusUnauthorized {
 		t.Errorf("expected 401, got %d", rr.Code)
@@ -103,9 +142,11 @@ func TestIngestEvent_Unauthorized_WrongToken(t *testing.T) {
 }
 
 func TestIngestEvent_Unauthorized_NoHeader(t *testing.T) {
-	t.Setenv("DAEMON_SECRET", "correct-secret")
+	repo := &mockKeyLister{keys: []repository.APIKey{
+		{ID: 1, KeyHash: mustHash(t, "correct-secret"), UserID: 42},
+	}}
 
-	handler := handlers.NewIngestHandler(&mockBroadcaster{})
+	handler := buildHandler(&mockBroadcaster{}, repo)
 
 	event := makeEvent("sync:ratings")
 	body, _ := json.Marshal(event)
@@ -114,7 +155,7 @@ func TestIngestEvent_Unauthorized_NoHeader(t *testing.T) {
 	// No Authorization header.
 	rr := httptest.NewRecorder()
 
-	handler.IngestEvent(rr, req)
+	handler.ServeHTTP(rr, req)
 
 	if rr.Code != http.StatusUnauthorized {
 		t.Errorf("expected 401, got %d", rr.Code)
@@ -122,9 +163,13 @@ func TestIngestEvent_Unauthorized_NoHeader(t *testing.T) {
 }
 
 func TestIngestEvent_BadRequest_EmptyType(t *testing.T) {
-	t.Setenv("DAEMON_SECRET", "test-secret")
+	const token = "valid-test-token"
 
-	handler := handlers.NewIngestHandler(&mockBroadcaster{})
+	repo := &mockKeyLister{keys: []repository.APIKey{
+		{ID: 1, KeyHash: mustHash(t, token), UserID: 42},
+	}}
+
+	handler := buildHandler(&mockBroadcaster{}, repo)
 
 	event := contract.DaemonEvent{
 		AccountID:  "acct_abc",
@@ -132,8 +177,8 @@ func TestIngestEvent_BadRequest_EmptyType(t *testing.T) {
 		// Type intentionally empty.
 	}
 
-	req, rr := ingestRequest(t, "test-secret", event)
-	handler.IngestEvent(rr, req)
+	req, rr := ingestRequest(t, token, event)
+	handler.ServeHTTP(rr, req)
 
 	if rr.Code != http.StatusBadRequest {
 		t.Errorf("expected 400, got %d", rr.Code)
@@ -141,17 +186,21 @@ func TestIngestEvent_BadRequest_EmptyType(t *testing.T) {
 }
 
 func TestIngestEvent_BadRequest_InvalidJSON(t *testing.T) {
-	t.Setenv("DAEMON_SECRET", "test-secret")
+	const token = "valid-test-token"
 
-	handler := handlers.NewIngestHandler(&mockBroadcaster{})
+	repo := &mockKeyLister{keys: []repository.APIKey{
+		{ID: 1, KeyHash: mustHash(t, token), UserID: 42},
+	}}
+
+	handler := buildHandler(&mockBroadcaster{}, repo)
 
 	req := httptest.NewRequest(http.MethodPost, "/v1/ingest/events",
 		bytes.NewReader([]byte("not-json")))
 	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("Authorization", "Bearer test-secret")
+	req.Header.Set("Authorization", "Bearer "+token)
 
 	rr := httptest.NewRecorder()
-	handler.IngestEvent(rr, req)
+	handler.ServeHTTP(rr, req)
 
 	if rr.Code != http.StatusBadRequest {
 		t.Errorf("expected 400, got %d", rr.Code)
@@ -159,13 +208,17 @@ func TestIngestEvent_BadRequest_InvalidJSON(t *testing.T) {
 }
 
 func TestIngestEvent_NilBroadcaster(t *testing.T) {
-	t.Setenv("DAEMON_SECRET", "test-secret")
+	const token = "valid-test-token"
 
-	handler := handlers.NewIngestHandler(nil)
+	repo := &mockKeyLister{keys: []repository.APIKey{
+		{ID: 1, KeyHash: mustHash(t, token), UserID: 42},
+	}}
+
+	handler := buildHandler(nil, repo)
 
 	event := makeEvent("sync:ratings")
-	req, rr := ingestRequest(t, "test-secret", event)
-	handler.IngestEvent(rr, req)
+	req, rr := ingestRequest(t, token, event)
+	handler.ServeHTTP(rr, req)
 
 	// nil broadcaster must not panic; event is accepted.
 	if rr.Code != http.StatusAccepted {

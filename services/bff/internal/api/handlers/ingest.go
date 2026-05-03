@@ -5,8 +5,6 @@ import (
 	"encoding/json"
 	"log"
 	"net/http"
-	"os"
-	"strings"
 
 	contract "github.com/ramonehamilton/mtga-contract"
 )
@@ -29,36 +27,10 @@ func NewIngestHandler(broadcaster EventBroadcaster) *IngestHandler {
 	return &IngestHandler{broadcaster: broadcaster}
 }
 
-// daemonBearerToken extracts the Bearer token from the Authorization header.
-func daemonBearerToken(r *http.Request) (string, bool) {
-	header := r.Header.Get("Authorization")
-	const prefix = "Bearer "
-
-	if !strings.HasPrefix(header, prefix) {
-		return "", false
-	}
-
-	token := strings.TrimPrefix(header, prefix)
-
-	return token, token != ""
-}
-
 // IngestEvent handles POST /v1/ingest/events.
-// It validates the request against the DAEMON_SECRET environment variable
-// before processing the event.
+// Authentication is enforced by the APIKeyAuth middleware upstream; by the time
+// this handler runs the request is already verified.
 func (h *IngestHandler) IngestEvent(w http.ResponseWriter, r *http.Request) {
-	secret := os.Getenv("DAEMON_SECRET")
-	if secret == "" {
-		http.Error(w, "unauthorized", http.StatusUnauthorized)
-		return
-	}
-
-	token, ok := daemonBearerToken(r)
-	if !ok || token != secret {
-		http.Error(w, "unauthorized", http.StatusUnauthorized)
-		return
-	}
-
 	var event contract.DaemonEvent
 	if err := json.NewDecoder(r.Body).Decode(&event); err != nil {
 		http.Error(w, "invalid JSON body", http.StatusBadRequest)
