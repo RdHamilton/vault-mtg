@@ -7,42 +7,9 @@ import (
 	"time"
 )
 
-// setupCollectionTestDB creates an in-memory database with collection tables.
+// setupCollectionTestDB creates a PostgreSQL test database for collection tests.
 func setupCollectionTestDB(t *testing.T) *sql.DB {
-	db, err := sql.Open("sqlite", ":memory:")
-	if err != nil {
-		t.Fatalf("failed to open test database: %v", err)
-	}
-
-	// Schema with composite primary key (account_id, card_id) as per migration 000002
-	schema := `
-		CREATE TABLE collection (
-			account_id INTEGER NOT NULL DEFAULT 1,
-			card_id INTEGER NOT NULL,
-			quantity INTEGER NOT NULL,
-			updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-			PRIMARY KEY (account_id, card_id)
-		);
-
-		CREATE TABLE collection_history (
-			id INTEGER PRIMARY KEY AUTOINCREMENT,
-			card_id INTEGER NOT NULL,
-			quantity_delta INTEGER NOT NULL,
-			quantity_after INTEGER NOT NULL,
-			timestamp DATETIME NOT NULL,
-			source TEXT,
-			created_at DATETIME DEFAULT CURRENT_TIMESTAMP
-		);
-
-		CREATE INDEX idx_collection_history_timestamp ON collection_history(timestamp);
-		CREATE INDEX idx_collection_history_card_id ON collection_history(card_id);
-	`
-
-	if _, err := db.Exec(schema); err != nil {
-		t.Fatalf("failed to create schema: %v", err)
-	}
-
-	return db
+	return repoTestDB(t)
 }
 
 func TestCollectionRepository_UpsertCard(t *testing.T) {

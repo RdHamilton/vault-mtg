@@ -28,7 +28,7 @@ func (r *QuestRepository) Save(quest *models.Quest) error {
 	// we should create a new record instead of updating the old one.
 	existingQuery := `
 		SELECT id, ending_progress, assigned_at, completed, rerolled FROM quests
-		WHERE quest_id = ?
+		WHERE quest_id = $1
 		ORDER BY created_at DESC
 		LIMIT 1
 	`
@@ -55,19 +55,6 @@ func (r *QuestRepository) Save(quest *models.Quest) error {
 		// Use the completion status from the parser (which detects completion via quest disappearance)
 		// IMPORTANT: Preserve the original assigned_at timestamp for accurate duration calculation
 
-		// Format timestamps for SQLite (ISO 8601 without timezone suffix)
-		var completedAtStr *string
-		if quest.CompletedAt != nil {
-			formatted := quest.CompletedAt.UTC().Format("2006-01-02 15:04:05.999999")
-			completedAtStr = &formatted
-		}
-
-		var lastSeenAtStr *string
-		if quest.LastSeenAt != nil {
-			formatted := quest.LastSeenAt.UTC().Format("2006-01-02 15:04:05.999999")
-			lastSeenAtStr = &formatted
-		}
-
 		// Format session_id and completion_source as nullable strings
 		var sessionIDStr *string
 		if quest.SessionID != "" {
@@ -80,22 +67,22 @@ func (r *QuestRepository) Save(quest *models.Quest) error {
 
 		updateQuery := `
 			UPDATE quests
-			SET ending_progress = ?,
-				completed = ?,
-				completed_at = ?,
-				last_seen_at = ?,
-				can_swap = ?,
+			SET ending_progress = $1,
+				completed = $2,
+				completed_at = $3,
+				last_seen_at = $4,
+				can_swap = $5,
 				rerolled = 0,
-				session_id = COALESCE(?, session_id),
-				completion_source = ?
-			WHERE id = ?
+				session_id = COALESCE($6, session_id),
+				completion_source = $7
+			WHERE id = $8
 		`
 
 		_, err = r.db.Exec(updateQuery,
 			quest.EndingProgress,
 			quest.Completed,
-			completedAtStr,
-			lastSeenAtStr,
+			quest.CompletedAt,
+			quest.LastSeenAt,
 			quest.CanSwap,
 			sessionIDStr,
 			completionSourceStr,
@@ -119,22 +106,9 @@ func (r *QuestRepository) Save(quest *models.Quest) error {
 			quest_id, quest_type, goal, starting_progress, ending_progress,
 			completed, can_swap, rewards, assigned_at, completed_at, last_seen_at, rerolled,
 			session_id, completion_source
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
+		RETURNING id
 	`
-
-	// Format timestamps for SQLite (ISO 8601 without timezone suffix)
-	assignedAtStr := quest.AssignedAt.UTC().Format("2006-01-02 15:04:05.999999")
-	var completedAtStr *string
-	if quest.CompletedAt != nil {
-		formatted := quest.CompletedAt.UTC().Format("2006-01-02 15:04:05.999999")
-		completedAtStr = &formatted
-	}
-
-	var lastSeenAtStr *string
-	if quest.LastSeenAt != nil {
-		formatted := quest.LastSeenAt.UTC().Format("2006-01-02 15:04:05.999999")
-		lastSeenAtStr = &formatted
-	}
 
 	// Format nullable string fields
 	var sessionIDStr *string
@@ -146,21 +120,15 @@ func (r *QuestRepository) Save(quest *models.Quest) error {
 		completionSourceStr = &quest.CompletionSource
 	}
 
-	result, err := r.db.Exec(query,
+	err = r.db.QueryRow(query,
 		quest.QuestID, quest.QuestType, quest.Goal,
 		quest.StartingProgress, quest.EndingProgress,
 		quest.Completed, quest.CanSwap, quest.Rewards,
-		assignedAtStr, completedAtStr, lastSeenAtStr, quest.Rerolled,
+		quest.AssignedAt.UTC(), quest.CompletedAt, quest.LastSeenAt, quest.Rerolled,
 		sessionIDStr, completionSourceStr,
-	)
+	).Scan(&quest.ID)
 	if err != nil {
 		return fmt.Errorf("failed to save quest: %w", err)
-	}
-
-	// Get the inserted ID
-	id, err := result.LastInsertId()
-	if err == nil {
-		quest.ID = int(id)
 	}
 
 	return nil
@@ -353,12 +321,12 @@ func (r *QuestRepository) calculateTotalGoldEarned(startDate, endDate *time.Time
 	args := []interface{}{}
 
 	if startDate != nil {
-		query += " AND DATE(assigned_at) >= ?"
+		query += " AND DATE(assigned_at) >= $1"
 		args = append(args, startDate.Format("2006-01-02"))
 	}
 
 	if endDate != nil {
-		query += " AND DATE(assigned_at) <= ?"
+		query += " AND DATE(assigned_at) <= $2"
 		args = append(args, endDate.Format("2006-01-02"))
 	}
 
@@ -412,22 +380,21 @@ func (r *QuestRepository) GetQuestByID(id int) (*models.Quest, error) {
 		       completed, can_swap, rewards, assigned_at, completed_at, last_seen_at,
 		       rerolled, created_at, session_id, completion_source
 		FROM quests
-		WHERE id = ?
+		WHERE id = $1
 	`
 
 	quest := &models.Quest{}
-	var assignedAt string
-	var completedAt sql.NullString
-	var lastSeenAt sql.NullString
-	var createdAt string
 	var sessionID sql.NullString
 	var completionSource sql.NullString
+
+	var completedAt sql.NullTime
+	var lastSeenAt sql.NullTime
 
 	err := r.db.QueryRow(query, id).Scan(
 		&quest.ID, &quest.QuestID, &quest.QuestType, &quest.Goal,
 		&quest.StartingProgress, &quest.EndingProgress, &quest.Completed,
-		&quest.CanSwap, &quest.Rewards, &assignedAt,
-		&completedAt, &lastSeenAt, &quest.Rerolled, &createdAt,
+		&quest.CanSwap, &quest.Rewards, &quest.AssignedAt,
+		&completedAt, &lastSeenAt, &quest.Rerolled, &quest.CreatedAt,
 		&sessionID, &completionSource,
 	)
 
@@ -438,39 +405,13 @@ func (r *QuestRepository) GetQuestByID(id int) (*models.Quest, error) {
 		return nil, fmt.Errorf("failed to get quest: %w", err)
 	}
 
-	// Parse assigned_at
-	parsedAssignedAt, err := parseTimestamp(assignedAt)
-	if err != nil {
-		return nil, fmt.Errorf("failed to parse assigned_at: %w", err)
+	if completedAt.Valid {
+		quest.CompletedAt = &completedAt.Time
 	}
-	quest.AssignedAt = parsedAssignedAt
-
-	// Parse completed_at if present
-	if completedAt.Valid && completedAt.String != "" {
-		parsedCompletedAt, err := parseTimestamp(completedAt.String)
-		if err != nil {
-			return nil, fmt.Errorf("failed to parse completed_at: %w", err)
-		}
-		quest.CompletedAt = &parsedCompletedAt
+	if lastSeenAt.Valid {
+		quest.LastSeenAt = &lastSeenAt.Time
 	}
 
-	// Parse last_seen_at if present
-	if lastSeenAt.Valid && lastSeenAt.String != "" {
-		parsedLastSeenAt, err := parseTimestamp(lastSeenAt.String)
-		if err != nil {
-			return nil, fmt.Errorf("failed to parse last_seen_at: %w", err)
-		}
-		quest.LastSeenAt = &parsedLastSeenAt
-	}
-
-	// Parse created_at
-	parsedCreatedAt, err := parseTimestamp(createdAt)
-	if err != nil {
-		return nil, fmt.Errorf("failed to parse created_at: %w", err)
-	}
-	quest.CreatedAt = parsedCreatedAt
-
-	// Parse session_id and completion_source
 	if sessionID.Valid {
 		quest.SessionID = sessionID.String
 	}
@@ -485,15 +426,11 @@ func (r *QuestRepository) GetQuestByID(id int) (*models.Quest, error) {
 func (r *QuestRepository) MarkCompleted(questID string, assignedAt time.Time, completedAt time.Time) error {
 	query := `
 		UPDATE quests
-		SET completed = 1, completed_at = ?, ending_progress = goal
-		WHERE quest_id = ? AND assigned_at = ?
+		SET completed = 1, completed_at = $1, ending_progress = goal
+		WHERE quest_id = $2 AND assigned_at = $3
 	`
 
-	// Format timestamp for SQLite (ISO 8601 without timezone suffix)
-	completedAtStr := completedAt.UTC().Format("2006-01-02 15:04:05.999999")
-	assignedAtStr := assignedAt.UTC().Format("2006-01-02 15:04:05.999999")
-
-	_, err := r.db.Exec(query, completedAtStr, questID, assignedAtStr)
+	_, err := r.db.Exec(query, completedAt.UTC(), questID, assignedAt.UTC())
 	if err != nil {
 		return fmt.Errorf("failed to mark quest as completed: %w", err)
 	}
@@ -506,13 +443,10 @@ func (r *QuestRepository) MarkRerolled(questID string, assignedAt time.Time) err
 	query := `
 		UPDATE quests
 		SET rerolled = 1
-		WHERE quest_id = ? AND assigned_at = ?
+		WHERE quest_id = $1 AND assigned_at = $2
 	`
 
-	// Format timestamp for SQLite (ISO 8601 without timezone suffix)
-	assignedAtStr := assignedAt.UTC().Format("2006-01-02 15:04:05.999999")
-
-	_, err := r.db.Exec(query, questID, assignedAtStr)
+	_, err := r.db.Exec(query, questID, assignedAt.UTC())
 	if err != nil {
 		return fmt.Errorf("failed to mark quest as rerolled: %w", err)
 	}
@@ -575,7 +509,7 @@ func (r *QuestRepository) MarkQuestsCompletedByGraphState(completedQuestNumbers 
 func (r *QuestRepository) MarkActiveQuestsCompleted(timestamp time.Time) error {
 	query := `
 		UPDATE quests
-		SET completed = 1, completed_at = ?
+		SET completed = 1, completed_at = $1
 		WHERE completed = 0
 		  AND ending_progress >= goal
 		  AND id IN (
@@ -590,10 +524,7 @@ func (r *QuestRepository) MarkActiveQuestsCompleted(timestamp time.Time) error {
 		  )
 	`
 
-	// Format timestamp for SQLite (ISO 8601 without timezone suffix)
-	timestampStr := timestamp.UTC().Format("2006-01-02 15:04:05.999999")
-
-	result, err := r.db.Exec(query, timestampStr)
+	result, err := r.db.Exec(query, timestamp.UTC())
 	if err != nil {
 		return fmt.Errorf("failed to mark active quests as completed: %w", err)
 	}
@@ -654,57 +585,29 @@ func (r *QuestRepository) scanQuests(rows *sql.Rows) ([]*models.Quest, error) {
 
 	for rows.Next() {
 		quest := &models.Quest{}
-		var assignedAt string
-		var completedAt sql.NullString
-		var lastSeenAt sql.NullString
-		var createdAt string
+		var completedAt sql.NullTime
+		var lastSeenAt sql.NullTime
 		var sessionID sql.NullString
 		var completionSource sql.NullString
 
 		err := rows.Scan(
 			&quest.ID, &quest.QuestID, &quest.QuestType, &quest.Goal,
 			&quest.StartingProgress, &quest.EndingProgress, &quest.Completed,
-			&quest.CanSwap, &quest.Rewards, &assignedAt,
-			&completedAt, &lastSeenAt, &quest.Rerolled, &createdAt,
+			&quest.CanSwap, &quest.Rewards, &quest.AssignedAt,
+			&completedAt, &lastSeenAt, &quest.Rerolled, &quest.CreatedAt,
 			&sessionID, &completionSource,
 		)
 		if err != nil {
 			return nil, fmt.Errorf("failed to scan quest: %w", err)
 		}
 
-		// Parse assigned_at - try multiple formats
-		parsedAssignedAt, err := parseTimestamp(assignedAt)
-		if err != nil {
-			return nil, fmt.Errorf("failed to parse assigned_at: %w", err)
+		if completedAt.Valid {
+			quest.CompletedAt = &completedAt.Time
 		}
-		quest.AssignedAt = parsedAssignedAt
-
-		// Parse completed_at if present
-		if completedAt.Valid && completedAt.String != "" {
-			parsedCompletedAt, err := parseTimestamp(completedAt.String)
-			if err != nil {
-				return nil, fmt.Errorf("failed to parse completed_at: %w", err)
-			}
-			quest.CompletedAt = &parsedCompletedAt
+		if lastSeenAt.Valid {
+			quest.LastSeenAt = &lastSeenAt.Time
 		}
 
-		// Parse last_seen_at if present
-		if lastSeenAt.Valid && lastSeenAt.String != "" {
-			parsedLastSeenAt, err := parseTimestamp(lastSeenAt.String)
-			if err != nil {
-				return nil, fmt.Errorf("failed to parse last_seen_at: %w", err)
-			}
-			quest.LastSeenAt = &parsedLastSeenAt
-		}
-
-		// Parse created_at
-		parsedCreatedAt, err := parseTimestamp(createdAt)
-		if err != nil {
-			return nil, fmt.Errorf("failed to parse created_at: %w", err)
-		}
-		quest.CreatedAt = parsedCreatedAt
-
-		// Parse session_id and completion_source
 		if sessionID.Valid {
 			quest.SessionID = sessionID.String
 		}

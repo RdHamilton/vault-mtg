@@ -7,107 +7,17 @@ import (
 	"testing"
 	"time"
 
-	_ "github.com/mattn/go-sqlite3"
 	"github.com/ramonehamilton/MTGA-Companion/internal/storage/models"
 )
 
-// setupDeckTestDB creates an in-memory database with all deck-related tables.
+// setupDeckTestDB creates a PostgreSQL test database and seeds a default account (ID=1).
 func setupDeckTestDB(t *testing.T) *sql.DB {
-	db, err := sql.Open("sqlite3", ":memory:")
-	if err != nil {
-		t.Fatalf("failed to open test database: %v", err)
-	}
+	t.Helper()
+	db := repoTestDB(t)
 
-	schema := `
-		CREATE TABLE accounts (
-			id INTEGER PRIMARY KEY AUTOINCREMENT,
-			name TEXT NOT NULL,
-			is_default INTEGER NOT NULL DEFAULT 0,
-			created_at DATETIME NOT NULL,
-			updated_at DATETIME NOT NULL
-		);
-
-		CREATE TABLE decks (
-			id TEXT PRIMARY KEY,
-			account_id INTEGER NOT NULL DEFAULT 1,
-			name TEXT NOT NULL,
-			format TEXT NOT NULL,
-			description TEXT,
-			color_identity TEXT,
-			source TEXT NOT NULL DEFAULT 'constructed',
-			draft_event_id TEXT,
-			matches_played INTEGER NOT NULL DEFAULT 0,
-			matches_won INTEGER NOT NULL DEFAULT 0,
-			games_played INTEGER NOT NULL DEFAULT 0,
-			games_won INTEGER NOT NULL DEFAULT 0,
-			created_at DATETIME NOT NULL,
-			modified_at DATETIME NOT NULL,
-			last_played DATETIME,
-			is_app_created BOOLEAN DEFAULT FALSE,
-			created_method TEXT DEFAULT 'imported',
-			seed_card_id INTEGER,
-			current_permutation_id INTEGER,
-			FOREIGN KEY (account_id) REFERENCES accounts(id) ON DELETE CASCADE,
-			FOREIGN KEY (draft_event_id) REFERENCES draft_sessions(id) ON DELETE SET NULL,
-			CHECK(source IN ('draft', 'constructed', 'imported', 'arena'))
-		);
-
-		CREATE TABLE deck_cards (
-			id INTEGER PRIMARY KEY AUTOINCREMENT,
-			deck_id TEXT NOT NULL,
-			card_id INTEGER NOT NULL,
-			quantity INTEGER NOT NULL,
-			board TEXT NOT NULL,
-			from_draft_pick INTEGER NOT NULL DEFAULT 0,
-			FOREIGN KEY (deck_id) REFERENCES decks(id) ON DELETE CASCADE,
-			UNIQUE(deck_id, card_id, board),
-			CHECK(from_draft_pick IN (0, 1))
-		);
-
-		CREATE TABLE deck_tags (
-			id INTEGER PRIMARY KEY AUTOINCREMENT,
-			deck_id TEXT NOT NULL,
-			tag TEXT NOT NULL,
-			created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-			FOREIGN KEY (deck_id) REFERENCES decks(id) ON DELETE CASCADE,
-			UNIQUE(deck_id, tag)
-		);
-
-		CREATE TABLE draft_sessions (
-			id TEXT PRIMARY KEY,
-			event_name TEXT NOT NULL,
-			set_code TEXT NOT NULL,
-			draft_type TEXT DEFAULT 'quick_draft',
-			start_time TIMESTAMP NOT NULL,
-			end_time TIMESTAMP,
-			status TEXT DEFAULT 'in_progress',
-			total_picks INTEGER DEFAULT 0,
-			created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-			updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-		);
-
-		CREATE TABLE draft_picks (
-			id INTEGER PRIMARY KEY AUTOINCREMENT,
-			session_id TEXT NOT NULL,
-			pack_number INTEGER NOT NULL,
-			pick_number INTEGER NOT NULL,
-			card_id TEXT NOT NULL,
-			timestamp TIMESTAMP NOT NULL,
-			FOREIGN KEY (session_id) REFERENCES draft_sessions(id) ON DELETE CASCADE,
-			UNIQUE(session_id, pack_number, pick_number)
-		);
-
-		CREATE INDEX idx_deck_cards_deck_id ON deck_cards(deck_id);
-		CREATE INDEX idx_deck_tags_deck_id ON deck_tags(deck_id);
-		CREATE INDEX idx_draft_picks_session ON draft_picks(session_id);
-
-		-- Insert a default test account
-		INSERT INTO accounts (id, name, is_default, created_at, updated_at)
-		VALUES (1, 'Test Account', 1, '2024-01-01 00:00:00', '2024-01-01 00:00:00');
-	`
-
-	if _, err := db.Exec(schema); err != nil {
-		t.Fatalf("failed to create schema: %v", err)
+	// Seed a default account so tests can use AccountID: 1.
+	if _, err := db.Exec(`INSERT INTO accounts (name, is_default, created_at, updated_at) VALUES ('Test Account', true, NOW(), NOW())`); err != nil {
+		t.Fatalf("failed to insert test account: %v", err)
 	}
 
 	return db

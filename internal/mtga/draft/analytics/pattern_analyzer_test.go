@@ -112,6 +112,10 @@ func (m *mockDraftRepository) GetPackCount(ctx context.Context) (int, error) {
 	return 0, nil
 }
 
+func (m *mockDraftRepository) GetSessionsByAccount(ctx context.Context, accountID int, limit int) ([]*models.DraftSession, error) {
+	return nil, nil
+}
+
 func (m *mockDraftRepository) GetAllPickCardCounts(ctx context.Context) (map[int]int, error) {
 	return nil, nil
 }

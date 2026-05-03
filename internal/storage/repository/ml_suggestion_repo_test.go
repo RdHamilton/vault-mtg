@@ -7,130 +7,17 @@ import (
 	"time"
 
 	"github.com/ramonehamilton/MTGA-Companion/internal/storage/models"
-	_ "modernc.org/sqlite"
 )
 
 func setupMLSuggestionTestDB(t *testing.T) *sql.DB {
-	db, err := sql.Open("sqlite", ":memory:")
-	if err != nil {
-		t.Fatalf("Failed to open test database: %v", err)
+	t.Helper()
+	db := repoTestDB(t)
+
+	// Seed prerequisite rows required by FK constraints.
+	if _, err := db.Exec(`INSERT INTO accounts (name, is_default, created_at, updated_at) VALUES ('Test Account', true, NOW(), NOW())`); err != nil {
+		t.Fatalf("Failed to insert test account: %v", err)
 	}
-
-	// Create required tables
-	_, err = db.Exec(`
-		CREATE TABLE IF NOT EXISTS decks (
-			id TEXT PRIMARY KEY,
-			name TEXT NOT NULL
-		);
-
-		CREATE TABLE IF NOT EXISTS card_combination_stats (
-			id INTEGER PRIMARY KEY AUTOINCREMENT,
-			card_id_1 INTEGER NOT NULL,
-			card_id_2 INTEGER NOT NULL,
-			deck_id TEXT,
-			format TEXT DEFAULT 'Standard',
-			games_together INTEGER DEFAULT 0,
-			games_card1_only INTEGER DEFAULT 0,
-			games_card2_only INTEGER DEFAULT 0,
-			wins_together INTEGER DEFAULT 0,
-			wins_card1_only INTEGER DEFAULT 0,
-			wins_card2_only INTEGER DEFAULT 0,
-			synergy_score REAL DEFAULT 0.0,
-			confidence_score REAL DEFAULT 0.0,
-			created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-			updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-			UNIQUE(card_id_1, card_id_2, deck_id, format),
-			CHECK(card_id_1 < card_id_2)
-		);
-
-		CREATE TABLE IF NOT EXISTS ml_suggestions (
-			id INTEGER PRIMARY KEY AUTOINCREMENT,
-			deck_id TEXT NOT NULL,
-			suggestion_type TEXT NOT NULL,
-			card_id INTEGER,
-			card_name TEXT,
-			swap_for_card_id INTEGER,
-			swap_for_card_name TEXT,
-			confidence REAL DEFAULT 0.0,
-			expected_win_rate_change REAL DEFAULT 0.0,
-			title TEXT NOT NULL,
-			description TEXT,
-			reasoning TEXT,
-			evidence TEXT,
-			is_dismissed BOOLEAN DEFAULT FALSE,
-			was_applied BOOLEAN DEFAULT FALSE,
-			outcome_win_rate_change REAL,
-			created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-			applied_at TIMESTAMP,
-			outcome_recorded_at TIMESTAMP,
-			FOREIGN KEY (deck_id) REFERENCES decks(id) ON DELETE CASCADE
-		);
-
-		CREATE TABLE IF NOT EXISTS user_play_patterns (
-			id INTEGER PRIMARY KEY AUTOINCREMENT,
-			account_id TEXT NOT NULL,
-			preferred_archetype TEXT,
-			aggro_affinity REAL DEFAULT 0.0,
-			midrange_affinity REAL DEFAULT 0.0,
-			control_affinity REAL DEFAULT 0.0,
-			combo_affinity REAL DEFAULT 0.0,
-			color_preferences TEXT,
-			avg_game_length REAL DEFAULT 0.0,
-			aggression_score REAL DEFAULT 0.0,
-			interaction_score REAL DEFAULT 0.0,
-			total_matches INTEGER DEFAULT 0,
-			total_decks INTEGER DEFAULT 0,
-			created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-			updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-			UNIQUE(account_id)
-		);
-
-		CREATE TABLE IF NOT EXISTS ml_model_metadata (
-			id INTEGER PRIMARY KEY AUTOINCREMENT,
-			model_name TEXT NOT NULL,
-			model_version TEXT NOT NULL,
-			training_samples INTEGER DEFAULT 0,
-			training_date TIMESTAMP,
-			accuracy REAL,
-			precision_score REAL,
-			recall REAL,
-			f1_score REAL,
-			is_active BOOLEAN DEFAULT FALSE,
-			model_data BLOB,
-			created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-			UNIQUE(model_name, model_version)
-		);
-
-		CREATE TABLE IF NOT EXISTS card_affinity (
-			id INTEGER PRIMARY KEY AUTOINCREMENT,
-			card_id_1 INTEGER NOT NULL,
-			card_id_2 INTEGER NOT NULL,
-			format TEXT DEFAULT 'Standard',
-			affinity_score REAL DEFAULT 0.0,
-			sample_size INTEGER DEFAULT 0,
-			confidence REAL DEFAULT 0.0,
-			source TEXT DEFAULT 'historical',
-			computed_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-			UNIQUE(card_id_1, card_id_2, format),
-			CHECK(card_id_1 < card_id_2)
-		);
-
-		CREATE TABLE IF NOT EXISTS card_individual_stats (
-			card_id INTEGER NOT NULL,
-			format TEXT NOT NULL,
-			total_games INTEGER DEFAULT 0,
-			wins INTEGER DEFAULT 0,
-			updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-			PRIMARY KEY (card_id, format)
-		);
-	`)
-	if err != nil {
-		t.Fatalf("Failed to create tables: %v", err)
-	}
-
-	// Insert test deck
-	_, err = db.Exec(`INSERT INTO decks (id, name) VALUES ('deck-1', 'Test Deck')`)
-	if err != nil {
+	if _, err := db.Exec(`INSERT INTO decks (id, account_id, name, format, created_at, modified_at) VALUES ('deck-1', 1, 'Test Deck', 'Standard', NOW(), NOW())`); err != nil {
 		t.Fatalf("Failed to insert test deck: %v", err)
 	}
 

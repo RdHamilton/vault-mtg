@@ -2,6 +2,7 @@ package gui
 
 import (
 	"context"
+	"os"
 	"sync"
 	"testing"
 	"time"
@@ -9,11 +10,18 @@ import (
 	"github.com/ramonehamilton/MTGA-Companion/internal/storage"
 )
 
-// setupTestCardFacade creates a CardFacade with an in-memory DB for testing.
+// setupTestCardFacade creates a CardFacade backed by a PostgreSQL database for testing.
+// Requires DATABASE_URL environment variable; skips the test if not set.
 func setupTestCardFacade(t *testing.T) *CardFacade {
 	t.Helper()
 
-	cfg := storage.DefaultConfig(t.TempDir() + "/test.db")
+	dsn := os.Getenv("DATABASE_URL")
+	if dsn == "" {
+		t.Skip("DATABASE_URL not set; skipping integration test")
+	}
+
+	cfg := storage.DefaultConfig()
+	cfg.DatabaseURL = dsn
 	cfg.AutoMigrate = true
 
 	db, err := storage.Open(cfg)

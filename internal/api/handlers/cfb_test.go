@@ -5,7 +5,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
-	"path/filepath"
+	"os"
 	"testing"
 	"time"
 
@@ -19,10 +19,11 @@ import (
 func setupTestStorage(t *testing.T) (*storage.Service, func()) {
 	t.Helper()
 
-	tmpDir := t.TempDir()
-	dbPath := filepath.Join(tmpDir, "test.db")
+	if os.Getenv("DATABASE_URL") == "" {
+		t.Skip("DATABASE_URL not set; skipping integration test")
+	}
 
-	config := storage.DefaultConfig(dbPath)
+	config := storage.DefaultConfig()
 	config.AutoMigrate = true
 	db, err := storage.Open(config)
 	if err != nil {

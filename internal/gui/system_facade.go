@@ -56,15 +56,9 @@ func (s *SystemFacade) GetEventDispatcher() *events.EventDispatcher {
 }
 
 // Initialize initializes the application with database path
-func (s *SystemFacade) Initialize(ctx context.Context, dbPath string) error {
-	// Use default path if empty
-	if dbPath == "" {
-		dbPath = getDefaultDBPath()
-	}
-
-	config := storage.DefaultConfig(dbPath)
-	config.BusyTimeout = 10 * time.Second // Increase timeout to handle concurrent poller operations
-	config.AutoMigrate = true             // Enable automatic database migrations
+func (s *SystemFacade) Initialize(ctx context.Context, _ string) error {
+	config := storage.DefaultConfig()
+	config.AutoMigrate = true // Enable automatic database migrations
 
 	db, err := storage.Open(config)
 	if err != nil {
@@ -450,20 +444,6 @@ func getMTGALogPath() (string, error) {
 	}
 
 	return newestLog, nil
-}
-
-// getDefaultDBPath returns the default database path
-func getDefaultDBPath() string {
-	dbPath := os.Getenv("MTGA_DB_PATH")
-	if dbPath == "" {
-		home, err := os.UserHomeDir()
-		if err != nil {
-			log.Printf("Error getting home directory: %v", err)
-			return "mtga.db" // Fallback to current directory
-		}
-		dbPath = filepath.Join(home, ".mtga-companion", "mtga.db")
-	}
-	return dbPath
 }
 
 // connectToDaemon connects to the daemon service

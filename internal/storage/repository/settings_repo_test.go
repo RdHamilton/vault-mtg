@@ -4,29 +4,10 @@ import (
 	"context"
 	"database/sql"
 	"testing"
-
-	_ "modernc.org/sqlite"
 )
 
 func setupSettingsTestDB(t *testing.T) *sql.DB {
-	db, err := sql.Open("sqlite", ":memory:")
-	if err != nil {
-		t.Fatalf("Failed to open test database: %v", err)
-	}
-
-	// Create settings table
-	_, err = db.Exec(`
-		CREATE TABLE IF NOT EXISTS settings (
-			key TEXT PRIMARY KEY,
-			value TEXT NOT NULL,
-			updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
-		)
-	`)
-	if err != nil {
-		t.Fatalf("Failed to create settings table: %v", err)
-	}
-
-	return db
+	return repoTestDB(t)
 }
 
 func TestSettingsRepository_SetAndGet(t *testing.T) {

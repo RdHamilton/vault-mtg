@@ -6,43 +6,17 @@ import (
 	"testing"
 
 	"github.com/ramonehamilton/MTGA-Companion/internal/storage/models"
-	_ "modernc.org/sqlite"
 )
 
 func setupSuggestionTestDB(t *testing.T) *sql.DB {
-	db, err := sql.Open("sqlite", ":memory:")
-	if err != nil {
-		t.Fatalf("Failed to open test database: %v", err)
+	t.Helper()
+	db := repoTestDB(t)
+
+	// Seed prerequisite rows required by FK constraints.
+	if _, err := db.Exec(`INSERT INTO accounts (name, is_default, created_at, updated_at) VALUES ('Test Account', true, NOW(), NOW())`); err != nil {
+		t.Fatalf("Failed to insert test account: %v", err)
 	}
-
-	// Create required tables
-	_, err = db.Exec(`
-		CREATE TABLE IF NOT EXISTS decks (
-			id TEXT PRIMARY KEY,
-			name TEXT NOT NULL
-		);
-
-		CREATE TABLE IF NOT EXISTS improvement_suggestions (
-			id INTEGER PRIMARY KEY AUTOINCREMENT,
-			deck_id TEXT NOT NULL,
-			suggestion_type TEXT NOT NULL,
-			priority TEXT DEFAULT 'medium',
-			title TEXT NOT NULL,
-			description TEXT NOT NULL,
-			evidence TEXT,
-			card_references TEXT,
-			is_dismissed BOOLEAN DEFAULT FALSE,
-			created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-			FOREIGN KEY (deck_id) REFERENCES decks(id) ON DELETE CASCADE
-		);
-	`)
-	if err != nil {
-		t.Fatalf("Failed to create tables: %v", err)
-	}
-
-	// Insert test deck
-	_, err = db.Exec(`INSERT INTO decks (id, name) VALUES ('deck-1', 'Test Deck')`)
-	if err != nil {
+	if _, err := db.Exec(`INSERT INTO decks (id, account_id, name, format, created_at, modified_at) VALUES ('deck-1', 1, 'Test Deck', 'Standard', NOW(), NOW())`); err != nil {
 		t.Fatalf("Failed to insert test deck: %v", err)
 	}
 

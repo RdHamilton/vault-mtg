@@ -8,84 +8,16 @@ import (
 	"time"
 
 	"github.com/ramonehamilton/MTGA-Companion/internal/storage/models"
-	_ "modernc.org/sqlite"
 )
 
-// setupTestDB creates an in-memory database with the necessary schema for testing.
+// setupTestDB creates a PostgreSQL test database and seeds a default account (ID=1).
 func setupTestDB(t *testing.T) *sql.DB {
-	db, err := sql.Open("sqlite", ":memory:")
-	if err != nil {
-		t.Fatalf("failed to open test database: %v", err)
-	}
+	t.Helper()
+	db := repoTestDB(t)
 
-	// Create tables (simplified schema for testing)
-	schema := `
-		CREATE TABLE accounts (
-			id INTEGER PRIMARY KEY AUTOINCREMENT,
-			name TEXT NOT NULL,
-			screen_name TEXT,
-			client_id TEXT,
-			is_default INTEGER NOT NULL DEFAULT 0 CHECK(is_default IN (0, 1)),
-			created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-			updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
-		);
-
-		INSERT INTO accounts (name, is_default) VALUES ('Default Account', 1);
-
-		CREATE TABLE decks (
-			id TEXT PRIMARY KEY,
-			account_id INTEGER NOT NULL,
-			name TEXT NOT NULL,
-			format TEXT NOT NULL,
-			source TEXT,
-			draft_event_id TEXT,
-			created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-			updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-			FOREIGN KEY (account_id) REFERENCES accounts(id)
-		);
-
-		CREATE TABLE matches (
-			id TEXT PRIMARY KEY,
-			account_id INTEGER NOT NULL,
-			event_id TEXT NOT NULL,
-			event_name TEXT NOT NULL,
-			timestamp DATETIME NOT NULL,
-			duration_seconds INTEGER,
-			player_wins INTEGER NOT NULL,
-			opponent_wins INTEGER NOT NULL,
-			player_team_id INTEGER NOT NULL,
-			deck_id TEXT,
-			rank_before TEXT,
-			rank_after TEXT,
-			format TEXT NOT NULL,
-			result TEXT NOT NULL,
-			result_reason TEXT,
-			opponent_name TEXT,
-			opponent_id TEXT,
-			processed_for_ml BOOLEAN DEFAULT FALSE,
-			created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-			FOREIGN KEY (account_id) REFERENCES accounts(id),
-			FOREIGN KEY (deck_id) REFERENCES decks(id)
-		);
-
-		CREATE INDEX idx_matches_timestamp ON matches(timestamp);
-		CREATE INDEX idx_matches_format ON matches(format);
-
-		CREATE TABLE games (
-			id INTEGER PRIMARY KEY AUTOINCREMENT,
-			match_id TEXT NOT NULL,
-			game_number INTEGER NOT NULL,
-			result TEXT NOT NULL,
-			duration_seconds INTEGER,
-			result_reason TEXT,
-			created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-			FOREIGN KEY (match_id) REFERENCES matches(id),
-			UNIQUE(match_id, game_number)
-		);
-	`
-
-	if _, err := db.Exec(schema); err != nil {
-		t.Fatalf("failed to create schema: %v", err)
+	// Seed a default account so tests can use AccountID: 1.
+	if _, err := db.Exec(`INSERT INTO accounts (name, is_default, created_at, updated_at) VALUES ('Default Account', true, NOW(), NOW())`); err != nil {
+		t.Fatalf("failed to insert default account: %v", err)
 	}
 
 	return db

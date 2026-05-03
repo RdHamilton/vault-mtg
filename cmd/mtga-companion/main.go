@@ -98,19 +98,6 @@ func checkDeprecatedFlags() {
 	}
 }
 
-// getDBPath returns the database path from environment variable or default location.
-func getDBPath() string {
-	dbPath := os.Getenv("MTGA_DB_PATH")
-	if dbPath == "" {
-		home, err := os.UserHomeDir()
-		if err != nil {
-			log.Fatalf("Error getting home directory: %v", err)
-		}
-		dbPath = filepath.Join(home, ".mtga-companion", "mtga.db")
-	}
-	return dbPath
-}
-
 func main() {
 	// Parse flags before checking for subcommands
 	flag.Parse()

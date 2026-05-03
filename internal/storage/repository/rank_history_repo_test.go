@@ -6,39 +6,12 @@ import (
 	"testing"
 	"time"
 
-	_ "github.com/mattn/go-sqlite3"
 	"github.com/ramonehamilton/MTGA-Companion/internal/storage/models"
 )
 
-// setupRankHistoryTestDB creates an in-memory database with rank_history table.
+// setupRankHistoryTestDB creates a PostgreSQL test database for rank history tests.
 func setupRankHistoryTestDB(t *testing.T) *sql.DB {
-	db, err := sql.Open("sqlite3", ":memory:")
-	if err != nil {
-		t.Fatalf("failed to open test database: %v", err)
-	}
-
-	schema := `
-		CREATE TABLE IF NOT EXISTS rank_history (
-			id INTEGER PRIMARY KEY AUTOINCREMENT,
-			account_id INTEGER NOT NULL,
-			timestamp DATETIME NOT NULL,
-			format TEXT NOT NULL,
-			season_ordinal INTEGER NOT NULL,
-			rank_class TEXT,
-			rank_level INTEGER,
-			rank_step INTEGER,
-			percentile REAL,
-			created_at DATETIME NOT NULL
-		);
-		CREATE INDEX IF NOT EXISTS idx_rank_history_account_format ON rank_history(account_id, format);
-		CREATE INDEX IF NOT EXISTS idx_rank_history_timestamp ON rank_history(timestamp);
-	`
-
-	if _, err := db.Exec(schema); err != nil {
-		t.Fatalf("failed to create schema: %v", err)
-	}
-
-	return db
+	return repoTestDB(t)
 }
 
 func TestRankHistoryRepository_Create(t *testing.T) {

@@ -4,54 +4,29 @@ import (
 	"context"
 	"database/sql"
 	"testing"
+	"time"
 
 	"github.com/ramonehamilton/MTGA-Companion/internal/storage/models"
-	_ "modernc.org/sqlite"
 )
 
 func setupNotesTestDB(t *testing.T) *sql.DB {
-	db, err := sql.Open("sqlite", ":memory:")
+	t.Helper()
+	db := repoTestDB(t)
+
+	// Insert prerequisite rows required by FK constraints.
+	_, err := db.Exec(`INSERT INTO accounts (name, is_default, created_at, updated_at) VALUES ('Test Account', true, $1, $1) ON CONFLICT DO NOTHING`, time.Now().UTC())
 	if err != nil {
-		t.Fatalf("Failed to open test database: %v", err)
+		t.Fatalf("Failed to insert test account: %v", err)
 	}
-
-	// Create required tables
-	_, err = db.Exec(`
-		CREATE TABLE IF NOT EXISTS decks (
-			id TEXT PRIMARY KEY,
-			name TEXT NOT NULL
-		);
-
-		CREATE TABLE IF NOT EXISTS matches (
-			id TEXT PRIMARY KEY,
-			deck_id TEXT,
-			notes TEXT DEFAULT '',
-			rating INTEGER DEFAULT 0,
-			FOREIGN KEY (deck_id) REFERENCES decks(id)
-		);
-
-		CREATE TABLE IF NOT EXISTS deck_notes (
-			id INTEGER PRIMARY KEY AUTOINCREMENT,
-			deck_id TEXT NOT NULL,
-			content TEXT NOT NULL,
-			category TEXT DEFAULT 'general',
-			created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-			updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-			FOREIGN KEY (deck_id) REFERENCES decks(id) ON DELETE CASCADE
-		);
-	`)
-	if err != nil {
-		t.Fatalf("Failed to create tables: %v", err)
+	var accountID int64
+	if err := db.QueryRow(`SELECT id FROM accounts WHERE name = 'Test Account' LIMIT 1`).Scan(&accountID); err != nil {
+		t.Fatalf("Failed to get test account ID: %v", err)
 	}
-
-	// Insert test deck
-	_, err = db.Exec(`INSERT INTO decks (id, name) VALUES ('deck-1', 'Test Deck')`)
+	_, err = db.Exec(`INSERT INTO decks (id, account_id, name, format, created_at, modified_at) VALUES ('deck-1', $1, 'Test Deck', 'Standard', $2, $2) ON CONFLICT DO NOTHING`, accountID, time.Now().UTC())
 	if err != nil {
 		t.Fatalf("Failed to insert test deck: %v", err)
 	}
-
-	// Insert test match
-	_, err = db.Exec(`INSERT INTO matches (id, deck_id) VALUES ('match-1', 'deck-1')`)
+	_, err = db.Exec(`INSERT INTO matches (id, account_id, event_id, event_name, timestamp, player_wins, opponent_wins, player_team_id) VALUES ('match-1', $1, 'event-1', 'Test Event', $2, 0, 0, 1) ON CONFLICT DO NOTHING`, accountID, time.Now().UTC())
 	if err != nil {
 		t.Fatalf("Failed to insert test match: %v", err)
 	}

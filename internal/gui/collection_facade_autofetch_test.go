@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"os"
 	"sync"
 	"testing"
 	"time"
@@ -75,19 +76,19 @@ func (m *mockCardFetcher) setCardError(arenaID int, err error) {
 	m.fetchErrors[arenaID] = err
 }
 
-// setupAutoFetchTestDB creates in-memory SQLite with required schema
+// setupAutoFetchTestDB creates a PostgreSQL-backed storage service for testing.
+// Requires DATABASE_URL; skips the test if not set.
 func setupAutoFetchTestDB(t *testing.T, collectionCards map[int]int, knownCards map[int]*models.SetCard) (*storage.Service, func()) {
 	t.Helper()
 
-	// Use storage.Open with in-memory database and memory journal mode
-	// MaxIdleConns must be > 0 to keep the in-memory db alive between queries
-	cfg := &storage.Config{
-		Path:         ":memory:",
-		JournalMode:  "MEMORY",
-		Synchronous:  "OFF",
-		MaxOpenConns: 1,
-		MaxIdleConns: 1,
+	dsn := os.Getenv("DATABASE_URL")
+	if dsn == "" {
+		t.Skip("DATABASE_URL not set; skipping integration test")
 	}
+
+	cfg := storage.DefaultConfig()
+	cfg.DatabaseURL = dsn
+	cfg.AutoMigrate = true
 
 	db, err := storage.Open(cfg)
 	if err != nil {

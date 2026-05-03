@@ -9,35 +9,9 @@ import (
 	"github.com/ramonehamilton/MTGA-Companion/internal/storage/models"
 )
 
-// setupStatsTestDB creates an in-memory database with player_stats table.
+// setupStatsTestDB creates a PostgreSQL test database for stats tests.
 func setupStatsTestDB(t *testing.T) *sql.DB {
-	db, err := sql.Open("sqlite", ":memory:")
-	if err != nil {
-		t.Fatalf("failed to open test database: %v", err)
-	}
-
-	schema := `
-		CREATE TABLE player_stats (
-			id INTEGER PRIMARY KEY AUTOINCREMENT,
-			date DATE NOT NULL,
-			format TEXT NOT NULL,
-			matches_played INTEGER DEFAULT 0,
-			matches_won INTEGER DEFAULT 0,
-			games_played INTEGER DEFAULT 0,
-			games_won INTEGER DEFAULT 0,
-			created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-			updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-			UNIQUE(date, format)
-		);
-
-		CREATE INDEX idx_player_stats_date ON player_stats(date);
-	`
-
-	if _, err := db.Exec(schema); err != nil {
-		t.Fatalf("failed to create schema: %v", err)
-	}
-
-	return db
+	return repoTestDB(t)
 }
 
 func TestStatsRepository_Upsert(t *testing.T) {

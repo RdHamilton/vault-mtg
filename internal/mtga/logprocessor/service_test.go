@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"os"
-	"path/filepath"
 	"testing"
 	"time"
 
@@ -13,30 +12,25 @@ import (
 	"github.com/ramonehamilton/MTGA-Companion/internal/storage/models"
 )
 
-// setupTestService creates a test storage service with a temporary database
 func setupTestService(t *testing.T) (*storage.Service, func()) {
 	t.Helper()
 
-	// Create temporary database
-	tmpDir := t.TempDir()
-	dbPath := filepath.Join(tmpDir, "test.db")
+	if os.Getenv("DATABASE_URL") == "" {
+		t.Skip("DATABASE_URL not set; skipping integration test")
+	}
 
-	// Open database connection with auto-migrate
-	config := storage.DefaultConfig(dbPath)
+	config := storage.DefaultConfig()
 	config.AutoMigrate = true
 	db, err := storage.Open(config)
 	if err != nil {
 		t.Fatalf("Failed to open database: %v", err)
 	}
 
-	// Create service
 	service := storage.NewService(db)
-
 	cleanup := func() {
 		if err := service.Close(); err != nil {
 			t.Errorf("Failed to close service: %v", err)
 		}
-		os.RemoveAll(tmpDir)
 	}
 
 	return service, cleanup

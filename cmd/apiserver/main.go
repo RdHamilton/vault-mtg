@@ -12,7 +12,6 @@ import (
 	"log"
 	"os"
 	"os/signal"
-	"path/filepath"
 	"sync"
 	"syscall"
 	"time"
@@ -36,7 +35,6 @@ import (
 var (
 	// API server flags
 	port         = flag.Int("port", 8080, "API server port")
-	dbPath       = flag.String("db-path", "", "Database path (default: ~/.mtga-companion/mtga.db)")
 	openBrowser  = flag.Bool("open-browser", false, "Open browser to frontend on startup")
 	frontendURL  = flag.String("frontend-url", "http://localhost:3000", "Frontend URL to open in browser")
 	loadFixtures = flag.String("load-fixtures", "", "Path to SQL fixtures file to load on startup")
@@ -62,26 +60,10 @@ func main() {
 		fmt.Println("Daemon enabled:  no (standalone API mode)")
 	}
 
-	// Setup database path
-	finalDBPath := *dbPath
-	if finalDBPath == "" {
-		home, err := os.UserHomeDir()
-		if err != nil {
-			log.Fatalf("Failed to get home directory: %v", err)
-		}
-		finalDBPath = filepath.Join(home, ".mtga-companion", "mtga.db")
-	}
-
-	// Ensure directory exists
-	dbDir := filepath.Dir(finalDBPath)
-	if err := os.MkdirAll(dbDir, 0o755); err != nil {
-		log.Fatalf("Failed to create database directory: %v", err)
-	}
-
-	fmt.Printf("Database: %s\n", finalDBPath)
+	fmt.Println("Opening database connection (configured via DATABASE_URL env var)...")
 
 	// Open database
-	config := storage.DefaultConfig(finalDBPath)
+	config := storage.DefaultConfig()
 	config.AutoMigrate = true
 	db, err := storage.Open(config)
 	if err != nil {
@@ -181,7 +163,7 @@ func main() {
 		daemonConfig.LogPath = *logPath
 		daemonConfig.PollInterval = *pollInterval
 		daemonConfig.UseFSNotify = *useFSNotify
-		daemonConfig.DBPath = finalDBPath
+		daemonConfig.DBPath = ""
 
 		daemonService = daemon.New(daemonConfig, storageService)
 		if err := daemonService.Start(); err != nil {
