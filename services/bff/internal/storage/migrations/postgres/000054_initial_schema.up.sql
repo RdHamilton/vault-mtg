@@ -544,7 +544,7 @@ CREATE TABLE IF NOT EXISTS accounts (
 
 CREATE INDEX IF NOT EXISTS idx_accounts_is_default ON accounts(is_default);
 -- Only one default account allowed
-CREATE UNIQUE INDEX IF NOT EXISTS idx_accounts_default ON accounts(is_default) WHERE is_default = TRUE;
+CREATE UNIQUE INDEX IF NOT EXISTS idx_accounts_default ON accounts(is_default) WHERE is_default = 1;
 
 -- Matches: match results and metadata
 CREATE TABLE IF NOT EXISTS matches (
