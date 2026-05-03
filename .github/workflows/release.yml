@@ -1,8 +1,17 @@
 name: Release
 
-# Disabled: architecture in flux — run manually when ready to cut a release
 on:
   workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Release tag (e.g. v1.0.0)'
+        required: true
+      prerelease:
+        description: 'Mark as pre-release'
+        required: false
+        default: 'false'
+        type: choice
+        options: ['false', 'true']
 
 permissions:
   contents: write
@@ -19,6 +28,13 @@ jobs:
       with:
         fetch-depth: 0
 
+    - name: Create and push tag
+      run: |
+        git config user.name "github-actions[bot]"
+        git config user.email "github-actions[bot]@users.noreply.github.com"
+        git tag ${{ inputs.tag }}
+        git push origin ${{ inputs.tag }}
+
     - name: Set up Go
       uses: actions/setup-go@v5
       with:
@@ -26,29 +42,24 @@ jobs:
 
     - name: Build for multiple platforms
       run: |
-        # Build for Linux
-        GOOS=linux GOARCH=amd64 go build -v -o bin/mtga-companion-linux-amd64 ./cmd/mtga-companion
-        GOOS=linux GOARCH=arm64 go build -v -o bin/mtga-companion-linux-arm64 ./cmd/mtga-companion
-
-        # Build for macOS
-        GOOS=darwin GOARCH=amd64 go build -v -o bin/mtga-companion-darwin-amd64 ./cmd/mtga-companion
-        GOOS=darwin GOARCH=arm64 go build -v -o bin/mtga-companion-darwin-arm64 ./cmd/mtga-companion
-
-        # Build for Windows
+        GOOS=linux   GOARCH=amd64 go build -v -o bin/mtga-companion-linux-amd64   ./cmd/mtga-companion
+        GOOS=linux   GOARCH=arm64 go build -v -o bin/mtga-companion-linux-arm64   ./cmd/mtga-companion
+        GOOS=darwin  GOARCH=amd64 go build -v -o bin/mtga-companion-darwin-amd64  ./cmd/mtga-companion
+        GOOS=darwin  GOARCH=arm64 go build -v -o bin/mtga-companion-darwin-arm64  ./cmd/mtga-companion
         GOOS=windows GOARCH=amd64 go build -v -o bin/mtga-companion-windows-amd64.exe ./cmd/mtga-companion
         GOOS=windows GOARCH=arm64 go build -v -o bin/mtga-companion-windows-arm64.exe ./cmd/mtga-companion
 
     - name: Generate changelog
-      id: changelog
       run: |
         echo "## What's Changed" > changelog.md
-        git log $(git describe --tags --abbrev=0 HEAD^)..HEAD --pretty=format:"* %s (%h)" >> changelog.md || echo "* Initial release" >> changelog.md
+        git log $(git describe --tags --abbrev=0 HEAD^ 2>/dev/null || git rev-list --max-parents=0 HEAD)..HEAD --pretty=format:"* %s (%h)" >> changelog.md || echo "* Initial release" >> changelog.md
         echo "" >> changelog.md
-        echo "**Full Changelog**: https://github.com/${{ github.repository }}/compare/$(git describe --tags --abbrev=0 HEAD^ 2>/dev/null || echo 'v0.0.0')...${{ github.ref_name }}" >> changelog.md
+        echo "**Full Changelog**: https://github.com/${{ github.repository }}/compare/$(git describe --tags --abbrev=0 HEAD^ 2>/dev/null || echo 'v0.0.0')...${{ inputs.tag }}" >> changelog.md
 
     - name: Create Release
       uses: softprops/action-gh-release@v3
       with:
+        tag_name: ${{ inputs.tag }}
         files: |
           bin/mtga-companion-linux-amd64
           bin/mtga-companion-linux-arm64
@@ -58,19 +69,11 @@ jobs:
           bin/mtga-companion-windows-arm64.exe
         body_path: changelog.md
         draft: false
-        prerelease: ${{ contains(github.ref, 'alpha') || contains(github.ref, 'beta') || contains(github.ref, 'rc') }}
+        prerelease: ${{ inputs.prerelease == 'true' }}
         generate_release_notes: true
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-  # ---------------------------------------------------------
-  # Deploy BFF to EC2 via S3 + SSM (ticket #969)
-  # Runs after release job succeeds. Uses OIDC — no long-lived keys.
-  # Required GitHub secrets:
-  #   AWS_DEPLOY_ROLE_ARN  — ARN of the GitHubActionsDeployRole (from deploy-artifacts stack)
-  #   EC2_INSTANCE_ID      — EC2 instance ID to target with SSM
-  #   DEPLOY_BUCKET        — S3 bucket name (from deploy-artifacts stack output)
-  # ---------------------------------------------------------
   deploy:
     name: Deploy BFF to EC2
     runs-on: ubuntu-latest
@@ -114,7 +117,6 @@ jobs:
 
         echo "SSM Command ID: $COMMAND_ID"
 
-        # Wait for command completion (poll up to 5 minutes)
         for i in $(seq 1 30); do
           STATUS=$(aws ssm get-command-invocation \
             --command-id "$COMMAND_ID" \
