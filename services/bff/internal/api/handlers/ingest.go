@@ -5,8 +5,6 @@ import (
 	"encoding/json"
 	"log"
 	"net/http"
-	"os"
-	"strings"
 
 	contract "github.com/ramonehamilton/mtga-contract"
 )
@@ -30,14 +28,9 @@ func NewIngestHandler(broadcaster EventBroadcaster) *IngestHandler {
 }
 
 // IngestEvent handles POST /v1/ingest/events.
-// It expects a valid "Authorization: Bearer <token>" header and a JSON body
-// containing a contract.DaemonEvent.
+// Authentication is enforced by the APIKeyAuth middleware upstream;
+// by the time this handler runs the request is already verified.
 func (h *IngestHandler) IngestEvent(w http.ResponseWriter, r *http.Request) {
-	if !h.authenticated(r) {
-		http.Error(w, "unauthorized", http.StatusUnauthorized)
-		return
-	}
-
 	var event contract.DaemonEvent
 	if err := json.NewDecoder(r.Body).Decode(&event); err != nil {
 		http.Error(w, "invalid JSON body", http.StatusBadRequest)
@@ -56,29 +49,4 @@ func (h *IngestHandler) IngestEvent(w http.ResponseWriter, r *http.Request) {
 	log.Printf("[IngestHandler] Received event %q from account %q", event.Type, event.AccountID)
 
 	w.WriteHeader(http.StatusAccepted)
-}
-
-// authenticated checks the Authorization header against the shared daemon secret.
-// The expected token is read from the DAEMON_SECRET environment variable.
-// If DAEMON_SECRET is not set, all requests are rejected.
-func (h *IngestHandler) authenticated(r *http.Request) bool {
-	secret := os.Getenv("DAEMON_SECRET")
-	if secret == "" {
-		log.Println("[IngestHandler] Warning: DAEMON_SECRET is not set — rejecting all ingest requests")
-		return false
-	}
-
-	authHeader := r.Header.Get("Authorization")
-	if authHeader == "" {
-		return false
-	}
-
-	const prefix = "Bearer "
-	if !strings.HasPrefix(authHeader, prefix) {
-		return false
-	}
-
-	token := strings.TrimPrefix(authHeader, prefix)
-
-	return token == secret
 }
