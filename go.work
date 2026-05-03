@@ -7,4 +7,5 @@ use (
 	./services/bff
 	./services/contract
 	./services/daemon
+	./services/sync
 )

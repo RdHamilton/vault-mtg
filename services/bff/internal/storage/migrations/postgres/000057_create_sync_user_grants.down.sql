@@ -1,0 +1,1 @@
+DROP ROLE IF EXISTS mtga_sync;
