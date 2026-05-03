@@ -121,6 +121,11 @@ func (s *Scheduler) runFetch(ctx context.Context) {
 			continue
 		}
 
+		if len(ratings) == 0 {
+			log.Printf("[sync] WARNING: 0 cards returned for %s/PremierDraft — set code may not match 17Lands expansion code", setCode)
+			continue
+		}
+
 		sr := draftdata.SetRatings{
 			SetCode:     setCode,
 			DraftFormat: "PremierDraft",

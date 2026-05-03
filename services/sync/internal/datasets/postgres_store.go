@@ -3,6 +3,7 @@ package datasets
 import (
 	"context"
 	"fmt"
+	"log"
 
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/ramonehamilton/mtga-sync/internal/draftdata"
@@ -39,7 +40,9 @@ func (s *PostgresStore) GetActiveSets(ctx context.Context) ([]string, error) {
 	return codes, rows.Err()
 }
 
-// UpsertRatings inserts or updates card ratings for the given set in draft_card_ratings.
+// UpsertRatings replaces all card ratings for the given set/format in draft_card_ratings.
+// It deletes existing rows for the set/format and inserts fresh rows in a single transaction,
+// avoiding the arena_id=0 conflict that would collapse all cards into one row.
 func (s *PostgresStore) UpsertRatings(ctx context.Context, ratings draftdata.SetRatings) error {
 	tx, err := s.pool.Begin(ctx)
 	if err != nil {
@@ -47,22 +50,22 @@ func (s *PostgresStore) UpsertRatings(ctx context.Context, ratings draftdata.Set
 	}
 	defer tx.Rollback(ctx)
 
-	const query = `
+	if _, err := tx.Exec(ctx,
+		`DELETE FROM draft_card_ratings WHERE set_code = $1 AND draft_format = $2`,
+		ratings.SetCode,
+		ratings.DraftFormat,
+	); err != nil {
+		return fmt.Errorf("delete stale ratings for %s/%s: %w", ratings.SetCode, ratings.DraftFormat, err)
+	}
+
+	const insertQuery = `
 		INSERT INTO draft_card_ratings (set_code, draft_format, arena_id, name, gihwr, ohwr, alsa, ata, gih_count, cached_at)
 		VALUES ($1, $2, 0, $3, $4, $5, $6, $7, $8, $9)
-		ON CONFLICT (set_code, draft_format, arena_id)
-		DO UPDATE SET
-			name      = EXCLUDED.name,
-			gihwr     = EXCLUDED.gihwr,
-			ohwr      = EXCLUDED.ohwr,
-			alsa      = EXCLUDED.alsa,
-			ata       = EXCLUDED.ata,
-			gih_count = EXCLUDED.gih_count,
-			cached_at = EXCLUDED.cached_at
 	`
 
+	var inserted int
 	for _, card := range ratings.Cards {
-		if _, err := tx.Exec(ctx, query,
+		if _, err := tx.Exec(ctx, insertQuery,
 			ratings.SetCode,
 			ratings.DraftFormat,
 			card.Name,
@@ -73,11 +76,17 @@ func (s *PostgresStore) UpsertRatings(ctx context.Context, ratings draftdata.Set
 			card.SeenCount,
 			ratings.FetchedAt,
 		); err != nil {
-			return fmt.Errorf("upsert card %q: %w", card.Name, err)
+			return fmt.Errorf("insert card %q: %w", card.Name, err)
 		}
+		inserted++
 	}
 
-	return tx.Commit(ctx)
+	if err := tx.Commit(ctx); err != nil {
+		return fmt.Errorf("commit: %w", err)
+	}
+
+	log.Printf("[sync] UpsertRatings: inserted %d rows for %s/%s", inserted, ratings.SetCode, ratings.DraftFormat)
+	return nil
 }
 
 // GetRatings retrieves all card ratings for a set/format combination.

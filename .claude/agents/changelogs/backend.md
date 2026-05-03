@@ -8,6 +8,16 @@
 **Summary**: One sentence summary of what was done and why.
 -->
 
+## 2026-05-03 — Issue #1011: fix UpsertRatings storing 0 rows and missing standard-legal sets
+**PR**: #1043
+**Files changed**:
+- `services/sync/internal/datasets/postgres_store.go` — replace ON CONFLICT upsert with DELETE + batch INSERT to fix arena_id=0 collision; add inserted-row log after commit
+- `services/sync/internal/datasets/postgres_store_test.go` — add TestMockStore_SecondUpsertReplacesAllCards to verify DELETE+INSERT semantics across two consecutive calls
+- `services/sync/internal/refresh/scheduler.go` — add WARNING log when 0 cards returned from 17Lands (set code mismatch indicator)
+- `services/bff/internal/storage/migrations/postgres/000058_fix_standard_legal_sets.up.sql` — seed all 11 current standard-legal sets with ON CONFLICT upsert
+- `services/bff/internal/storage/migrations/postgres/000058_fix_standard_legal_sets.down.sql` — revert is_standard_legal for the 11 sets
+**Summary**: Fixed two bugs: UpsertRatings was collapsing all cards to a single row due to arena_id=0 ON CONFLICT; the sets table only had 3 of 11 standard-legal sets seeded. Also added a 0-card warning to surface 17Lands set-code mismatches (AED/BIG).
+
 ## 2026-05-03 — Issue #1011: scaffold services/sync Go module for 17Lands and card data polling (ADR-001 Approach B)
 **PR**: #1043
 **Files changed**:
