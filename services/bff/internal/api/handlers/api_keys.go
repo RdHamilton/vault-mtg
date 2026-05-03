@@ -5,11 +5,13 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"log"
 	"net/http"
 	"strconv"
 	"time"
 
+	"github.com/jackc/pgx/v5/pgconn"
 	"golang.org/x/crypto/bcrypt"
 
 	"github.com/ramonehamilton/mtga-bff/internal/storage/repository"
@@ -77,6 +79,11 @@ func (h *APIKeysHandler) CreateAPIKey(w http.ResponseWriter, r *http.Request) {
 
 	apiKey, err := h.repo.Create(r.Context(), userID, string(hash))
 	if err != nil {
+		var pgErr *pgconn.PgError
+		if errors.As(err, &pgErr) && pgErr.Code == "23503" {
+			writeJSONError(w, "user not found", http.StatusNotFound)
+			return
+		}
 		log.Printf("[APIKeysHandler] Create: %v", err)
 		writeJSONError(w, "internal server error", http.StatusInternalServerError)
 		return
