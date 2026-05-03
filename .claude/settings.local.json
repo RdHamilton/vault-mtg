@@ -65,7 +65,9 @@
       "Bash(node -e ' *)",
       "Bash(node *)",
       "Bash(aws configure list-profiles *)",
-      "mcp__plugin_context-mode_context-mode__ctx_batch_execute"
+      "mcp__plugin_context-mode_context-mode__ctx_batch_execute",
+      "Read(//Users/ramonehamilton/.claude/plans/**)",
+      "Bash(git diff *)"
     ],
     "deny": [],
     "ask": []
