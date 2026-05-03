@@ -60,14 +60,14 @@ func (s *PostgresStore) UpsertRatings(ctx context.Context, ratings draftdata.Set
 
 	const insertQuery = `
 		INSERT INTO draft_card_ratings (set_code, draft_format, arena_id, name, gihwr, ohwr, alsa, ata, gih_count, cached_at)
-		VALUES ($1, $2, 0, $3, $4, $5, $6, $7, $8, $9)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
 	`
 
-	var inserted int
-	for _, card := range ratings.Cards {
+	for i, card := range ratings.Cards {
 		if _, err := tx.Exec(ctx, insertQuery,
 			ratings.SetCode,
 			ratings.DraftFormat,
+			i+1, // synthetic 1-based position; 17Lands has no arena IDs
 			card.Name,
 			card.GIHWR,
 			card.OHW,
@@ -78,14 +78,13 @@ func (s *PostgresStore) UpsertRatings(ctx context.Context, ratings draftdata.Set
 		); err != nil {
 			return fmt.Errorf("insert card %q: %w", card.Name, err)
 		}
-		inserted++
 	}
 
 	if err := tx.Commit(ctx); err != nil {
 		return fmt.Errorf("commit: %w", err)
 	}
 
-	log.Printf("[sync] UpsertRatings: inserted %d rows for %s/%s", inserted, ratings.SetCode, ratings.DraftFormat)
+	log.Printf("[sync] UpsertRatings: inserted %d rows for %s/%s", len(ratings.Cards), ratings.SetCode, ratings.DraftFormat)
 	return nil
 }
 
