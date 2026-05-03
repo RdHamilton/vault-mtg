@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
 	"flag"
 	"fmt"
@@ -14,16 +15,22 @@ import (
 	"time"
 
 	"github.com/go-chi/chi/v5"
-	"github.com/go-chi/chi/v5/middleware"
+	chimiddleware "github.com/go-chi/chi/v5/middleware"
 	"github.com/go-chi/cors"
 	"github.com/gorilla/websocket"
 	"github.com/ramonehamilton/mtga-bff/internal/api/handlers"
+	bffmiddleware "github.com/ramonehamilton/mtga-bff/internal/api/middleware"
 	"github.com/ramonehamilton/mtga-bff/internal/storage"
+	"github.com/ramonehamilton/mtga-bff/internal/storage/repository"
 	contract "github.com/ramonehamilton/mtga-contract"
+
+	_ "github.com/jackc/pgx/v5/stdlib"
 )
 
-var port = flag.Int("port", 8080, "HTTP server port")
-var databaseURL = flag.String("database-url", os.Getenv("DATABASE_URL"), "PostgreSQL connection string")
+var (
+	port        = flag.Int("port", 8080, "HTTP server port")
+	databaseURL = flag.String("database-url", os.Getenv("DATABASE_URL"), "PostgreSQL connection string")
+)
 
 func main() {
 	flag.Parse()
@@ -48,14 +55,31 @@ func main() {
 	ingestBroadcaster := &hubBroadcaster{hub: hub}
 	ingestHandler := handlers.NewIngestHandler(ingestBroadcaster)
 
+	// Wire API key handler and auth middleware when a database is available.
+	var (
+		apiKeysHandler  *handlers.APIKeysHandler
+		apiKeyAuthMiddl func(http.Handler) http.Handler
+	)
+
+	if *databaseURL != "" {
+		sqlDB, err := sql.Open("pgx", *databaseURL)
+		if err != nil {
+			log.Fatalf("open db: %v", err)
+		}
+
+		apiKeyRepo := repository.NewAPIKeyRepository(sqlDB)
+		apiKeysHandler = handlers.NewAPIKeysHandler(apiKeyRepo)
+		apiKeyAuthMiddl = bffmiddleware.APIKeyAuth(apiKeyRepo)
+	}
+
 	r := chi.NewRouter()
-	r.Use(middleware.RequestID)
-	r.Use(middleware.Logger)
-	r.Use(middleware.Recoverer)
+	r.Use(chimiddleware.RequestID)
+	r.Use(chimiddleware.Logger)
+	r.Use(chimiddleware.Recoverer)
 	r.Use(cors.Handler(cors.Options{
 		AllowedOrigins: []string{"http://localhost:*", "http://127.0.0.1:*"},
 		AllowedMethods: []string{"GET", "POST", "OPTIONS"},
-		AllowedHeaders: []string{"Authorization", "Content-Type", "X-Request-ID"},
+		AllowedHeaders: []string{"Authorization", "Content-Type", "X-Request-ID", "X-User-ID"},
 	}))
 
 	r.Get("/health", func(w http.ResponseWriter, r *http.Request) {
@@ -65,7 +89,18 @@ func main() {
 	})
 
 	r.Get("/ws", hub.serveWs)
-	r.Post("/v1/ingest/events", ingestHandler.IngestEvent)
+
+	// POST /api/keys — create a new API key for a user (placeholder auth via X-User-ID).
+	if apiKeysHandler != nil {
+		r.Post("/api/keys", apiKeysHandler.CreateAPIKey)
+	}
+
+	// POST /v1/ingest/events — guarded by API key auth when DB is available.
+	if apiKeyAuthMiddl != nil {
+		r.With(apiKeyAuthMiddl).Post("/v1/ingest/events", ingestHandler.IngestEvent)
+	} else {
+		r.Post("/v1/ingest/events", ingestHandler.IngestEvent)
+	}
 
 	srv := &http.Server{
 		Addr:    fmt.Sprintf(":%d", *port),
