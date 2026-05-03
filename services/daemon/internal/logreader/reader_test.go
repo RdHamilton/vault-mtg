@@ -4,6 +4,7 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -119,6 +120,87 @@ func TestPollerStartStop(t *testing.T) {
 
 	p.Stop()
 	assert.False(t, p.IsRunning())
+}
+
+func TestPollerHandlesRotationDrain(t *testing.T) {
+	modes := []struct {
+		name          string
+		useFileEvents bool
+	}{
+		{"timer", false},
+		{"fsnotify", true},
+	}
+
+	for _, mode := range modes {
+		t.Run(mode.name, func(t *testing.T) {
+			dir := t.TempDir()
+			logFile := filepath.Join(dir, "Player.log")
+
+			// Entry 1: present before poller starts
+			entry1 := `{"type":"entry.one","id":"1"}` + "\n"
+			require.NoError(t, os.WriteFile(logFile, []byte(entry1), 0o600))
+
+			cfg := DefaultPollerConfig(logFile)
+			cfg.UseFileEvents = mode.useFileEvents
+			cfg.ReadFromStart = true
+			cfg.Interval = 20 * time.Millisecond
+			cfg.BufferSize = 20
+
+			p, err := NewPoller(cfg)
+			require.NoError(t, err)
+
+			updates := p.Start()
+			defer p.Stop()
+
+			// Let the poller read entry 1
+			time.Sleep(80 * time.Millisecond)
+
+			// Entry 2: appended to the old file — must be read before rotation
+			f, err := os.OpenFile(logFile, os.O_APPEND|os.O_WRONLY, 0o600)
+			require.NoError(t, err)
+			_, err = f.WriteString(`{"type":"entry.two","id":"2"}` + "\n")
+			require.NoError(t, err)
+			require.NoError(t, f.Close())
+
+			// Give the poller time to naturally read entry 2 before we rotate the file.
+			// With Interval=20ms, two full ticks (40ms) is enough.
+			time.Sleep(80 * time.Millisecond)
+
+			// Simulate MTGA overwrite: rename the old log
+			rotated := filepath.Join(dir, "Player.log.old")
+			require.NoError(t, os.Rename(logFile, rotated))
+
+			// Let the poller detect the missing file and reset
+			time.Sleep(80 * time.Millisecond)
+
+			// Entry 3: new log file at the same path
+			entry3 := `{"type":"entry.three","id":"3"}` + "\n"
+			require.NoError(t, os.WriteFile(logFile, []byte(entry3), 0o600))
+
+			// Collect all entries within 1s (generous for fsnotify on CI)
+			deadline := time.After(1 * time.Second)
+			var collected []*LogEntry
+		loop:
+			for {
+				select {
+				case entry, ok := <-updates:
+					if !ok {
+						break loop
+					}
+					if entry != nil && entry.IsJSON {
+						collected = append(collected, entry)
+					}
+					if len(collected) == 3 {
+						break loop
+					}
+				case <-deadline:
+					break loop
+				}
+			}
+
+			assert.Len(t, collected, 3, "should have received all 3 entries (entry 2 read before rotation, entry 3 from new file)")
+		})
+	}
 }
 
 func TestPollerReadsNewEntries(t *testing.T) {

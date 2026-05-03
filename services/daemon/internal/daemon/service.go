@@ -45,6 +45,18 @@ func (s *Service) Run(ctx context.Context) error {
 		log.Printf("[daemon] auto-detected log path: %s", logPath)
 	}
 
+	if s.cfg.LogPreserveOnStart {
+		dst, err := logreader.Snapshot(logPath, s.cfg.LogArchiveDir)
+		if err != nil {
+			log.Printf("[daemon] warn: log snapshot failed: %v", err)
+		} else if dst != "" {
+			log.Printf("[daemon] log snapshot saved: %s", dst)
+		}
+		if err := logreader.PruneSnapshots(s.cfg.LogArchiveDir, s.cfg.LogArchiveMaxAge); err != nil {
+			log.Printf("[daemon] warn: prune snapshots failed: %v", err)
+		}
+	}
+
 	pollerCfg := logreader.DefaultPollerConfig(logPath)
 	pollerCfg.Interval = s.cfg.PollInterval
 	pollerCfg.UseFileEvents = s.cfg.UseFSNotify
