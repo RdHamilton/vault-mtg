@@ -51,7 +51,8 @@ func (s *PostgresStore) UpsertRatings(ctx context.Context, ratings draftdata.Set
 	}
 	defer tx.Rollback(ctx)
 
-	if _, err := tx.Exec(ctx,
+	if _, err := tx.Exec(
+		ctx,
 		`DELETE FROM draft_card_ratings WHERE set_code = $1 AND draft_format = $2`,
 		ratings.SetCode,
 		ratings.DraftFormat,
@@ -70,7 +71,8 @@ func (s *PostgresStore) UpsertRatings(ctx context.Context, ratings draftdata.Set
 			continue
 		}
 
-		if _, err := tx.Exec(ctx, insertQuery,
+		if _, err := tx.Exec(
+			ctx, insertQuery,
 			ratings.SetCode,
 			ratings.DraftFormat,
 			card.MtgaID,
@@ -112,7 +114,8 @@ func (s *PostgresStore) UpsertSets(ctx context.Context, sets []scryfall.Scryfall
 	`
 
 	for _, set := range sets {
-		if _, err := s.pool.Exec(ctx, q,
+		if _, err := s.pool.Exec(
+			ctx, q,
 			set.Code,
 			set.Name,
 			set.ReleasedAt,

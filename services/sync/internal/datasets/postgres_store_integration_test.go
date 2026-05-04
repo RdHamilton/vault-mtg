@@ -82,7 +82,8 @@ func TestPostgresStore_UpsertSets_Integration(t *testing.T) {
 		var name string
 		var isStandardLegal bool
 		var cardCount int
-		err := pool.QueryRow(ctx,
+		err := pool.QueryRow(
+			ctx,
 			`SELECT name, is_standard_legal, card_count FROM sets WHERE code = $1`,
 			s.Code,
 		).Scan(&name, &isStandardLegal, &cardCount)
