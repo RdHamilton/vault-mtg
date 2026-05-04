@@ -11,8 +11,23 @@ permissions:
 jobs:
   e2e-smoke:
     name: E2E Smoke Tests
-    runs-on: macos-latest
+    runs-on: ubuntu-latest
     timeout-minutes: 15
+
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: mtga
+          POSTGRES_PASSWORD: mtga
+          POSTGRES_DB: mtga_e2e
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
 
     steps:
     - name: Checkout code
@@ -50,6 +65,7 @@ jobs:
         npm run test:e2e:smoke
       env:
         CI: true
+        DATABASE_URL: postgres://mtga:mtga@localhost:5432/mtga_e2e?sslmode=disable
 
     - name: Upload test results
       if: always()

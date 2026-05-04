@@ -116,6 +116,7 @@ jobs:
     name: Deploy BFF to EC2
     runs-on: ubuntu-latest
     needs: [release]
+    if: always() && needs.release.result == 'success'
     environment: production
 
     steps:

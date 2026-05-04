@@ -27,6 +27,14 @@ This is the system-wide record of all changes made across the project. Every age
 - `docs/adr/004-setcache-ownership-flip.md` — new: ADR-004 documents staleness threshold mechanism for BFF draft ratings handler; Option 1 (feature flag) kept as ENV var escape hatch; Option 3 (sync health table) deferred
 **Summary**: Designed the SetCache ownership flip mechanism; chose staleness threshold on existing `cached_at` column as primary approach with `DRAFT_RATINGS_BYPASS_FRESHNESS_CHECK` env var as emergency override; decision ensures BFF never returns 5xx on stale data and is self-healing when Sync recovers. 5 implementation tickets created (#1082–#1086).
 
+## 2026-05-04 — [architect] fix: release workflow deploy skipped on skip_e2e=true; E2E webServer exit code 1
+**PR**: #TBD
+**Files changed**:
+- `.github/workflows/release.yml` — added `if: always() && needs.release.result == 'success'` to `deploy` job so it runs when e2e-smoke is skipped
+- `.github/workflows/e2e-smoke.yml` — switched runner to `ubuntu-latest`, added postgres:16 service container, set `DATABASE_URL` env var on smoke test step
+- `frontend/playwright.config.ts` — removed invalid `--db-path` flag from CI webServer command (flag not defined in cmd/apiserver/main.go; caused immediate exit code 2)
+**Summary**: Fixed two release workflow bugs: (1) `deploy` job was skipped when `skip_e2e=true` because GitHub Actions propagates skip through dependency chain without an explicit `if` condition; (2) E2E webServer exited code 1 because `--db-path` is not a recognized flag in the apiserver binary and `DATABASE_URL` was never set in CI — resolved by removing the invalid flag and providing a postgres service container.
+
 ## 2026-05-04 — [architect] chore: enforce GONOSUMDB/GOPRIVATE on all Go CI workflow steps
 **PR**: #1087
 **Summary**: Audited all .github/workflows/ — patched integration.yml and release.yml Go steps that were missing GONOSUMDB/GOPRIVATE env vars. Codified the rule in backend.md, daemon.md, and architect.md agent definitions to prevent recurrence.

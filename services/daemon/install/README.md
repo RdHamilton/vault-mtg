@@ -7,6 +7,20 @@ The daemon reads MTGA's `Player.log` on the local machine and ships events to
 the cloud BFF.  It must run as the same user that runs MTGA Arena so it can
 access `Player.log` in the user's home directory.
 
+## Config file format
+
+The daemon reads a **JSON** config file.  The canonical keys are:
+
+```json
+{
+  "cloud_api_url": "https://api.yourdomain.com",
+  "api_key": "<daemon-jwt>",
+  "sync_enabled": true
+}
+```
+
+See `services/daemon/internal/config/config.go` for the full list of supported fields.
+
 ---
 
 ## macOS
@@ -23,15 +37,16 @@ The script:
 2. Downloads the correct binary from the latest GitHub Release.
 3. Installs the binary to `/usr/local/bin/mtga-companion-daemon` (requires
    `sudo` for that directory).
-4. Writes a launchd plist to
+4. Prompts for the BFF URL and daemon auth token and writes them to
+   `~/.mtga-companion/daemon.json`.
+5. Writes a launchd plist to
    `~/Library/LaunchAgents/com.mtga-companion.daemon.plist` and loads it.
 
 The daemon starts immediately and restarts automatically on login.
 
 **Logs**: `~/Library/Logs/mtga-companion-daemon.log`
 
-**Config**: `~/.config/mtga-companion/daemon.yaml` — edit this file to set the
-BFF URL and auth token before the daemon starts for the first time.
+**Config**: `~/.mtga-companion/daemon.json`
 
 #### Pin to a specific release
 
@@ -70,14 +85,13 @@ The script:
 2. Installs it to `%ProgramFiles%\MTGA-Companion\` (falls back to
    `%LOCALAPPDATA%\MTGA-Companion\` if `%ProgramFiles%` is not writable without
    elevation).
-3. Prompts for `BFF_URL` and `DAEMON_AUTH_TOKEN` and writes them to
-   `daemon.yaml` next to the binary.
+3. Prompts for the BFF URL and daemon auth token and writes them to
+   `%APPDATA%\mtga-companion\daemon.json`.
 4. Registers a Task Scheduler **AtLogon** task for the current user so the
    daemon starts automatically without UAC elevation.
 5. Starts the daemon immediately.
 
-**Config**: `%ProgramFiles%\MTGA-Companion\daemon.yaml` (or
-`%LOCALAPPDATA%\MTGA-Companion\daemon.yaml` in the fallback case).
+**Config**: `%APPDATA%\mtga-companion\daemon.json`
 
 #### Provide credentials non-interactively
 

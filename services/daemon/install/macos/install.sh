@@ -23,6 +23,8 @@ INSTALL_DIR="/usr/local/bin"
 BINARY_NAME="mtga-companion-daemon"
 PLIST_LABEL="com.mtga-companion.daemon"
 PLIST_PATH="${HOME}/Library/LaunchAgents/${PLIST_LABEL}.plist"
+CONFIG_DIR="${HOME}/.mtga-companion"
+CONFIG_FILE="${CONFIG_DIR}/daemon.json"
 
 # ---------------------------------------------------------------------------
 # Detect architecture.
@@ -90,6 +92,42 @@ rm -f "${TMP_BIN}"
 echo "Binary installed: ${INSTALL_DIR}/${BINARY_NAME}"
 
 # ---------------------------------------------------------------------------
+# Write the JSON config file.
+# Key names must match the json struct tags in
+# services/daemon/internal/config/config.go.
+# Default path matches main.go: ~/.mtga-companion/daemon.json
+#
+# jq is used to produce safe JSON — values are escaped properly even if they
+# contain quotes, backslashes, or newlines.  python3 is the fallback because
+# macOS ships it but not jq by default.
+# ---------------------------------------------------------------------------
+mkdir -p "${CONFIG_DIR}"
+
+if [[ ! -f "${CONFIG_FILE}" ]]; then
+  # Prompt for values only on a fresh install.
+  echo ""
+  printf "Enter BFF URL (e.g. https://api.yourdomain.com): "
+  read -r BFF_URL
+  printf "Enter daemon auth token (daemon JWT from first registration): "
+  read -r DAEMON_AUTH_TOKEN
+
+  if command -v jq >/dev/null 2>&1; then
+    jq -n --arg cloud "${BFF_URL}" --arg key "${DAEMON_AUTH_TOKEN}" \
+      '{"cloud_api_url":$cloud,"api_key":$key}' > "${CONFIG_FILE}"
+  else
+    python3 -c "
+import json, sys
+print(json.dumps({'cloud_api_url': sys.argv[1], 'api_key': sys.argv[2]}, indent=2))
+" "${BFF_URL}" "${DAEMON_AUTH_TOKEN}" > "${CONFIG_FILE}"
+  fi
+
+  chmod 600 "${CONFIG_FILE}"
+  echo "Config written: ${CONFIG_FILE}"
+else
+  echo "Config already exists, skipping: ${CONFIG_FILE}"
+fi
+
+# ---------------------------------------------------------------------------
 # Write the launchd plist.
 # RunAtLoad=true  — start the daemon when the user logs in.
 # KeepAlive=true  — relaunch the daemon if it exits unexpectedly.
@@ -110,6 +148,8 @@ cat > "${PLIST_PATH}" <<PLIST
     <key>ProgramArguments</key>
     <array>
         <string>${INSTALL_DIR}/${BINARY_NAME}</string>
+        <string>-config</string>
+        <string>${CONFIG_FILE}</string>
     </array>
 
     <!-- Start automatically when the user logs in. -->
@@ -140,8 +180,8 @@ launchctl load -w "${PLIST_PATH}"
 echo ""
 echo "MTGA Companion daemon installed and running."
 echo "  Binary : ${INSTALL_DIR}/${BINARY_NAME}"
+echo "  Config : ${CONFIG_FILE}"
 echo "  plist  : ${PLIST_PATH}"
 echo "  Logs   : ${HOME}/Library/Logs/mtga-companion-daemon.log"
 echo ""
-echo "To configure the BFF URL and auth token, edit the daemon config file"
-echo "at ~/.config/mtga-companion/daemon.yaml before the daemon starts."
+echo "To change the BFF URL or rotate the auth token, edit: ${CONFIG_FILE}"

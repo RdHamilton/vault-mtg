@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 	"time"
 
@@ -28,7 +29,8 @@ import (
 
 var (
 	port            = flag.Int("port", 8080, "HTTP server port")
-	daemonJWTSecret = os.Getenv("DAEMON_JWT_SECRET")
+	databaseURL     = flag.String("database-url", os.Getenv("DATABASE_URL"), "PostgreSQL connection string")
+	daemonJWTSecret = strings.TrimSpace(os.Getenv("DAEMON_JWT_SECRET"))
 )
 
 func runMigrationsWithRetry(dsn string, timeout time.Duration) error {
