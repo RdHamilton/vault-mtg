@@ -29,6 +29,40 @@ type mockBroadcaster struct {
 	calls []broadcastedCall
 }
 
+// insertCall records a single Insert invocation on the mock repo.
+type insertCall struct {
+	userID     int64
+	accountID  string
+	eventType  string
+	payload    json.RawMessage
+	occurredAt time.Time
+}
+
+// mockDaemonEventsRepo is a test double for DaemonEventInserter.
+type mockDaemonEventsRepo struct {
+	calls []insertCall
+	err   error // if non-nil, Insert returns this error
+}
+
+func (m *mockDaemonEventsRepo) Insert(
+	_ context.Context,
+	userID int64,
+	accountID string,
+	eventType string,
+	payload json.RawMessage,
+	occurredAt time.Time,
+) error {
+	m.calls = append(m.calls, insertCall{
+		userID:     userID,
+		accountID:  accountID,
+		eventType:  eventType,
+		payload:    payload,
+		occurredAt: occurredAt,
+	})
+
+	return m.err
+}
+
 func (m *mockBroadcaster) BroadcastDaemonEvent(userID int64, event contract.DaemonEvent) {
 	m.calls = append(m.calls, broadcastedCall{userID: userID, event: event})
 }
@@ -351,5 +385,117 @@ func TestIngestEvent_NilBroadcaster(t *testing.T) {
 	// nil broadcaster must not panic; event is accepted.
 	if rr.Code != http.StatusAccepted {
 		t.Errorf("expected 202, got %d", rr.Code)
+	}
+}
+
+// TestIngestEvent_PersistsEventWhenRepoWired verifies that IngestEvent calls
+// Insert on the repository with the correct parameters when a repo is wired.
+func TestIngestEvent_PersistsEventWhenRepoWired(t *testing.T) {
+	const token = "persist-token"
+	const wantUserID int64 = 55
+
+	keyRepo := &mockKeyLister{keys: []repository.APIKey{
+		{ID: 3, KeyHash: mustHash(t, token), UserID: wantUserID},
+	}}
+
+	broadcaster := &mockBroadcaster{}
+	eventsRepo := &mockDaemonEventsRepo{}
+
+	ih := handlers.NewIngestHandler(broadcaster).WithRepository(eventsRepo)
+	handler := middleware.APIKeyAuth(keyRepo)(http.HandlerFunc(ih.IngestEvent))
+
+	event := makeEvent("draft:pick")
+	req, rr := ingestRequest(t, token, event)
+	handler.ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusAccepted {
+		t.Fatalf("expected 202, got %d: %s", rr.Code, rr.Body.String())
+	}
+
+	if len(eventsRepo.calls) != 1 {
+		t.Fatalf("expected 1 Insert call, got %d", len(eventsRepo.calls))
+	}
+
+	call := eventsRepo.calls[0]
+	if call.userID != wantUserID {
+		t.Errorf("Insert userID=%d, want %d", call.userID, wantUserID)
+	}
+	if call.eventType != "draft:pick" {
+		t.Errorf("Insert eventType=%q, want %q", call.eventType, "draft:pick")
+	}
+
+	// Broadcast must still have happened.
+	if len(broadcaster.calls) != 1 {
+		t.Fatalf("expected 1 broadcast call, got %d", len(broadcaster.calls))
+	}
+}
+
+// TestIngestEvent_BroadcastsEvenWhenInsertFails verifies that a persistence
+// failure does not prevent the live SSE broadcast — the frontend must still
+// receive the event even when the database is degraded.
+func TestIngestEvent_BroadcastsEvenWhenInsertFails(t *testing.T) {
+	const token = "fail-persist-token"
+	const wantUserID int64 = 77
+
+	keyRepo := &mockKeyLister{keys: []repository.APIKey{
+		{ID: 7, KeyHash: mustHash(t, token), UserID: wantUserID},
+	}}
+
+	broadcaster := &mockBroadcaster{}
+	eventsRepo := &mockDaemonEventsRepo{err: fmt.Errorf("db connection refused")}
+
+	ih := handlers.NewIngestHandler(broadcaster).WithRepository(eventsRepo)
+	handler := middleware.APIKeyAuth(keyRepo)(http.HandlerFunc(ih.IngestEvent))
+
+	event := makeEvent("match:result")
+	req, rr := ingestRequest(t, token, event)
+	handler.ServeHTTP(rr, req)
+
+	// Handler must still return 202 despite the insert error.
+	if rr.Code != http.StatusAccepted {
+		t.Fatalf("expected 202, got %d: %s", rr.Code, rr.Body.String())
+	}
+
+	// Broadcast must have proceeded despite persistence failure.
+	if len(broadcaster.calls) != 1 {
+		t.Fatalf("expected 1 broadcast call even after insert failure, got %d", len(broadcaster.calls))
+	}
+
+	// Insert was called — the error happened, it didn't silently skip.
+	if len(eventsRepo.calls) != 1 {
+		t.Fatalf("expected 1 Insert call, got %d", len(eventsRepo.calls))
+	}
+}
+
+// TestIngestEvent_NilRepo_BroadcastOnly verifies that IngestEvent behaves
+// exactly as before when no repository is wired — broadcast proceeds, no panic.
+func TestIngestEvent_NilRepo_BroadcastOnly(t *testing.T) {
+	const token = "nil-repo-token"
+	const wantUserID int64 = 33
+
+	keyRepo := &mockKeyLister{keys: []repository.APIKey{
+		{ID: 9, KeyHash: mustHash(t, token), UserID: wantUserID},
+	}}
+
+	broadcaster := &mockBroadcaster{}
+
+	// No WithRepository call — repo is nil.
+	ih := handlers.NewIngestHandler(broadcaster)
+	handler := middleware.APIKeyAuth(keyRepo)(http.HandlerFunc(ih.IngestEvent))
+
+	event := makeEvent("sync:collection")
+	req, rr := ingestRequest(t, token, event)
+	handler.ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusAccepted {
+		t.Fatalf("expected 202, got %d: %s", rr.Code, rr.Body.String())
+	}
+
+	if len(broadcaster.calls) != 1 {
+		t.Fatalf("expected 1 broadcast call, got %d", len(broadcaster.calls))
+	}
+
+	if broadcaster.calls[0].userID != wantUserID {
+		t.Errorf("broadcast userID=%d, want %d", broadcaster.calls[0].userID, wantUserID)
 	}
 }

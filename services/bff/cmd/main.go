@@ -102,6 +102,9 @@ func main() {
 
 		draftRatingsRepo := repository.NewDraftRatingsRepository(sqlDB)
 		draftRatingsHandler = handlers.NewDraftRatingsHandler(draftRatingsRepo, cfg)
+
+		daemonEventsRepo := repository.NewDaemonEventsRepository(sqlDB)
+		ingestHandler = ingestHandler.WithRepository(daemonEventsRepo)
 	} else {
 		log.Printf("WARN: no DATABASE_URL — API key auth unavailable (env=%s); guarded endpoints return 503", cfg.Env)
 	}

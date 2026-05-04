@@ -1,4 +1,3 @@
-// Package repository provides data-access helpers for the BFF service.
 package repository
 
 import (
@@ -7,7 +6,7 @@ import (
 	"time"
 )
 
-// DaemonEventRow is the in-memory representation of a row in the daemon_events table.
+// DaemonEventRow is a single row from the daemon_events table.
 type DaemonEventRow struct {
 	ID         int64
 	UserID     int64
@@ -18,17 +17,18 @@ type DaemonEventRow struct {
 	ReceivedAt time.Time
 }
 
-// DaemonEventsRepository handles persistence for daemon_events rows.
+// DaemonEventsRepository persists daemon events to the daemon_events table.
 type DaemonEventsRepository struct {
 	db DB
 }
 
-// NewDaemonEventsRepository returns a repository backed by db.
+// NewDaemonEventsRepository returns a DaemonEventsRepository backed by db.
 func NewDaemonEventsRepository(db DB) *DaemonEventsRepository {
 	return &DaemonEventsRepository{db: db}
 }
 
-// Insert persists a daemon event scoped to a user and account.
+// Insert writes a daemon event row scoped to the given user_id and account_id.
+// occurred_at is stored as-is; received_at defaults to NOW() via the column default.
 func (r *DaemonEventsRepository) Insert(
 	ctx context.Context,
 	userID int64,
@@ -41,20 +41,24 @@ func (r *DaemonEventsRepository) Insert(
 		INSERT INTO daemon_events (user_id, account_id, event_type, payload, occurred_at)
 		VALUES ($1, $2, $3, $4, $5)`
 
-	_, err := r.db.ExecContext(ctx, q, userID, accountID, eventType, []byte(payload), occurredAt)
+	_, err := r.db.ExecContext(ctx, q, userID, accountID, eventType, payload, occurredAt)
 
 	return err
 }
 
-// ListByUserID returns the most recent events for a user, newest first.
-// At most limit rows are returned.
-func (r *DaemonEventsRepository) ListByUserID(ctx context.Context, userID int64, limit int) ([]DaemonEventRow, error) {
+// ListByUserID returns up to limit daemon event rows for the given user,
+// ordered newest-first.  It never returns rows belonging to other users.
+func (r *DaemonEventsRepository) ListByUserID(
+	ctx context.Context,
+	userID int64,
+	limit int,
+) ([]DaemonEventRow, error) {
 	const q = `
 		SELECT id, user_id, account_id, event_type, payload, occurred_at, received_at
-		FROM   daemon_events
-		WHERE  user_id = $1
-		ORDER  BY occurred_at DESC
-		LIMIT  $2`
+		FROM daemon_events
+		WHERE user_id = $1
+		ORDER BY occurred_at DESC
+		LIMIT $2`
 
 	rows, err := r.db.QueryContext(ctx, q, userID, limit)
 	if err != nil {
@@ -68,7 +72,8 @@ func (r *DaemonEventsRepository) ListByUserID(ctx context.Context, userID int64,
 		var e DaemonEventRow
 
 		if err := rows.Scan(
-			&e.ID, &e.UserID, &e.AccountID, &e.EventType, &e.Payload, &e.OccurredAt, &e.ReceivedAt,
+			&e.ID, &e.UserID, &e.AccountID, &e.EventType,
+			&e.Payload, &e.OccurredAt, &e.ReceivedAt,
 		); err != nil {
 			return nil, err
 		}
