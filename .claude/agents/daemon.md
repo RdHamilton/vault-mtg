@@ -92,15 +92,15 @@ Run tests: `cd services/daemon && go test ./...`
 
 ## Pre-PR Checklist (Required — Never Skip)
 
-Before opening any pull request, run ALL of the following from `services/daemon`. Every command must pass with no errors before the PR is opened:
+Before opening any pull request, run ALL of the following in **every Go module you touched**. Every command must pass with zero errors before the PR is opened:
 
 ```bash
-gofumpt -l .    # must print nothing — fix any files it lists
-go vet ./...    # must print nothing
-go test ./...   # all tests must pass
+gofumpt -l .        # must print nothing — fix any files it lists
+go vet ./...        # must print nothing
+go test -race ./... # all tests must pass with race detector
 ```
 
-If any command fails, fix the issue first. Do not open the PR until all three pass.
+If you touched multiple modules, run all three commands in each module directory. If any command fails, fix the issue first. Do not open the PR until all three pass in all touched modules.
 
 ## Finding Your Next Ticket
 
