@@ -11,6 +11,15 @@ This is the system-wide record of all changes made across the project. Every age
 **Summary**: One sentence summary of what was done and why.
 -->
 
+## 2026-05-03 — [architect] Issue #1050: architecture review — sync service deployment drift
+**PR**: N/A — ADR only
+**ADR**: docs/adr/003-sync-service-deployment-strategy.md
+**Files changed**:
+- `docs/adr/003-sync-service-deployment-strategy.md` — new: ADR-003 documents Lambda deployment for sync, RDS IAM auth decision, impact on merged PRs #1048/#1049/#1053
+- `docs/architecture/CHANGELOG.md` — new: architect changelog tracking major findings and plan sync events
+- `~/.claude/plans/mtga-companion-aws-launch.md` — updated: marked sync scaffold complete, flagged EC2 deploy step as needing replacement, documented Lambda next steps
+**Summary**: Discovered and documented that services/sync drifted from ADR-001 (Lambda+EventBridge) when EC2/systemd artifacts were merged in PRs #1048-#1053; wrote ADR-003 to formally re-affirm the Lambda deployment decision and resolve the credential strategy gap (issue #1054) via RDS IAM auth on Lambda execution role.
+
 ## 2026-05-03 — [daemon] Issue #1014: daemon: investigate log preservation and MTGA log overwrite on startup
 **PR**: #1042
 **Files changed**:
