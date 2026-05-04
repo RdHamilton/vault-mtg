@@ -1,7 +1,6 @@
 package handlers_test
 
 import (
-	"bytes"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -16,20 +15,17 @@ import (
 
 const registerSecret = "register-test-secret"
 
-func registerBody(t *testing.T, userID int64) *bytes.Reader {
-	t.Helper()
-	b, err := json.Marshal(map[string]int64{"user_id": userID})
-	if err != nil {
-		t.Fatalf("marshal body: %v", err)
-	}
-	return bytes.NewReader(b)
+// reqWithUserID builds a POST request with the given user ID injected into
+// context via the middleware helper (simulates APIKeyAuth having run).
+func reqWithUserID(userID int64) *http.Request {
+	r := httptest.NewRequest(http.MethodPost, "/api/daemon/register", nil)
+	return r.WithContext(middleware.WithUserID(r.Context(), userID))
 }
 
 func TestDaemonRegister_Success(t *testing.T) {
 	h := handlers.NewDaemonRegisterHandler(registerSecret)
 
-	req := httptest.NewRequest(http.MethodPost, "/api/daemon/register", registerBody(t, 5))
-	req.Header.Set("Content-Type", "application/json")
+	req := reqWithUserID(5)
 	rr := httptest.NewRecorder()
 
 	h.Register(rr, req)
@@ -53,7 +49,7 @@ func TestDaemonRegister_Success(t *testing.T) {
 		t.Error("expected non-empty daemon_id")
 	}
 
-	// Validate the token can be parsed and contains the right user_id.
+	// Validate the token contains the correct user_id from context, not body.
 	var claims middleware.DaemonClaims
 	tok, err := jwt.ParseWithClaims(resp.Token, &claims, func(t *jwt.Token) (any, error) {
 		return []byte(registerSecret), nil
@@ -69,56 +65,62 @@ func TestDaemonRegister_Success(t *testing.T) {
 	}
 }
 
-func TestDaemonRegister_InvalidJSON(t *testing.T) {
+// TestDaemonRegister_MissingContext verifies that a request without an
+// authenticated user ID (i.e. APIKeyAuth middleware was skipped) is rejected.
+func TestDaemonRegister_MissingContext(t *testing.T) {
 	h := handlers.NewDaemonRegisterHandler(registerSecret)
 
-	req := httptest.NewRequest(http.MethodPost, "/api/daemon/register",
-		strings.NewReader("not-json"))
-	req.Header.Set("Content-Type", "application/json")
+	// No user_id in context — simulates unauthenticated call.
+	req := httptest.NewRequest(http.MethodPost, "/api/daemon/register", nil)
 	rr := httptest.NewRecorder()
 
 	h.Register(rr, req)
 
-	if rr.Code != http.StatusBadRequest {
-		t.Fatalf("expected 400, got %d", rr.Code)
+	if rr.Code != http.StatusUnauthorized {
+		t.Fatalf("expected 401, got %d: %s", rr.Code, rr.Body.String())
 	}
 }
 
-func TestDaemonRegister_MissingUserID(t *testing.T) {
+// TestDaemonRegister_BodyUserIDIgnored verifies that a body containing a
+// different user_id does NOT affect the JWT — the context value wins.
+func TestDaemonRegister_BodyUserIDIgnored(t *testing.T) {
 	h := handlers.NewDaemonRegisterHandler(registerSecret)
 
+	// Context says user 7; body says user 999.
 	req := httptest.NewRequest(http.MethodPost, "/api/daemon/register",
-		strings.NewReader(`{"user_id":0}`))
+		strings.NewReader(`{"user_id":999}`))
 	req.Header.Set("Content-Type", "application/json")
+	req = req.WithContext(middleware.WithUserID(req.Context(), 7))
 	rr := httptest.NewRecorder()
 
 	h.Register(rr, req)
 
-	if rr.Code != http.StatusBadRequest {
-		t.Fatalf("expected 400, got %d", rr.Code)
+	if rr.Code != http.StatusCreated {
+		t.Fatalf("expected 201, got %d", rr.Code)
 	}
-}
 
-func TestDaemonRegister_NegativeUserID(t *testing.T) {
-	h := handlers.NewDaemonRegisterHandler(registerSecret)
+	var resp struct {
+		Token string `json:"token"`
+	}
+	if err := json.NewDecoder(rr.Body).Decode(&resp); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
 
-	req := httptest.NewRequest(http.MethodPost, "/api/daemon/register",
-		strings.NewReader(`{"user_id":-1}`))
-	req.Header.Set("Content-Type", "application/json")
-	rr := httptest.NewRecorder()
-
-	h.Register(rr, req)
-
-	if rr.Code != http.StatusBadRequest {
-		t.Fatalf("expected 400, got %d", rr.Code)
+	var claims middleware.DaemonClaims
+	if _, err := jwt.ParseWithClaims(resp.Token, &claims, func(t *jwt.Token) (any, error) {
+		return []byte(registerSecret), nil
+	}); err != nil {
+		t.Fatalf("parse token: %v", err)
+	}
+	if claims.UserID != 7 {
+		t.Errorf("expected user_id=7 from context, got %d", claims.UserID)
 	}
 }
 
 func TestDaemonRegister_EmptySecret(t *testing.T) {
 	h := handlers.NewDaemonRegisterHandler("")
 
-	req := httptest.NewRequest(http.MethodPost, "/api/daemon/register", registerBody(t, 1))
-	req.Header.Set("Content-Type", "application/json")
+	req := reqWithUserID(1)
 	rr := httptest.NewRecorder()
 
 	h.Register(rr, req)
@@ -131,8 +133,7 @@ func TestDaemonRegister_EmptySecret(t *testing.T) {
 func TestDaemonRegister_TokenIsValidForIngestMiddleware(t *testing.T) {
 	h := handlers.NewDaemonRegisterHandler(registerSecret)
 
-	req := httptest.NewRequest(http.MethodPost, "/api/daemon/register", registerBody(t, 99))
-	req.Header.Set("Content-Type", "application/json")
+	req := reqWithUserID(99)
 	rr := httptest.NewRecorder()
 	h.Register(rr, req)
 
@@ -147,7 +148,7 @@ func TestDaemonRegister_TokenIsValidForIngestMiddleware(t *testing.T) {
 		t.Fatalf("decode: %v", err)
 	}
 
-	// Now run the issued token through the DaemonJWTAuth middleware.
+	// Run the issued token through DaemonJWTAuth middleware.
 	var capturedUID int64
 	capture := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		capturedUID, _ = middleware.DaemonUserIDFromContext(r.Context())

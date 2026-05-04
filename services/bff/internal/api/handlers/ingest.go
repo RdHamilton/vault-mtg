@@ -55,7 +55,9 @@ func (h *IngestHandler) IngestEvent(w http.ResponseWriter, r *http.Request) {
 	// Scope the event to the authenticated user when JWT auth is in use.
 	// DaemonUserIDFromContext returns (0, false) when the API-key middleware
 	// was used instead, in which case AccountID is trusted from the payload.
-	if userID, ok := bffmiddleware.DaemonUserIDFromContext(r.Context()); ok {
+	// Update the outer userID so the broadcaster receives the JWT-scoped value.
+	if jwtUserID, ok := bffmiddleware.DaemonUserIDFromContext(r.Context()); ok {
+		userID = jwtUserID
 		event.AccountID = fmt.Sprintf("user:%d", userID)
 	}
 

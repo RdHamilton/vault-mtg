@@ -80,6 +80,13 @@ func UserIDFromContext(ctx context.Context) (int64, bool) {
 	return v, ok
 }
 
+// WithUserID returns a copy of ctx with the given user ID stored as if the
+// APIKeyAuth middleware had authenticated the request.  Intended for use in
+// tests and middleware-chaining helpers.
+func WithUserID(ctx context.Context, userID int64) context.Context {
+	return context.WithValue(ctx, ctxKeyUserID, userID)
+}
+
 // bearerToken extracts the token from "Authorization: Bearer <token>".
 func bearerToken(r *http.Request) (string, bool) {
 	header := r.Header.Get("Authorization")

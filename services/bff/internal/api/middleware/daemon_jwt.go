@@ -52,6 +52,13 @@ func DaemonUserIDFromContext(ctx context.Context) (int64, bool) {
 	return v, ok
 }
 
+// WithDaemonUserID returns a copy of ctx with the given user ID stored as if
+// DaemonJWTAuth middleware had validated a daemon JWT.  Intended for use in
+// tests and middleware-chaining helpers.
+func WithDaemonUserID(ctx context.Context, userID int64) context.Context {
+	return context.WithValue(ctx, ctxKeyDaemonUserID, userID)
+}
+
 // IssueDaemonJWT creates a signed JWT for the given userID and daemonID.
 // The token is valid for 30 days from the time of issuance.
 func IssueDaemonJWT(secret string, userID int64, daemonID string) (string, error) {

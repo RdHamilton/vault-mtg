@@ -11,12 +11,6 @@ import (
 	"github.com/ramonehamilton/mtga-bff/internal/api/middleware"
 )
 
-// daemonRegisterRequest is the JSON body expected at POST /api/daemon/register.
-type daemonRegisterRequest struct {
-	// UserID identifies the MTGA Companion user that owns this daemon.
-	UserID int64 `json:"user_id"`
-}
-
 // daemonRegisterResponse is the JSON body returned on a successful registration.
 type daemonRegisterResponse struct {
 	Token    string `json:"token"`
@@ -36,19 +30,19 @@ func NewDaemonRegisterHandler(jwtSecret string) *DaemonRegisterHandler {
 
 // Register handles POST /api/daemon/register.
 //
-// The caller supplies a user_id identifying the MTGA Companion user. The
-// handler allocates a new daemon_id UUID, signs a JWT (HS256, 30-day expiry),
-// and returns it. The token must then be sent as "Authorization: Bearer <token>"
-// on all /v1/ingest/events requests.
+// The endpoint must be protected by the APIKeyAuth middleware so that the
+// authenticated user ID is available in the request context. The user_id
+// embedded in the issued JWT is always derived from that context value —
+// it is never accepted from the request body — to prevent privilege escalation.
+//
+// A new daemon_id UUID is allocated, a JWT (HS256, 30-day expiry) is signed,
+// and the token is returned. The token must then be sent as
+// "Authorization: Bearer <token>" on all /v1/ingest/events requests.
 func (h *DaemonRegisterHandler) Register(w http.ResponseWriter, r *http.Request) {
-	var req daemonRegisterRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		writeJSONError(w, "invalid JSON body", http.StatusBadRequest)
-		return
-	}
-
-	if req.UserID <= 0 {
-		writeJSONError(w, "user_id must be a positive integer", http.StatusBadRequest)
+	// Derive the user ID from the verified API-key context — never from the body.
+	userID, ok := middleware.UserIDFromContext(r.Context())
+	if !ok {
+		writeJSONError(w, "unauthorized", http.StatusUnauthorized)
 		return
 	}
 
@@ -60,7 +54,7 @@ func (h *DaemonRegisterHandler) Register(w http.ResponseWriter, r *http.Request)
 
 	daemonID := uuid.NewString()
 
-	token, err := middleware.IssueDaemonJWT(h.jwtSecret, req.UserID, daemonID)
+	token, err := middleware.IssueDaemonJWT(h.jwtSecret, userID, daemonID)
 	if err != nil {
 		log.Printf("[DaemonRegisterHandler] IssueDaemonJWT: %v", err)
 		writeJSONError(w, "internal server error", http.StatusInternalServerError)

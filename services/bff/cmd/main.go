@@ -134,9 +134,16 @@ func main() {
 		r.Post("/api/keys", apiKeysHandler.CreateAPIKey)
 	}
 
-	// POST /api/daemon/register — issue a daemon JWT; requires DAEMON_JWT_SECRET.
+	// POST /api/daemon/register — issue a daemon JWT; requires DAEMON_JWT_SECRET and
+	// a valid API key so the user_id is derived from context, never from the body.
 	if daemonRegisterHandler != nil {
-		r.Post("/api/daemon/register", daemonRegisterHandler.Register)
+		if apiKeyAuthMiddl != nil {
+			r.With(apiKeyAuthMiddl).Post("/api/daemon/register", daemonRegisterHandler.Register)
+		} else {
+			// No DB available — registration is impossible without user identity.
+			// Log a warning; the route is omitted rather than serving unauthenticated.
+			log.Println("WARN: daemon register endpoint disabled — no database for API key auth")
+		}
 	}
 
 	// GET /api/v1/draft-ratings/{setCode}/{format} — draft card and color ratings.
