@@ -24,8 +24,10 @@ $BinaryName  = 'mtga-companion-daemon.exe'
 # the user does not have write access to %ProgramFiles%.
 $InstallDir  = Join-Path $Env:ProgramFiles 'MTGA-Companion'
 $TaskName    = 'MTGA-Companion-Daemon'
-# Config is written to %APPDATA%\mtga-companion\daemon.json so the daemon can
-# find it at its default path regardless of whether %ProgramFiles% is writable.
+# Config is written to %APPDATA%\mtga-companion\daemon.json — this matches the
+# Windows default path used by defaultConfigPath() in cmd/daemon/main.go.
+# Note: Task Scheduler passes -config explicitly (see action below), so the
+# default path is only relevant when running the binary directly without that flag.
 $ConfigDir   = Join-Path $Env:APPDATA 'mtga-companion'
 $ConfigFile  = Join-Path $ConfigDir 'daemon.json'
 

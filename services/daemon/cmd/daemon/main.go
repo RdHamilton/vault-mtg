@@ -1,6 +1,7 @@
 // Command mtga-daemon watches MTGA Player.log and forwards events to the BFF.
-// Configuration is loaded from a JSON file (default: ~/.mtga-companion/daemon.json)
-// and can be overridden with environment variables. The cloud API URL is never hardcoded.
+// Configuration is loaded from a JSON file (default: %APPDATA%\mtga-companion\daemon.json
+// on Windows; ~/.mtga-companion/daemon.json on macOS/Linux) and can be overridden with
+// environment variables. The cloud API URL is never hardcoded.
 //
 // Environment variables:
 //
@@ -22,6 +23,7 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"runtime"
 	"syscall"
 
 	"github.com/ramonehamilton/mtga-daemon/internal/config"
@@ -51,8 +53,19 @@ func main() {
 	}
 }
 
-// defaultConfigPath returns ~/.mtga-companion/daemon.json
+// defaultConfigPath returns the platform-appropriate default config path:
+//   - Windows: %APPDATA%\mtga-companion\daemon.json
+//   - macOS/Linux: ~/.mtga-companion/daemon.json
+//
+// The -config flag overrides this; Task Scheduler on Windows always passes
+// -config explicitly, so the default is only used when running the binary
+// directly without that flag.
 func defaultConfigPath() string {
+	if runtime.GOOS == "windows" {
+		if appdata := os.Getenv("APPDATA"); appdata != "" {
+			return filepath.Join(appdata, "mtga-companion", "daemon.json")
+		}
+	}
 	home, err := os.UserHomeDir()
 	if err != nil {
 		return "daemon.json"
