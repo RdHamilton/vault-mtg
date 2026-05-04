@@ -129,6 +129,11 @@ jobs:
         cd services/bff
         GOOS=linux GOARCH=amd64 go build -o mtga-bff ./cmd/main.go
 
+    - name: Build sync service for linux/amd64
+      run: |
+        cd services/sync
+        GOOS=linux GOARCH=amd64 go build -o mtga-sync ./cmd/main.go
+
     - name: Configure AWS credentials (OIDC)
       uses: aws-actions/configure-aws-credentials@v4
       with:
@@ -140,12 +145,60 @@ jobs:
         aws s3 cp services/bff/mtga-bff \
           s3://${{ secrets.DEPLOY_BUCKET }}/releases/${{ github.sha }}/mtga-bff
 
+    - name: Upload sync binary to S3
+      run: |
+        aws s3 cp services/sync/mtga-sync \
+          s3://${{ secrets.DEPLOY_BUCKET }}/releases/${{ github.sha }}/mtga-sync
+
+    - name: Upload systemd unit file to S3
+      run: |
+        aws s3 cp .github/deploy/mtga-sync.service \
+          s3://${{ secrets.DEPLOY_BUCKET }}/deploy/mtga-sync.service
+
     - name: Deploy to EC2 via SSM
       run: |
         COMMAND_ID=$(aws ssm send-command \
           --instance-ids "${{ secrets.EC2_INSTANCE_ID }}" \
           --document-name "AWS-RunShellScript" \
           --parameters 'commands=["aws s3 cp s3://${{ secrets.DEPLOY_BUCKET }}/releases/${{ github.sha }}/mtga-bff /usr/local/bin/mtga-bff && chmod +x /usr/local/bin/mtga-bff && systemctl restart mtga-companion"]' \
+          --region us-east-1 \
+          --query "Command.CommandId" \
+          --output text)
+
+        echo "SSM Command ID: $COMMAND_ID"
+
+        for i in $(seq 1 30); do
+          STATUS=$(aws ssm get-command-invocation \
+            --command-id "$COMMAND_ID" \
+            --instance-id "${{ secrets.EC2_INSTANCE_ID }}" \
+            --region us-east-1 \
+            --query "Status" \
+            --output text 2>/dev/null || echo "Pending")
+          echo "[$i/30] Status: $STATUS"
+          if [ "$STATUS" = "Success" ]; then
+            echo "Deployment succeeded."
+            exit 0
+          elif [ "$STATUS" = "Failed" ] || [ "$STATUS" = "Cancelled" ] || [ "$STATUS" = "TimedOut" ]; then
+            echo "Deployment failed with status: $STATUS"
+            aws ssm get-command-invocation \
+              --command-id "$COMMAND_ID" \
+              --instance-id "${{ secrets.EC2_INSTANCE_ID }}" \
+              --region us-east-1 \
+              --query "StandardErrorContent" \
+              --output text
+            exit 1
+          fi
+          sleep 10
+        done
+        echo "Timed out waiting for SSM command"
+        exit 1
+
+    - name: Deploy sync service to EC2 via SSM
+      run: |
+        COMMAND_ID=$(aws ssm send-command \
+          --instance-ids "${{ secrets.EC2_INSTANCE_ID }}" \
+          --document-name "AWS-RunShellScript" \
+          --parameters 'commands=["aws s3 cp s3://${{ secrets.DEPLOY_BUCKET }}/releases/${{ github.sha }}/mtga-sync /usr/local/bin/mtga-sync && chmod +x /usr/local/bin/mtga-sync && aws s3 cp s3://${{ secrets.DEPLOY_BUCKET }}/deploy/mtga-sync.service /etc/systemd/system/mtga-sync.service && systemctl daemon-reload && systemctl enable mtga-sync && systemctl restart mtga-sync"]' \
           --region us-east-1 \
           --query "Command.CommandId" \
           --output text)
