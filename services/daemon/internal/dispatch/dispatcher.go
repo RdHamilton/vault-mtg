@@ -18,12 +18,19 @@ const (
 	retryBase   = 500 * time.Millisecond
 )
 
+// Refresher is implemented by any component that can obtain a fresh daemon JWT.
+// The dispatcher calls it when the BFF returns 401 before retrying the request.
+type Refresher interface {
+	Refresh(ctx context.Context) (newToken string, err error)
+}
+
 // Dispatcher POSTs DaemonEvents to the BFF ingest endpoint.
 type Dispatcher struct {
 	cloudAPIURL string
 	ingestPath  string
 	apiKey      string
 	client      *http.Client
+	refresher   Refresher
 }
 
 // New creates a Dispatcher.
@@ -42,8 +49,23 @@ func New(cloudAPIURL, ingestPath, apiKey string) *Dispatcher {
 	}
 }
 
+// WithRefresher attaches a Refresher that will be called when the BFF returns 401.
+// This enables automatic JWT re-registration without restarting the daemon.
+func (d *Dispatcher) WithRefresher(r Refresher) *Dispatcher {
+	d.refresher = r
+	return d
+}
+
+// SetToken updates the bearer token used for subsequent requests.
+// Called after successful re-registration to swap in the new JWT.
+func (d *Dispatcher) SetToken(token string) {
+	d.apiKey = token
+}
+
 // Send encodes event as JSON and POSTs it to the BFF with up to 3 attempts.
 // Retries on transport errors or non-2xx responses with 500ms * attempt backoff.
+// On a 401 response, calls the Refresher (if set) to obtain a new token before
+// the next retry.
 func (d *Dispatcher) Send(ctx context.Context, event contract.DaemonEvent) error {
 	body, err := json.Marshal(event)
 	if err != nil {
@@ -52,10 +74,22 @@ func (d *Dispatcher) Send(ctx context.Context, event contract.DaemonEvent) error
 
 	var lastErr error
 	for attempt := 1; attempt <= maxAttempts; attempt++ {
-		lastErr = d.doSend(ctx, body)
+		var statusCode int
+		lastErr, statusCode = d.doSend(ctx, body)
 		if lastErr == nil {
 			log.Printf("[dispatch] event %q sent (session=%s)", event.Type, event.SessionID)
 			return nil
+		}
+		// On 401, attempt to refresh the token before retrying.
+		if statusCode == http.StatusUnauthorized && d.refresher != nil {
+			log.Printf("[dispatch] 401 received; attempting token refresh")
+			newToken, refreshErr := d.refresher.Refresh(ctx)
+			if refreshErr != nil {
+				log.Printf("[dispatch] token refresh failed: %v", refreshErr)
+			} else {
+				d.SetToken(newToken)
+				log.Printf("[dispatch] token refreshed; retrying")
+			}
 		}
 		if attempt < maxAttempts {
 			backoff := retryBase * time.Duration(attempt)
@@ -71,11 +105,12 @@ func (d *Dispatcher) Send(ctx context.Context, event contract.DaemonEvent) error
 }
 
 // doSend performs a single POST of body to the ingest endpoint.
-func (d *Dispatcher) doSend(ctx context.Context, body []byte) error {
+// Returns the error and the HTTP status code (0 on transport failure).
+func (d *Dispatcher) doSend(ctx context.Context, body []byte) (error, int) {
 	url := d.cloudAPIURL + d.ingestPath
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewReader(body))
 	if err != nil {
-		return fmt.Errorf("create request: %w", err)
+		return fmt.Errorf("create request: %w", err), 0
 	}
 	req.Header.Set("Content-Type", "application/json")
 	if d.apiKey != "" {
@@ -84,15 +119,15 @@ func (d *Dispatcher) doSend(ctx context.Context, body []byte) error {
 
 	resp, err := d.client.Do(req)
 	if err != nil {
-		return fmt.Errorf("post event: %w", err)
+		return fmt.Errorf("post event: %w", err), 0
 	}
 	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return fmt.Errorf("BFF returned %d", resp.StatusCode)
+		return fmt.Errorf("BFF returned %d", resp.StatusCode), resp.StatusCode
 	}
 
-	return nil
+	return nil, resp.StatusCode
 }
 
 // BuildEvent constructs a contract.DaemonEvent from raw log entry data.

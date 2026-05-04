@@ -3,6 +3,7 @@ package dispatch_test
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -110,4 +111,112 @@ func TestBuildEvent(t *testing.T) {
 	var decoded map[string]interface{}
 	require.NoError(t, json.Unmarshal(evt.Payload, &decoded))
 	assert.Equal(t, "value", decoded["key"])
+}
+
+// ---- 401 re-registration ----
+
+// mockRefresher is a test double for dispatch.Refresher.
+type mockRefresher struct {
+	token string
+	err   error
+	calls int
+}
+
+func (m *mockRefresher) Refresh(_ context.Context) (string, error) {
+	m.calls++
+	return m.token, m.err
+}
+
+// TestDispatcher401TriggersRefresh verifies that a single 401 causes the
+// dispatcher to call Refresh and swap in the new token, then succeed on retry.
+func TestDispatcher401TriggersRefresh(t *testing.T) {
+	var requestCount atomic.Int32
+	var authHeaders []string
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		n := requestCount.Add(1)
+		authHeaders = append(authHeaders, r.Header.Get("Authorization"))
+		if n == 1 {
+			// First request: return 401 to trigger refresh.
+			w.WriteHeader(http.StatusUnauthorized)
+			return
+		}
+		// Second request: succeed.
+		w.WriteHeader(http.StatusAccepted)
+	}))
+	defer srv.Close()
+
+	ref := &mockRefresher{token: "refreshed-jwt"}
+	d := dispatch.New(srv.URL, "/v1/ingest/events", "old-token").WithRefresher(ref)
+
+	evt, err := dispatch.BuildEvent("test.event", "acc", "sess", map[string]string{})
+	require.NoError(t, err)
+
+	require.NoError(t, d.Send(context.Background(), evt))
+	assert.Equal(t, 1, ref.calls, "Refresh should have been called exactly once")
+	assert.EqualValues(t, 2, requestCount.Load())
+	// Second request should carry the refreshed token.
+	if len(authHeaders) >= 2 {
+		assert.Equal(t, "Bearer refreshed-jwt", authHeaders[1])
+	}
+}
+
+// TestDispatcher401WithoutRefresherRetriesWithoutTokenChange verifies that when no
+// Refresher is set, a 401 is retried normally (without any token swap).
+func TestDispatcher401WithoutRefresherRetriesWithoutTokenChange(t *testing.T) {
+	var requestCount atomic.Int32
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requestCount.Add(1)
+		w.WriteHeader(http.StatusUnauthorized)
+	}))
+	defer srv.Close()
+
+	d := dispatch.New(srv.URL, "/v1/ingest/events", "key")
+	evt, err := dispatch.BuildEvent("test.event", "acc", "sess", map[string]string{})
+	require.NoError(t, err)
+
+	err = d.Send(context.Background(), evt)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "401")
+	assert.EqualValues(t, 3, requestCount.Load(), "should retry all 3 times")
+}
+
+// TestDispatcher401RefreshFailureContinuesRetry verifies that if Refresh returns
+// an error, the dispatcher still retries with the old token.
+func TestDispatcher401RefreshFailureContinuesRetry(t *testing.T) {
+	var requestCount atomic.Int32
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requestCount.Add(1)
+		w.WriteHeader(http.StatusUnauthorized)
+	}))
+	defer srv.Close()
+
+	ref := &mockRefresher{err: errors.New("registration unavailable")}
+	d := dispatch.New(srv.URL, "/v1/ingest/events", "key").WithRefresher(ref)
+
+	evt, err := dispatch.BuildEvent("test.event", "acc", "sess", map[string]string{})
+	require.NoError(t, err)
+
+	err = d.Send(context.Background(), evt)
+	require.Error(t, err)
+	// All 3 attempts exhausted despite refresh failure.
+	assert.EqualValues(t, 3, requestCount.Load())
+}
+
+// TestSetToken verifies that SetToken updates the bearer token used on next send.
+func TestSetToken(t *testing.T) {
+	var lastAuth string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		lastAuth = r.Header.Get("Authorization")
+		w.WriteHeader(http.StatusAccepted)
+	}))
+	defer srv.Close()
+
+	d := dispatch.New(srv.URL, "/v1/ingest/events", "original")
+	d.SetToken("updated-token")
+
+	evt, err := dispatch.BuildEvent("test.event", "acc", "sess", map[string]string{})
+	require.NoError(t, err)
+	require.NoError(t, d.Send(context.Background(), evt))
+	assert.Equal(t, "Bearer updated-token", lastAuth)
 }

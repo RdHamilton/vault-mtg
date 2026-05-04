@@ -1,3 +1,5 @@
+github.com/RdHamilton/MTGA-Companion/services/contract v0.1.0 h1:e8TpnKZGNHyT5ZuLCn9vFIx9KIKJGjbomW8gV9VpW3Q=
+github.com/RdHamilton/MTGA-Companion/services/contract v0.1.0/go.mod h1:yF9HioPBk5KyrAoocEF9JWXBezAQFqgV0DC3whrhCQo=
 github.com/creack/pty v1.1.9/go.mod h1:oKZEueFk5CKHvIhNR5MUki03XCEU+Q6VDXinZuGJ33E=
 github.com/davecgh/go-spew v1.1.2-0.20180830191138-d8f796af33cc h1:U9qPSI2PIWSS1VwoXQT9A3Wy9MM3WgvqSxFWenqJduM=
 github.com/davecgh/go-spew v1.1.2-0.20180830191138-d8f796af33cc/go.mod h1:J7Y8YcW2NihsgmVo/mv3lAwl/skON4iLHjSsI+c5H38=

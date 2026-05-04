@@ -14,7 +14,6 @@ type PollerManager struct {
 	cancel    context.CancelFunc
 	updates   chan *LogEntry
 	errChan   chan error
-	notifier  *Notifier
 	running   bool
 	runningMu sync.RWMutex
 	wg        sync.WaitGroup
@@ -22,17 +21,13 @@ type PollerManager struct {
 
 // PollerManagerConfig holds configuration for a PollerManager.
 type PollerManagerConfig struct {
-	BufferSize          int
-	EnableNotifications bool
-	NotificationConfig  *NotificationConfig
+	BufferSize int
 }
 
 // DefaultPollerManagerConfig returns a PollerManagerConfig with sensible defaults.
 func DefaultPollerManagerConfig() *PollerManagerConfig {
 	return &PollerManagerConfig{
-		BufferSize:          1000,
-		EnableNotifications: false,
-		NotificationConfig:  DefaultNotificationConfig(),
+		BufferSize: 1000,
 	}
 }
 
@@ -45,17 +40,12 @@ func NewPollerManager(config *PollerManagerConfig) *PollerManager {
 		config.BufferSize = 1000
 	}
 	ctx, cancel := context.WithCancel(context.Background())
-	var notifier *Notifier
-	if config.EnableNotifications {
-		notifier = NewNotifier(config.NotificationConfig)
-	}
 	return &PollerManager{
-		pollers:  make(map[string]*Poller),
-		ctx:      ctx,
-		cancel:   cancel,
-		updates:  make(chan *LogEntry, config.BufferSize),
-		errChan:  make(chan error, 100),
-		notifier: notifier,
+		pollers: make(map[string]*Poller),
+		ctx:     ctx,
+		cancel:  cancel,
+		updates: make(chan *LogEntry, config.BufferSize),
+		errChan: make(chan error, 100),
 	}
 }
 
@@ -122,9 +112,6 @@ func (pm *PollerManager) startPoller(key string, poller *Poller) {
 				}
 				select {
 				case pm.updates <- entry:
-					if pm.notifier != nil {
-						pm.notifier.ProcessEntry(entry)
-					}
 				case <-pm.ctx.Done():
 					return
 				}
@@ -183,9 +170,4 @@ func (pm *PollerManager) PollerCount() int {
 	pm.mu.RLock()
 	defer pm.mu.RUnlock()
 	return len(pm.pollers)
-}
-
-// GetNotifier returns the notification system if enabled.
-func (pm *PollerManager) GetNotifier() *Notifier {
-	return pm.notifier
 }

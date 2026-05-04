@@ -46,15 +46,22 @@ describe('TierList Component', () => {
     onCardClick: vi.fn(),
   };
 
+  /** Helper: mock both getCardRatings and getCardRatingsWithDegradedFlag together. */
+  function mockRatings(ratingsArray: unknown[], cacheDegraded = false) {
+    mockCards.getCardRatings.mockResolvedValue(ratingsArray);
+    mockCards.getCardRatingsWithDegradedFlag.mockResolvedValue({ ratings: ratingsArray, cacheDegraded });
+  }
+
   beforeEach(() => {
     vi.clearAllMocks();
-    mockCards.getCardRatings.mockResolvedValue([]);
+    mockRatings([]);
     mockCards.getSetCards.mockResolvedValue([]);
   });
 
   describe('Loading State', () => {
     it('should display loading state initially', () => {
       mockCards.getCardRatings.mockImplementation(() => new Promise(() => {}));
+      mockCards.getCardRatingsWithDegradedFlag.mockImplementation(() => new Promise(() => {}));
       mockCards.getSetCards.mockImplementation(() => new Promise(() => {}));
 
       render(<TierList {...defaultProps} />);
@@ -66,6 +73,7 @@ describe('TierList Component', () => {
   describe('Error State', () => {
     it('should display error message when loading fails', async () => {
       mockCards.getCardRatings.mockRejectedValue(new Error('Failed to fetch'));
+      mockCards.getCardRatingsWithDegradedFlag.mockRejectedValue(new Error('Failed to fetch'));
       mockCards.getSetCards.mockResolvedValue([]);
 
       render(<TierList {...defaultProps} />);
@@ -78,7 +86,7 @@ describe('TierList Component', () => {
 
   describe('Empty State', () => {
     it('should display empty state when no ratings available', async () => {
-      mockCards.getCardRatings.mockResolvedValue([]);
+      mockRatings([]);
       mockCards.getSetCards.mockResolvedValue([]);
 
       render(<TierList {...defaultProps} />);
@@ -95,7 +103,7 @@ describe('TierList Component', () => {
         createMockCardRating({ name: 'Lightning Bolt', mtga_id: 1, tier: 'S' }),
         createMockCardRating({ name: 'Counterspell', mtga_id: 2, tier: 'A' }),
       ];
-      mockCards.getCardRatings.mockResolvedValue(cards);
+      mockRatings(cards);
       mockCards.getSetCards.mockResolvedValue([]);
 
       render(<TierList {...defaultProps} />);
@@ -111,7 +119,7 @@ describe('TierList Component', () => {
         createMockCardRating({ name: 'Counterspell', mtga_id: 2, tier: 'A' }),
         createMockCardRating({ name: 'Giant Growth', mtga_id: 3, tier: 'B' }),
       ];
-      mockCards.getCardRatings.mockResolvedValue(cards);
+      mockRatings(cards);
       mockCards.getSetCards.mockResolvedValue([]);
 
       render(<TierList {...defaultProps} />);
@@ -137,7 +145,7 @@ describe('TierList Component', () => {
       const cards = [
         createMockCardRating({ name: 'Lightning Bolt', mtga_id: 1, tier: 'S' }),
       ];
-      mockCards.getCardRatings.mockResolvedValue(cards);
+      mockRatings(cards);
       mockCards.getSetCards.mockResolvedValue([]);
 
       render(<TierList {...defaultProps} />);
@@ -158,7 +166,7 @@ describe('TierList Component', () => {
       const cards = [
         createMockCardRating({ name: 'Lightning Bolt', mtga_id: 1, tier: 'S' }),
       ];
-      mockCards.getCardRatings.mockResolvedValue(cards);
+      mockRatings(cards);
       mockCards.getSetCards.mockResolvedValue([]);
 
       render(<TierList {...defaultProps} />);
@@ -185,7 +193,7 @@ describe('TierList Component', () => {
         createMockCardRating({ name: 'Lightning Bolt', mtga_id: 1, tier: 'S' }),
         createMockCardRating({ name: 'Counterspell', mtga_id: 2, tier: 'A' }),
       ];
-      mockCards.getCardRatings.mockResolvedValue(cards);
+      mockRatings(cards);
       mockCards.getSetCards.mockResolvedValue([]);
 
       render(<TierList {...defaultProps} />);
@@ -220,7 +228,7 @@ describe('TierList Component', () => {
       const cards = [
         createMockCardRating({ name: 'Lightning Bolt', mtga_id: 1, tier: 'S' }),
       ];
-      mockCards.getCardRatings.mockResolvedValue(cards);
+      mockRatings(cards);
       mockCards.getSetCards.mockResolvedValue([]);
 
       render(<TierList {...defaultProps} />);
@@ -244,7 +252,7 @@ describe('TierList Component', () => {
         createMockCardRating({ name: 'Chain Lightning', mtga_id: 2, tier: 'A' }),
         createMockCardRating({ name: 'Counterspell', mtga_id: 3, tier: 'B' }),
       ];
-      mockCards.getCardRatings.mockResolvedValue(cards);
+      mockRatings(cards);
       mockCards.getSetCards.mockResolvedValue([]);
 
       render(<TierList {...defaultProps} />);
@@ -270,7 +278,7 @@ describe('TierList Component', () => {
         createMockCardRating({ name: 'Counterspell', mtga_id: 2, tier: 'A' }),
         createMockCardRating({ name: 'Giant Growth', mtga_id: 3, tier: 'B' }),
       ];
-      mockCards.getCardRatings.mockResolvedValue(cards);
+      mockRatings(cards);
       mockCards.getSetCards.mockResolvedValue([]);
 
       render(<TierList {...defaultProps} />);
@@ -300,7 +308,7 @@ describe('TierList Component', () => {
         createMockCardRating({ name: 'A-Tier Card', mtga_id: 2, tier: 'A' }),
         createMockCardRating({ name: 'B-Tier Card', mtga_id: 3, tier: 'B' }),
       ];
-      mockCards.getCardRatings.mockResolvedValue(cards);
+      mockRatings(cards);
       mockCards.getSetCards.mockResolvedValue([]);
 
       render(<TierList {...defaultProps} />);
@@ -318,7 +326,7 @@ describe('TierList Component', () => {
         createMockCardRating({ name: 'A-Tier Card', mtga_id: 2, tier: 'A' }),
         createMockCardRating({ name: 'F-Tier Card', mtga_id: 3, tier: 'F' }),
       ];
-      mockCards.getCardRatings.mockResolvedValue(cards);
+      mockRatings(cards);
       mockCards.getSetCards.mockResolvedValue([]);
 
       render(<TierList {...defaultProps} />);
@@ -346,7 +354,7 @@ describe('TierList Component', () => {
         createMockCardRating({ name: 'Blue Card', mtga_id: 1, tier: 'S', color: 'U', colors: ['U'] }),
         createMockCardRating({ name: 'Red Card', mtga_id: 2, tier: 'S', color: 'R', colors: ['R'] }),
       ];
-      mockCards.getCardRatings.mockResolvedValue(cards);
+      mockRatings(cards);
       mockCards.getSetCards.mockResolvedValue([]);
 
       render(<TierList {...defaultProps} />);
@@ -376,7 +384,7 @@ describe('TierList Component', () => {
         createMockCardRating({ name: 'Low WR Card', mtga_id: 1, tier: 'S', ever_drawn_win_rate: 50.0 }),
         createMockCardRating({ name: 'High WR Card', mtga_id: 2, tier: 'S', ever_drawn_win_rate: 65.0 }),
       ];
-      mockCards.getCardRatings.mockResolvedValue(cards);
+      mockRatings(cards);
       mockCards.getSetCards.mockResolvedValue([]);
 
       render(<TierList {...defaultProps} />);
@@ -397,7 +405,7 @@ describe('TierList Component', () => {
         createMockCardRating({ name: 'Red Lightning', mtga_id: 2, tier: 'S', color: 'R', colors: ['R'] }),
         createMockCardRating({ name: 'Blue Spell', mtga_id: 3, tier: 'S', color: 'U', colors: ['U'] }),
       ];
-      mockCards.getCardRatings.mockResolvedValue(cards);
+      mockRatings(cards);
       mockCards.getSetCards.mockResolvedValue([]);
 
       render(<TierList {...defaultProps} />);
@@ -434,7 +442,7 @@ describe('TierList Component', () => {
       const cards = [
         createMockCardRating({ name: 'Test Card', mtga_id: 1, tier: 'S' }),
       ];
-      mockCards.getCardRatings.mockResolvedValue(cards);
+      mockRatings(cards);
       mockCards.getSetCards.mockResolvedValue([]);
       mockCards.getCFBRatings.mockResolvedValue([]);
 
@@ -463,7 +471,7 @@ describe('TierList Component', () => {
           updatedAt: '2024-01-01',
         },
       ];
-      mockCards.getCardRatings.mockResolvedValue(cards);
+      mockRatings(cards);
       mockCards.getSetCards.mockResolvedValue([]);
       mockCards.getCFBRatings.mockResolvedValue(cfbRatings);
 
@@ -497,7 +505,7 @@ describe('TierList Component', () => {
           updatedAt: '2024-01-01',
         },
       ];
-      mockCards.getCardRatings.mockResolvedValue(cards);
+      mockRatings(cards);
       mockCards.getSetCards.mockResolvedValue([]);
       mockCards.getCFBRatings.mockResolvedValue(cfbRatings);
 
@@ -532,7 +540,7 @@ describe('TierList Component', () => {
         },
         // Note: No CFB rating for Counterspell
       ];
-      mockCards.getCardRatings.mockResolvedValue(cards);
+      mockRatings(cards);
       mockCards.getSetCards.mockResolvedValue([]);
       mockCards.getCFBRatings.mockResolvedValue(cfbRatings);
 
@@ -565,7 +573,7 @@ describe('TierList Component', () => {
           updatedAt: '2024-01-01',
         },
       ];
-      mockCards.getCardRatings.mockResolvedValue(cards);
+      mockRatings(cards);
       mockCards.getSetCards.mockResolvedValue([]);
       mockCards.getCFBRatings.mockResolvedValue(cfbRatings);
 
@@ -587,7 +595,7 @@ describe('TierList Component', () => {
       const cards = [
         createMockCardRating({ name: 'Lightning Bolt', mtga_id: 1, tier: 'S' }),
       ];
-      mockCards.getCardRatings.mockResolvedValue(cards);
+      mockRatings(cards);
       mockCards.getSetCards.mockResolvedValue([]);
       mockCards.getCFBRatings.mockRejectedValue(new Error('CFB ratings not available'));
 
@@ -618,7 +626,7 @@ describe('TierList Component', () => {
           updatedAt: '2024-01-01',
         },
       ];
-      mockCards.getCardRatings.mockResolvedValue(cards);
+      mockRatings(cards);
       mockCards.getSetCards.mockResolvedValue([]);
       mockCards.getCFBRatings.mockResolvedValue(cfbRatings);
 
@@ -670,7 +678,7 @@ describe('TierList Component', () => {
           updatedAt: '2024-01-01',
         },
       ];
-      mockCards.getCardRatings.mockResolvedValue(cards);
+      mockRatings(cards);
       mockCards.getSetCards.mockResolvedValue([]);
       mockCards.getCFBRatings.mockResolvedValue(cfbRatings);
 
@@ -690,6 +698,36 @@ describe('TierList Component', () => {
         expect(badges[1]).toHaveTextContent('B');
         expect(badges[2]).toHaveTextContent('C-');
       });
+    });
+  });
+
+  describe('Cache Degraded Notice', () => {
+    it('should not show degraded notice when cache is healthy', async () => {
+      const cards = [createMockCardRating({ name: 'Lightning Bolt', mtga_id: 1, tier: 'S' })];
+      mockRatings(cards, false);
+      mockCards.getSetCards.mockResolvedValue([]);
+
+      render(<TierList {...defaultProps} />);
+
+      await waitFor(() => {
+        expect(screen.getByText('Lightning Bolt')).toBeInTheDocument();
+      });
+
+      expect(screen.queryByTestId('cache-degraded-notice')).not.toBeInTheDocument();
+    });
+
+    it('should show degraded notice when X-Cache-Degraded header was true', async () => {
+      const cards = [createMockCardRating({ name: 'Lightning Bolt', mtga_id: 1, tier: 'S' })];
+      mockRatings(cards, true);
+      mockCards.getSetCards.mockResolvedValue([]);
+
+      render(<TierList {...defaultProps} />);
+
+      await waitFor(() => {
+        expect(screen.getByTestId('cache-degraded-notice')).toBeInTheDocument();
+      });
+
+      expect(screen.getByText(/ratings data may be stale/i)).toBeInTheDocument();
     });
   });
 });

@@ -17,6 +17,15 @@ const (
 
 // Config holds typed runtime configuration for the BFF service.
 type Config struct {
+	// Env is the runtime environment.  Sourced from MTGA_ENV (default "development").
+	// Recognised values: "production", "development".
+	// When Env is "production", DATABASE_URL must be set or Load returns an error.
+	Env string
+
+	// DatabaseURL is the PostgreSQL connection string.
+	// Sourced from DATABASE_URL.
+	DatabaseURL string
+
 	// DraftRatingsStalenessThresholdHours is the maximum age (in hours) of the
 	// draft ratings cache before the handler sets X-Cache-Degraded: true.
 	// Sourced from DRAFT_RATINGS_STALENESS_THRESHOLD_HOURS (default 48).
@@ -31,8 +40,26 @@ type Config struct {
 
 // Load reads configuration from environment variables, applies defaults, and
 // returns a validated Config.  An error is returned if any value is invalid.
+//
+// Production mode (MTGA_ENV=production) requires DATABASE_URL to be set.
+// Omitting DATABASE_URL in production is a fatal misconfiguration because the
+// API key auth middleware cannot be constructed without a database, which would
+// leave the SSE endpoint and any other guarded route unprotected.
 func Load() (*Config, error) {
+	env := os.Getenv("MTGA_ENV")
+	if env == "" {
+		env = "development"
+	}
+
+	dbURL := os.Getenv("DATABASE_URL")
+
+	if env == "production" && dbURL == "" {
+		return nil, fmt.Errorf("DATABASE_URL must be set when MTGA_ENV=production")
+	}
+
 	cfg := &Config{
+		Env:                                 env,
+		DatabaseURL:                         dbURL,
 		DraftRatingsStalenessThresholdHours: DefaultStalenessThresholdHours,
 		DraftRatingsBypassFreshnessCheck:    false,
 	}

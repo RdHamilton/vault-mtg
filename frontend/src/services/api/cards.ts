@@ -3,7 +3,7 @@
  * Replaces Wails card-related function bindings.
  */
 
-import { get, post, del } from '../apiClient';
+import { get, post, del, getRaw } from '../apiClient';
 import { models, gui, seventeenlands } from '@/types/models';
 
 // Re-export types for convenience
@@ -68,6 +68,39 @@ export async function getCardRatings(
   format: string
 ): Promise<CardRatingWithTier[]> {
   return get<CardRatingWithTier[]>(`/cards/ratings/${setCode}/${format}`);
+}
+
+/**
+ * Result from fetching card ratings, including cache degraded status from
+ * the X-Cache-Degraded and X-Cache-Age-Hours response headers.
+ */
+export interface CardRatingsResult {
+  ratings: CardRatingWithTier[];
+  /** True when the BFF returned X-Cache-Degraded: true — data may be stale. */
+  cacheDegraded: boolean;
+  /**
+   * Number of hours since cached ratings were last refreshed from upstream
+   * (17Lands). Parsed from X-Cache-Age-Hours header.
+   * Undefined when the header is absent or non-numeric.
+   */
+  cacheAgeHours?: number;
+}
+
+/**
+ * Get card ratings for a set and format, exposing the X-Cache-Degraded and
+ * X-Cache-Age-Hours headers so the UI can show a degraded-mode notice.
+ */
+export async function getCardRatingsWithDegradedFlag(
+  setCode: string,
+  format: string
+): Promise<CardRatingsResult> {
+  const { data, headers } = await getRaw<CardRatingWithTier[]>(`/cards/ratings/${setCode}/${format}`);
+  const cacheDegraded = headers.get('x-cache-degraded') === 'true';
+  const rawAge = headers.get('x-cache-age-hours');
+  const parsedAge = rawAge !== null ? parseFloat(rawAge) : undefined;
+  const cacheAgeHours =
+    parsedAge !== undefined && !isNaN(parsedAge) ? parsedAge : undefined;
+  return { ratings: data ?? [], cacheDegraded, cacheAgeHours };
 }
 
 /**

@@ -9,9 +9,15 @@ import (
 	"log"
 	"net/http"
 	"sync"
+	"time"
 
 	contract "github.com/RdHamilton/MTGA-Companion/services/contract"
 )
+
+// DefaultHeartbeatInterval is the period between SSE heartbeat comment frames
+// when no events are published.  It must be shorter than the nginx
+// proxy_read_timeout configured for /api/v1/events (recommended: 60s).
+const DefaultHeartbeatInterval = 30 * time.Second
 
 // event is the internal wire format sent over each subscriber channel.
 type event struct {
@@ -28,8 +34,9 @@ type subscriber struct {
 // Broker manages SSE subscriptions and fans out published events to connected
 // clients scoped by user ID.  It is safe for concurrent use.
 type Broker struct {
-	mu          sync.RWMutex
-	subscribers map[*subscriber]struct{}
+	mu                sync.RWMutex
+	subscribers       map[*subscriber]struct{}
+	heartbeatInterval time.Duration
 }
 
 // UserIDExtractor is a function that extracts an authenticated user ID from a
@@ -37,10 +44,20 @@ type Broker struct {
 // package does not depend on the middleware package.
 type UserIDExtractor func(ctx context.Context) (int64, bool)
 
-// New returns an initialised, ready-to-use Broker.
+// New returns an initialised, ready-to-use Broker with the default heartbeat
+// interval (30 seconds).
 func New() *Broker {
+	return NewWithHeartbeat(DefaultHeartbeatInterval)
+}
+
+// NewWithHeartbeat returns a Broker that sends SSE keep-alive comment frames at
+// the given interval.  Pass a non-positive duration to disable heartbeats
+// (not recommended for production).  Intended for tests that need a fast
+// ticker.
+func NewWithHeartbeat(interval time.Duration) *Broker {
 	return &Broker{
-		subscribers: make(map[*subscriber]struct{}),
+		subscribers:       make(map[*subscriber]struct{}),
+		heartbeatInterval: interval,
 	}
 }
 
@@ -94,8 +111,10 @@ func (b *Broker) Publish(userID int64, e contract.DaemonEvent) {
 		select {
 		case sub.ch <- ev:
 		default:
-			// Slow client: drop rather than block.
-			log.Printf("[sse] dropping event for slow client (userID=%d)", sub.userID)
+			// Slow client: channel buffer full; drop event to avoid blocking the
+			// publisher.  Log with structured fields so the operator can alert on
+			// this in production.
+			log.Printf("[sse] slow_client_drop userID=%d channel_capacity=%d", sub.userID, cap(sub.ch))
 		}
 	}
 }
@@ -115,7 +134,10 @@ func (b *Broker) SubscriberCount() int {
 // sse and middleware.
 //
 // The connection is kept open and daemon events are written as SSE frames.
-// The handler returns immediately when the client disconnects (ctx.Done()).
+// A periodic heartbeat comment (": heartbeat\n\n") is sent every
+// HeartbeatInterval when no events arrive, preventing nginx and load-balancer
+// idle-timeout disconnections.  The handler returns immediately when the
+// client disconnects (ctx.Done()).
 //
 // If extractUserID cannot resolve an authenticated user the handler responds
 // with 401 Unauthorized — this prevents unauthenticated SSE subscriptions.
@@ -143,19 +165,36 @@ func (b *Broker) Handler(extractUserID UserIDExtractor) http.HandlerFunc {
 		sub := b.subscribe(userID)
 		defer b.unsubscribe(sub)
 
-		log.Printf("[sse] client connected (userID=%d)", userID)
+		log.Printf("[sse] client_connected userID=%d", userID)
 
-		// Send a comment heartbeat immediately so the client knows it is connected.
+		// Send a comment frame immediately so the client knows it is connected.
 		fmt.Fprintf(w, ": connected\n\n")
 		flusher.Flush()
 
 		ctx := r.Context()
 
+		// Start a heartbeat ticker to keep the connection alive through nginx and
+		// load-balancer idle timeouts.  A non-positive interval disables the
+		// ticker (disabled heartbeat is not recommended in production).
+		var tickerC <-chan time.Time
+
+		if b.heartbeatInterval > 0 {
+			ticker := time.NewTicker(b.heartbeatInterval)
+			defer ticker.Stop()
+
+			tickerC = ticker.C
+		}
+
 		for {
 			select {
 			case <-ctx.Done():
-				log.Printf("[sse] client disconnected (userID=%d)", userID)
+				log.Printf("[sse] client_disconnected userID=%d", userID)
 				return
+
+			case <-tickerC:
+				fmt.Fprintf(w, ": heartbeat\n\n")
+				flusher.Flush()
+
 			case ev, ok := <-sub.ch:
 				if !ok {
 					// Channel closed (broker shutting down or forcibly unsubscribed).

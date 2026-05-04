@@ -1,6 +1,9 @@
 package config_test
 
 import (
+	"encoding/base64"
+	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"testing"
@@ -184,4 +187,229 @@ func TestOldKeyNamesIgnored(t *testing.T) {
 	// cloud_api_url will be empty because "bff_url" is unknown; validation fails.
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "cloud_api_url")
+}
+
+// ---- New fields: DaemonJWT, DaemonID, UserID ----
+
+// TestLoadDaemonJWTFields verifies that daemon_jwt, daemon_id, and user_id
+// are read from the config file.
+func TestLoadDaemonJWTFields(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "daemon.json")
+	content := `{
+		"cloud_api_url": "https://bff.example.com",
+		"api_key": "user-key",
+		"user_id": 42,
+		"daemon_jwt": "eyJhbGciOiJIUzI1NiJ9.eyJleHAiOjk5OTk5OTk5OTl9.sig",
+		"daemon_id": "d1e2f3a4-b5c6-7890-1234-567890abcdef"
+	}`
+	require.NoError(t, os.WriteFile(path, []byte(content), 0o600))
+
+	cfg, err := config.Load(path)
+	require.NoError(t, err)
+	assert.Equal(t, 42, cfg.UserID)
+	assert.Equal(t, "eyJhbGciOiJIUzI1NiJ9.eyJleHAiOjk5OTk5OTk5OTl9.sig", cfg.DaemonJWT)
+	assert.Equal(t, "d1e2f3a4-b5c6-7890-1234-567890abcdef", cfg.DaemonID)
+}
+
+// ---- Save / SaveTo ----
+
+// TestSaveRoundTrip verifies that Save() writes back to the same file and
+// the reloaded config contains the mutated values.
+func TestSaveRoundTrip(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "daemon.json")
+	content := `{"cloud_api_url":"https://bff.example.com","api_key":"key"}`
+	require.NoError(t, os.WriteFile(path, []byte(content), 0o600))
+
+	cfg, err := config.Load(path)
+	require.NoError(t, err)
+
+	cfg.DaemonJWT = "new-jwt-token"
+	cfg.DaemonID = "new-daemon-id"
+	require.NoError(t, cfg.Save())
+
+	// Reload and verify persisted values.
+	cfg2, err := config.Load(path)
+	require.NoError(t, err)
+	assert.Equal(t, "new-jwt-token", cfg2.DaemonJWT)
+	assert.Equal(t, "new-daemon-id", cfg2.DaemonID)
+}
+
+// TestSaveWithoutFilePathReturnsError verifies Save() fails when config was
+// not loaded from a file (env-only config has no file path to write back to).
+func TestSaveWithoutFilePathReturnsError(t *testing.T) {
+	t.Setenv("MTGA_DAEMON_CLOUD_API_URL", "http://localhost:9000")
+
+	cfg, err := config.Load("")
+	require.NoError(t, err)
+	assert.Empty(t, cfg.FilePath())
+
+	err = cfg.Save()
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "no file path")
+}
+
+// TestSaveToCreatesFile verifies SaveTo() creates the file and records the path.
+func TestSaveToCreatesFile(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "new-daemon.json")
+
+	t.Setenv("MTGA_DAEMON_CLOUD_API_URL", "http://localhost:9000")
+	t.Setenv("MTGA_DAEMON_API_KEY", "key")
+	cfg, err := config.Load("")
+	require.NoError(t, err)
+
+	cfg.DaemonJWT = "jwt-abc"
+	require.NoError(t, cfg.SaveTo(path))
+	assert.Equal(t, path, cfg.FilePath())
+
+	// File should exist and contain daemon_jwt.
+	data, err := os.ReadFile(path)
+	require.NoError(t, err)
+	assert.Contains(t, string(data), "jwt-abc")
+
+	// Subsequent Save() should use the recorded path.
+	cfg.DaemonJWT = "jwt-updated"
+	require.NoError(t, cfg.Save())
+	data2, err := os.ReadFile(path)
+	require.NoError(t, err)
+	assert.Contains(t, string(data2), "jwt-updated")
+}
+
+// TestSaveDoesNotWriteFilePathField verifies the unexported filePath field is
+// not serialised into the JSON output.
+func TestSaveDoesNotWriteFilePathField(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "daemon.json")
+	content := `{"cloud_api_url":"https://bff.example.com","api_key":"key"}`
+	require.NoError(t, os.WriteFile(path, []byte(content), 0o600))
+
+	cfg, err := config.Load(path)
+	require.NoError(t, err)
+	require.NoError(t, cfg.Save())
+
+	data, err := os.ReadFile(path)
+	require.NoError(t, err)
+	assert.NotContains(t, string(data), "file_path")
+	assert.NotContains(t, string(data), "filePath")
+}
+
+// ---- JWTNeedsRefresh ----
+
+// makeJWT constructs a minimal unsigned JWT with the given exp Unix timestamp.
+func makeJWT(exp int64) string {
+	header := base64.RawURLEncoding.EncodeToString([]byte(`{"alg":"HS256"}`))
+	claims := base64.RawURLEncoding.EncodeToString([]byte(fmt.Sprintf(`{"exp":%d}`, exp)))
+	return header + "." + claims + ".fakesig"
+}
+
+// TestJWTNeedsRefreshEmptyJWT verifies that an empty DaemonJWT always needs refresh.
+func TestJWTNeedsRefreshEmptyJWT(t *testing.T) {
+	t.Setenv("MTGA_DAEMON_CLOUD_API_URL", "http://localhost:9000")
+	cfg, err := config.Load("")
+	require.NoError(t, err)
+	assert.True(t, cfg.JWTNeedsRefresh())
+}
+
+// TestJWTNeedsRefreshFarFutureExpiry verifies that a JWT expiring 30 days from
+// now does NOT need refresh.
+func TestJWTNeedsRefreshFarFutureExpiry(t *testing.T) {
+	t.Setenv("MTGA_DAEMON_CLOUD_API_URL", "http://localhost:9000")
+	cfg, err := config.Load("")
+	require.NoError(t, err)
+	cfg.DaemonJWT = makeJWT(time.Now().Add(30 * 24 * time.Hour).Unix())
+	assert.False(t, cfg.JWTNeedsRefresh())
+}
+
+// TestJWTNeedsRefreshWithin24h verifies that a JWT expiring within 24 hours
+// needs refresh.
+func TestJWTNeedsRefreshWithin24h(t *testing.T) {
+	t.Setenv("MTGA_DAEMON_CLOUD_API_URL", "http://localhost:9000")
+	cfg, err := config.Load("")
+	require.NoError(t, err)
+	cfg.DaemonJWT = makeJWT(time.Now().Add(23 * time.Hour).Unix())
+	assert.True(t, cfg.JWTNeedsRefresh())
+}
+
+// TestJWTNeedsRefreshExpired verifies that an already-expired JWT needs refresh.
+func TestJWTNeedsRefreshExpired(t *testing.T) {
+	t.Setenv("MTGA_DAEMON_CLOUD_API_URL", "http://localhost:9000")
+	cfg, err := config.Load("")
+	require.NoError(t, err)
+	cfg.DaemonJWT = makeJWT(time.Now().Add(-1 * time.Hour).Unix())
+	assert.True(t, cfg.JWTNeedsRefresh())
+}
+
+// TestJWTNeedsRefreshMalformedJWT verifies that a malformed JWT is treated as
+// needing refresh.
+func TestJWTNeedsRefreshMalformedJWT(t *testing.T) {
+	t.Setenv("MTGA_DAEMON_CLOUD_API_URL", "http://localhost:9000")
+	cfg, err := config.Load("")
+	require.NoError(t, err)
+	cfg.DaemonJWT = "not-a-valid-jwt"
+	assert.True(t, cfg.JWTNeedsRefresh())
+}
+
+// TestJWTNeedsRefreshMissingExpClaim verifies that a JWT without an exp claim
+// is treated as needing refresh.
+func TestJWTNeedsRefreshMissingExpClaim(t *testing.T) {
+	t.Setenv("MTGA_DAEMON_CLOUD_API_URL", "http://localhost:9000")
+	cfg, err := config.Load("")
+	require.NoError(t, err)
+	// JWT with no exp field.
+	header := base64.RawURLEncoding.EncodeToString([]byte(`{"alg":"HS256"}`))
+	claims := base64.RawURLEncoding.EncodeToString([]byte(`{"sub":"daemon-1"}`))
+	cfg.DaemonJWT = header + "." + claims + ".sig"
+	assert.True(t, cfg.JWTNeedsRefresh())
+}
+
+// TestFilePath verifies FilePath returns the file the config was loaded from.
+func TestFilePath(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "daemon.json")
+	content := `{"cloud_api_url":"https://bff.example.com"}`
+	require.NoError(t, os.WriteFile(path, []byte(content), 0o600))
+
+	cfg, err := config.Load(path)
+	require.NoError(t, err)
+	assert.Equal(t, path, cfg.FilePath())
+}
+
+// TestFilePathEmptyForEnvOnlyConfig verifies FilePath is empty when loaded from env.
+func TestFilePathEmptyForEnvOnlyConfig(t *testing.T) {
+	t.Setenv("MTGA_DAEMON_CLOUD_API_URL", "http://localhost:9000")
+	cfg, err := config.Load("")
+	require.NoError(t, err)
+	assert.Empty(t, cfg.FilePath())
+}
+
+// TestSavePreservesAllExistingFields verifies that Save does not clobber fields
+// that were not mutated.
+func TestSavePreservesAllExistingFields(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "daemon.json")
+	content := `{
+		"cloud_api_url": "https://bff.example.com",
+		"api_key": "user-key",
+		"account_id": "acc-99",
+		"sync_enabled": true
+	}`
+	require.NoError(t, os.WriteFile(path, []byte(content), 0o600))
+
+	cfg, err := config.Load(path)
+	require.NoError(t, err)
+
+	cfg.DaemonJWT = "jwt-xyz"
+	require.NoError(t, cfg.Save())
+
+	// Re-read the raw JSON and verify old fields are intact.
+	data, err := os.ReadFile(path)
+	require.NoError(t, err)
+	var m map[string]interface{}
+	require.NoError(t, json.Unmarshal(data, &m))
+	assert.Equal(t, "https://bff.example.com", m["cloud_api_url"])
+	assert.Equal(t, "user-key", m["api_key"])
+	assert.Equal(t, "acc-99", m["account_id"])
+	assert.Equal(t, "jwt-xyz", m["daemon_jwt"])
 }
