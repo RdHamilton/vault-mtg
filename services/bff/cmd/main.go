@@ -110,7 +110,7 @@ func main() {
 	r.Use(cors.Handler(cors.Options{
 		AllowedOrigins: []string{"http://localhost:*", "http://127.0.0.1:*"},
 		AllowedMethods: []string{"GET", "POST", "OPTIONS"},
-		AllowedHeaders: []string{"Authorization", "Content-Type", "X-Request-ID", "X-User-ID"},
+		AllowedHeaders: []string{"Authorization", "Content-Type", "X-Request-ID"},
 	}))
 
 	r.Get("/health", func(w http.ResponseWriter, r *http.Request) {
@@ -120,7 +120,14 @@ func main() {
 	})
 
 	// GET /api/v1/events — SSE stream for browser clients.
-	r.Get("/api/v1/events", broker.ServeHTTP)
+	// The endpoint is guarded by API key auth (when DB is available) to ensure
+	// the user ID is available in context for per-user event scoping.
+	sseHandler := broker.Handler(bffmiddleware.UserIDFromContext)
+	if apiKeyAuthMiddl != nil {
+		r.With(apiKeyAuthMiddl).Get("/api/v1/events", sseHandler)
+	} else {
+		r.Get("/api/v1/events", sseHandler)
+	}
 
 	// POST /api/keys — create a new API key for a user (placeholder auth via X-User-ID).
 	if apiKeysHandler != nil {
@@ -182,6 +189,6 @@ type sseBroadcast struct {
 	broker *sse.Broker
 }
 
-func (b *sseBroadcast) BroadcastDaemonEvent(event contract.DaemonEvent) {
-	b.broker.Publish(event)
+func (b *sseBroadcast) BroadcastDaemonEvent(userID int64, event contract.DaemonEvent) {
+	b.broker.Publish(userID, event)
 }

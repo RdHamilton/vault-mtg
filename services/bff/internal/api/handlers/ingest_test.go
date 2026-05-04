@@ -11,19 +11,25 @@ import (
 
 	"golang.org/x/crypto/bcrypt"
 
+	contract "github.com/RdHamilton/MTGA-Companion/services/contract"
 	"github.com/ramonehamilton/mtga-bff/internal/api/handlers"
 	"github.com/ramonehamilton/mtga-bff/internal/api/middleware"
 	"github.com/ramonehamilton/mtga-bff/internal/storage/repository"
-	contract "github.com/RdHamilton/MTGA-Companion/services/contract"
 )
+
+// broadcastedCall records a single BroadcastDaemonEvent invocation.
+type broadcastedCall struct {
+	userID int64
+	event  contract.DaemonEvent
+}
 
 // mockBroadcaster records the events broadcast for assertions.
 type mockBroadcaster struct {
-	events []contract.DaemonEvent
+	calls []broadcastedCall
 }
 
-func (m *mockBroadcaster) BroadcastDaemonEvent(event contract.DaemonEvent) {
-	m.events = append(m.events, event)
+func (m *mockBroadcaster) BroadcastDaemonEvent(userID int64, event contract.DaemonEvent) {
+	m.calls = append(m.calls, broadcastedCall{userID: userID, event: event})
 }
 
 // mockKeyLister satisfies the activeKeyLister interface used by middleware.APIKeyAuth.
@@ -101,12 +107,45 @@ func TestIngestEvent_Accepted(t *testing.T) {
 		t.Errorf("expected 202, got %d", rr.Code)
 	}
 
-	if len(broadcaster.events) != 1 {
-		t.Fatalf("expected 1 broadcast, got %d", len(broadcaster.events))
+	if len(broadcaster.calls) != 1 {
+		t.Fatalf("expected 1 broadcast call, got %d", len(broadcaster.calls))
 	}
 
-	if broadcaster.events[0].Type != "sync:ratings" {
-		t.Errorf("expected type 'sync:ratings', got %q", broadcaster.events[0].Type)
+	if broadcaster.calls[0].event.Type != "sync:ratings" {
+		t.Errorf("expected type 'sync:ratings', got %q", broadcaster.calls[0].event.Type)
+	}
+}
+
+// TestIngestEvent_BroadcastCarriesAuthenticatedUserID verifies that the ingest
+// handler passes the userID extracted from the auth middleware context to the
+// broadcaster — not a caller-supplied value.  This is the key security property
+// that prevents a compromised daemon from pushing events to another user's SSE
+// stream.
+func TestIngestEvent_BroadcastCarriesAuthenticatedUserID(t *testing.T) {
+	const token = "daemon-token"
+	const wantUserID int64 = 99
+
+	repo := &mockKeyLister{keys: []repository.APIKey{
+		{ID: 5, KeyHash: mustHash(t, token), UserID: wantUserID},
+	}}
+
+	broadcaster := &mockBroadcaster{}
+	handler := buildHandler(broadcaster, repo)
+
+	event := makeEvent("draft:pick")
+	req, rr := ingestRequest(t, token, event)
+	handler.ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusAccepted {
+		t.Fatalf("expected 202, got %d", rr.Code)
+	}
+
+	if len(broadcaster.calls) != 1 {
+		t.Fatalf("expected 1 broadcast call, got %d", len(broadcaster.calls))
+	}
+
+	if got := broadcaster.calls[0].userID; got != wantUserID {
+		t.Errorf("broadcaster received userID=%d, want %d — event would be routed to wrong SSE subscribers", got, wantUserID)
 	}
 }
 

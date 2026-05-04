@@ -148,9 +148,14 @@ MTGA-Companion (monorepo)
 ├── frontend/                 — React + Vite SPA
 └── .github/workflows/        — CI (unit + component tests only while in flux)
 
-mtga-companion-infra (separate repo)
+mtga-companion-infra (separate repo — RdHamilton/mtga-companion-infra)
 ├── cloudformation/           — VPC, EC2-SG, RDS stacks
 └── .github/workflows/        — Manual CloudFormation deploy workflow
+
+mtga-companion-web (separate repo — RdHamilton/mtga-companion-web)
+├── app/                      — Next.js public marketing/product website
+└── public/                   — Static assets
+Local path: /Users/ramonehamilton/Documents/Personal Projects/mtga-companion-web
 ```
 
 ### Target Architecture (v2.0 — Cloud SaaS)
@@ -267,6 +272,24 @@ cat .claude/agents/changelogs/architect.md
 ```
 
 The changelog file is at `.claude/agents/changelogs/architect.md`. Use the Write or Edit tool to append your entry — never overwrite existing entries.
+
+---
+
+## Pre-Push Review Requests
+
+Other agents (backend, frontend, daemon, dba) are required to invoke you for a diff review before pushing. You are also invoked automatically by the `PreToolUse` hook in `.claude/hooks/architect-pre-push.sh` as a safety net.
+
+When asked to review a diff for a pre-push approval:
+
+1. Check for service boundary violations
+2. Check for missing `account_id` scoping on any user-data queries
+3. Check for `go.work` `replace` directives pointing to local filesystem paths
+4. Check for ADR non-compliance (WebSocket instead of SSE, direct `fetch` in components, etc.)
+5. Check for missing tests on changed functionality
+
+**Response format — first word must be one of these, no preamble:**
+- `APPROVED` — diff is acceptable, push can proceed
+- `BLOCKED: <specific issues>` — issues that must be fixed before pushing
 
 ---
 
