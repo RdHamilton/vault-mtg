@@ -5,9 +5,10 @@ import * as cards from '../cards';
 vi.mock('../../apiClient', () => ({
   get: vi.fn(),
   post: vi.fn(),
+  getRaw: vi.fn(),
 }));
 
-import { get, post } from '../../apiClient';
+import { get, post, getRaw } from '../../apiClient';
 
 describe('cards API', () => {
   beforeEach(() => {
@@ -147,6 +148,40 @@ describe('cards API', () => {
         setCodes: undefined,
         limit: undefined,
       });
+    });
+  });
+
+  describe('getCardRatingsWithDegradedFlag', () => {
+    it('returns cacheDegraded=false when header is absent', async () => {
+      const mockRatings = [{ name: 'Card 1', ever_drawn_win_rate: 0.55 }];
+      const mockHeaders = new Headers(); // no X-Cache-Degraded header
+      vi.mocked(getRaw).mockResolvedValue({ data: mockRatings, headers: mockHeaders });
+
+      const result = await cards.getCardRatingsWithDegradedFlag('MKM', 'PremierDraft');
+
+      expect(getRaw).toHaveBeenCalledWith('/cards/ratings/MKM/PremierDraft');
+      expect(result.ratings).toEqual(mockRatings);
+      expect(result.cacheDegraded).toBe(false);
+    });
+
+    it('returns cacheDegraded=true when X-Cache-Degraded: true header is present', async () => {
+      const mockRatings = [{ name: 'Card 1', ever_drawn_win_rate: 0.55 }];
+      const mockHeaders = new Headers({ 'x-cache-degraded': 'true' });
+      vi.mocked(getRaw).mockResolvedValue({ data: mockRatings, headers: mockHeaders });
+
+      const result = await cards.getCardRatingsWithDegradedFlag('MKM', 'PremierDraft');
+
+      expect(result.cacheDegraded).toBe(true);
+      expect(result.ratings).toEqual(mockRatings);
+    });
+
+    it('returns cacheDegraded=false when X-Cache-Degraded has a non-true value', async () => {
+      const mockHeaders = new Headers({ 'x-cache-degraded': 'false' });
+      vi.mocked(getRaw).mockResolvedValue({ data: [], headers: mockHeaders });
+
+      const result = await cards.getCardRatingsWithDegradedFlag('OTJ', 'PremierDraft');
+
+      expect(result.cacheDegraded).toBe(false);
     });
   });
 });

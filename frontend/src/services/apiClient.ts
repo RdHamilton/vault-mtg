@@ -163,6 +163,72 @@ export function del<T>(path: string, options?: RequestInit): Promise<T> {
 }
 
 /**
+ * Result from a raw GET request that exposes response headers.
+ */
+export interface RawGetResult<T> {
+  data: T;
+  headers: Headers;
+}
+
+/**
+ * HTTP GET request that returns both parsed data and raw response headers.
+ * Use this when you need to inspect response headers (e.g. X-Cache-Degraded).
+ */
+export async function getRaw<T>(path: string, options: RequestInit = {}): Promise<RawGetResult<T>> {
+  const url = `${config.baseUrl}${path}`;
+
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), config.timeout);
+
+  try {
+    const response = await fetch(url, {
+      method: 'GET',
+      headers: {
+        'Content-Type': 'application/json',
+        ...options.headers,
+      },
+      signal: controller.signal,
+      ...options,
+    });
+
+    clearTimeout(timeoutId);
+
+    if (!response.ok) {
+      let errorData: ApiError = { error: 'Unknown error' };
+      try {
+        errorData = await response.json();
+      } catch {
+        errorData = { error: response.statusText || 'Request failed' };
+      }
+      const errorMessage = errorData.message || errorData.error;
+      throw new ApiRequestError(errorMessage, response.status, errorData.code, errorData.details);
+    }
+
+    if (response.status === 204) {
+      return { data: undefined as T, headers: response.headers };
+    }
+
+    const json = await response.json();
+    return { data: json.data as T, headers: response.headers };
+  } catch (error) {
+    clearTimeout(timeoutId);
+
+    if (error instanceof ApiRequestError) {
+      throw error;
+    }
+
+    if (error instanceof Error) {
+      if (error.name === 'AbortError') {
+        throw new ApiRequestError('Request timeout', 408);
+      }
+      throw new ApiRequestError(error.message, 0);
+    }
+
+    throw new ApiRequestError('Unknown error', 0);
+  }
+}
+
+/**
  * Check if the API server is reachable.
  */
 export async function healthCheck(): Promise<boolean> {
