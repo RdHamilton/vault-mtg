@@ -16,6 +16,7 @@ import DeckBuilder from './pages/DeckBuilder';
 import Collection from './pages/Collection';
 import Meta from './pages/Meta';
 import Settings from './pages/Settings';
+import Download from './pages/Download';
 import KeyboardShortcutsHandler from './components/KeyboardShortcutsHandler';
 import { EventsOn } from './services/adapter';
 import { updateReplayState } from './utils/replayState';
@@ -142,6 +143,7 @@ function App() {
           <Route path="/charts/format-distribution" element={<FormatDistribution />} />
           <Route path="/charts/result-breakdown" element={<ResultBreakdown />} />
           <Route path="/settings" element={<Settings />} />
+          <Route path="/download" element={<Download />} />
         </Routes>
       </Layout>
       <ToastContainer />

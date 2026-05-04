@@ -29,7 +29,7 @@ const Layout = ({ children }: LayoutProps) => {
   const isActive = (path: string) => location.pathname === path;
 
   // Derive activeTab from current route (computed value, not state)
-  const getActiveTab = (): 'match-history' | 'quests' | 'draft' | 'decks' | 'collection' | 'meta' | 'charts' => {
+  const getActiveTab = (): 'match-history' | 'quests' | 'draft' | 'decks' | 'collection' | 'meta' | 'charts' | 'download' => {
     if (location.pathname === '/match-history' || location.pathname === '/') {
       return 'match-history';
     } else if (location.pathname === '/quests') {
@@ -44,6 +44,8 @@ const Layout = ({ children }: LayoutProps) => {
       return 'meta';
     } else if (location.pathname.startsWith('/charts/')) {
       return 'charts';
+    } else if (location.pathname === '/download') {
+      return 'download';
     }
     return 'match-history';
   };
@@ -152,6 +154,13 @@ const Layout = ({ children }: LayoutProps) => {
             data-testid="nav-tab-charts"
           >
             Charts
+          </Link>
+          <Link
+            to="/download"
+            className={`tab ${activeTab === 'download' ? 'active' : ''}`}
+            data-testid="nav-tab-download"
+          >
+            Download
           </Link>
           <Link
             to="/settings"
