@@ -50,3 +50,4 @@
 - `.github/workflows/sync.yml` — path-filtered CI (build, test, vet)
 - `go.work` — added services/sync module
 **Summary**: Scaffolded the sync service as an independent Go module per ADR-001 Approach B; active sets are resolved dynamically from sets.is_standard_legal rather than a static env var, with SYNC_ACTIVE_SETS retained as a local override.
+**Merged**: 2026-05-03 — PR #1043 merged and verified.
