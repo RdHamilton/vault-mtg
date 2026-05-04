@@ -31,6 +31,16 @@ This is the system-wide record of all changes made across the project. Every age
 **PR**: #1087
 **Summary**: Audited all .github/workflows/ — patched integration.yml and release.yml Go steps that were missing GONOSUMDB/GOPRIVATE env vars. Codified the rule in backend.md, daemon.md, and architect.md agent definitions to prevent recurrence.
 
+## 2026-05-04 — [daemon] Issue #1094: feat(daemon): install scripts (PowerShell + launchd)
+**PR**: #TBD
+**Files changed**:
+- `services/daemon/install/macos/install.sh` — macOS launchd installer with arch detection
+- `services/daemon/install/macos/uninstall.sh` — macOS launchd uninstaller
+- `services/daemon/install/windows/install.ps1` — Windows Task Scheduler installer (no UAC)
+- `services/daemon/install/windows/uninstall.ps1` — Windows Task Scheduler uninstaller
+- `services/daemon/install/README.md` — install documentation
+**Summary**: Platform install scripts for the daemon; macOS uses launchd, Windows uses Task Scheduler (AtLogon, no UAC elevation); binary sourced from GitHub Releases with automatic latest-tag resolution.
+
 ## 2026-05-03 — [daemon] Issue #1014: daemon: investigate log preservation and MTGA log overwrite on startup
 **PR**: #1042
 **Files changed**:

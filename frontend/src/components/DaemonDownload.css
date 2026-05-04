@@ -1,0 +1,157 @@
+.daemon-download {
+  max-width: 800px;
+  margin: 0 auto;
+  padding: 48px 24px;
+}
+
+.daemon-download-header {
+  text-align: center;
+  margin-bottom: 40px;
+}
+
+.daemon-download-title {
+  font-size: 32px;
+  font-weight: 700;
+  color: #ffffff;
+  margin: 0 0 16px 0;
+}
+
+.daemon-download-subtitle {
+  font-size: 16px;
+  color: #aaaaaa;
+  max-width: 560px;
+  margin: 0 auto;
+  line-height: 1.6;
+}
+
+/* Download buttons */
+.daemon-download-buttons {
+  display: flex;
+  gap: 16px;
+  justify-content: center;
+  flex-wrap: wrap;
+  margin-bottom: 56px;
+}
+
+.daemon-download-button {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  padding: 18px 28px;
+  border-radius: 8px;
+  text-decoration: none;
+  min-width: 200px;
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
+  position: relative;
+}
+
+.daemon-download-button:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.4);
+}
+
+.daemon-download-button--primary {
+  background-color: #7b2fff;
+  border: 2px solid #7b2fff;
+  color: #ffffff;
+}
+
+.daemon-download-button--primary:hover {
+  background-color: #9147ff;
+  border-color: #9147ff;
+}
+
+.daemon-download-button--secondary {
+  background-color: #2d2d2d;
+  border: 2px solid #444444;
+  color: #cccccc;
+}
+
+.daemon-download-button--secondary:hover {
+  border-color: #7b2fff;
+  color: #ffffff;
+}
+
+.daemon-download-button-label {
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.daemon-download-button-recommended {
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  background-color: rgba(255, 255, 255, 0.2);
+  padding: 2px 8px;
+  border-radius: 4px;
+}
+
+.daemon-download-button-desc {
+  font-size: 12px;
+  opacity: 0.75;
+}
+
+/* Getting started steps */
+.daemon-getting-started {
+  background-color: #2d2d2d;
+  border: 1px solid #3d3d3d;
+  border-radius: 12px;
+  padding: 36px;
+}
+
+.daemon-getting-started-title {
+  font-size: 22px;
+  font-weight: 600;
+  color: #ffffff;
+  margin: 0 0 28px 0;
+}
+
+.daemon-getting-started-steps {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+}
+
+.daemon-getting-started-step {
+  display: flex;
+  align-items: flex-start;
+  gap: 20px;
+}
+
+.step-number {
+  flex-shrink: 0;
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  background-color: #7b2fff;
+  color: #ffffff;
+  font-size: 15px;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-top: 2px;
+}
+
+.step-content {
+  flex: 1;
+}
+
+.step-title {
+  font-size: 16px;
+  font-weight: 600;
+  color: #ffffff;
+  margin: 0 0 6px 0;
+}
+
+.step-description {
+  font-size: 14px;
+  color: #aaaaaa;
+  margin: 0;
+  line-height: 1.5;
+}

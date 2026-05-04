@@ -1,5 +1,15 @@
 # Daemon Agent Changelog
 
+## 2026-05-04 — Issue #1094: feat(daemon): install scripts (PowerShell + launchd)
+**PR**: #TBD
+**Files changed**:
+- `services/daemon/install/macos/install.sh` — new: detects arch, downloads binary from GitHub Releases, installs to /usr/local/bin, writes launchd plist, loads with launchctl
+- `services/daemon/install/macos/uninstall.sh` — new: unloads launchd job, removes plist and binary
+- `services/daemon/install/windows/install.ps1` — new: downloads Windows amd64 binary, writes daemon.yaml config, registers AtLogon Task Scheduler task (no UAC required)
+- `services/daemon/install/windows/uninstall.ps1` — new: stops and removes scheduled task and binary
+- `services/daemon/install/README.md` — new: one-liner install instructions for macOS and Windows
+**Summary**: Added platform install scripts so users can install and autostart the daemon on macOS (via launchd) and Windows (via Task Scheduler) without admin elevation on Windows; binary is downloaded from GitHub Releases with auto-detection of the latest daemon/* tag.
+
 ## 2026-05-03 — Issue #1014: daemon: investigate log preservation and MTGA log overwrite on startup
 **PR**: #1042
 **Files changed**:

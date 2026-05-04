@@ -89,8 +89,10 @@
       "Bash(AGENT_FIELD_ID=*)",
       "Read(//Users/ramonehamilton/Documents/Personal Projects/mtga-companion-infra/**)",
       "Write(//Users/ramonehamilton/Documents/Personal Projects/mtga-companion-infra/**)",
+      "Write(/Users/ramonehamilton/Documents/Personal Projects/mtga-companion-infra/**)",
       "Read(//Users/ramonehamilton/Documents/Personal Projects/mtga-companion-web/**)",
-      "Write(//Users/ramonehamilton/Documents/Personal Projects/mtga-companion-web/**)"
+      "Write(//Users/ramonehamilton/Documents/Personal Projects/mtga-companion-web/**)",
+      "Bash(git log *)"
     ],
     "deny": [],
     "ask": []
