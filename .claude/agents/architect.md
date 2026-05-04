@@ -148,9 +148,14 @@ MTGA-Companion (monorepo)
 ├── frontend/                 — React + Vite SPA
 └── .github/workflows/        — CI (unit + component tests only while in flux)
 
-mtga-companion-infra (separate repo)
+mtga-companion-infra (separate repo — RdHamilton/mtga-companion-infra)
 ├── cloudformation/           — VPC, EC2-SG, RDS stacks
 └── .github/workflows/        — Manual CloudFormation deploy workflow
+
+mtga-companion-web (separate repo — RdHamilton/mtga-companion-web)
+├── app/                      — Next.js public marketing/product website
+└── public/                   — Static assets
+Local path: /Users/ramonehamilton/Documents/Personal Projects/mtga-companion-web
 ```
 
 ### Target Architecture (v2.0 — Cloud SaaS)
