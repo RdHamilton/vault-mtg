@@ -113,8 +113,11 @@ func main() {
 	r.Use(chimiddleware.RequestID)
 	r.Use(chimiddleware.Logger)
 	r.Use(chimiddleware.Recoverer)
+	// AllowedOrigins is configured via the ALLOWED_ORIGINS environment variable
+	// (comma-separated list).  See ADR-006 for the full connectivity design.
+	// Defaults to localhost-only values when the variable is not set.
 	r.Use(cors.Handler(cors.Options{
-		AllowedOrigins: []string{"http://localhost:*", "http://127.0.0.1:*"},
+		AllowedOrigins: cfg.AllowedOrigins,
 		AllowedMethods: []string{"GET", "POST", "OPTIONS"},
 		AllowedHeaders: []string{"Authorization", "Content-Type", "X-Request-ID"},
 	}))

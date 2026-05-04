@@ -20,9 +20,11 @@ export interface ApiError {
   details?: string;
 }
 
-// Default configuration - can be overridden
+// Default configuration - can be overridden.
+// VITE_BFF_URL is set per-environment in the Vercel dashboard (see ADR-006).
+// Falls back to localhost for local development when the variable is absent.
 let config: ApiConfig = {
-  baseUrl: 'http://localhost:8080/api/v1',
+  baseUrl: import.meta.env.VITE_BFF_URL ?? 'http://localhost:8080/api/v1',
   timeout: 30000,
 };
 

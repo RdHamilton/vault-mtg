@@ -190,3 +190,84 @@ func TestLoad_BypassFreshnessCheck_InvalidIsError(t *testing.T) {
 		t.Fatal("expected error for invalid bypass value, got nil")
 	}
 }
+
+// TestLoad_AllowedOrigins_DefaultWhenUnset verifies that when ALLOWED_ORIGINS is
+// not set the config falls back to the localhost-only default values (ADR-006).
+func TestLoad_AllowedOrigins_DefaultWhenUnset(t *testing.T) {
+	t.Setenv("MTGA_ENV", "")
+	t.Setenv("DATABASE_URL", "")
+	t.Setenv("ALLOWED_ORIGINS", "")
+
+	cfg, err := config.Load()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if len(cfg.AllowedOrigins) == 0 {
+		t.Fatal("expected non-empty default AllowedOrigins, got empty slice")
+	}
+
+	// Defaults must include localhost — exact values checked here so any
+	// unintentional change to the default is caught.
+	found := false
+	for _, o := range cfg.AllowedOrigins {
+		if o == "http://localhost:*" {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Errorf("expected 'http://localhost:*' in default AllowedOrigins, got %v", cfg.AllowedOrigins)
+	}
+}
+
+// TestLoad_AllowedOrigins_ParsesCommaSeparated verifies that a comma-separated
+// ALLOWED_ORIGINS value is split into individual origins (ADR-006).
+func TestLoad_AllowedOrigins_ParsesCommaSeparated(t *testing.T) {
+	t.Setenv("MTGA_ENV", "")
+	t.Setenv("DATABASE_URL", "")
+	t.Setenv("ALLOWED_ORIGINS", "https://mtga-companion.vercel.app,https://*.vercel.app")
+
+	cfg, err := config.Load()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if len(cfg.AllowedOrigins) != 2 {
+		t.Fatalf("expected 2 allowed origins, got %d: %v", len(cfg.AllowedOrigins), cfg.AllowedOrigins)
+	}
+
+	if cfg.AllowedOrigins[0] != "https://mtga-companion.vercel.app" {
+		t.Errorf("unexpected first origin: %q", cfg.AllowedOrigins[0])
+	}
+
+	if cfg.AllowedOrigins[1] != "https://*.vercel.app" {
+		t.Errorf("unexpected second origin: %q", cfg.AllowedOrigins[1])
+	}
+}
+
+// TestLoad_AllowedOrigins_TrimsWhitespace verifies that leading/trailing
+// whitespace around comma-separated values is stripped.
+func TestLoad_AllowedOrigins_TrimsWhitespace(t *testing.T) {
+	t.Setenv("MTGA_ENV", "")
+	t.Setenv("DATABASE_URL", "")
+	t.Setenv("ALLOWED_ORIGINS", " https://mtga-companion.vercel.app , https://*.vercel.app ")
+
+	cfg, err := config.Load()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if len(cfg.AllowedOrigins) != 2 {
+		t.Fatalf("expected 2 origins after whitespace trim, got %d: %v", len(cfg.AllowedOrigins), cfg.AllowedOrigins)
+	}
+
+	for _, o := range cfg.AllowedOrigins {
+		if o != cfg.AllowedOrigins[0] && o != cfg.AllowedOrigins[1] {
+			t.Errorf("unexpected origin after trim: %q", o)
+		}
+		if len(o) > 0 && (o[0] == ' ' || o[len(o)-1] == ' ') {
+			t.Errorf("origin has leading/trailing whitespace: %q", o)
+		}
+	}
+}
