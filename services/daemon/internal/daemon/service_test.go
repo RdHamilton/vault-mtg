@@ -2,11 +2,15 @@ package daemon
 
 import (
 	"context"
+	"encoding/base64"
 	"encoding/json"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/RdHamilton/MTGA-Companion/services/contract"
 	"github.com/ramonehamilton/mtga-daemon/internal/config"
@@ -14,6 +18,14 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
+
+// makeTestJWT constructs a minimal unsigned JWT with the given exp Unix timestamp.
+// The signature segment is a placeholder; it is never verified by the daemon.
+func makeTestJWT(exp int64) string {
+	header := base64.RawURLEncoding.EncodeToString([]byte(`{"alg":"HS256"}`))
+	claims := base64.RawURLEncoding.EncodeToString([]byte(fmt.Sprintf(`{"exp":%d}`, exp)))
+	return header + "." + claims + ".fakesig"
+}
 
 func TestClassifyEntry_DraftPack(t *testing.T) {
 	entry := &logreader.LogEntry{
@@ -184,4 +196,144 @@ func TestHandleEntry_DraftPickDispatchesTypedPayload(t *testing.T) {
 	assert.Equal(t, []int{12345}, payload.PickedCards)
 	assert.Equal(t, 0, payload.PackNumber)
 	assert.Equal(t, 3, payload.PickNumber)
+}
+
+// ---------------------------------------------------------------------------
+// Periodic JWT refresh tests
+//
+// Strategy: set jwtRefreshInterval to a very short duration so the ticker
+// fires quickly, then cancel the context to stop the run loop. We inspect
+// how many times the BFF registration endpoint was called.
+// ---------------------------------------------------------------------------
+
+// TestRunRefreshesJWTWhenNearExpiry verifies that the run loop re-registers
+// when the stored JWT is within the refresh window (< 24 h remaining).
+func TestRunRefreshesJWTWhenNearExpiry(t *testing.T) {
+	var registerCalls atomic.Int32
+
+	// Stub: registration endpoint returns a fresh long-lived JWT.
+	freshJWT := makeTestJWT(time.Now().Add(30 * 24 * time.Hour).Unix())
+	regSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/api/daemon/register" {
+			registerCalls.Add(1)
+			w.Header().Set("Content-Type", "application/json")
+			fmt.Fprintf(w, `{"token":%q,"daemon_id":"test-daemon-id"}`, freshJWT)
+			return
+		}
+		w.WriteHeader(http.StatusAccepted)
+	}))
+	defer regSrv.Close()
+
+	// JWT that expires in 23 h — within the 24 h refresh window.
+	nearExpiryJWT := makeTestJWT(time.Now().Add(23 * time.Hour).Unix())
+
+	cfg := &config.Config{
+		CloudAPIURL: regSrv.URL,
+		IngestPath:  "/v1/ingest/events",
+		APIKey:      "test-api-key",
+		AccountID:   "acc-refresh-test",
+		SyncEnabled: true,
+		DaemonJWT:   nearExpiryJWT,
+		LogPath:     "/dev/null",
+	}
+
+	svc := New(cfg)
+
+	// Shorten the ticker to 10 ms so it fires quickly in the test.
+	oldInterval := jwtRefreshInterval
+	jwtRefreshInterval = 10 * time.Millisecond
+	t.Cleanup(func() { jwtRefreshInterval = oldInterval })
+
+	ctx, cancel := context.WithTimeout(context.Background(), 150*time.Millisecond)
+	defer cancel()
+
+	// Run returns when ctx is cancelled; ignore the context-cancelled error.
+	_ = svc.Run(ctx)
+
+	// The ticker should have fired at least once and called register.
+	assert.GreaterOrEqual(t, registerCalls.Load(), int32(1),
+		"expected at least one periodic register call when JWT is near expiry")
+}
+
+// TestRunDoesNotRefreshJWTWhenFresh verifies that the run loop does NOT
+// call the registration endpoint when the stored JWT has plenty of time left.
+func TestRunDoesNotRefreshJWTWhenFresh(t *testing.T) {
+	var registerCalls atomic.Int32
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/api/daemon/register" {
+			registerCalls.Add(1)
+			w.WriteHeader(http.StatusInternalServerError) // should never be reached
+			return
+		}
+		w.WriteHeader(http.StatusAccepted)
+	}))
+	defer srv.Close()
+
+	// JWT expiring 30 days from now — well outside the 24 h refresh window.
+	freshJWT := makeTestJWT(time.Now().Add(30 * 24 * time.Hour).Unix())
+
+	cfg := &config.Config{
+		CloudAPIURL: srv.URL,
+		IngestPath:  "/v1/ingest/events",
+		APIKey:      "test-api-key",
+		AccountID:   "acc-fresh-test",
+		SyncEnabled: true,
+		DaemonJWT:   freshJWT,
+		LogPath:     "/dev/null",
+	}
+
+	svc := New(cfg)
+
+	oldInterval := jwtRefreshInterval
+	jwtRefreshInterval = 10 * time.Millisecond
+	t.Cleanup(func() { jwtRefreshInterval = oldInterval })
+
+	ctx, cancel := context.WithTimeout(context.Background(), 150*time.Millisecond)
+	defer cancel()
+
+	_ = svc.Run(ctx)
+
+	assert.Equal(t, int32(0), registerCalls.Load(),
+		"register must not be called when JWT is fresh")
+}
+
+// TestRunSkipsRefreshWhenSyncDisabled verifies that the ticker does not
+// attempt re-registration when SyncEnabled is false, even if the JWT is stale.
+func TestRunSkipsRefreshWhenSyncDisabled(t *testing.T) {
+	var registerCalls atomic.Int32
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/api/daemon/register" {
+			registerCalls.Add(1)
+		}
+		w.WriteHeader(http.StatusAccepted)
+	}))
+	defer srv.Close()
+
+	expiredJWT := makeTestJWT(time.Now().Add(-1 * time.Hour).Unix())
+
+	cfg := &config.Config{
+		CloudAPIURL: srv.URL,
+		IngestPath:  "/v1/ingest/events",
+		APIKey:      "test-api-key",
+		AccountID:   "acc-sync-disabled",
+		SyncEnabled: false, // sync is off — no registration should occur
+		DaemonJWT:   expiredJWT,
+		LogPath:     "/dev/null",
+	}
+
+	svc := New(cfg)
+
+	oldInterval := jwtRefreshInterval
+	jwtRefreshInterval = 10 * time.Millisecond
+	t.Cleanup(func() { jwtRefreshInterval = oldInterval })
+
+	ctx, cancel := context.WithTimeout(context.Background(), 150*time.Millisecond)
+	defer cancel()
+
+	_ = svc.Run(ctx)
+
+	assert.Equal(t, int32(0), registerCalls.Load(),
+		"register must not be called when sync is disabled")
 }

@@ -16,6 +16,10 @@ import (
 	"github.com/ramonehamilton/mtga-daemon/internal/registrar"
 )
 
+// jwtRefreshInterval is how often the run loop checks whether the JWT needs
+// refreshing during an active session. It is a variable so tests can shorten it.
+var jwtRefreshInterval = time.Hour
+
 // Service is the top-level daemon service.
 type Service struct {
 	cfg        *config.Config
@@ -117,12 +121,26 @@ func (s *Service) Run(ctx context.Context) error {
 
 	log.Printf("[daemon] started (session=%s cloud_api=%s)", s.sessionID, s.cfg.CloudAPIURL)
 
+	// Periodic JWT refresh: check every jwtRefreshInterval whether the stored
+	// token is within the refresh window and re-register if so. This ensures
+	// mid-session expiry is handled without requiring a daemon restart.
+	jwtTicker := time.NewTicker(jwtRefreshInterval)
+	defer jwtTicker.Stop()
+
 	for {
 		select {
 		case <-ctx.Done():
 			poller.Stop()
 			log.Printf("[daemon] stopped")
 			return nil
+
+		case <-jwtTicker.C:
+			if s.cfg.SyncEnabled && s.cfg.JWTNeedsRefresh() && s.cfg.APIKey != "" {
+				log.Printf("[daemon] JWT within refresh window — re-registering")
+				if _, err := s.register(ctx); err != nil {
+					log.Printf("[daemon] warn: periodic JWT refresh failed: %v", err)
+				}
+			}
 
 		case err, ok := <-errs:
 			if !ok {
