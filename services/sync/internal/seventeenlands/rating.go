@@ -12,3 +12,11 @@ type CardRating struct {
 	SeenCount int     `json:"seen_count"`
 	PickCount int     `json:"pick_count"`
 }
+
+// ColorRating holds per-color-combination win-rate data returned by the
+// 17Lands /color_ratings/data endpoint.
+type ColorRating struct {
+	ColorCombination string  `json:"color_combination"`
+	WinRate          float64 `json:"win_rate"`
+	GamesPlayed      int     `json:"games"`
+}

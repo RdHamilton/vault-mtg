@@ -16,11 +16,15 @@ import (
 
 // mockStore is an in-memory Store implementation used in unit tests.
 type mockStore struct {
-	data map[string]*draftdata.SetRatings
+	data         map[string]*draftdata.SetRatings
+	colorRatings map[string][]seventeenlands.ColorRating
 }
 
 func newMockStore() *mockStore {
-	return &mockStore{data: make(map[string]*draftdata.SetRatings)}
+	return &mockStore{
+		data:         make(map[string]*draftdata.SetRatings),
+		colorRatings: make(map[string][]seventeenlands.ColorRating),
+	}
 }
 
 func (m *mockStore) GetActiveSets(_ context.Context) ([]string, error) {
@@ -43,6 +47,12 @@ func (m *mockStore) GetRatings(_ context.Context, setCode, draftFormat string) (
 }
 
 func (m *mockStore) UpsertSets(_ context.Context, _ []scryfall.ScryfallSet) error {
+	return nil
+}
+
+func (m *mockStore) UpsertColorRatings(_ context.Context, setCode, draftFormat string, ratings []seventeenlands.ColorRating) error {
+	key := setCode + "/" + draftFormat
+	m.colorRatings[key] = ratings
 	return nil
 }
 
@@ -115,6 +125,34 @@ func TestMockStore_SecondUpsertReplacesAllCards(t *testing.T) {
 	assert.NotContains(t, names, "Card A")
 	assert.NotContains(t, names, "Card B")
 	assert.NotContains(t, names, "Card C")
+}
+
+// TestMockStore_UpsertColorRatings verifies that color ratings can be stored and
+// replaced via UpsertColorRatings (DELETE+INSERT semantics on the mock).
+func TestMockStore_UpsertColorRatings(t *testing.T) {
+	store := newMockStore()
+	ctx := context.Background()
+
+	first := []seventeenlands.ColorRating{
+		{ColorCombination: "WU", WinRate: 0.58, GamesPlayed: 5000},
+		{ColorCombination: "BG", WinRate: 0.52, GamesPlayed: 3200},
+	}
+	require.NoError(t, store.UpsertColorRatings(ctx, "FDN", "PremierDraft", first))
+
+	got := store.colorRatings["FDN/PremierDraft"]
+	require.Len(t, got, 2)
+	assert.Equal(t, "WU", got[0].ColorCombination)
+	assert.InDelta(t, 0.58, got[0].WinRate, 0.001)
+
+	// Second upsert must replace the first batch.
+	second := []seventeenlands.ColorRating{
+		{ColorCombination: "RG", WinRate: 0.61, GamesPlayed: 6000},
+	}
+	require.NoError(t, store.UpsertColorRatings(ctx, "FDN", "PremierDraft", second))
+
+	got2 := store.colorRatings["FDN/PremierDraft"]
+	require.Len(t, got2, 1, "second upsert must replace all color ratings")
+	assert.Equal(t, "RG", got2[0].ColorCombination)
 }
 
 // Compile-time assertion that PostgresStore satisfies the Store interface.

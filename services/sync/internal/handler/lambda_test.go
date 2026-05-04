@@ -16,9 +16,12 @@ import (
 
 // stubFetcher is a test double for the Fetcher interface.
 type stubFetcher struct {
-	called int
-	cards  []seventeenlands.CardRating
-	err    error
+	called       int
+	cards        []seventeenlands.CardRating
+	err          error
+	colorsCalled int
+	colors       []seventeenlands.ColorRating
+	colorsErr    error
 }
 
 func (f *stubFetcher) FetchCardRatings(_ context.Context, _, _ string) ([]seventeenlands.CardRating, error) {
@@ -26,12 +29,24 @@ func (f *stubFetcher) FetchCardRatings(_ context.Context, _, _ string) ([]sevent
 	return f.cards, f.err
 }
 
+func (f *stubFetcher) FetchColorRatings(_ context.Context, _, _ string) ([]seventeenlands.ColorRating, error) {
+	f.colorsCalled++
+	return f.colors, f.colorsErr
+}
+
 // stubStore is a test double for the datasets.Store interface.
 type stubStore struct {
-	dbSets   []string
-	dbErr    error
-	upserted []draftdata.SetRatings
-	upsertFn func(setCode string) error
+	dbSets               []string
+	dbErr                error
+	upserted             []draftdata.SetRatings
+	upsertFn             func(setCode string) error
+	upsertedColorRatings []stubColorUpsert
+}
+
+type stubColorUpsert struct {
+	setCode     string
+	draftFormat string
+	ratings     []seventeenlands.ColorRating
 }
 
 func (s *stubStore) GetActiveSets(_ context.Context) ([]string, error) {
@@ -54,6 +69,11 @@ func (s *stubStore) UpsertSets(_ context.Context, _ []scryfall.ScryfallSet) erro
 	return nil
 }
 
+func (s *stubStore) UpsertColorRatings(_ context.Context, setCode, draftFormat string, ratings []seventeenlands.ColorRating) error {
+	s.upsertedColorRatings = append(s.upsertedColorRatings, stubColorUpsert{setCode, draftFormat, ratings})
+	return nil
+}
+
 // Compile-time check that stubStore satisfies datasets.Store.
 var _ datasets.Store = (*stubStore)(nil)
 
@@ -68,10 +88,15 @@ func TestHandle_WithOverrideSets(t *testing.T) {
 	err := h.Handle(context.Background(), nil)
 
 	require.NoError(t, err)
-	assert.Equal(t, 2, fetcher.called)
-	require.Len(t, store.upserted, 2)
-	setCodes := []string{store.upserted[0].SetCode, store.upserted[1].SetCode}
-	assert.ElementsMatch(t, []string{"FDN", "BLB"}, setCodes)
+	// 2 sets × 2 default formats = 4 card-rating calls.
+	assert.Equal(t, 4, fetcher.called)
+	require.Len(t, store.upserted, 4)
+	setCodes := map[string]bool{}
+	for _, u := range store.upserted {
+		setCodes[u.SetCode] = true
+	}
+	assert.True(t, setCodes["FDN"])
+	assert.True(t, setCodes["BLB"])
 }
 
 // TestHandle_WithDBSets verifies that active sets are read from the store when
@@ -86,9 +111,12 @@ func TestHandle_WithDBSets(t *testing.T) {
 	err := h.Handle(context.Background(), nil)
 
 	require.NoError(t, err)
-	assert.Equal(t, 1, fetcher.called)
-	require.Len(t, store.upserted, 1)
-	assert.Equal(t, "DSK", store.upserted[0].SetCode)
+	// 1 set × 2 default formats = 2 calls.
+	assert.Equal(t, 2, fetcher.called)
+	require.Len(t, store.upserted, 2)
+	for _, u := range store.upserted {
+		assert.Equal(t, "DSK", u.SetCode)
+	}
 }
 
 // TestHandle_NoSets verifies that an empty active-sets list is a no-op (no error).
@@ -137,10 +165,13 @@ func TestHandle_FetchErrorContinues(t *testing.T) {
 	err := h.Handle(context.Background(), nil)
 
 	require.NoError(t, err)
-	assert.Equal(t, 2, custom.called)
-	// Only SET2 should have been upserted.
-	require.Len(t, store.upserted, 1)
-	assert.Equal(t, "SET2", store.upserted[0].SetCode)
+	// 2 sets × 2 formats = 4 card-fetch calls.
+	assert.Equal(t, 4, custom.called)
+	// Only SET2 should have been upserted (twice — once per format).
+	require.Len(t, store.upserted, 2)
+	for _, u := range store.upserted {
+		assert.Equal(t, "SET2", u.SetCode)
+	}
 }
 
 // TestHandle_EmptyCardsSkipsUpsert verifies that a 0-card response does not call UpsertRatings.
@@ -152,7 +183,7 @@ func TestHandle_EmptyCardsSkipsUpsert(t *testing.T) {
 	err := h.Handle(context.Background(), nil)
 
 	require.NoError(t, err)
-	assert.Equal(t, 1, fetcher.called)
+	assert.Equal(t, 2, fetcher.called) // 1 set × 2 formats
 	assert.Empty(t, store.upserted)
 }
 
@@ -179,9 +210,13 @@ func TestHandle_UpsertErrorContinues(t *testing.T) {
 	err := h.Handle(context.Background(), nil)
 
 	require.NoError(t, err)
-	assert.Equal(t, 2, upsertCalls)
-	require.Len(t, upserted, 1)
-	assert.Equal(t, "SET2", upserted[0].SetCode)
+	// 2 sets × 2 formats = 4 upsert attempts.
+	assert.Equal(t, 4, upsertCalls)
+	// Only SET2 rows succeed (2 formats).
+	require.Len(t, upserted, 2)
+	for _, u := range upserted {
+		assert.Equal(t, "SET2", u.SetCode)
+	}
 }
 
 // TestHandle_ContextCancelled verifies early exit when context is cancelled.
@@ -201,6 +236,53 @@ func TestHandle_ContextCancelled(t *testing.T) {
 	assert.Equal(t, 0, fetcher.called)
 }
 
+// TestHandle_ColorRatingsFetchedAndStored verifies that color ratings are fetched
+// and persisted after card ratings for each set/format combination.
+func TestHandle_ColorRatingsFetchedAndStored(t *testing.T) {
+	fetcher := &stubFetcher{
+		cards: []seventeenlands.CardRating{{Name: "Lightning Bolt", ALSA: 1.5}},
+		colors: []seventeenlands.ColorRating{
+			{ColorCombination: "WU", WinRate: 0.58, GamesPlayed: 5000},
+		},
+	}
+	store := &stubStore{}
+
+	h := handler.New(fetcher, store, []string{"FDN"})
+	err := h.Handle(context.Background(), nil)
+
+	require.NoError(t, err)
+	// Card ratings: 1 set × 2 formats = 2 fetches.
+	assert.Equal(t, 2, fetcher.called)
+	// Color ratings: 1 set × 2 formats = 2 fetches.
+	assert.Equal(t, 2, fetcher.colorsCalled)
+	// Both persisted.
+	assert.Len(t, store.upserted, 2)
+	assert.Len(t, store.upsertedColorRatings, 2)
+	for _, cr := range store.upsertedColorRatings {
+		assert.Equal(t, "FDN", cr.setCode)
+		require.Len(t, cr.ratings, 1)
+		assert.Equal(t, "WU", cr.ratings[0].ColorCombination)
+	}
+}
+
+// TestHandle_ColorRatingsEmptySkipsUpsert verifies that when the fetcher returns
+// no color ratings, UpsertColorRatings is not called.
+func TestHandle_ColorRatingsEmptySkipsUpsert(t *testing.T) {
+	fetcher := &stubFetcher{
+		cards:  []seventeenlands.CardRating{{Name: "Island", ALSA: 8.0}},
+		colors: nil, // no color data
+	}
+	store := &stubStore{}
+
+	h := handler.New(fetcher, store, []string{"DSK"})
+	err := h.Handle(context.Background(), nil)
+
+	require.NoError(t, err)
+	assert.Equal(t, 2, fetcher.called)          // card ratings fetched
+	assert.Equal(t, 2, fetcher.colorsCalled)    // color ratings attempted
+	assert.Empty(t, store.upsertedColorRatings) // but not stored
+}
+
 // --- helpers ---
 
 type fetchResult struct {
@@ -218,5 +300,9 @@ func (c *countingFetcher) FetchCardRatings(_ context.Context, setCode, _ string)
 	if r, ok := c.results[setCode]; ok {
 		return r.cards, r.err
 	}
+	return nil, nil
+}
+
+func (c *countingFetcher) FetchColorRatings(_ context.Context, _, _ string) ([]seventeenlands.ColorRating, error) {
 	return nil, nil
 }
