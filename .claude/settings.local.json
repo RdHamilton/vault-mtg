@@ -76,7 +76,11 @@
       "Bash(/Users/ramonehamilton/go/bin/gofumpt *)",
       "Bash(wait)",
       "Read(//Users/ramonehamilton/go/bin/**)",
-      "Read(//usr/local/**)"
+      "Read(//usr/local/**)",
+      "Bash(GONOSUMDB=github.com/RdHamilton/MTGA-Companion GOPRIVATE=github.com/RdHamilton/MTGA-Companion go clean -testcache)",
+      "Bash(GONOSUMDB=\"github.com/RdHamilton/MTGA-Companion\" GOPRIVATE=\"github.com/RdHamilton/MTGA-Companion\" go work sync)",
+      "Bash(GONOSUMDB=\"github.com/RdHamilton/MTGA-Companion\" GOPRIVATE=\"github.com/RdHamilton/MTGA-Companion\" go test -race ./services/sync/...)",
+      "Bash(GIT_EDITOR=true git rebase --continue)"
     ],
     "deny": [],
     "ask": []
