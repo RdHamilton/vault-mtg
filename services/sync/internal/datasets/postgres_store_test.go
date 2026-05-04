@@ -117,5 +117,32 @@ func TestMockStore_SecondUpsertReplacesAllCards(t *testing.T) {
 	assert.NotContains(t, names, "Card C")
 }
 
+// TestMockStore_ZeroFetchedAt_AcceptedByMock documents that the mock store accepts a
+// zero FetchedAt without error. The real defensive default (substituting time.Now()) lives
+// in PostgresStore.UpsertRatings and is covered by the integration test.
+func TestMockStore_ZeroFetchedAt_AcceptedByMock(t *testing.T) {
+	store := newMockStore()
+	ctx := context.Background()
+
+	// Deliberately leave FetchedAt as zero to simulate a caller that forgot to set it.
+	input := draftdata.SetRatings{
+		SetCode:     "TST",
+		DraftFormat: "PremierDraft",
+		// FetchedAt intentionally zero
+		Cards: []seventeenlands.CardRating{
+			{MtgaID: 42, Name: "Test Creature", ALSA: 2.5},
+		},
+	}
+
+	require.NoError(t, store.UpsertRatings(ctx, input))
+
+	got, err := store.GetRatings(ctx, "TST", "PremierDraft")
+	require.NoError(t, err)
+	require.NotNil(t, got)
+	assert.Len(t, got.Cards, 1)
+	// Mock stores FetchedAt as-is (zero) — the real defensive default lives in PostgresStore.
+	assert.True(t, got.FetchedAt.IsZero(), "mock store stores FetchedAt as provided (zero)")
+}
+
 // Compile-time assertion that PostgresStore satisfies the Store interface.
 var _ datasets.Store = (*datasets.PostgresStore)(nil)

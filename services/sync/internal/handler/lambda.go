@@ -6,6 +6,7 @@ package handler
 import (
 	"context"
 	"log"
+	"time"
 
 	"github.com/ramonehamilton/mtga-sync/internal/datasets"
 	"github.com/ramonehamilton/mtga-sync/internal/draftdata"
@@ -71,6 +72,7 @@ func (h *SyncHandler) Handle(ctx context.Context, _ any) error {
 		sr := draftdata.SetRatings{
 			SetCode:     setCode,
 			DraftFormat: "PremierDraft",
+			FetchedAt:   time.Now().UTC(),
 			Cards:       ratings,
 		}
 

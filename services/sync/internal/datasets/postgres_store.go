@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/ramonehamilton/mtga-sync/internal/draftdata"
@@ -44,7 +45,15 @@ func (s *PostgresStore) GetActiveSets(ctx context.Context) ([]string, error) {
 // UpsertRatings replaces all card ratings for the given set/format in draft_card_ratings.
 // It deletes existing rows for the set/format and inserts fresh rows in a single transaction,
 // avoiding the arena_id=0 conflict that would collapse all cards into one row.
+//
+// If ratings.FetchedAt is zero (caller forgot to set it), time.Now().UTC() is used as a
+// defensive fallback so that cached_at is never stored as 0001-01-01 in Postgres — which
+// would cause the BFF staleness check to always fire X-Cache-Degraded: true.
 func (s *PostgresStore) UpsertRatings(ctx context.Context, ratings draftdata.SetRatings) error {
+	if ratings.FetchedAt.IsZero() {
+		ratings.FetchedAt = time.Now().UTC()
+	}
+
 	tx, err := s.pool.Begin(ctx)
 	if err != nil {
 		return fmt.Errorf("begin tx: %w", err)
