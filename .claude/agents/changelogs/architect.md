@@ -21,11 +21,11 @@ This is the system-wide record of all changes made across the project. Every age
 **Summary**: Discovered and documented that services/sync drifted from ADR-001 (Lambda+EventBridge) when EC2/systemd artifacts were merged in PRs #1048-#1053; wrote ADR-003 to formally re-affirm the Lambda deployment decision and resolve the credential strategy gap (issue #1054) via RDS IAM auth on Lambda execution role.
 
 ## 2026-05-03 — [architect] Issue #1016: arch: design SetCache ownership flip mechanism for sync/BFF
-**PR**: pending
+**PR**: #1081
 **ADR**: docs/adr/004-setcache-ownership-flip.md
 **Files changed**:
 - `docs/adr/004-setcache-ownership-flip.md` — new: ADR-004 documents staleness threshold mechanism for BFF draft ratings handler; Option 1 (feature flag) kept as ENV var escape hatch; Option 3 (sync health table) deferred
-**Summary**: Designed the SetCache ownership flip mechanism; chose staleness threshold on existing `cached_at` column as primary approach with `DRAFT_RATINGS_BYPASS_FRESHNESS_CHECK` env var as emergency override; decision ensures BFF never returns 5xx on stale data and is self-healing when Sync recovers.
+**Summary**: Designed the SetCache ownership flip mechanism; chose staleness threshold on existing `cached_at` column as primary approach with `DRAFT_RATINGS_BYPASS_FRESHNESS_CHECK` env var as emergency override; decision ensures BFF never returns 5xx on stale data and is self-healing when Sync recovers. 5 implementation tickets created (#1082–#1086).
 
 ## 2026-05-03 — [daemon] Issue #1014: daemon: investigate log preservation and MTGA log overwrite on startup
 **PR**: #1042

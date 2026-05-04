@@ -76,6 +76,9 @@ jobs:
         go-version: '1.25'
 
     - name: Build for multiple platforms
+      env:
+        GONOSUMDB: github.com/RdHamilton/MTGA-Companion
+        GOPRIVATE: github.com/RdHamilton/MTGA-Companion
       run: |
         GOOS=linux   GOARCH=amd64 go build -v -o bin/mtga-companion-linux-amd64   ./cmd/mtga-companion
         GOOS=linux   GOARCH=arm64 go build -v -o bin/mtga-companion-linux-arm64   ./cmd/mtga-companion
@@ -125,11 +128,17 @@ jobs:
         go-version: '1.25'
 
     - name: Build BFF for linux/amd64
+      env:
+        GONOSUMDB: github.com/RdHamilton/MTGA-Companion
+        GOPRIVATE: github.com/RdHamilton/MTGA-Companion
       run: |
         cd services/bff
         GOOS=linux GOARCH=amd64 go build -o mtga-bff ./cmd/main.go
 
     - name: Build sync service for linux/amd64
+      env:
+        GONOSUMDB: github.com/RdHamilton/MTGA-Companion
+        GOPRIVATE: github.com/RdHamilton/MTGA-Companion
       run: |
         cd services/sync
         GOOS=linux GOARCH=amd64 go build -o mtga-sync ./cmd/main.go

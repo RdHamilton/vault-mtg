@@ -84,6 +84,14 @@ go test ./...   # all tests must pass
 
 If any command fails, fix the issue first. Do not open the PR until all three pass.
 
+**CI workflow requirement**: Any new CI workflow or job that runs Go commands (`go mod download`, `go build`, `go test`, `go vet`, `golangci-lint`) must include the following env vars on every such step:
+```yaml
+env:
+  GONOSUMDB: github.com/RdHamilton/MTGA-Companion
+  GOPRIVATE: github.com/RdHamilton/MTGA-Companion
+```
+Without these, CI cannot resolve the private module and the build will fail.
+
 ## Finding Your Next Ticket
 
 Query tickets assigned to the **backend** agent on the v2.0 project board (Agent field option ID `4ca9f6a0`):
@@ -170,3 +178,4 @@ Use the Write or Edit tool to append — never overwrite existing entries in eit
 6. Always write integration tests for repository changes — mock DB tests are not acceptable
 7. Do NOT add Claude Code references to PRs or comments
 8. Always follow the Ticket Workflow above
+9. Any new CI workflow or job that runs Go commands must include `GONOSUMDB: github.com/RdHamilton/MTGA-Companion` and `GOPRIVATE: github.com/RdHamilton/MTGA-Companion` on every Go step — missing these causes private module resolution failures in CI
