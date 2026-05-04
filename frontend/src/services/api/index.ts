@@ -28,6 +28,8 @@ export * as gameplays from './gameplays';
 export * as notes from './notes';
 export * as mlSuggestions from './mlSuggestions';
 export * as opponents from './opponents';
+export * as bffDraftRatings from './bffDraftRatings';
+export * as bffAuth from './bffAuth';
 
 // Re-export commonly used types
 export type {
@@ -105,6 +107,18 @@ export type {
   SynergyReport,
   UserPlayPatterns,
 } from './mlSuggestions';
+
+export type {
+  BffCardRating,
+  BffColorRating,
+  BffDraftRatingsResponse,
+  BffDraftRatingsResult,
+} from './bffDraftRatings';
+
+export type {
+  CreateAPIKeyRequest,
+  CreateAPIKeyResponse,
+} from './bffAuth';
 
 export type {
   OpponentDeckProfile,
