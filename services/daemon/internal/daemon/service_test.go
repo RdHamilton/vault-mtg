@@ -1,10 +1,18 @@
 package daemon
 
 import (
+	"context"
+	"encoding/json"
+	"io"
+	"net/http"
+	"net/http/httptest"
 	"testing"
 
+	"github.com/ramonehamilton/mtga-contract"
+	"github.com/ramonehamilton/mtga-daemon/internal/config"
 	"github.com/ramonehamilton/mtga-daemon/internal/logreader"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestClassifyEntry_DraftPack(t *testing.T) {
@@ -69,4 +77,92 @@ func TestClassifyEntry_NotJSON(t *testing.T) {
 		Raw:    "plain text",
 	}
 	assert.Equal(t, "", classifyEntry(entry))
+}
+
+// TestHandleEntry_DraftPackDispatchesTypedPayload verifies that handleEntry
+// parses a draft.pack entry into a DraftPackPayload and sends it to the BFF
+// with the correct typed JSON keys (PackCards, SelfPick, CourseName).
+func TestHandleEntry_DraftPackDispatchesTypedPayload(t *testing.T) {
+	var received contract.DaemonEvent
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		body, err := io.ReadAll(r.Body)
+		require.NoError(t, err)
+		require.NoError(t, json.Unmarshal(body, &received))
+		w.WriteHeader(http.StatusAccepted)
+	}))
+	defer srv.Close()
+
+	cfg := &config.Config{
+		CloudAPIURL: srv.URL,
+		IngestPath:  "/v1/ingest/events",
+		APIKey:      "test-key",
+		AccountID:   "acc-1",
+	}
+	svc := New(cfg)
+
+	// Construct the entry as the reader would after parsing the log line.
+	entry := &logreader.LogEntry{
+		IsJSON: true,
+		JSON: map[string]interface{}{
+			"CourseName": "PremierDraft_BLB",
+			"draftPack": map[string]interface{}{
+				"PackCards": []interface{}{float64(12345), float64(67890)},
+				"SelfPick":  float64(1),
+			},
+		},
+	}
+
+	require.NoError(t, svc.handleEntry(context.Background(), entry))
+	assert.Equal(t, "draft.pack", received.Type)
+	assert.Equal(t, "acc-1", received.AccountID)
+
+	var payload logreader.DraftPackPayload
+	require.NoError(t, json.Unmarshal(received.Payload, &payload))
+	assert.Equal(t, "PremierDraft_BLB", payload.CourseName)
+	assert.Equal(t, []int{12345, 67890}, payload.DraftPack.PackCards)
+	assert.Equal(t, 1, payload.DraftPack.SelfPick)
+}
+
+// TestHandleEntry_DraftPickDispatchesTypedPayload verifies that handleEntry
+// parses a draft.pick entry into a DraftPickPayload and sends it to the BFF
+// with the correct typed JSON keys (pickedCards, PackNumber, PickNumber, CourseName).
+func TestHandleEntry_DraftPickDispatchesTypedPayload(t *testing.T) {
+	var received contract.DaemonEvent
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		body, err := io.ReadAll(r.Body)
+		require.NoError(t, err)
+		require.NoError(t, json.Unmarshal(body, &received))
+		w.WriteHeader(http.StatusAccepted)
+	}))
+	defer srv.Close()
+
+	cfg := &config.Config{
+		CloudAPIURL: srv.URL,
+		IngestPath:  "/v1/ingest/events",
+		APIKey:      "test-key",
+		AccountID:   "acc-2",
+	}
+	svc := New(cfg)
+
+	// Construct the entry as the reader would after parsing the log line.
+	entry := &logreader.LogEntry{
+		IsJSON: true,
+		JSON: map[string]interface{}{
+			"CourseName":  "PremierDraft_BLB",
+			"pickedCards": []interface{}{float64(12345)},
+			"PackNumber":  float64(0),
+			"PickNumber":  float64(3),
+		},
+	}
+
+	require.NoError(t, svc.handleEntry(context.Background(), entry))
+	assert.Equal(t, "draft.pick", received.Type)
+	assert.Equal(t, "acc-2", received.AccountID)
+
+	var payload logreader.DraftPickPayload
+	require.NoError(t, json.Unmarshal(received.Payload, &payload))
+	assert.Equal(t, "PremierDraft_BLB", payload.CourseName)
+	assert.Equal(t, []int{12345}, payload.PickedCards)
+	assert.Equal(t, 0, payload.PackNumber)
+	assert.Equal(t, 3, payload.PickNumber)
 }
