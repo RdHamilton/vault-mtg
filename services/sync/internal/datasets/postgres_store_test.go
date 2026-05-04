@@ -8,6 +8,7 @@ import (
 
 	"github.com/ramonehamilton/mtga-sync/internal/datasets"
 	"github.com/ramonehamilton/mtga-sync/internal/draftdata"
+	"github.com/ramonehamilton/mtga-sync/internal/scryfall"
 	"github.com/ramonehamilton/mtga-sync/internal/seventeenlands"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -39,6 +40,10 @@ func (m *mockStore) UpsertRatings(_ context.Context, ratings draftdata.SetRating
 func (m *mockStore) GetRatings(_ context.Context, setCode, draftFormat string) (*draftdata.SetRatings, error) {
 	key := setCode + "/" + draftFormat
 	return m.data[key], nil
+}
+
+func (m *mockStore) UpsertSets(_ context.Context, _ []scryfall.ScryfallSet) error {
+	return nil
 }
 
 func TestMockStore_RoundTrip(t *testing.T) {

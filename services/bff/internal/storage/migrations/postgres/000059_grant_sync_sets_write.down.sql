@@ -1,0 +1,1 @@
+REVOKE INSERT, UPDATE ON sets FROM mtga_sync;

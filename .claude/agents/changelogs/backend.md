@@ -8,6 +8,18 @@
 **Summary**: One sentence summary of what was done and why.
 -->
 
+## 2026-05-03 — Issue #1045: sync service — fetch active standard sets from Scryfall
+**PR**: #1051
+**Files changed**:
+- `services/sync/internal/scryfall/client.go` — `Client.FetchSets` with 30s timeout, `net/url` construction, filters to digital expansion/core sets only
+- `services/sync/internal/scryfall/set.go` — `ScryfallSet` domain struct
+- `services/sync/internal/scryfall/client_test.go` — httptest-based unit tests
+- `services/sync/internal/datasets/store.go` — added `UpsertSets(ctx, []scryfall.ScryfallSet) error` to `Store` interface
+- `services/sync/internal/datasets/postgres_store.go` — implemented `UpsertSets` with `ON CONFLICT (code) DO UPDATE SET is_standard_legal=TRUE`
+- `services/sync/internal/refresh/scheduler.go` — Scryfall set sync runs before 17Lands ratings fetch on each daily run
+- `services/sync/cmd/main.go` — wired `scryfall.NewClient()` as the set fetcher
+**Summary**: Eliminated manual BFF migrations to seed `sets.is_standard_legal` — the sync service now fetches active standard sets from Scryfall daily and upserts them into the sets table automatically, keeping standard-legal state current without operator intervention.
+
 ## 2026-05-03 — PR review fixes: feat/sync-service-scaffold
 
 **Files changed**:

@@ -4,8 +4,12 @@
 // Environment variables:
 //
 //	DATABASE_URL       PostgreSQL connection string (required)
+//	                   Sourced from AWS SSM Parameter Store (/mtga/prod/database_url)
+//	                   via the systemd unit ExecStartPre step — never hardcoded.
 //	SYNC_REFRESH_HOUR  Hour of day (0-23) to run the daily refresh (default: 2)
-//	SYNC_ACTIVE_SETS   Comma-separated set codes to refresh, e.g. "FDN,BLB,DSK"
+//	SYNC_ACTIVE_SETS   Optional override: comma-separated set codes to refresh,
+//	                   e.g. "FDN,BLB,DSK". Not needed in production — the Scryfall
+//	                   set sync keeps sets.is_standard_legal current automatically.
 package main
 
 import (
@@ -18,6 +22,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/ramonehamilton/mtga-sync/internal/datasets"
 	"github.com/ramonehamilton/mtga-sync/internal/refresh"
+	"github.com/ramonehamilton/mtga-sync/internal/scryfall"
 	"github.com/ramonehamilton/mtga-sync/internal/seventeenlands"
 )
 
@@ -39,10 +44,12 @@ func main() {
 	if err := pool.Ping(ctx); err != nil {
 		log.Fatalf("ping db: %v", err)
 	}
+	log.Println("[mtga-sync] database connection verified")
 
 	store := datasets.NewPostgresStore(pool)
-	client := seventeenlands.NewClient()
-	sched := refresh.New(client, store)
+	ratingsClient := seventeenlands.NewClient()
+	scryfallClient := scryfall.NewClient()
+	sched := refresh.New(scryfallClient, ratingsClient, store)
 
 	log.Println("[mtga-sync] starting scheduler")
 	sched.Start(ctx)

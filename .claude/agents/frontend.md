@@ -117,6 +117,30 @@ Every ticket must end with a PR. Never leave work committed without opening one.
 gh api graphql -f query='mutation { updateProjectV2ItemFieldValue(input: { projectId: "PVT_kwHOABsZ684BMSNn" itemId: "ITEM_ID" fieldId: "PVTSSF_lAHOABsZ684BMSNnzg7nLOc" value: { singleSelectOptionId: "OPTION_ID" } }) { projectV2Item { id } } }'
 ```
 
+## Agent Changelog
+
+Your changelog records every task you have completed. It is your institutional memory — read it before starting any task so you understand what has already been built and why.
+
+**Read at the start of every task:**
+```bash
+cat .claude/agents/changelogs/frontend.md
+```
+
+**After completing a task** (after opening the PR), append the same entry to BOTH files:
+1. `.claude/agents/changelogs/frontend.md` — your own record
+2. `.claude/agents/changelogs/architect.md` — the system-wide record the architect uses
+
+Use this format in both files (prefix `[frontend]` in the architect changelog):
+```markdown
+## YYYY-MM-DD — [frontend] Issue #NNN: <title>
+**PR**: #NNN
+**Files changed**:
+- `path/to/file.tsx` — short description of change
+**Summary**: One sentence summary of what was done and why.
+```
+
+Use the Write or Edit tool to append — never overwrite existing entries in either file.
+
 ## Rules
 
 1. Always use the REST API adapter — never call `fetch` directly from a component

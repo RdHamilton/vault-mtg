@@ -8,6 +8,7 @@ import (
 	"github.com/ramonehamilton/mtga-sync/internal/datasets"
 	"github.com/ramonehamilton/mtga-sync/internal/draftdata"
 	"github.com/ramonehamilton/mtga-sync/internal/refresh"
+	"github.com/ramonehamilton/mtga-sync/internal/scryfall"
 	"github.com/ramonehamilton/mtga-sync/internal/seventeenlands"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -24,10 +25,23 @@ func (f *stubFetcher) FetchCardRatings(_ context.Context, _, _ string) ([]sevent
 	return f.cards, nil
 }
 
+// stubSetFetcher returns a fixed list of Scryfall sets.
+type stubSetFetcher struct {
+	sets []scryfall.ScryfallSet
+}
+
+func (f *stubSetFetcher) FetchSets(_ context.Context) ([]scryfall.ScryfallSet, error) {
+	return f.sets, nil
+}
+
+// Ensure stubSetFetcher satisfies the SetFetcher interface.
+var _ refresh.SetFetcher = (*stubSetFetcher)(nil)
+
 // stubStore records upserted ratings and returns a configurable set list from the DB.
 type stubStore struct {
-	dbSets   []string
-	upserted []draftdata.SetRatings
+	dbSets       []string
+	upserted     []draftdata.SetRatings
+	upsertedSets []scryfall.ScryfallSet
 }
 
 func (s *stubStore) GetActiveSets(_ context.Context) ([]string, error) {
@@ -43,6 +57,11 @@ func (s *stubStore) GetRatings(_ context.Context, _, _ string) (*draftdata.SetRa
 	return nil, nil
 }
 
+func (s *stubStore) UpsertSets(_ context.Context, sets []scryfall.ScryfallSet) error {
+	s.upsertedSets = append(s.upsertedSets, sets...)
+	return nil
+}
+
 // Ensure stubStore satisfies the Store interface.
 var _ datasets.Store = (*stubStore)(nil)
 
@@ -56,8 +75,9 @@ func TestScheduler_ImmediateFetchOnStart(t *testing.T) {
 		},
 	}
 	store := &stubStore{}
+	setFetcher := &stubSetFetcher{}
 
-	sched := refresh.New(fetcher, store)
+	sched := refresh.New(setFetcher, fetcher, store)
 
 	// Cancel immediately after startup — the scheduler should have run one fetch.
 	ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
@@ -79,8 +99,9 @@ func TestScheduler_FetchesFromDB_WhenNoOverride(t *testing.T) {
 		cards: []seventeenlands.CardRating{{Name: "Forest", ALSA: 9.0}},
 	}
 	store := &stubStore{dbSets: []string{"BLB", "DSK"}}
+	setFetcher := &stubSetFetcher{}
 
-	sched := refresh.New(fetcher, store)
+	sched := refresh.New(setFetcher, fetcher, store)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
 	defer cancel()
@@ -98,8 +119,9 @@ func TestScheduler_NoSetsSkipsFetch(t *testing.T) {
 
 	fetcher := &stubFetcher{}
 	store := &stubStore{} // empty dbSets
+	setFetcher := &stubSetFetcher{}
 
-	sched := refresh.New(fetcher, store)
+	sched := refresh.New(setFetcher, fetcher, store)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 50*time.Millisecond)
 	defer cancel()
@@ -108,4 +130,27 @@ func TestScheduler_NoSetsSkipsFetch(t *testing.T) {
 
 	assert.Equal(t, 0, fetcher.called)
 	assert.Empty(t, store.upserted)
+}
+
+func TestScheduler_ScryfallSetsUpsertedBeforeRatings(t *testing.T) {
+	t.Setenv("SYNC_ACTIVE_SETS", "FDN")
+	t.Setenv("SYNC_REFRESH_HOUR", "2")
+
+	scryfallSet := scryfall.ScryfallSet{Code: "fdn", Name: "Foundations", SetType: "expansion", Digital: true, CardCount: 276}
+	fetcher := &stubFetcher{
+		cards: []seventeenlands.CardRating{{Name: "Lightning Bolt", ALSA: 1.5}},
+	}
+	store := &stubStore{}
+	setFetcher := &stubSetFetcher{sets: []scryfall.ScryfallSet{scryfallSet}}
+
+	sched := refresh.New(setFetcher, fetcher, store)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
+	defer cancel()
+
+	sched.Start(ctx)
+
+	require.Len(t, store.upsertedSets, 1, "Scryfall sets must be upserted")
+	assert.Equal(t, "fdn", store.upsertedSets[0].Code)
+	require.GreaterOrEqual(t, fetcher.called, 1, "card ratings must be fetched after set sync")
 }

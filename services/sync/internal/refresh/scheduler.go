@@ -10,6 +10,7 @@ import (
 
 	"github.com/ramonehamilton/mtga-sync/internal/datasets"
 	"github.com/ramonehamilton/mtga-sync/internal/draftdata"
+	"github.com/ramonehamilton/mtga-sync/internal/scryfall"
 	"github.com/ramonehamilton/mtga-sync/internal/seventeenlands"
 )
 
@@ -20,9 +21,15 @@ type Fetcher interface {
 	FetchCardRatings(ctx context.Context, setCode, format string) ([]seventeenlands.CardRating, error)
 }
 
+// SetFetcher retrieves active standard set metadata from an external source.
+type SetFetcher interface {
+	FetchSets(ctx context.Context) ([]scryfall.ScryfallSet, error)
+}
+
 // Scheduler runs a daily fetch of card ratings for all active sets.
 type Scheduler struct {
 	fetcher      Fetcher
+	setFetcher   SetFetcher
 	store        datasets.Store
 	overrideSets []string // non-empty when SYNC_ACTIVE_SETS is set; bypasses DB lookup
 	refreshHour  int
@@ -36,7 +43,7 @@ type Scheduler struct {
 //
 //	When unset, active sets are queried from the database each run using
 //	is_standard_legal = TRUE so the scheduler stays current without redeployment.
-func New(fetcher Fetcher, store datasets.Store) *Scheduler {
+func New(setFetcher SetFetcher, fetcher Fetcher, store datasets.Store) *Scheduler {
 	hour := defaultRefreshHour
 	if v := os.Getenv("SYNC_REFRESH_HOUR"); v != "" {
 		if h, err := strconv.Atoi(v); err == nil && h >= 0 && h <= 23 {
@@ -57,6 +64,7 @@ func New(fetcher Fetcher, store datasets.Store) *Scheduler {
 
 	return &Scheduler{
 		fetcher:      fetcher,
+		setFetcher:   setFetcher,
 		store:        store,
 		overrideSets: override,
 		refreshHour:  hour,
@@ -104,6 +112,18 @@ func (s *Scheduler) activeSets(ctx context.Context) ([]string, error) {
 }
 
 func (s *Scheduler) runFetch(ctx context.Context) {
+	// Sync Scryfall set metadata first so is_standard_legal stays current.
+	scryfallSets, err := s.setFetcher.FetchSets(ctx)
+	if err != nil {
+		log.Printf("[sync] fetch scryfall sets: %v", err)
+	} else if len(scryfallSets) > 0 {
+		if err := s.store.UpsertSets(ctx, scryfallSets); err != nil {
+			log.Printf("[sync] upsert scryfall sets: %v", err)
+		} else {
+			log.Printf("[sync] synced %d standard sets from Scryfall", len(scryfallSets))
+		}
+	}
+
 	sets, err := s.activeSets(ctx)
 	if err != nil {
 		log.Printf("[sync] resolve active sets: %v", err)
