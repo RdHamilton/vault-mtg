@@ -8,6 +8,9 @@ import {
   del,
   healthCheck,
   ApiRequestError,
+  getApiKey,
+  setApiKey,
+  createSSEConnection,
 } from '../apiClient';
 
 // Mock fetch globally
@@ -22,10 +25,13 @@ describe('apiClient', () => {
       baseUrl: 'http://localhost:8080/api/v1',
       timeout: 30000,
     });
+    // Clear any stored API key between tests
+    localStorage.clear();
   });
 
   afterEach(() => {
     vi.clearAllMocks();
+    localStorage.clear();
   });
 
   describe('configureApi', () => {
@@ -40,6 +46,129 @@ describe('apiClient', () => {
       const config = getApiConfig();
       expect(config.timeout).toBe(5000);
       expect(config.baseUrl).toBe('http://localhost:8080/api/v1');
+    });
+  });
+
+  describe('getApiKey / setApiKey', () => {
+    it('returns empty string when no key is stored', () => {
+      expect(getApiKey()).toBe('');
+    });
+
+    it('returns stored key after setApiKey', () => {
+      setApiKey('test-key-abc');
+      expect(getApiKey()).toBe('test-key-abc');
+    });
+
+    it('clears the key when empty string is passed', () => {
+      setApiKey('some-key');
+      setApiKey('');
+      expect(getApiKey()).toBe('');
+    });
+  });
+
+  describe('Authorization header injection', () => {
+    it('should NOT include Authorization header when no API key is set', async () => {
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        json: async () => ({ data: { id: 1 } }),
+      });
+
+      await get('/test');
+
+      const [, init] = mockFetch.mock.calls[0] as [string, RequestInit];
+      const headers = init.headers as Record<string, string>;
+      expect(headers['Authorization']).toBeUndefined();
+    });
+
+    it('should include Authorization: Bearer header when API key is set', async () => {
+      setApiKey('my-secret-key');
+
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        json: async () => ({ data: { id: 1 } }),
+      });
+
+      await get('/test');
+
+      const [, init] = mockFetch.mock.calls[0] as [string, RequestInit];
+      const headers = init.headers as Record<string, string>;
+      expect(headers['Authorization']).toBe('Bearer my-secret-key');
+    });
+
+    it('should send Authorization header on POST requests', async () => {
+      setApiKey('post-key');
+
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        json: async () => ({ data: { success: true } }),
+      });
+
+      await post('/create', { name: 'test' });
+
+      const [, init] = mockFetch.mock.calls[0] as [string, RequestInit];
+      const headers = init.headers as Record<string, string>;
+      expect(headers['Authorization']).toBe('Bearer post-key');
+    });
+
+    it('should send Authorization header on PUT requests', async () => {
+      setApiKey('put-key');
+
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        json: async () => ({ data: { updated: true } }),
+      });
+
+      await put('/items/1', { name: 'Updated' });
+
+      const [, init] = mockFetch.mock.calls[0] as [string, RequestInit];
+      const headers = init.headers as Record<string, string>;
+      expect(headers['Authorization']).toBe('Bearer put-key');
+    });
+
+    it('should send Authorization header on DELETE requests', async () => {
+      setApiKey('del-key');
+
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        status: 204,
+      });
+
+      await del('/items/1');
+
+      const [, init] = mockFetch.mock.calls[0] as [string, RequestInit];
+      const headers = init.headers as Record<string, string>;
+      expect(headers['Authorization']).toBe('Bearer del-key');
+    });
+  });
+
+  describe('createSSEConnection', () => {
+    it('returns null when no API key is stored', () => {
+      const result = createSSEConnection('/events');
+      expect(result).toBeNull();
+    });
+
+    it('returns an EventSource when an API key is stored', () => {
+      setApiKey('sse-key-123');
+
+      // EventSource is not available in jsdom — mock it
+      const MockEventSource = vi.fn().mockImplementation((url: string) => ({ url }));
+      vi.stubGlobal('EventSource', MockEventSource);
+
+      const result = createSSEConnection('/events');
+
+      expect(result).not.toBeNull();
+      expect(MockEventSource).toHaveBeenCalledWith(
+        expect.stringContaining('token=sse-key-123')
+      );
+      expect(MockEventSource).toHaveBeenCalledWith(
+        expect.stringContaining('/events')
+      );
+
+      vi.unstubAllGlobals();
     });
   });
 

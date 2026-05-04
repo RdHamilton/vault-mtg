@@ -9,6 +9,7 @@ import {
   SeventeenLandsSection,
   MLSettingsSection,
   AboutSection,
+  ApiKeySection,
 } from '../components/settings/sections';
 import { SettingsAccordion } from '../components/settings/SettingsAccordion';
 import type { SettingsAccordionItem } from '../components/settings/SettingsAccordion';
@@ -191,6 +192,12 @@ const Settings = () => {
             onModeChange={handleModeChange}
           />
         ),
+      },
+      {
+        id: 'api-key',
+        label: 'API Key',
+        icon: '🔑',
+        content: <ApiKeySection />,
       },
       {
         id: 'preferences',

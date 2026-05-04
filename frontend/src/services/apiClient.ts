@@ -26,6 +26,50 @@ let config: ApiConfig = {
   timeout: 30000,
 };
 
+// ---------------------------------------------------------------------------
+// API Key management
+// ---------------------------------------------------------------------------
+
+/** localStorage key under which the BFF API key is persisted. */
+const API_KEY_STORAGE_KEY = 'mtga-companion-api-key';
+
+/**
+ * Retrieve the stored API key from localStorage.
+ * Returns an empty string when no key is present.
+ */
+export function getApiKey(): string {
+  try {
+    return localStorage.getItem(API_KEY_STORAGE_KEY) ?? '';
+  } catch {
+    return '';
+  }
+}
+
+/**
+ * Persist an API key to localStorage so it survives page reloads.
+ * Pass an empty string to clear the stored key.
+ */
+export function setApiKey(key: string): void {
+  try {
+    if (key) {
+      localStorage.setItem(API_KEY_STORAGE_KEY, key);
+    } else {
+      localStorage.removeItem(API_KEY_STORAGE_KEY);
+    }
+  } catch {
+    // Storage unavailable — silently ignore.
+  }
+}
+
+/**
+ * Build the Authorization header object when an API key is stored.
+ * Returns an empty object when no key is present so callers can spread safely.
+ */
+function authHeaders(): Record<string, string> {
+  const key = getApiKey();
+  return key ? { Authorization: `Bearer ${key}` } : {};
+}
+
 /**
  * Configure the API client.
  */
@@ -76,6 +120,7 @@ async function request<T>(
       method,
       headers: {
         'Content-Type': 'application/json',
+        ...authHeaders(),
         ...options.headers,
       },
       body: body ? JSON.stringify(body) : undefined,
@@ -185,6 +230,7 @@ export async function getRaw<T>(path: string, options: RequestInit = {}): Promis
       method: 'GET',
       headers: {
         'Content-Type': 'application/json',
+        ...authHeaders(),
         ...options.headers,
       },
       signal: controller.signal,
@@ -240,4 +286,33 @@ export async function healthCheck(): Promise<boolean> {
   } catch {
     return false;
   }
+}
+
+// ---------------------------------------------------------------------------
+// SSE helper
+// ---------------------------------------------------------------------------
+
+/**
+ * Open a Server-Sent Events connection to the given path.
+ *
+ * The connection is gated on an API key being present in storage — if no key
+ * is stored the function returns null and the caller decides how to handle the
+ * unauthenticated state.
+ *
+ * EventSource does not support custom request headers natively, so the API key
+ * is appended as a `token` query-parameter which the BFF SSE handler reads and
+ * maps to a Bearer credential.  This is the standard workaround for SSE auth.
+ *
+ * @param path  API path relative to baseUrl (e.g. "/events")
+ * @returns     A connected EventSource, or null when no API key is stored.
+ */
+export function createSSEConnection(path: string): EventSource | null {
+  const key = getApiKey();
+  if (!key) {
+    return null;
+  }
+
+  const url = new URL(`${config.baseUrl}${path}`);
+  url.searchParams.set('token', key);
+  return new EventSource(url.toString());
 }

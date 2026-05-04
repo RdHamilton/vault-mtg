@@ -30,3 +30,6 @@ export { AppearanceSection } from './AppearanceSection';
 
 export { MLSettingsSection } from './MLSettingsSection';
 export type { MLSettingsSectionProps } from './MLSettingsSection';
+
+export { ApiKeySection } from './ApiKeySection';
+export type { ApiKeySectionProps } from './ApiKeySection';
