@@ -27,6 +27,10 @@ This is the system-wide record of all changes made across the project. Every age
 - `docs/adr/004-setcache-ownership-flip.md` — new: ADR-004 documents staleness threshold mechanism for BFF draft ratings handler; Option 1 (feature flag) kept as ENV var escape hatch; Option 3 (sync health table) deferred
 **Summary**: Designed the SetCache ownership flip mechanism; chose staleness threshold on existing `cached_at` column as primary approach with `DRAFT_RATINGS_BYPASS_FRESHNESS_CHECK` env var as emergency override; decision ensures BFF never returns 5xx on stale data and is self-healing when Sync recovers. 5 implementation tickets created (#1082–#1086).
 
+## 2026-05-04 — [architect] chore: enforce GONOSUMDB/GOPRIVATE on all Go CI workflow steps
+**PR**: #1087
+**Summary**: Audited all .github/workflows/ — patched integration.yml and release.yml Go steps that were missing GONOSUMDB/GOPRIVATE env vars. Codified the rule in backend.md, daemon.md, and architect.md agent definitions to prevent recurrence.
+
 ## 2026-05-03 — [daemon] Issue #1014: daemon: investigate log preservation and MTGA log overwrite on startup
 **PR**: #1042
 **Files changed**:
