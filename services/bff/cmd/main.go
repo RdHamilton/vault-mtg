@@ -27,8 +27,9 @@ import (
 )
 
 var (
-	port        = flag.Int("port", 8080, "HTTP server port")
-	databaseURL = flag.String("database-url", os.Getenv("DATABASE_URL"), "PostgreSQL connection string")
+	port            = flag.Int("port", 8080, "HTTP server port")
+	databaseURL     = flag.String("database-url", os.Getenv("DATABASE_URL"), "PostgreSQL connection string")
+	daemonJWTSecret = os.Getenv("DAEMON_JWT_SECRET")
 )
 
 func runMigrationsWithRetry(dsn string, timeout time.Duration) error {
@@ -72,6 +73,14 @@ func main() {
 
 	sseBroadcaster := &sseBroadcast{broker: broker}
 	ingestHandler := handlers.NewIngestHandler(sseBroadcaster)
+
+	// Wire daemon register handler when DAEMON_JWT_SECRET is set.
+	var daemonRegisterHandler *handlers.DaemonRegisterHandler
+	if daemonJWTSecret != "" {
+		daemonRegisterHandler = handlers.NewDaemonRegisterHandler(daemonJWTSecret)
+	} else {
+		log.Println("DAEMON_JWT_SECRET not set — daemon registration endpoint disabled.")
+	}
 
 	// Wire API key handler and auth middleware when a database is available.
 	var (
@@ -125,16 +134,32 @@ func main() {
 		r.Post("/api/keys", apiKeysHandler.CreateAPIKey)
 	}
 
-	// POST /v1/ingest/events — guarded by API key auth when DB is available.
-	if apiKeyAuthMiddl != nil {
-		r.With(apiKeyAuthMiddl).Post("/v1/ingest/events", ingestHandler.IngestEvent)
-	} else {
-		r.Post("/v1/ingest/events", ingestHandler.IngestEvent)
+	// POST /api/daemon/register — issue a daemon JWT; requires DAEMON_JWT_SECRET and
+	// a valid API key so the user_id is derived from context, never from the body.
+	if daemonRegisterHandler != nil {
+		if apiKeyAuthMiddl != nil {
+			r.With(apiKeyAuthMiddl).Post("/api/daemon/register", daemonRegisterHandler.Register)
+		} else {
+			// No DB available — registration is impossible without user identity.
+			// Log a warning; the route is omitted rather than serving unauthenticated.
+			log.Println("WARN: daemon register endpoint disabled — no database for API key auth")
+		}
 	}
 
 	// GET /api/v1/draft-ratings/{setCode}/{format} — draft card and color ratings.
 	if draftRatingsHandler != nil {
 		r.Get("/api/v1/draft-ratings/{setCode}/{format}", draftRatingsHandler.GetDraftRatings)
+	}
+
+	// POST /v1/ingest/events — JWT auth takes priority when secret is configured;
+	// falls back to API-key auth, then unguarded (dev mode).
+	switch {
+	case daemonJWTSecret != "":
+		r.With(bffmiddleware.DaemonJWTAuth(daemonJWTSecret)).Post("/v1/ingest/events", ingestHandler.IngestEvent)
+	case apiKeyAuthMiddl != nil:
+		r.With(apiKeyAuthMiddl).Post("/v1/ingest/events", ingestHandler.IngestEvent)
+	default:
+		r.Post("/v1/ingest/events", ingestHandler.IngestEvent)
 	}
 
 	srv := &http.Server{

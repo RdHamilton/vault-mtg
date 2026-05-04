@@ -3,6 +3,7 @@ package handlers
 
 import (
 	"encoding/json"
+	"fmt"
 	"log"
 	"net/http"
 
@@ -30,11 +31,18 @@ func NewIngestHandler(broadcaster EventBroadcaster) *IngestHandler {
 }
 
 // IngestEvent handles POST /v1/ingest/events.
-// Authentication is enforced by the APIKeyAuth middleware upstream; by the time
-// this handler runs the request is already verified and the authenticated user
-// ID is available on the request context.
+// Authentication is enforced by either APIKeyAuth or DaemonJWTAuth middleware
+// upstream. By the time this handler runs, at least one of UserIDFromContext or
+// DaemonUserIDFromContext is set on the request context.
 func (h *IngestHandler) IngestEvent(w http.ResponseWriter, r *http.Request) {
+	// Resolve the effective user ID. DaemonJWTAuth sets DaemonUserIDFromContext;
+	// APIKeyAuth sets UserIDFromContext. Accept either — reject only when neither
+	// is present. The JWT-scoped value takes precedence when both are set.
 	userID, ok := bffmiddleware.UserIDFromContext(r.Context())
+	if jwtUserID, jwtOK := bffmiddleware.DaemonUserIDFromContext(r.Context()); jwtOK {
+		userID = jwtUserID
+		ok = true
+	}
 	if !ok {
 		http.Error(w, "unauthorized", http.StatusUnauthorized)
 		return
@@ -49,6 +57,13 @@ func (h *IngestHandler) IngestEvent(w http.ResponseWriter, r *http.Request) {
 	if event.Type == "" {
 		http.Error(w, "event type is required", http.StatusBadRequest)
 		return
+	}
+
+	// When the request was authenticated via daemon JWT, override AccountID so
+	// it is always scoped to the JWT-derived user — prevents a daemon from
+	// injecting events for a different account.
+	if _, jwtOK := bffmiddleware.DaemonUserIDFromContext(r.Context()); jwtOK {
+		event.AccountID = fmt.Sprintf("user:%d", userID)
 	}
 
 	if h.broadcaster != nil {

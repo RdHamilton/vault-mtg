@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -243,6 +244,94 @@ func TestIngestEvent_BadRequest_InvalidJSON(t *testing.T) {
 
 	if rr.Code != http.StatusBadRequest {
 		t.Errorf("expected 400, got %d", rr.Code)
+	}
+}
+
+// TestIngestEvent_JWTUserIDOverridesAPIKeyUserID verifies that when DaemonJWT
+// context is present (JWT auth path), the JWT-derived userID is used for
+// broadcasting — not the API-key userID that UserIDFromContext would return.
+// This tests the bug-fix: inner-scope := no longer shadows the outer userID.
+func TestIngestEvent_JWTUserIDOverridesAPIKeyUserID(t *testing.T) {
+	const apiKeyUserID int64 = 42 // from API key context
+	const jwtUserID int64 = 77    // from daemon JWT context — must win
+
+	broadcaster := &mockBroadcaster{}
+	ih := handlers.NewIngestHandler(broadcaster)
+
+	event := makeEvent("draft:pick")
+	body, _ := json.Marshal(event)
+
+	req := httptest.NewRequest(http.MethodPost, "/v1/ingest/events", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+
+	// Inject both API-key userID and JWT userID into context.
+	ctx := middleware.WithUserID(req.Context(), apiKeyUserID)
+	ctx = middleware.WithDaemonUserID(ctx, jwtUserID)
+	req = req.WithContext(ctx)
+
+	rr := httptest.NewRecorder()
+	ih.IngestEvent(rr, req)
+
+	if rr.Code != http.StatusAccepted {
+		t.Fatalf("expected 202, got %d: %s", rr.Code, rr.Body.String())
+	}
+
+	if len(broadcaster.calls) != 1 {
+		t.Fatalf("expected 1 broadcast call, got %d", len(broadcaster.calls))
+	}
+
+	// The JWT userID must be used, not the API key userID.
+	if got := broadcaster.calls[0].userID; got != jwtUserID {
+		t.Errorf("broadcaster received userID=%d, want JWT userID=%d", got, jwtUserID)
+	}
+
+	// AccountID must also be scoped to JWT userID.
+	wantAccount := fmt.Sprintf("user:%d", jwtUserID)
+	if got := broadcaster.calls[0].event.AccountID; got != wantAccount {
+		t.Errorf("event.AccountID=%q, want %q", got, wantAccount)
+	}
+}
+
+// TestIngestEvent_JWTRouteChain mounts the real DaemonJWTAuth middleware around
+// IngestHandler (no manual WithDaemonUserID seeding), signs a real JWT, and
+// verifies the handler returns 202 with the correct userID scoping. This
+// catches regressions in the middleware-to-handler wiring.
+func TestIngestEvent_JWTRouteChain(t *testing.T) {
+	const secret = "ingest-jwt-chain-secret"
+	const wantUserID int64 = 123
+
+	// Issue a real token via the same function the register handler uses.
+	token, err := middleware.IssueDaemonJWT(secret, wantUserID, "daemon-abc")
+	if err != nil {
+		t.Fatalf("IssueDaemonJWT: %v", err)
+	}
+
+	broadcaster := &mockBroadcaster{}
+	ih := handlers.NewIngestHandler(broadcaster)
+
+	// Wrap the handler with the real middleware — no manual context seeding.
+	handler := middleware.DaemonJWTAuth(secret)(http.HandlerFunc(ih.IngestEvent))
+
+	event := makeEvent("draft:pick")
+	body, _ := json.Marshal(event)
+
+	req := httptest.NewRequest(http.MethodPost, "/v1/ingest/events", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", "Bearer "+token)
+
+	rr := httptest.NewRecorder()
+	handler.ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusAccepted {
+		t.Fatalf("expected 202, got %d: %s", rr.Code, rr.Body.String())
+	}
+
+	if len(broadcaster.calls) != 1 {
+		t.Fatalf("expected 1 broadcast call, got %d", len(broadcaster.calls))
+	}
+
+	if got := broadcaster.calls[0].userID; got != wantUserID {
+		t.Errorf("broadcaster userID=%d, want %d", got, wantUserID)
 	}
 }
 
