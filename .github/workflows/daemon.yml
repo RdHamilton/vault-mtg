@@ -1,10 +1,19 @@
-name: Daemon
+# daemon.yml — CI workflow for the daemon module
+#
+# Responsibility: run tests on every push and pull-request that touches
+# daemon or contract source files.  It does NOT build release artifacts.
+#
+# Release artifacts (cross-compiled binaries + GitHub Release) are handled
+# exclusively by daemon-release.yml, which triggers on `daemon/v*` tags.
+#
+# Binary naming: canonical artifact names are `mtga-companion-daemon-<os>-<arch>[.exe]`
+# as defined in daemon-release.yml.  Any local `make build` output must match.
+
+name: Daemon CI
 
 on:
   push:
     branches: [main]
-    tags:
-      - 'release-*'
     paths:
       - 'services/daemon/**'
       - 'services/contract/**'
@@ -15,9 +24,10 @@ on:
       - 'services/daemon/**'
       - 'services/contract/**'
       - '.github/workflows/daemon.yml'
+  workflow_dispatch: {}
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
   test:
@@ -26,7 +36,7 @@ jobs:
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@v6
+        uses: actions/checkout@v4
 
       - name: Set up Go
         uses: actions/setup-go@v5
@@ -55,94 +65,8 @@ jobs:
         run: go test -v -race -coverprofile=coverage.out -covermode=atomic ./...
 
       - name: Upload coverage
-        uses: codecov/codecov-action@v6
+        uses: codecov/codecov-action@v4
         with:
           files: ./services/daemon/coverage.out
           flags: daemon
           fail_ci_if_error: false
-
-  build:
-    name: Build (${{ matrix.goos }}/${{ matrix.goarch }})
-    runs-on: ubuntu-latest
-    needs: [test]
-
-    strategy:
-      matrix:
-        include:
-          - goos: windows
-            goarch: amd64
-            binary: mtga-daemon-windows-amd64.exe
-          - goos: darwin
-            goarch: arm64
-            binary: mtga-daemon-darwin-arm64
-          - goos: darwin
-            goarch: amd64
-            binary: mtga-daemon-darwin-amd64
-
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v6
-
-      - name: Set up Go
-        uses: actions/setup-go@v5
-        with:
-          go-version: '1.25'
-
-      - name: Configure private module access
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          git config --global url."https://${GITHUB_TOKEN}@github.com/".insteadOf "https://github.com/"
-
-      - name: Build binary
-        working-directory: services/daemon
-        env:
-          GOOS: ${{ matrix.goos }}
-          GOARCH: ${{ matrix.goarch }}
-          CGO_ENABLED: 0
-          GONOSUMDB: github.com/RdHamilton/MTGA-Companion
-          GOPRIVATE: github.com/RdHamilton/MTGA-Companion
-        run: |
-          go build -v \
-            -ldflags="-s -w" \
-            -o bin/${{ matrix.binary }} \
-            ./cmd/daemon
-
-      - name: Upload build artifact
-        uses: actions/upload-artifact@v7
-        with:
-          name: ${{ matrix.binary }}
-          path: services/daemon/bin/${{ matrix.binary }}
-
-  release:
-    name: Create Release
-    runs-on: ubuntu-latest
-    needs: [build]
-    if: startsWith(github.ref, 'refs/tags/release-')
-
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v6
-
-      - name: Download all artifacts
-        uses: actions/download-artifact@v8
-        with:
-          path: dist/
-
-      - name: Flatten artifacts
-        run: |
-          mkdir -p bin
-          find dist/ -type f -exec mv {} bin/ \;
-
-      - name: Create Release
-        uses: softprops/action-gh-release@v2
-        with:
-          files: |
-            bin/mtga-daemon-windows-amd64.exe
-            bin/mtga-daemon-darwin-arm64
-            bin/mtga-daemon-darwin-amd64
-          generate_release_notes: true
-          draft: false
-          prerelease: ${{ contains(github.ref, 'alpha') || contains(github.ref, 'beta') || contains(github.ref, 'rc') }}
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
