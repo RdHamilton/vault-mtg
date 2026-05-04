@@ -15,6 +15,7 @@ jobs:
     runs-on: ubuntu-latest
 
     strategy:
+      fail-fast: false
       matrix:
         include:
           - goos: windows
@@ -90,6 +91,15 @@ jobs:
           mkdir -p bin
           find dist/ -type f -exec mv {} bin/ \;
 
+      - name: Generate checksums
+        run: |
+          cd bin
+          sha256sum \
+            mtga-companion-daemon-windows-amd64.exe \
+            mtga-companion-daemon-darwin-arm64 \
+            mtga-companion-daemon-darwin-amd64 \
+            > sha256sums.txt
+
       - name: Create Release
         uses: softprops/action-gh-release@v2
         with:
@@ -97,6 +107,7 @@ jobs:
             bin/mtga-companion-daemon-windows-amd64.exe
             bin/mtga-companion-daemon-darwin-arm64
             bin/mtga-companion-daemon-darwin-amd64
+            bin/sha256sums.txt
           generate_release_notes: true
           draft: false
           prerelease: ${{ contains(github.ref, 'alpha') || contains(github.ref, 'beta') || contains(github.ref, 'rc') }}
