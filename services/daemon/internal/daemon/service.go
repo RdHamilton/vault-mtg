@@ -109,7 +109,31 @@ func (s *Service) handleEntry(ctx context.Context, entry *logreader.LogEntry) er
 		return nil
 	}
 
-	evt, err := dispatch.BuildEvent(eventType, s.cfg.AccountID, s.sessionID, entry.JSON)
+	// For draft events use typed payloads so the BFF receives validated,
+	// well-typed JSON rather than the raw map[string]interface{} from the log.
+	var payload interface{}
+	switch eventType {
+	case "draft.pack":
+		p, err := logreader.ParseDraftPack(entry)
+		if err != nil {
+			log.Printf("[daemon] warn: parse draft pack: %v", err)
+			payload = entry.JSON
+		} else {
+			payload = p
+		}
+	case "draft.pick":
+		p, err := logreader.ParseDraftPick(entry)
+		if err != nil {
+			log.Printf("[daemon] warn: parse draft pick: %v", err)
+			payload = entry.JSON
+		} else {
+			payload = p
+		}
+	default:
+		payload = entry.JSON
+	}
+
+	evt, err := dispatch.BuildEvent(eventType, s.cfg.AccountID, s.sessionID, payload)
 	if err != nil {
 		return fmt.Errorf("build event: %w", err)
 	}
