@@ -5,6 +5,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"net/url"
+	"time"
 )
 
 const defaultBaseURL = "https://www.17lands.com"
@@ -19,7 +21,7 @@ type Client struct {
 func NewClient() *Client {
 	return &Client{
 		baseURL:    defaultBaseURL,
-		httpClient: &http.Client{},
+		httpClient: &http.Client{Timeout: 30 * time.Second},
 	}
 }
 
@@ -30,9 +32,17 @@ func NewClientWithBase(baseURL string, httpClient *http.Client) *Client {
 
 // FetchCardRatings retrieves card ratings for the given set and draft format.
 func (c *Client) FetchCardRatings(ctx context.Context, setCode, format string) ([]CardRating, error) {
-	url := fmt.Sprintf("%s/card_ratings/data?expansion=%s&format=%s", c.baseURL, setCode, format)
+	u, err := url.Parse(c.baseURL)
+	if err != nil {
+		return nil, fmt.Errorf("parse base URL: %w", err)
+	}
+	u.Path += "/card_ratings/data"
+	q := u.Query()
+	q.Set("expansion", setCode)
+	q.Set("format", format)
+	u.RawQuery = q.Encode()
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, u.String(), nil)
 	if err != nil {
 		return nil, fmt.Errorf("build request: %w", err)
 	}

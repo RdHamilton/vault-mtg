@@ -41,6 +41,8 @@ func New(fetcher Fetcher, store datasets.Store) *Scheduler {
 	if v := os.Getenv("SYNC_REFRESH_HOUR"); v != "" {
 		if h, err := strconv.Atoi(v); err == nil && h >= 0 && h <= 23 {
 			hour = h
+		} else {
+			log.Printf("[sync] invalid SYNC_REFRESH_HOUR=%q: falling back to default %d", v, defaultRefreshHour)
 		}
 	}
 
@@ -115,6 +117,9 @@ func (s *Scheduler) runFetch(ctx context.Context) {
 	log.Printf("[sync] fetching ratings for %d sets: %v", len(sets), sets)
 
 	for _, setCode := range sets {
+		if ctx.Err() != nil {
+			return
+		}
 		ratings, err := s.fetcher.FetchCardRatings(ctx, setCode, "PremierDraft")
 		if err != nil {
 			log.Printf("[sync] fetch %s: %v", setCode, err)

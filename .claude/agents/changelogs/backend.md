@@ -8,6 +8,19 @@
 **Summary**: One sentence summary of what was done and why.
 -->
 
+## 2026-05-03 — PR review fixes: feat/sync-service-scaffold
+
+**Files changed**:
+- `services/bff/internal/storage/migrations/postgres/000057_create_sync_user_grants.up.sql` — remove hardcoded password, add DELETE grant on draft_card_ratings, replace hardcoded DB name with current_database()
+- `services/bff/internal/storage/migrations/postgres/000058_fix_standard_legal_sets.down.sql` — restore rotation_date values in down migration
+- `services/bff/internal/storage/migrations/postgres/000058_fix_standard_legal_sets.up.sql` — ON CONFLICT clause now updates name and released_at
+- `services/sync/go.mod` / `go.sum` — upgrade pgx v5.7.5 → v5.9.2
+- `services/sync/internal/refresh/scheduler.go` — warn on invalid SYNC_REFRESH_HOUR; check ctx.Err() inside set loop
+- `services/sync/internal/seventeenlands/client.go` — 30s HTTP timeout; URL-encode query params via net/url
+- `.github/workflows/sync.yml` — enable race detector on test step
+- `services/sync/internal/datasets/postgres_store_integration_test.go` — new integration test (build tag: integration)
+**Summary**: Address all PR review comments on the sync service scaffold: security hardening (no hardcoded password, proper DB grant scoping), correctness fixes (down migration, ON CONFLICT clause), robustness improvements (HTTP timeout, URL encoding, ctx cancellation, invalid env var warning), and a race detector in CI.
+
 ## 2026-05-03 — Issue #1011: fix UpsertRatings storing 0 rows and missing standard-legal sets
 **PR**: #1043
 **Files changed**:

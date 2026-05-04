@@ -13,5 +13,7 @@ VALUES
   ('TDM', 'Tarkir: Dragonstorm',       '2025-04-11', 'expansion', TRUE, '2028-01-01'),
   ('ECL', 'Ecolight',                  '2025-07-25', 'expansion', TRUE, '2029-01-01')
 ON CONFLICT (code) DO UPDATE SET
+  name              = EXCLUDED.name,
+  released_at       = EXCLUDED.released_at,
   is_standard_legal = EXCLUDED.is_standard_legal,
   rotation_date     = EXCLUDED.rotation_date;
