@@ -129,9 +129,17 @@ func main() {
 		r.Get("/api/v1/events", sseHandler)
 	}
 
-	// POST /api/keys — create a new API key for a user (placeholder auth via X-User-ID).
+	// POST /api/keys — create a new API key for a user.
+	// Requires a valid daemon JWT so user_id is derived from the verified token,
+	// never from a caller-supplied header.
 	if apiKeysHandler != nil {
-		r.Post("/api/keys", apiKeysHandler.CreateAPIKey)
+		if daemonJWTSecret != "" {
+			r.With(bffmiddleware.DaemonJWTAuth(daemonJWTSecret)).Post("/api/keys", apiKeysHandler.CreateAPIKey)
+		} else {
+			// No JWT secret configured — omit the route entirely rather than
+			// serving it without authentication.
+			log.Println("WARN: POST /api/keys disabled — DAEMON_JWT_SECRET not set")
+		}
 	}
 
 	// POST /api/daemon/register — issue a daemon JWT; requires DAEMON_JWT_SECRET and

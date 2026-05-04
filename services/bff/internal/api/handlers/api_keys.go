@@ -8,12 +8,12 @@ import (
 	"errors"
 	"log"
 	"net/http"
-	"strconv"
 	"time"
 
 	"github.com/jackc/pgx/v5/pgconn"
 	"golang.org/x/crypto/bcrypt"
 
+	"github.com/ramonehamilton/mtga-bff/internal/api/middleware"
 	"github.com/ramonehamilton/mtga-bff/internal/storage/repository"
 )
 
@@ -41,22 +41,17 @@ type createAPIKeyResponse struct {
 
 // CreateAPIKey handles POST /api/keys.
 //
-// Authentication placeholder: the caller must supply an X-User-ID header
-// containing a valid numeric user ID.  This will be replaced by real session
-// auth once the login flow is implemented.
+// The route must be protected by DaemonJWTAuth middleware, which validates the
+// daemon's Bearer JWT and stores the user_id in the request context.  The
+// handler reads the user identity exclusively from context — the X-User-ID
+// header placeholder has been removed.
 //
 // On success it returns 201 with the plaintext key in the response body.
 // The key is shown only once; it is not recoverable from the server.
 func (h *APIKeysHandler) CreateAPIKey(w http.ResponseWriter, r *http.Request) {
-	userIDStr := r.Header.Get("X-User-ID")
-	if userIDStr == "" {
-		writeJSONError(w, "X-User-ID header is required", http.StatusBadRequest)
-		return
-	}
-
-	userID, err := strconv.ParseInt(userIDStr, 10, 64)
-	if err != nil || userID <= 0 {
-		writeJSONError(w, "X-User-ID must be a positive integer", http.StatusBadRequest)
+	userID, ok := middleware.DaemonUserIDFromContext(r.Context())
+	if !ok || userID <= 0 {
+		writeJSONError(w, "unauthorized", http.StatusUnauthorized)
 		return
 	}
 

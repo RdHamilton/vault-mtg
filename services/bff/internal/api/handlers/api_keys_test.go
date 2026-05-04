@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/ramonehamilton/mtga-bff/internal/api/handlers"
+	"github.com/ramonehamilton/mtga-bff/internal/api/middleware"
 	"github.com/ramonehamilton/mtga-bff/internal/storage/repository"
 )
 
@@ -42,10 +43,13 @@ func (e *errAPIKeyCreator) Create(_ context.Context, _ int64, _ string) (*reposi
 	return nil, context.DeadlineExceeded
 }
 
-func newAPIKeysRequest(method, userIDHeader string) *http.Request {
-	req := httptest.NewRequest(method, "/api/keys", nil)
-	if userIDHeader != "" {
-		req.Header.Set("X-User-ID", userIDHeader)
+// newAPIKeysRequest builds a POST /api/keys request. When userID > 0 the
+// DaemonJWTAuth context value is populated to simulate middleware having
+// validated a daemon JWT.
+func newAPIKeysRequest(userID int64) *http.Request {
+	req := httptest.NewRequest(http.MethodPost, "/api/keys", nil)
+	if userID > 0 {
+		req = req.WithContext(middleware.WithDaemonUserID(req.Context(), userID))
 	}
 
 	return req
@@ -54,7 +58,7 @@ func newAPIKeysRequest(method, userIDHeader string) *http.Request {
 func TestCreateAPIKey_Success(t *testing.T) {
 	h := handlers.NewAPIKeysHandler(&stubAPIKeyCreator{})
 
-	req := newAPIKeysRequest(http.MethodPost, "42")
+	req := newAPIKeysRequest(42)
 	rr := httptest.NewRecorder()
 	h.CreateAPIKey(rr, req)
 
@@ -77,60 +81,39 @@ func TestCreateAPIKey_Success(t *testing.T) {
 	}
 }
 
-func TestCreateAPIKey_MissingUserIDHeader(t *testing.T) {
+func TestCreateAPIKey_MissingDaemonUserID(t *testing.T) {
 	h := handlers.NewAPIKeysHandler(&stubAPIKeyCreator{})
 
-	req := newAPIKeysRequest(http.MethodPost, "")
+	// No daemon user ID in context (middleware not applied or JWT missing).
+	req := httptest.NewRequest(http.MethodPost, "/api/keys", nil)
 	rr := httptest.NewRecorder()
 	h.CreateAPIKey(rr, req)
 
-	if rr.Code != http.StatusBadRequest {
-		t.Fatalf("expected 400, got %d", rr.Code)
+	if rr.Code != http.StatusUnauthorized {
+		t.Fatalf("expected 401, got %d", rr.Code)
 	}
 
-	assertJSONError(t, rr, "X-User-ID header is required")
+	assertJSONError(t, rr, "unauthorized")
 }
 
-func TestCreateAPIKey_InvalidUserIDHeader_NonNumeric(t *testing.T) {
+func TestCreateAPIKey_ZeroDaemonUserID(t *testing.T) {
 	h := handlers.NewAPIKeysHandler(&stubAPIKeyCreator{})
 
-	req := newAPIKeysRequest(http.MethodPost, "not-a-number")
+	// A zero user_id must also be rejected (invalid).
+	req := httptest.NewRequest(http.MethodPost, "/api/keys", nil)
+	req = req.WithContext(middleware.WithDaemonUserID(req.Context(), 0))
 	rr := httptest.NewRecorder()
 	h.CreateAPIKey(rr, req)
 
-	if rr.Code != http.StatusBadRequest {
-		t.Fatalf("expected 400, got %d", rr.Code)
-	}
-}
-
-func TestCreateAPIKey_InvalidUserIDHeader_Zero(t *testing.T) {
-	h := handlers.NewAPIKeysHandler(&stubAPIKeyCreator{})
-
-	req := newAPIKeysRequest(http.MethodPost, "0")
-	rr := httptest.NewRecorder()
-	h.CreateAPIKey(rr, req)
-
-	if rr.Code != http.StatusBadRequest {
-		t.Fatalf("expected 400, got %d", rr.Code)
-	}
-}
-
-func TestCreateAPIKey_InvalidUserIDHeader_Negative(t *testing.T) {
-	h := handlers.NewAPIKeysHandler(&stubAPIKeyCreator{})
-
-	req := newAPIKeysRequest(http.MethodPost, "-5")
-	rr := httptest.NewRecorder()
-	h.CreateAPIKey(rr, req)
-
-	if rr.Code != http.StatusBadRequest {
-		t.Fatalf("expected 400, got %d", rr.Code)
+	if rr.Code != http.StatusUnauthorized {
+		t.Fatalf("expected 401, got %d", rr.Code)
 	}
 }
 
 func TestCreateAPIKey_DBError(t *testing.T) {
 	h := handlers.NewAPIKeysHandler(&errAPIKeyCreator{})
 
-	req := newAPIKeysRequest(http.MethodPost, "1")
+	req := newAPIKeysRequest(1)
 	rr := httptest.NewRecorder()
 	h.CreateAPIKey(rr, req)
 
@@ -143,8 +126,8 @@ func TestCreateAPIKey_KeyIsUnique(t *testing.T) {
 	h := handlers.NewAPIKeysHandler(&stubAPIKeyCreator{})
 
 	rr1, rr2 := httptest.NewRecorder(), httptest.NewRecorder()
-	h.CreateAPIKey(rr1, newAPIKeysRequest(http.MethodPost, "1"))
-	h.CreateAPIKey(rr2, newAPIKeysRequest(http.MethodPost, "1"))
+	h.CreateAPIKey(rr1, newAPIKeysRequest(1))
+	h.CreateAPIKey(rr2, newAPIKeysRequest(1))
 
 	var r1, r2 map[string]any
 	_ = json.NewDecoder(rr1.Body).Decode(&r1)
