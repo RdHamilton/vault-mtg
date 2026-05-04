@@ -1,0 +1,5 @@
+.download-page {
+  flex: 1;
+  overflow-y: auto;
+  background-color: #1e1e1e;
+}
