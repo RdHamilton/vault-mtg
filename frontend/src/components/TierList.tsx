@@ -3,6 +3,7 @@ import { cards } from '@/services/api';
 import type { CFBRating } from '@/services/api/cards';
 import { gui, models } from '@/types/models';
 import { CFBRatingBadge } from './CFBRatingBadge';
+import CacheDegradedNotice from './CacheDegradedNotice';
 import './TierList.css';
 
 type CardRating = gui.CardRatingWithTier;
@@ -24,6 +25,7 @@ const TierList: React.FC<TierListProps> = ({ setCode, draftFormat, pickedCardIds
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
     const [refreshing, setRefreshing] = useState(false);
+    const [cacheDegraded, setCacheDegraded] = useState(false);
 
     // Filters
     const [searchTerm, setSearchTerm] = useState('');
@@ -42,11 +44,12 @@ const TierList: React.FC<TierListProps> = ({ setCode, draftFormat, pickedCardIds
             try {
                 setLoading(true);
                 setError(null);
-                const [ratingsData, cardsData] = await Promise.all([
-                    cards.getCardRatings(setCode, draftFormat),
+                const [ratingsResult, cardsData] = await Promise.all([
+                    cards.getCardRatingsWithDegradedFlag(setCode, draftFormat),
                     cards.getSetCards(setCode)
                 ]);
-                setRatings(ratingsData || []);
+                setRatings(ratingsResult.ratings);
+                setCacheDegraded(ratingsResult.cacheDegraded);
                 setSetCards(cardsData || []);
 
                 // Load CFB ratings (optional, don't fail if not available)
@@ -78,11 +81,12 @@ const TierList: React.FC<TierListProps> = ({ setCode, draftFormat, pickedCardIds
             try {
                 setLoading(true);
                 setError(null);
-                const [ratingsData, cardsData] = await Promise.all([
-                    cards.getCardRatings(setCode, draftFormat),
+                const [ratingsResult, cardsData] = await Promise.all([
+                    cards.getCardRatingsWithDegradedFlag(setCode, draftFormat),
                     cards.getSetCards(setCode)
                 ]);
-                setRatings(ratingsData || []);
+                setRatings(ratingsResult.ratings);
+                setCacheDegraded(ratingsResult.cacheDegraded);
                 setSetCards(cardsData || []);
             } catch (err) {
                 console.error('Failed to load card ratings:', err);
@@ -256,6 +260,7 @@ const TierList: React.FC<TierListProps> = ({ setCode, draftFormat, pickedCardIds
 
     return (
         <div className="tier-list-container">
+            <CacheDegradedNotice visible={cacheDegraded} />
             <div className="tier-list-header">
                 <h2>Card Tier List</h2>
                 <div className="tier-list-info">

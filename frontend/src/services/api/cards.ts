@@ -3,7 +3,7 @@
  * Replaces Wails card-related function bindings.
  */
 
-import { get, post, del } from '../apiClient';
+import { get, post, del, getRaw } from '../apiClient';
 import { models, gui, seventeenlands } from '@/types/models';
 
 // Re-export types for convenience
@@ -68,6 +68,29 @@ export async function getCardRatings(
   format: string
 ): Promise<CardRatingWithTier[]> {
   return get<CardRatingWithTier[]>(`/cards/ratings/${setCode}/${format}`);
+}
+
+/**
+ * Result from fetching card ratings, including cache degraded status from
+ * the X-Cache-Degraded response header.
+ */
+export interface CardRatingsResult {
+  ratings: CardRatingWithTier[];
+  /** True when the BFF returned X-Cache-Degraded: true — data may be stale. */
+  cacheDegraded: boolean;
+}
+
+/**
+ * Get card ratings for a set and format, exposing the X-Cache-Degraded header.
+ * Use this variant when the UI needs to show a degraded-mode notice.
+ */
+export async function getCardRatingsWithDegradedFlag(
+  setCode: string,
+  format: string
+): Promise<CardRatingsResult> {
+  const { data, headers } = await getRaw<CardRatingWithTier[]>(`/cards/ratings/${setCode}/${format}`);
+  const cacheDegraded = headers.get('x-cache-degraded') === 'true';
+  return { ratings: data ?? [], cacheDegraded };
 }
 
 /**

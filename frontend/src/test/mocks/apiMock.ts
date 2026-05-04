@@ -12,6 +12,7 @@ type MockFn = (...args: any[]) => any;
 export const mockCards = {
   getCardByArenaId: vi.fn((() => Promise.resolve({} as unknown)) as MockFn),
   getCardRatings: vi.fn((() => Promise.resolve([] as unknown[])) as MockFn),
+  getCardRatingsWithDegradedFlag: vi.fn((() => Promise.resolve({ ratings: [] as unknown[], cacheDegraded: false })) as MockFn),
   getSetCards: vi.fn((() => Promise.resolve([] as unknown[])) as MockFn),
   getSetInfo: vi.fn((() => Promise.resolve({} as unknown)) as MockFn),
   getAllSetInfo: vi.fn((() => Promise.resolve([] as unknown[])) as MockFn),
