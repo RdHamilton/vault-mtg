@@ -25,13 +25,26 @@ jobs:
           go-version-file: services/sync/go.mod
 
       - name: Download dependencies
+        env:
+          GONOSUMDB: github.com/RdHamilton/MTGA-Companion
+          GOPRIVATE: github.com/RdHamilton/MTGA-Companion
+          GOFLAGS: -mod=mod
         run: go mod download
 
       - name: Build
+        env:
+          GONOSUMDB: github.com/RdHamilton/MTGA-Companion
+          GOPRIVATE: github.com/RdHamilton/MTGA-Companion
         run: go build ./...
 
       - name: Test
+        env:
+          GONOSUMDB: github.com/RdHamilton/MTGA-Companion
+          GOPRIVATE: github.com/RdHamilton/MTGA-Companion
         run: go test -race ./...
 
       - name: Vet
+        env:
+          GONOSUMDB: github.com/RdHamilton/MTGA-Companion
+          GOPRIVATE: github.com/RdHamilton/MTGA-Companion
         run: go vet ./...
