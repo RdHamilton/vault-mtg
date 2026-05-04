@@ -158,6 +158,22 @@ Note: Status options were re-created via `updateProjectV2Field` mutation (adding
 - #59: Phase 5: Shared MCP Server
 - #60: Phase 6: RAG over Codebase
 
+**Milestone assignment guidance** (use this to pick the right milestone for new issues):
+- CI/CD, testing infrastructure, prerequisites → #54 Pre-Phase: Prerequisites
+- Architecture design, daemon refactoring, SetCache, sync modules, data layer → #55 Phase 1: Architecture Foundation
+- AWS deployment, Vercel hosting, EC2, nginx, CDN → #56 Phase 2: AWS Deployment
+- Stripe, billing, subscriptions → #57 Phase 3: Monetization Foundation
+- Specialized AI agents, agent routing → #58 Phase 4: Specialized AI Agents
+- Shared MCP server, tool sharing → #59 Phase 5: Shared MCP Server
+- RAG, codebase indexing, embeddings → #60 Phase 6: RAG over Codebase
+
+**How to set Milestone on a GitHub issue** (the board Milestone column auto-populates from this):
+```bash
+gh issue edit <NUMBER> --milestone "<Milestone Title>"
+# Example: gh issue edit 1036 --milestone "Pre-Phase: Prerequisites"
+```
+Note: The project board Milestone field (PVTF_lAHOABsZ684BMSNnzg7nLOo) is read-only — it derives from the issue milestone. Do NOT attempt to set it via GraphQL mutation (unsupported field type).
+
 <!-- When creating a new project, add its entry here with the format above -->
 
 ## Issue Templates
@@ -344,9 +360,12 @@ gh project field-list <NUMBER> --owner RdHamilton --format json
 ## Commands Reference
 
 ```bash
-# Create issue — ALWAYS follow with item-add + Agent field set (three-step, no exceptions)
-ISSUE_URL=$(gh issue create --title "<title>" --body "<body>" --label "<label1>,<label2>" --json url -q .url)
+# Create issue — ALWAYS follow with item-add + Status + Agent (four-step, no exceptions)
+# Milestone MUST be set via --milestone flag on gh issue create (board auto-populates from it)
+ISSUE_URL=$(gh issue create --title "<title>" --body "<body>" --label "<label1>,<label2>" --milestone "<milestone-title>" --json url -q .url)
 ITEM_ID=$(gh project item-add 27 --owner RdHamilton --url "$ISSUE_URL" --format json -q .id)
+# Set Status to Todo immediately — REQUIRED, or the item has no status and breaks project views
+gh api graphql -f query='mutation { updateProjectV2ItemFieldValue(input: { projectId: "PVT_kwHOABsZ684BMSNn" itemId: "'"$ITEM_ID"'" fieldId: "PVTSSF_lAHOABsZ684BMSNnzg7nLOc" value: { singleSelectOptionId: "6263f412" } }) { projectV2Item { id } } }'
 # Set Agent field immediately — use option IDs from Project Registry
 gh api graphql -f query='mutation { updateProjectV2ItemFieldValue(input: { projectId: "PVT_kwHOABsZ684BMSNn" itemId: "'"$ITEM_ID"'" fieldId: "PVTSSF_lAHOABsZ684BMSNnzhRxETM" value: { singleSelectOptionId: "<AGENT_OPTION_ID>" } }) { projectV2Item { id } } }'
 
@@ -397,7 +416,7 @@ gh api repos/RdHamilton/MTGA-Companion/milestones --method POST \
 
 ## Rules
 
-1. NEVER create an issue without at least one label, an **Agent** line in the body, AND the Agent project field set on the board — all three are required
+1. NEVER create an issue without: (a) at least one label, (b) an **Agent** line in the body, (c) `--milestone "<title>"` on `gh issue create`, (d) Status set on the board, and (e) Agent set on the board. All five are required. Missing Status breaks board views; missing Milestone breaks release tracking. The board's Milestone column auto-derives from the issue milestone — do not set it separately via GraphQL.
 2. NEVER create a project without all 5 status columns configured
 3. Always use the existing label if one fits - check the list above first
 4. **ALWAYS add every new issue to the v2.0 project board immediately after creating it** — run `gh project item-add 27 --owner RdHamilton --url <issue_url>` as the very next command after `gh issue create`. This is non-negotiable; issues not on the board are invisible to the team.

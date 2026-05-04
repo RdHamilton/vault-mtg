@@ -68,7 +68,15 @@
       "mcp__plugin_context-mode_context-mode__ctx_batch_execute",
       "Read(//Users/ramonehamilton/.claude/plans/**)",
       "Bash(git diff *)",
-      "Bash(~/go/bin/gofumpt *)"
+      "Bash(~/go/bin/gofumpt *)",
+      "Bash(GOWORK=off go test github.com/ramonehamilton/mtga-daemon/...)",
+      "Bash(GOWORK=off go mod download)",
+      "Bash(GOWORK=off go test ./internal/config/... ./internal/dispatch/... ./internal/daemon/...)",
+      "Bash(GOWORK=off go vet ./...)",
+      "Bash(/Users/ramonehamilton/go/bin/gofumpt *)",
+      "Bash(wait)",
+      "Read(//Users/ramonehamilton/go/bin/**)",
+      "Read(//usr/local/**)"
     ],
     "deny": [],
     "ask": []

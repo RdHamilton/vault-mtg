@@ -71,6 +71,18 @@ Every code change requires:
 
 Run tests: `cd services/bff && go test ./...`
 
+## Pre-PR Checklist (Required — Never Skip)
+
+Before opening any pull request, run ALL of the following from `services/bff`. Every command must pass with no errors before the PR is opened:
+
+```bash
+gofumpt -l .    # must print nothing — fix any files it lists
+go vet ./...    # must print nothing
+go test ./...   # all tests must pass
+```
+
+If any command fails, fix the issue first. Do not open the PR until all three pass.
+
 ## Finding Your Next Ticket
 
 Query tickets assigned to the **backend** agent on the v2.0 project board (Agent field option ID `4ca9f6a0`):
@@ -122,6 +134,30 @@ Every ticket must end with a PR. Never leave work committed without opening one.
 ```bash
 gh api graphql -f query='mutation { updateProjectV2ItemFieldValue(input: { projectId: "PVT_kwHOABsZ684BMSNn" itemId: "ITEM_ID" fieldId: "PVTSSF_lAHOABsZ684BMSNnzg7nLOc" value: { singleSelectOptionId: "OPTION_ID" } }) { projectV2Item { id } } }'
 ```
+
+## Agent Changelog
+
+Your changelog records every task you have completed. It is your institutional memory — read it before starting any task so you understand what has already been built and why.
+
+**Read at the start of every task:**
+```bash
+cat .claude/agents/changelogs/backend.md
+```
+
+**After completing a task** (after opening the PR), append the same entry to BOTH files:
+1. `.claude/agents/changelogs/backend.md` — your own record
+2. `.claude/agents/changelogs/architect.md` — the system-wide record the architect uses
+
+Use this format in both files (prefix `[backend]` in the architect changelog):
+```markdown
+## YYYY-MM-DD — [backend] Issue #NNN: <title>
+**PR**: #NNN
+**Files changed**:
+- `path/to/file.go` — short description of change
+**Summary**: One sentence summary of what was done and why.
+```
+
+Use the Write or Edit tool to append — never overwrite existing entries in either file.
 
 ## Rules
 

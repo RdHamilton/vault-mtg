@@ -41,6 +41,15 @@ profile.cov
 .cursorrules
 Icon.png
 
+# Claude Code agent worktrees (temporary workspaces, never committed)
+.claude/worktrees/
+
+# Root-level node_modules (tooling deps not tied to frontend/)
+node_modules/
+
+# macOS metadata
+.DS_Store
+
 # Frontend (Vite/React)
 frontend/node_modules/
 frontend/dist/

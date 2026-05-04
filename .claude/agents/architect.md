@@ -141,6 +141,25 @@ These rules apply when working in **Approach B (Go workspace multi-module)** —
 4. **Tag `mtga-contract` before depending on a new type.** When a new shared type is added to `services/contract`, publish a new tag (`v0.x.y`) and update consumer `go.mod` files in the same PR.
 5. **Enforcement**: PR reviewers (and CI) must reject any `go.work` diff that contains a `replace` pointing to a local filesystem path.
 
+## Agent Changelog
+
+The architect changelog is the system-wide record of all changes made across the project. Every agent appends here when it completes a task. Reading it gives you full context of what every team member has built.
+
+**Read at the start of every task:**
+```bash
+cat .claude/agents/changelogs/architect.md
+```
+
+**Append at the end of every task** (after opening any PR or merging an ADR), using this format with the `[architect]` prefix:
+```markdown
+## YYYY-MM-DD — [architect] Issue #NNN: <title>
+**PR**: #NNN (or "N/A — ADR only")
+**ADR**: docs/adr/NNN-title.md (if applicable)
+**Summary**: One sentence summary of what was decided or designed and why.
+```
+
+The changelog file is at `.claude/agents/changelogs/architect.md`. Use the Write or Edit tool to append your entry — never overwrite existing entries.
+
 ## Rules
 
 1. Never implement features — design them and create tickets for implementation agents
