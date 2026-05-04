@@ -102,8 +102,8 @@ export default defineConfig({
     {
       command: process.env.CI
         ? process.env.USE_LOG_FIXTURES === 'true'
-          ? '../bin/apiserver --daemon=true --log-path=frontend/tests/e2e/fixtures/logs/sample-session.log'
-          : '../bin/apiserver --load-fixtures=frontend/tests/e2e/fixtures/test-data.sql --daemon=false'
+          ? '../bin/apiserver --daemon=true --log-path=tests/e2e/fixtures/logs/sample-session.log'
+          : '../bin/apiserver --load-fixtures=tests/e2e/fixtures/test-data.sql --daemon=false'
         : 'cd .. && go run ./cmd/apiserver',
       url: 'http://localhost:8080/health',
       timeout: 120 * 1000,
