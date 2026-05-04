@@ -34,4 +34,21 @@ describe('CacheDegradedNotice', () => {
       expect(screen.queryByTestId('cache-degraded-notice')).not.toBeInTheDocument();
     });
   });
+
+  describe('cacheAgeHours prop', () => {
+    it('appends rounded age label when cacheAgeHours is provided', () => {
+      render(<CacheDegradedNotice visible={true} cacheAgeHours={4} />);
+      expect(screen.getByText(/4 h ago/)).toBeInTheDocument();
+    });
+
+    it('rounds fractional hours in the label', () => {
+      render(<CacheDegradedNotice visible={true} cacheAgeHours={2.7} />);
+      expect(screen.getByText(/3 h ago/)).toBeInTheDocument();
+    });
+
+    it('shows no age label when cacheAgeHours is undefined', () => {
+      render(<CacheDegradedNotice visible={true} />);
+      expect(screen.queryByText(/h ago/)).not.toBeInTheDocument();
+    });
+  });
 });

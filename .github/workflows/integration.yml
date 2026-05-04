@@ -32,7 +32,7 @@ jobs:
 
     steps:
     - name: Checkout code
-      uses: actions/checkout@v4
+      uses: actions/checkout@v6
 
     - name: Set up Go
       uses: actions/setup-go@v5
@@ -56,7 +56,7 @@ jobs:
       run: go test -v -run Integration -coverprofile=coverage-integration.out -covermode=atomic ./...
 
     - name: Upload integration coverage to Codecov
-      uses: codecov/codecov-action@v4
+      uses: codecov/codecov-action@v6
       with:
         files: ./services/bff/coverage-integration.out
         flags: bff-integration

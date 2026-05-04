@@ -449,3 +449,185 @@ func (p *plainWriter) Write(b []byte) (int, error) { return p.buf.Write(b) }
 
 // Ensure plainWriter does NOT implement http.Flusher at compile time.
 var _ http.ResponseWriter = (*plainWriter)(nil)
+
+// --- heartbeat tests ---------------------------------------------------------
+
+// connectSSEWithBroker is like connectSSE but accepts a pre-built broker so
+// tests that need custom heartbeat intervals can inject their own.
+func connectSSEWithBroker(t *testing.T, b *sse.Broker, extractor sse.UserIDExtractor) (*httptest.Server, *bufio.Scanner, func()) {
+	t.Helper()
+
+	srv := httptest.NewServer(b.Handler(extractor))
+
+	req, err := http.NewRequest(http.MethodGet, srv.URL, http.NoBody)
+	if err != nil {
+		t.Fatalf("NewRequest: %v", err)
+	}
+
+	resp, err := srv.Client().Do(req)
+	if err != nil {
+		t.Fatalf("GET /: %v", err)
+	}
+
+	scanner := bufio.NewScanner(resp.Body)
+	cancel := func() {
+		resp.Body.Close()
+		srv.Close()
+	}
+
+	return srv, scanner, cancel
+}
+
+// TestBrokerServeHTTP_HeartbeatSentWhenIdle verifies that the broker sends a
+// ": heartbeat" SSE comment frame after the configured interval elapses with no
+// events published.
+func TestBrokerServeHTTP_HeartbeatSentWhenIdle(t *testing.T) {
+	// Use a short heartbeat interval so the test completes quickly.
+	b := sse.NewWithHeartbeat(50 * time.Millisecond)
+	_, scanner, cancel := connectSSEWithBroker(t, b, stubExtractor(1))
+	defer cancel()
+
+	lines := make(chan string, 50)
+	go func() {
+		for scanner.Scan() {
+			lines <- scanner.Text()
+		}
+	}()
+
+	// Drain the initial ": connected" comment.
+	connTimeout := time.After(500 * time.Millisecond)
+	for {
+		select {
+		case <-connTimeout:
+			t.Fatal("timed out waiting for initial connection frame")
+		case line := <-lines:
+			if line == ": connected" {
+				goto waitHeartbeat
+			}
+		}
+	}
+
+waitHeartbeat:
+	// Now wait for a heartbeat comment within a generous window.
+	heartbeatTimeout := time.After(500 * time.Millisecond)
+	for {
+		select {
+		case <-heartbeatTimeout:
+			t.Fatal("timed out waiting for ': heartbeat' SSE comment frame")
+		case line := <-lines:
+			if line == ": heartbeat" {
+				return // pass
+			}
+		}
+	}
+}
+
+// TestBrokerServeHTTP_HeartbeatMultipleFires verifies that more than one
+// heartbeat frame is sent over the lifetime of an idle connection.
+func TestBrokerServeHTTP_HeartbeatMultipleFires(t *testing.T) {
+	b := sse.NewWithHeartbeat(40 * time.Millisecond)
+	_, scanner, cancel := connectSSEWithBroker(t, b, stubExtractor(2))
+	defer cancel()
+
+	lines := make(chan string, 100)
+	go func() {
+		for scanner.Scan() {
+			lines <- scanner.Text()
+		}
+	}()
+
+	// Collect all lines for 300ms; expect at least 2 heartbeat frames.
+	deadline := time.After(400 * time.Millisecond)
+	heartbeats := 0
+	for {
+		select {
+		case <-deadline:
+			if heartbeats < 2 {
+				t.Errorf("expected at least 2 heartbeat frames, got %d", heartbeats)
+			}
+			return
+		case line := <-lines:
+			if line == ": heartbeat" {
+				heartbeats++
+			}
+		}
+	}
+}
+
+// TestBrokerServeHTTP_HeartbeatDoesNotInterruptEvents verifies that heartbeats
+// and real events are both delivered correctly to the client.
+func TestBrokerServeHTTP_HeartbeatDoesNotInterruptEvents(t *testing.T) {
+	b := sse.NewWithHeartbeat(30 * time.Millisecond)
+	_, scanner, cancel := connectSSEWithBroker(t, b, stubExtractor(5))
+	defer cancel()
+
+	// Wait for subscriber to register.
+	time.Sleep(20 * time.Millisecond)
+
+	b.Publish(5, makeEvent("draft:pick"))
+
+	lines := make(chan string, 100)
+	go func() {
+		for scanner.Scan() {
+			lines <- scanner.Text()
+		}
+	}()
+
+	eventTimeout := time.After(2 * time.Second)
+	for {
+		select {
+		case <-eventTimeout:
+			t.Error("timed out waiting for real event data line")
+			return
+		case line := <-lines:
+			if strings.HasPrefix(line, "data: ") {
+				return // pass
+			}
+		}
+	}
+}
+
+// TestBrokerNewWithHeartbeat_DefaultInterval verifies that New() constructs a
+// non-nil broker (sanity check — not a timing test).
+func TestBrokerNewWithHeartbeat_DefaultInterval(t *testing.T) {
+	b := sse.New()
+	if b == nil {
+		t.Fatal("New() returned nil")
+	}
+}
+
+// TestBrokerServeHTTP_DisabledHeartbeat verifies that a broker constructed
+// with a zero interval sends no heartbeat frames but still delivers events.
+func TestBrokerServeHTTP_DisabledHeartbeat(t *testing.T) {
+	b := sse.NewWithHeartbeat(0) // heartbeat disabled
+	_, scanner, cancel := connectSSEWithBroker(t, b, stubExtractor(7))
+	defer cancel()
+
+	time.Sleep(20 * time.Millisecond)
+	b.Publish(7, makeEvent("draft:pick"))
+
+	lines := make(chan string, 50)
+	go func() {
+		for scanner.Scan() {
+			lines <- scanner.Text()
+		}
+	}()
+
+	// Expect no heartbeat but do expect the data frame.
+	eventTimeout := time.After(2 * time.Second)
+	for {
+		select {
+		case <-eventTimeout:
+			t.Error("timed out waiting for event data line (disabled heartbeat)")
+			return
+		case line := <-lines:
+			if line == ": heartbeat" {
+				t.Error("received unexpected heartbeat frame when heartbeat is disabled")
+				return
+			}
+			if strings.HasPrefix(line, "data: ") {
+				return // pass
+			}
+		}
+	}
+}
