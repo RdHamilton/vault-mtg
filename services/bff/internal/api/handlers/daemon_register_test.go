@@ -213,15 +213,21 @@ func TestDaemonRegister_RouterIntegration(t *testing.T) {
 	defer srv.Close()
 
 	// --- 1. register with a valid user-ID context ------------------------
-	regReq, _ := http.NewRequest(http.MethodPost, srv.URL+"/api/daemon/register", nil)
-	// Inject the user ID the same way APIKeyAuth middleware would.
-	// We wrap the server handler for this one call so we can seed the context.
+	// Route through r.ServeHTTP (the full chi router) with a middleware shim
+	// that seeds the user ID into the request context — exactly as APIKeyAuth
+	// would in production.
 	var token string
 	{
 		rr := httptest.NewRecorder()
-		fakeReq := httptest.NewRequest(http.MethodPost, "/api/daemon/register", nil)
-		fakeReq = fakeReq.WithContext(middleware.WithUserID(fakeReq.Context(), wantUserID))
-		registerHandler.Register(rr, fakeReq)
+		regReq := httptest.NewRequest(http.MethodPost, "/api/daemon/register", nil)
+
+		// Wrap the router with a one-shot context-injection middleware so the
+		// full route registration and handler chain is exercised.
+		injectUID := http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+			req = req.WithContext(middleware.WithUserID(req.Context(), wantUserID))
+			r.ServeHTTP(w, req)
+		})
+		injectUID.ServeHTTP(rr, regReq)
 
 		if rr.Code != http.StatusCreated {
 			t.Fatalf("register: expected 201, got %d: %s", rr.Code, rr.Body.String())
@@ -234,7 +240,6 @@ func TestDaemonRegister_RouterIntegration(t *testing.T) {
 		}
 		token = resp.Token
 	}
-	_ = regReq // suppress unused warning
 
 	// --- 2. ingest with the issued token ----------------------------------
 	eventBody, _ := json.Marshal(map[string]interface{}{
@@ -267,8 +272,9 @@ func TestDaemonRegister_RouterIntegration(t *testing.T) {
 	{
 		rr := httptest.NewRecorder()
 		noCtxReq := httptest.NewRequest(http.MethodPost, "/api/daemon/register", nil)
-		// No middleware.WithUserID — context is empty.
-		registerHandler.Register(rr, noCtxReq)
+		// No middleware.WithUserID — context is empty.  Route through the router
+		// so the full handler chain is exercised.
+		r.ServeHTTP(rr, noCtxReq)
 		if rr.Code != http.StatusUnauthorized {
 			t.Errorf("no-context register: expected 401, got %d", rr.Code)
 		}

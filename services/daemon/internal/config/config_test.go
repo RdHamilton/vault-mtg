@@ -125,6 +125,15 @@ func TestLogArchiveDirEnvOverride(t *testing.T) {
 // key name documented in config.go.  This is the format written by the install
 // scripts on both platforms.
 func TestLoadFromFileAllFields(t *testing.T) {
+	for _, key := range []string{
+		"MTGA_DAEMON_CLOUD_API_URL", "MTGA_DAEMON_API_KEY",
+		"MTGA_DAEMON_SYNC_ENABLED", "MTGA_DAEMON_LOG_PATH",
+		"MTGA_DAEMON_INGEST_PATH", "MTGA_DAEMON_ACCOUNT_ID",
+		"MTGA_DAEMON_LOG_ARCHIVE_DIR", "MTGA_DAEMON_LOG_PRESERVE_ON_START",
+	} {
+		os.Unsetenv(key)
+	}
+
 	dir := t.TempDir()
 	path := filepath.Join(dir, "daemon.json")
 	content := `{
@@ -157,6 +166,15 @@ func TestLoadFromFileAllFields(t *testing.T) {
 // The test captures that these stale configs should fail validation so users
 // get a clear error rather than a silent misconfiguration.
 func TestOldKeyNamesIgnored(t *testing.T) {
+	for _, key := range []string{
+		"MTGA_DAEMON_CLOUD_API_URL", "MTGA_DAEMON_API_KEY",
+		"MTGA_DAEMON_SYNC_ENABLED", "MTGA_DAEMON_LOG_PATH",
+		"MTGA_DAEMON_INGEST_PATH", "MTGA_DAEMON_ACCOUNT_ID",
+		"MTGA_DAEMON_LOG_ARCHIVE_DIR", "MTGA_DAEMON_LOG_PRESERVE_ON_START",
+	} {
+		os.Unsetenv(key)
+	}
+
 	dir := t.TempDir()
 	path := filepath.Join(dir, "daemon.json")
 	// Simulate a JSON file with the old key names (bff_url, daemon_auth_token).
