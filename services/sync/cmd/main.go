@@ -1,5 +1,8 @@
-// Command mtga-sync fetches 17Lands card ratings and other external data on a
-// configurable schedule and persists it to Postgres.
+// Command mtga-sync is a LOCAL DEVELOPMENT runner for the mtga-sync service.
+// It runs a blocking ticker loop so developers can test the sync logic without
+// deploying to AWS Lambda.
+//
+// Production deployments use cmd/lambda/main.go with AWS EventBridge Scheduler.
 //
 // Environment variables:
 //
