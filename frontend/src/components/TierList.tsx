@@ -26,6 +26,7 @@ const TierList: React.FC<TierListProps> = ({ setCode, draftFormat, pickedCardIds
     const [error, setError] = useState<string | null>(null);
     const [refreshing, setRefreshing] = useState(false);
     const [cacheDegraded, setCacheDegraded] = useState(false);
+    const [cacheAgeHours, setCacheAgeHours] = useState<number | undefined>(undefined);
 
     // Filters
     const [searchTerm, setSearchTerm] = useState('');
@@ -50,6 +51,7 @@ const TierList: React.FC<TierListProps> = ({ setCode, draftFormat, pickedCardIds
                 ]);
                 setRatings(ratingsResult.ratings);
                 setCacheDegraded(ratingsResult.cacheDegraded);
+                setCacheAgeHours(ratingsResult.cacheAgeHours);
                 setSetCards(cardsData || []);
 
                 // Load CFB ratings (optional, don't fail if not available)
@@ -87,6 +89,7 @@ const TierList: React.FC<TierListProps> = ({ setCode, draftFormat, pickedCardIds
                 ]);
                 setRatings(ratingsResult.ratings);
                 setCacheDegraded(ratingsResult.cacheDegraded);
+                setCacheAgeHours(ratingsResult.cacheAgeHours);
                 setSetCards(cardsData || []);
             } catch (err) {
                 console.error('Failed to load card ratings:', err);
@@ -260,7 +263,7 @@ const TierList: React.FC<TierListProps> = ({ setCode, draftFormat, pickedCardIds
 
     return (
         <div className="tier-list-container">
-            <CacheDegradedNotice visible={cacheDegraded} />
+            <CacheDegradedNotice visible={cacheDegraded} cacheAgeHours={cacheAgeHours} />
             <div className="tier-list-header">
                 <h2>Card Tier List</h2>
                 <div className="tier-list-info">

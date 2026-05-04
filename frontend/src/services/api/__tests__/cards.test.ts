@@ -183,5 +183,41 @@ describe('cards API', () => {
 
       expect(result.cacheDegraded).toBe(false);
     });
+
+    it('returns cacheAgeHours when X-Cache-Age-Hours header is present', async () => {
+      const mockHeaders = new Headers({ 'x-cache-degraded': 'true', 'x-cache-age-hours': '4' });
+      vi.mocked(getRaw).mockResolvedValue({ data: [], headers: mockHeaders });
+
+      const result = await cards.getCardRatingsWithDegradedFlag('MKM', 'PremierDraft');
+
+      expect(result.cacheAgeHours).toBe(4);
+    });
+
+    it('returns cacheAgeHours as float when X-Cache-Age-Hours is a decimal', async () => {
+      const mockHeaders = new Headers({ 'x-cache-age-hours': '2.5' });
+      vi.mocked(getRaw).mockResolvedValue({ data: [], headers: mockHeaders });
+
+      const result = await cards.getCardRatingsWithDegradedFlag('MKM', 'PremierDraft');
+
+      expect(result.cacheAgeHours).toBe(2.5);
+    });
+
+    it('returns cacheAgeHours=undefined when X-Cache-Age-Hours header is absent', async () => {
+      const mockHeaders = new Headers();
+      vi.mocked(getRaw).mockResolvedValue({ data: [], headers: mockHeaders });
+
+      const result = await cards.getCardRatingsWithDegradedFlag('MKM', 'PremierDraft');
+
+      expect(result.cacheAgeHours).toBeUndefined();
+    });
+
+    it('returns cacheAgeHours=undefined when X-Cache-Age-Hours is non-numeric', async () => {
+      const mockHeaders = new Headers({ 'x-cache-age-hours': 'not-a-number' });
+      vi.mocked(getRaw).mockResolvedValue({ data: [], headers: mockHeaders });
+
+      const result = await cards.getCardRatingsWithDegradedFlag('MKM', 'PremierDraft');
+
+      expect(result.cacheAgeHours).toBeUndefined();
+    });
   });
 });
