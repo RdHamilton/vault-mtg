@@ -28,7 +28,6 @@ import (
 
 var (
 	port            = flag.Int("port", 8080, "HTTP server port")
-	databaseURL     = flag.String("database-url", os.Getenv("DATABASE_URL"), "PostgreSQL connection string")
 	daemonJWTSecret = os.Getenv("DAEMON_JWT_SECRET")
 )
 
@@ -57,12 +56,12 @@ func main() {
 		log.Fatalf("config: %v", err)
 	}
 
-	if *databaseURL != "" {
-		if err := runMigrationsWithRetry(*databaseURL, 30*time.Second); err != nil {
+	if cfg.DatabaseURL != "" {
+		if err := runMigrationsWithRetry(cfg.DatabaseURL, 30*time.Second); err != nil {
 			log.Fatalf("migrations failed: %v", err)
 		}
 	} else {
-		log.Println("DATABASE_URL not set — skipping migrations.")
+		log.Println("DATABASE_URL not set — skipping migrations (development mode only).")
 	}
 
 	fmt.Println("MTGA Companion BFF")
@@ -89,8 +88,8 @@ func main() {
 		draftRatingsHandler *handlers.DraftRatingsHandler
 	)
 
-	if *databaseURL != "" {
-		sqlDB, err := sql.Open("pgx", *databaseURL)
+	if cfg.DatabaseURL != "" {
+		sqlDB, err := sql.Open("pgx", cfg.DatabaseURL)
 		if err != nil {
 			log.Fatalf("open db: %v", err)
 		}
@@ -101,6 +100,8 @@ func main() {
 
 		draftRatingsRepo := repository.NewDraftRatingsRepository(sqlDB)
 		draftRatingsHandler = handlers.NewDraftRatingsHandler(draftRatingsRepo, cfg)
+	} else {
+		log.Printf("WARN: no DATABASE_URL — API key auth unavailable (env=%s); guarded endpoints return 503", cfg.Env)
 	}
 
 	r := chi.NewRouter()
@@ -120,13 +121,19 @@ func main() {
 	})
 
 	// GET /api/v1/events — SSE stream for browser clients.
-	// The endpoint is guarded by API key auth (when DB is available) to ensure
-	// the user ID is available in context for per-user event scoping.
+	//
+	// Auth middleware is ALWAYS required.  Without a database the endpoint
+	// returns 503 Service Unavailable rather than falling back to an
+	// unauthenticated stream.  This closes the security gap reported in
+	// issue #1141 where the endpoint was unguarded when DATABASE_URL was
+	// unset.
 	sseHandler := broker.Handler(bffmiddleware.UserIDFromContext)
 	if apiKeyAuthMiddl != nil {
 		r.With(apiKeyAuthMiddl).Get("/api/v1/events", sseHandler)
 	} else {
-		r.Get("/api/v1/events", sseHandler)
+		r.Get("/api/v1/events", func(w http.ResponseWriter, r *http.Request) {
+			http.Error(w, "service unavailable — database not configured", http.StatusServiceUnavailable)
+		})
 	}
 
 	// POST /api/keys — create a new API key for a user (placeholder auth via X-User-ID).
