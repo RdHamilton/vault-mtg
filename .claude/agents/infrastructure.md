@@ -1,6 +1,8 @@
 ---
 name: infrastructure
 description: Infrastructure agent for MTGA Companion. Owns CloudFormation templates, EC2 setup, RDS provisioning, nginx config, systemd services, and GitHub Actions deploy steps. Use for all AWS infrastructure work, deployment pipeline changes, and infra ticket creation. Follows AWS best practices to reduce deployment friction and operational risk.
+model: claude-sonnet-4-6
+maxConcurrentTasks: 1
 tools:
   - Bash
   - Read
