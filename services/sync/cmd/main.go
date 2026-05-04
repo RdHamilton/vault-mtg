@@ -18,6 +18,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/ramonehamilton/mtga-sync/internal/datasets"
 	"github.com/ramonehamilton/mtga-sync/internal/refresh"
+	"github.com/ramonehamilton/mtga-sync/internal/scryfall"
 	"github.com/ramonehamilton/mtga-sync/internal/seventeenlands"
 )
 
@@ -41,8 +42,9 @@ func main() {
 	}
 
 	store := datasets.NewPostgresStore(pool)
-	client := seventeenlands.NewClient()
-	sched := refresh.New(client, store)
+	ratingsClient := seventeenlands.NewClient()
+	scryfallClient := scryfall.NewClient()
+	sched := refresh.New(scryfallClient, ratingsClient, store)
 
 	log.Println("[mtga-sync] starting scheduler")
 	sched.Start(ctx)

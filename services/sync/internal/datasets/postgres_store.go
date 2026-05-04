@@ -7,6 +7,7 @@ import (
 
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/ramonehamilton/mtga-sync/internal/draftdata"
+	"github.com/ramonehamilton/mtga-sync/internal/scryfall"
 	"github.com/ramonehamilton/mtga-sync/internal/seventeenlands"
 )
 
@@ -90,6 +91,39 @@ func (s *PostgresStore) UpsertRatings(ctx context.Context, ratings draftdata.Set
 	}
 
 	log.Printf("[sync] UpsertRatings: inserted %d rows for %s/%s", len(ratings.Cards), ratings.SetCode, ratings.DraftFormat)
+	return nil
+}
+
+// UpsertSets upserts set metadata into the sets table and marks each set as
+// standard legal. Existing rows are updated via ON CONFLICT; rows not present
+// in the incoming slice are left unchanged (they may have been rotated out
+// manually or by a prior migration).
+func (s *PostgresStore) UpsertSets(ctx context.Context, sets []scryfall.ScryfallSet) error {
+	const q = `
+		INSERT INTO sets (code, name, released_at, set_type, card_count, is_standard_legal, last_updated)
+		VALUES ($1, $2, $3, $4, $5, TRUE, NOW())
+		ON CONFLICT (code) DO UPDATE SET
+			name              = EXCLUDED.name,
+			released_at       = EXCLUDED.released_at,
+			set_type          = EXCLUDED.set_type,
+			card_count        = EXCLUDED.card_count,
+			is_standard_legal = TRUE,
+			last_updated      = NOW()
+	`
+
+	for _, set := range sets {
+		if _, err := s.pool.Exec(ctx, q,
+			set.Code,
+			set.Name,
+			set.ReleasedAt,
+			set.SetType,
+			set.CardCount,
+		); err != nil {
+			return fmt.Errorf("upsert set %q: %w", set.Code, err)
+		}
+	}
+
+	log.Printf("[sync] UpsertSets: upserted %d sets", len(sets))
 	return nil
 }
 
