@@ -7,16 +7,18 @@ import (
 	"net/http"
 
 	contract "github.com/RdHamilton/MTGA-Companion/services/contract"
+	bffmiddleware "github.com/ramonehamilton/mtga-bff/internal/api/middleware"
 )
 
 // EventBroadcaster is implemented by any type that can broadcast a daemon event
-// to connected clients (e.g. a WebSocket hub).
+// to connected clients (e.g. an SSE broker).  userID scopes delivery to the
+// authenticated user's SSE subscribers only — preventing cross-tenant leakage.
 type EventBroadcaster interface {
-	BroadcastDaemonEvent(event contract.DaemonEvent)
+	BroadcastDaemonEvent(userID int64, event contract.DaemonEvent)
 }
 
 // IngestHandler accepts daemon events posted by the daemon service and
-// broadcasts them to connected frontend clients via the hub.
+// broadcasts them to connected frontend clients via the broadcaster.
 type IngestHandler struct {
 	broadcaster EventBroadcaster
 }
@@ -29,8 +31,15 @@ func NewIngestHandler(broadcaster EventBroadcaster) *IngestHandler {
 
 // IngestEvent handles POST /v1/ingest/events.
 // Authentication is enforced by the APIKeyAuth middleware upstream; by the time
-// this handler runs the request is already verified.
+// this handler runs the request is already verified and the authenticated user
+// ID is available on the request context.
 func (h *IngestHandler) IngestEvent(w http.ResponseWriter, r *http.Request) {
+	userID, ok := bffmiddleware.UserIDFromContext(r.Context())
+	if !ok {
+		http.Error(w, "unauthorized", http.StatusUnauthorized)
+		return
+	}
+
 	var event contract.DaemonEvent
 	if err := json.NewDecoder(r.Body).Decode(&event); err != nil {
 		http.Error(w, "invalid JSON body", http.StatusBadRequest)
@@ -43,10 +52,10 @@ func (h *IngestHandler) IngestEvent(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if h.broadcaster != nil {
-		h.broadcaster.BroadcastDaemonEvent(event)
+		h.broadcaster.BroadcastDaemonEvent(userID, event)
 	}
 
-	log.Printf("[IngestHandler] Received event %q from account %q", event.Type, event.AccountID)
+	log.Printf("[IngestHandler] Received event %q from account %q (userID=%d)", event.Type, event.AccountID, userID)
 
 	w.WriteHeader(http.StatusAccepted)
 }
