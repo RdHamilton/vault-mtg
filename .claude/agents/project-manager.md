@@ -291,6 +291,8 @@ Note: The project board Milestone field (PVTF_lAHOABsZ684BMSNnzg7nLOo) is read-o
 - `technical-debt` (#fbca04) - Technical debt and code quality
 - `ai` (#FFA500) - AI/ML features
 - `ui` (#0e8a16) - User interface features
+- `backend` (#1d76db) - Backend service code
+- `deployment` (#e4e669) - Deployment and release pipeline
 
 **Priority/Release labels:**
 - `high priority` (#b60205) - High priority
@@ -362,10 +364,17 @@ gh project field-list <NUMBER> --owner RdHamilton --format json
 ```bash
 # Create issue — ALWAYS follow with item-add + Status + Agent (four-step, no exceptions)
 # Milestone MUST be set via --milestone flag on gh issue create (board auto-populates from it)
-ISSUE_URL=$(gh issue create --title "<title>" --body "<body>" --label "<label1>,<label2>" --milestone "<milestone-title>" --json url -q .url)
+# Note: gh issue create does NOT support --json; capture URL from stdout directly
+# Use --body-file with a temp file for multi-line bodies; use --label once per label (comma-separated values do NOT work)
+ISSUE_URL=$(gh issue create --title "<title>" --body-file /tmp/body.md --label "<label1>" --label "<label2>" --milestone "<milestone-title>" 2>&1)
 ITEM_ID=$(gh project item-add 27 --owner RdHamilton --url "$ISSUE_URL" --format json -q .id)
-# Set Status to Todo immediately — REQUIRED, or the item has no status and breaks project views
-gh api graphql -f query='mutation { updateProjectV2ItemFieldValue(input: { projectId: "PVT_kwHOABsZ684BMSNn" itemId: "'"$ITEM_ID"'" fieldId: "PVTSSF_lAHOABsZ684BMSNnzg7nLOc" value: { singleSelectOptionId: "6263f412" } }) { projectV2Item { id } } }'
+# REQUIRED: Set Status = "Todo" immediately — NEVER skip; blank status breaks board views
+# Project #27: project-id=PVT_kwHOABsZ684BMSNn, status field=PVTSSF_lAHOABsZ684BMSNnzg7nLOc, Todo option=6263f412
+gh project item-edit \
+  --project-id PVT_kwHOABsZ684BMSNn \
+  --id "$ITEM_ID" \
+  --field-id PVTSSF_lAHOABsZ684BMSNnzg7nLOc \
+  --single-select-option-id 6263f412
 # Set Agent field immediately — use option IDs from Project Registry
 gh api graphql -f query='mutation { updateProjectV2ItemFieldValue(input: { projectId: "PVT_kwHOABsZ684BMSNn" itemId: "'"$ITEM_ID"'" fieldId: "PVTSSF_lAHOABsZ684BMSNnzhRxETM" value: { singleSelectOptionId: "<AGENT_OPTION_ID>" } }) { projectV2Item { id } } }'
 
@@ -416,7 +425,8 @@ gh api repos/RdHamilton/MTGA-Companion/milestones --method POST \
 
 ## Rules
 
-1. NEVER create an issue without: (a) at least one label, (b) an **Agent** line in the body, (c) `--milestone "<title>"` on `gh issue create`, (d) Status set on the board, and (e) Agent set on the board. All five are required. Missing Status breaks board views; missing Milestone breaks release tracking. The board's Milestone column auto-derives from the issue milestone — do not set it separately via GraphQL.
+1. NEVER create an issue without: (a) at least one label, (b) an **Agent** line in the body, (c) `--milestone "<title>"` on `gh issue create`, (d) **Status = Todo** set on the board immediately after `item-add`, and (e) Agent set on the board. All five are required. Missing Status breaks board views; missing Milestone breaks release tracking. The board's Milestone column auto-derives from the issue milestone — do not set it separately via GraphQL.
+   - **Every new ticket MUST have Status = Todo set immediately after board add — never leave status blank.** Use `gh project item-edit --project-id <id> --id <item-id> --field-id <status-field-id> --single-select-option-id <todo-option-id>` (Project #27 Todo option: `6263f412`).
 2. NEVER create a project without all 5 status columns configured
 3. Always use the existing label if one fits - check the list above first
 4. **ALWAYS add every new issue to the v2.0 project board immediately after creating it** — run `gh project item-add 27 --owner RdHamilton --url <issue_url>` as the very next command after `gh issue create`. This is non-negotiable; issues not on the board are invisible to the team.
