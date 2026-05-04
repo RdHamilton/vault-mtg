@@ -13,6 +13,7 @@ import (
 	"github.com/ramonehamilton/mtga-daemon/internal/config"
 	"github.com/ramonehamilton/mtga-daemon/internal/dispatch"
 	"github.com/ramonehamilton/mtga-daemon/internal/logreader"
+	"github.com/ramonehamilton/mtga-daemon/internal/registrar"
 )
 
 // Service is the top-level daemon service.
@@ -21,20 +22,63 @@ type Service struct {
 	dispatcher *dispatch.Dispatcher
 	poller     *logreader.Poller
 	sessionID  string
+	regClient  *registrar.Client
 }
 
 // New creates a Service from cfg.
 func New(cfg *config.Config) *Service {
-	d := dispatch.New(cfg.CloudAPIURL, cfg.IngestPath, cfg.APIKey)
-	return &Service{
+	// Use DaemonJWT as the bearer token if present; fall back to APIKey.
+	token := cfg.DaemonJWT
+	if token == "" {
+		token = cfg.APIKey
+	}
+	d := dispatch.New(cfg.CloudAPIURL, cfg.IngestPath, token)
+	svc := &Service{
 		cfg:        cfg,
 		dispatcher: d,
 		sessionID:  fmt.Sprintf("live-%s", uuid.New().String()),
+		regClient:  registrar.NewClient(cfg.CloudAPIURL),
 	}
+	// Wire the dispatcher's 401 refresher to the service.
+	d.WithRefresher(svc)
+	return svc
+}
+
+// Refresh implements dispatch.Refresher. It is called by the dispatcher when
+// the BFF returns 401 so a new JWT can be obtained before the next retry.
+func (s *Service) Refresh(ctx context.Context) (string, error) {
+	return s.register(ctx)
+}
+
+// register calls the BFF registration endpoint and persists the resulting JWT.
+func (s *Service) register(ctx context.Context) (string, error) {
+	resp, err := s.regClient.Register(ctx, s.cfg.APIKey, s.cfg.UserID)
+	if err != nil {
+		return "", fmt.Errorf("daemon: registration failed: %w", err)
+	}
+
+	s.cfg.DaemonJWT = resp.Token
+	s.cfg.DaemonID = resp.DaemonID
+	s.dispatcher.SetToken(resp.Token)
+
+	if saveErr := s.cfg.Save(); saveErr != nil {
+		log.Printf("[daemon] warn: could not persist JWT to config file: %v", saveErr)
+	}
+
+	log.Printf("[daemon] registered successfully (daemon_id=%s)", resp.DaemonID)
+	return resp.Token, nil
 }
 
 // Run starts the daemon, blocks until ctx is cancelled.
 func (s *Service) Run(ctx context.Context) error {
+	// Phase 1: ensure we have a valid JWT before starting event dispatch.
+	if s.cfg.SyncEnabled && s.cfg.JWTNeedsRefresh() && s.cfg.APIKey != "" {
+		if _, err := s.register(ctx); err != nil {
+			// Non-fatal: log and continue; the dispatcher will retry on 401.
+			log.Printf("[daemon] warn: startup registration failed: %v", err)
+		}
+	}
+
 	logPath := s.cfg.LogPath
 	if logPath == "" {
 		detected, err := logreader.DefaultLogPath()
