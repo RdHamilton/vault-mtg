@@ -2,6 +2,7 @@
 name: frontend
 description: Frontend implementation agent for MTGA Companion. Owns the React SPA — components, UI state, Vite config, and Playwright E2E tests. Invoke for any work on the frontend/ directory.
 model: claude-sonnet-4-6
+maxConcurrentTasks: 1
 tools:
   - Bash
   - Read

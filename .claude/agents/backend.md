@@ -2,6 +2,7 @@
 name: backend
 description: Backend implementation agent for MTGA Companion. Owns the Go BFF service — HTTP handlers, repositories, migrations, middleware, and authentication. Invoke for any Go server-side implementation work within services/bff.
 model: claude-sonnet-4-6
+maxConcurrentTasks: 1
 tools:
   - Bash
   - Read

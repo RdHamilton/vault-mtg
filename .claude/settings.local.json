@@ -1,8 +1,8 @@
 {
   "permissions": {
     "allow": [
-      "Bash(gh:*)",
-      "Bash(git:*)",
+      "Bash(gh *)",
+      "Bash(git *)",
       "Bash(go:*)",
       "Bash(gofumpt:*)",
       "Bash(~/go/bin/gofumpt:*)",

@@ -2,6 +2,7 @@
 name: daemon
 description: Daemon implementation agent for MTGA Companion. Owns the local binary that reads Player.log, parses MTGA events, and POSTs them to the cloud BFF. Invoke for any work on the local daemon service, log parsing, or Player.log processing.
 model: claude-sonnet-4-6
+maxConcurrentTasks: 1
 tools:
   - Bash
   - Read

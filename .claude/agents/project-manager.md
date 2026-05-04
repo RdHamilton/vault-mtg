@@ -2,6 +2,7 @@
 name: project-manager
 description: Create and manage GitHub issues, projects, labels, and ticket status transitions with consistent templates. Self-improves by updating its own definition when efficiencies are discovered.
 model: claude-sonnet-4-6
+maxConcurrentTasks: 1
 tools:
   - Bash
   - Read
