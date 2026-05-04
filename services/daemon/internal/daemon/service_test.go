@@ -63,6 +63,25 @@ func TestClassifyEntry_RankUpdated(t *testing.T) {
 	assert.Equal(t, "player.rank_updated", classifyEntry(entry))
 }
 
+func TestClassifyEntry_MatchStarted(t *testing.T) {
+	entry := &logreader.LogEntry{
+		IsJSON: true,
+		JSON:   map[string]interface{}{"CurrentEventState": "MatchInProgress"},
+	}
+	assert.Equal(t, "match.started", classifyEntry(entry))
+}
+
+func TestClassifyEntry_DraftEnded(t *testing.T) {
+	entry := &logreader.LogEntry{
+		IsJSON: true,
+		JSON: map[string]interface{}{
+			"toSceneName":   "Home",
+			"fromSceneName": "Draft",
+		},
+	}
+	assert.Equal(t, "draft.ended", classifyEntry(entry))
+}
+
 func TestClassifyEntry_Unknown(t *testing.T) {
 	entry := &logreader.LogEntry{
 		IsJSON: true,
