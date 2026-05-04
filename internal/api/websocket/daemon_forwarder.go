@@ -4,7 +4,7 @@ import (
 	"encoding/json"
 	"log"
 
-	contract "github.com/ramonehamilton/mtga-contract"
+	contract "github.com/RdHamilton/MTGA-Companion/services/contract"
 )
 
 // DaemonEventForwarder forwards daemon events to the API server's WebSocket hub.

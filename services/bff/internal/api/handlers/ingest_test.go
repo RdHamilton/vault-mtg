@@ -14,7 +14,7 @@ import (
 	"github.com/ramonehamilton/mtga-bff/internal/api/handlers"
 	"github.com/ramonehamilton/mtga-bff/internal/api/middleware"
 	"github.com/ramonehamilton/mtga-bff/internal/storage/repository"
-	contract "github.com/ramonehamilton/mtga-contract"
+	contract "github.com/RdHamilton/MTGA-Companion/services/contract"
 )
 
 // mockBroadcaster records the events broadcast for assertions.

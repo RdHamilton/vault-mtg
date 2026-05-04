@@ -34,6 +34,23 @@ permissions:
 # ---------------------------------------------------------------------------
 
 jobs:
+  gowork-replace-lint:
+    name: Lint — go.work must not contain replace directives
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Fail if go.work contains a replace directive
+        run: |
+          if grep -E '^\s*replace\b' go.work 2>/dev/null; then
+            echo "ERROR: go.work contains a 'replace' directive."
+            echo "Local replace directives must be removed before merging to main."
+            echo "See ADR-001 Go Workspace Rules."
+            exit 1
+          fi
+          echo "go.work is clean — no replace directives found."
+
   detect-changes:
     name: Detect Changed Modules
     runs-on: ubuntu-latest
@@ -72,12 +89,25 @@ jobs:
       with:
         go-version: '1.25'
 
+    - name: Configure private module access
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      run: |
+        git config --global url."https://${GITHUB_TOKEN}@github.com/".insteadOf "https://github.com/"
+
     - name: Download dependencies
       working-directory: services/bff
+      env:
+        GONOSUMDB: github.com/RdHamilton/MTGA-Companion
+        GOPRIVATE: github.com/RdHamilton/MTGA-Companion
+        GOFLAGS: -mod=mod
       run: go mod download
 
     - name: Run BFF unit tests
       working-directory: services/bff
+      env:
+        GONOSUMDB: github.com/RdHamilton/MTGA-Companion
+        GOPRIVATE: github.com/RdHamilton/MTGA-Companion
       run: go test -v -short -coverprofile=coverage.out -covermode=atomic ./...
 
     - name: Upload coverage to Codecov
