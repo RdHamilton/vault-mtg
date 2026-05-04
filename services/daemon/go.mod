@@ -3,9 +3,9 @@ module github.com/ramonehamilton/mtga-daemon
 go 1.25.0
 
 require (
+	github.com/RdHamilton/MTGA-Companion/services/contract v0.1.0
 	github.com/fsnotify/fsnotify v1.9.0
 	github.com/google/uuid v1.6.0
-	github.com/ramonehamilton/mtga-contract v0.0.0
 	github.com/stretchr/testify v1.11.1
 )
 
@@ -18,7 +18,3 @@ require (
 	gopkg.in/check.v1 v1.0.0-20200227125254-8fa46927fb4f // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 )
-
-// replace is only active outside a go.work workspace.
-// Inside the workspace, go.work's use directive resolves this module locally.
-replace github.com/ramonehamilton/mtga-contract => ../contract

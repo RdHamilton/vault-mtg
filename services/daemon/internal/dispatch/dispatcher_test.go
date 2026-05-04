@@ -10,7 +10,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/ramonehamilton/mtga-contract"
+	"github.com/RdHamilton/MTGA-Companion/services/contract"
 	"github.com/ramonehamilton/mtga-daemon/internal/dispatch"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"

@@ -5,7 +5,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/ramonehamilton/mtga-contract"
+	"github.com/RdHamilton/MTGA-Companion/services/contract"
 )
 
 // TestDaemonEventRoundTrip verifies that a DaemonEvent can be marshaled and

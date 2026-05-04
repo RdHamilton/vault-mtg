@@ -10,7 +10,7 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/ramonehamilton/mtga-contract"
+	"github.com/RdHamilton/MTGA-Companion/services/contract"
 )
 
 const (

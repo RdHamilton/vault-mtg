@@ -5,6 +5,7 @@ go 1.25.0
 toolchain go1.25.9
 
 require (
+	github.com/RdHamilton/MTGA-Companion/services/contract v0.1.0
 	github.com/fsnotify/fsnotify v1.9.0
 	github.com/go-chi/chi/v5 v5.2.5
 	github.com/go-chi/cors v1.2.2

@@ -1,3 +1,3 @@
-module github.com/ramonehamilton/mtga-contract
+module github.com/RdHamilton/MTGA-Companion/services/contract
 
 go 1.25.0

@@ -6,7 +6,7 @@ import (
 	"log"
 	"net/http"
 
-	contract "github.com/ramonehamilton/mtga-contract"
+	contract "github.com/RdHamilton/MTGA-Companion/services/contract"
 )
 
 // EventBroadcaster is implemented by any type that can broadcast a daemon event

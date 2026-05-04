@@ -8,7 +8,7 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"github.com/ramonehamilton/mtga-contract"
+	"github.com/RdHamilton/MTGA-Companion/services/contract"
 	"github.com/ramonehamilton/mtga-daemon/internal/config"
 	"github.com/ramonehamilton/mtga-daemon/internal/logreader"
 	"github.com/stretchr/testify/assert"

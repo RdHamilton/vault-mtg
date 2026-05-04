@@ -9,7 +9,7 @@ import (
 	"time"
 
 	"github.com/gorilla/websocket"
-	contract "github.com/ramonehamilton/mtga-contract"
+	contract "github.com/RdHamilton/MTGA-Companion/services/contract"
 )
 
 func makeDaemonEvent(eventType string) contract.DaemonEvent {

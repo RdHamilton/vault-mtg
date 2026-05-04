@@ -11,7 +11,7 @@ import (
 	"github.com/gorilla/websocket"
 	apiwebsocket "github.com/ramonehamilton/MTGA-Companion/internal/api/websocket"
 	"github.com/ramonehamilton/MTGA-Companion/internal/gui"
-	contract "github.com/ramonehamilton/mtga-contract"
+	contract "github.com/RdHamilton/MTGA-Companion/services/contract"
 )
 
 func TestNewServer(t *testing.T) {

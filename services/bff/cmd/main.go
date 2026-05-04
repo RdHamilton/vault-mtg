@@ -22,7 +22,7 @@ import (
 	bffmiddleware "github.com/ramonehamilton/mtga-bff/internal/api/middleware"
 	"github.com/ramonehamilton/mtga-bff/internal/storage"
 	"github.com/ramonehamilton/mtga-bff/internal/storage/repository"
-	contract "github.com/ramonehamilton/mtga-contract"
+	contract "github.com/RdHamilton/MTGA-Companion/services/contract"
 
 	_ "github.com/jackc/pgx/v5/stdlib"
 )
