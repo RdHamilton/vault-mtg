@@ -3,14 +3,12 @@ package main
 import (
 	"context"
 	"database/sql"
-	"encoding/json"
 	"flag"
 	"fmt"
 	"log"
 	"net/http"
 	"os"
 	"os/signal"
-	"sync"
 	"syscall"
 	"time"
 
@@ -18,9 +16,9 @@ import (
 	"github.com/go-chi/chi/v5"
 	chimiddleware "github.com/go-chi/chi/v5/middleware"
 	"github.com/go-chi/cors"
-	"github.com/gorilla/websocket"
 	"github.com/ramonehamilton/mtga-bff/internal/api/handlers"
 	bffmiddleware "github.com/ramonehamilton/mtga-bff/internal/api/middleware"
+	"github.com/ramonehamilton/mtga-bff/internal/api/sse"
 	"github.com/ramonehamilton/mtga-bff/internal/config"
 	"github.com/ramonehamilton/mtga-bff/internal/storage"
 	"github.com/ramonehamilton/mtga-bff/internal/storage/repository"
@@ -70,11 +68,10 @@ func main() {
 	fmt.Println("==================")
 	fmt.Printf("port: %d\n\n", *port)
 
-	hub := newHub()
-	go hub.run()
+	broker := sse.New()
 
-	ingestBroadcaster := &hubBroadcaster{hub: hub}
-	ingestHandler := handlers.NewIngestHandler(ingestBroadcaster)
+	sseBroadcaster := &sseBroadcast{broker: broker}
+	ingestHandler := handlers.NewIngestHandler(sseBroadcaster)
 
 	// Wire API key handler and auth middleware when a database is available.
 	var (
@@ -113,7 +110,8 @@ func main() {
 		_, _ = w.Write([]byte(`{"status":"ok","service":"bff"}`))
 	})
 
-	r.Get("/ws", hub.serveWs)
+	// GET /api/v1/events — SSE stream for browser clients.
+	r.Get("/api/v1/events", broker.ServeHTTP)
 
 	// POST /api/keys — create a new API key for a user (placeholder auth via X-User-ID).
 	if apiKeysHandler != nil {
@@ -161,122 +159,11 @@ func main() {
 	fmt.Println("BFF stopped.")
 }
 
-// ---------------------------------------------------------------------------
-// Minimal in-process WebSocket hub
-// ---------------------------------------------------------------------------
-
-var upgrader = websocket.Upgrader{
-	CheckOrigin: func(r *http.Request) bool { return true },
+// sseBroadcast adapts the SSE Broker to the handlers.EventBroadcaster interface.
+type sseBroadcast struct {
+	broker *sse.Broker
 }
 
-type wsEvent struct {
-	Type string      `json:"type"`
-	Data interface{} `json:"data"`
-}
-
-type client struct {
-	send chan []byte
-	conn *websocket.Conn
-}
-
-type hub struct {
-	mu      sync.RWMutex
-	clients map[*client]bool
-	reg     chan *client
-	unreg   chan *client
-	done    chan struct{}
-}
-
-func newHub() *hub {
-	return &hub{
-		clients: make(map[*client]bool),
-		reg:     make(chan *client),
-		unreg:   make(chan *client),
-		done:    make(chan struct{}),
-	}
-}
-
-func (h *hub) run() {
-	for {
-		select {
-		case <-h.done:
-			return
-		case c := <-h.reg:
-			h.mu.Lock()
-			h.clients[c] = true
-			h.mu.Unlock()
-		case c := <-h.unreg:
-			h.mu.Lock()
-
-			if _, ok := h.clients[c]; ok {
-				delete(h.clients, c)
-				close(c.send)
-			}
-
-			h.mu.Unlock()
-		}
-	}
-}
-
-func (h *hub) broadcast(event wsEvent) {
-	data, err := json.Marshal(event)
-	if err != nil {
-		log.Printf("[hub] marshal error: %v", err)
-		return
-	}
-
-	h.mu.RLock()
-	defer h.mu.RUnlock()
-
-	for c := range h.clients {
-		select {
-		case c.send <- data:
-		default:
-		}
-	}
-}
-
-func (h *hub) serveWs(w http.ResponseWriter, r *http.Request) {
-	conn, err := upgrader.Upgrade(w, r, nil)
-	if err != nil {
-		log.Printf("[hub] upgrade: %v", err)
-		return
-	}
-
-	c := &client{conn: conn, send: make(chan []byte, 256)}
-
-	h.reg <- c
-
-	go func() {
-		defer func() { h.unreg <- c; conn.Close() }()
-
-		for {
-			_, _, err := conn.ReadMessage()
-			if err != nil {
-				break
-			}
-		}
-	}()
-
-	go func() {
-		defer conn.Close()
-
-		for msg := range c.send {
-			if err := conn.WriteMessage(websocket.TextMessage, msg); err != nil {
-				break
-			}
-		}
-	}()
-}
-
-// hubBroadcaster adapts the local hub to handlers.EventBroadcaster.
-type hubBroadcaster struct {
-	hub *hub
-}
-
-func (b *hubBroadcaster) BroadcastDaemonEvent(event contract.DaemonEvent) {
-	b.hub.broadcast(wsEvent{
-		Type: event.Type,
-		Data: event,
-	})
+func (b *sseBroadcast) BroadcastDaemonEvent(event contract.DaemonEvent) {
+	b.broker.Publish(event)
 }
