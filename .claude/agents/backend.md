@@ -92,6 +92,15 @@ env:
 ```
 Without these, CI cannot resolve the private module and the build will fail.
 
+## Architect Review (Required Before Push)
+
+After all pre-PR checks pass, **before running `git push`**, request an architect review:
+
+1. Capture the full diff: `git diff $(git merge-base HEAD origin/main)..HEAD`
+2. Invoke the architect agent with the diff and ask it to review for: ADR compliance, service boundary violations, missing `account_id` scoping, `go.work` local `replace` directives, and missing tests
+3. **Do not push until the architect responds with `APPROVED`**
+4. If the architect raises issues, fix them, re-run all pre-PR checks, and re-request review
+
 ## Finding Your Next Ticket
 
 Query tickets assigned to the **backend** agent on the v2.0 project board (Agent field option ID `4ca9f6a0`):
