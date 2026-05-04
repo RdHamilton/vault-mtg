@@ -1,6 +1,7 @@
 ---
 name: project-manager
 description: Create and manage GitHub issues, projects, labels, and ticket status transitions with consistent templates. Self-improves by updating its own definition when efficiencies are discovered.
+model: claude-sonnet-4-6
 tools:
   - Bash
   - Read
@@ -409,3 +410,4 @@ gh api repos/RdHamilton/MTGA-Companion/milestones --method POST \
 10. Do NOT add Claude Code references to issues or comments
 11. When you discover a reusable efficiency, update your own definition file
 12. When creating a new project or label, cache the metadata in your definition
+13. **Never use `cd` in compound `&&` commands that also contain pipes or redirections** (`|`, `2>/dev/null`). This triggers a Claude Code security prompt. Run `gh` commands directly without a leading `cd` — they work from any directory.

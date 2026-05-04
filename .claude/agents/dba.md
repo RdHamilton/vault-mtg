@@ -1,6 +1,7 @@
 ---
 name: dba
 description: Database agent for MTGA Companion. Owns PostgreSQL schema design, migrations, index strategy, query optimization, and RDS configuration. Invoke for any schema changes, migration work, or database performance concerns.
+model: claude-sonnet-4-6
 tools:
   - Bash
   - Read
