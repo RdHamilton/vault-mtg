@@ -14,16 +14,16 @@ ON CONFLICT (id) DO NOTHING;
 -- ============================================================================
 INSERT INTO sets (code, name, released_at, card_count, set_type, icon_svg_uri, is_standard_legal, rotation_date)
 VALUES
-    ('DSK', 'Duskmourn: House of Horror', '2024-09-27', 291, 'expansion', 'https://svgs.scryfall.io/sets/dsk.svg', 1, '2028-01-01'),
-    ('BLB', 'Bloomburrow', '2024-08-02', 276, 'expansion', 'https://svgs.scryfall.io/sets/blb.svg', 1, '2028-01-01'),
-    ('OTJ', 'Outlaws of Thunder Junction', '2024-04-19', 286, 'expansion', 'https://svgs.scryfall.io/sets/otj.svg', 1, '2027-01-23')
+    ('DSK', 'Duskmourn: House of Horror', '2024-09-27', 291, 'expansion', 'https://svgs.scryfall.io/sets/dsk.svg', TRUE, '2028-01-01'),
+    ('BLB', 'Bloomburrow', '2024-08-02', 276, 'expansion', 'https://svgs.scryfall.io/sets/blb.svg', TRUE, '2028-01-01'),
+    ('OTJ', 'Outlaws of Thunder Junction', '2024-04-19', 286, 'expansion', 'https://svgs.scryfall.io/sets/otj.svg', TRUE, '2027-01-23')
 ON CONFLICT (code) DO NOTHING;
 
 -- ============================================================================
 -- STANDARD CONFIG (for rotation notifications)
 -- ============================================================================
 INSERT INTO standard_config (id, next_rotation_date, rotation_enabled, updated_at)
-VALUES (1, '2027-01-23', 1, CURRENT_TIMESTAMP)
+VALUES (1, '2027-01-23', TRUE, CURRENT_TIMESTAMP)
 ON CONFLICT (id) DO NOTHING;
 
 -- ============================================================================
@@ -111,8 +111,8 @@ ON CONFLICT (deck_id, card_id, board) DO NOTHING;
 -- DSK Draft Deck (deck-004)
 INSERT INTO deck_cards (deck_id, card_id, quantity, board, from_draft_pick)
 VALUES
-    ('deck-004', 90002, 2, 'main', 1), ('deck-004', 90003, 1, 'main', 1), ('deck-004', 90006, 3, 'main', 1),
-    ('deck-004', 90005, 2, 'main', 1), ('deck-004', 90009, 2, 'main', 1)
+    ('deck-004', 90002, 2, 'main', TRUE), ('deck-004', 90003, 1, 'main', TRUE), ('deck-004', 90006, 3, 'main', TRUE),
+    ('deck-004', 90005, 2, 'main', TRUE), ('deck-004', 90009, 2, 'main', TRUE)
 ON CONFLICT (deck_id, card_id, board) DO NOTHING;
 
 -- ============================================================================
@@ -171,9 +171,9 @@ ON CONFLICT (match_id, game_number) DO NOTHING;
 -- ============================================================================
 INSERT INTO quests (quest_id, quest_type, goal, starting_progress, ending_progress, completed, can_swap, rewards, assigned_at, completed_at, last_seen_at)
 VALUES
-    ('quest-daily-001', 'Cast 20 White or Blue spells', 20, 0, 8, 0, 1, '{"gold": 500, "xp": 500}', '2024-10-20 00:00:00', NULL, '2024-10-20 18:00:00'),
-    ('quest-daily-002', 'Win 5 games', 5, 0, 3, 0, 1, '{"gold": 750, "xp": 500}', '2024-10-20 00:00:00', NULL, '2024-10-20 18:00:00'),
-    ('quest-daily-003', 'Play 30 lands', 30, 0, 30, 1, 0, '{"gold": 500, "xp": 500}', '2024-10-19 00:00:00', '2024-10-19 22:00:00', '2024-10-20 18:00:00')
+    ('quest-daily-001', 'Cast 20 White or Blue spells', 20, 0, 8, FALSE, TRUE, '{"gold": 500, "xp": 500}', '2024-10-20 00:00:00', NULL, '2024-10-20 18:00:00'),
+    ('quest-daily-002', 'Win 5 games', 5, 0, 3, FALSE, TRUE, '{"gold": 750, "xp": 500}', '2024-10-20 00:00:00', NULL, '2024-10-20 18:00:00'),
+    ('quest-daily-003', 'Play 30 lands', 30, 0, 30, TRUE, FALSE, '{"gold": 500, "xp": 500}', '2024-10-19 00:00:00', '2024-10-19 22:00:00', '2024-10-20 18:00:00')
 ON CONFLICT (quest_id, assigned_at) DO NOTHING;
 
 -- ============================================================================
