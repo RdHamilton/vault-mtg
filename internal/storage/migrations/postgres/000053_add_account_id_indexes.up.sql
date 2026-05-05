@@ -4,6 +4,9 @@
 --
 -- Note: CONCURRENTLY is omitted here because migrations run inside a transaction
 -- block and PostgreSQL does not allow CREATE INDEX CONCURRENTLY inside transactions.
+--
+-- Note: currency_history is excluded — it was dropped in migration 000025 and is
+-- not recreated until migration 000054, which creates its own account_id indexes.
 
 -- matches: queries by account + time range, account + format, account + format + time
 CREATE INDEX IF NOT EXISTS idx_matches_account_id_timestamp
@@ -35,12 +38,6 @@ CREATE INDEX IF NOT EXISTS idx_decks_account_id_modified_at
 
 CREATE INDEX IF NOT EXISTS idx_decks_account_id_format
     ON decks (account_id, format);
-
--- currency_history: queries by account + timestamp range
--- (account_id, timestamp) composite already exists as idx_currency_history_account_timestamp
--- but it lacks DESC ordering; add a covering index for DESC queries
-CREATE INDEX IF NOT EXISTS idx_currency_history_account_id_timestamp_desc
-    ON currency_history (account_id, timestamp DESC);
 
 -- matchup_statistics: queries by account + format + archetype
 CREATE INDEX IF NOT EXISTS idx_matchup_stats_account_id_format

@@ -16,9 +16,14 @@ import (
 
 const defaultRefreshHour = 2
 
-// Fetcher retrieves card ratings from an external source.
+// defaultFormats mirrors handler.defaultFormats — PremierDraft and QuickDraft.
+// Sealed is opt-in via SYNC_FORMATS.
+var defaultFormats = []string{"PremierDraft", "QuickDraft"}
+
+// Fetcher retrieves card and color ratings from an external source.
 type Fetcher interface {
 	FetchCardRatings(ctx context.Context, setCode, format string) ([]seventeenlands.CardRating, error)
+	FetchColorRatings(ctx context.Context, setCode, format string) ([]seventeenlands.ColorRating, error)
 }
 
 // SetFetcher retrieves active standard set metadata from an external source.
@@ -32,6 +37,7 @@ type Scheduler struct {
 	setFetcher   SetFetcher
 	store        datasets.Store
 	overrideSets []string // non-empty when SYNC_ACTIVE_SETS is set; bypasses DB lookup
+	formats      []string // draft formats to sync per set
 	refreshHour  int
 	newTicker    func(d time.Duration) (<-chan time.Time, func())
 }
@@ -43,6 +49,10 @@ type Scheduler struct {
 //
 //	When unset, active sets are queried from the database each run using
 //	is_standard_legal = TRUE so the scheduler stays current without redeployment.
+//
+// SYNC_FORMATS — optional override; comma-separated 17Lands format names
+//
+//	(e.g. "PremierDraft,QuickDraft,Sealed"). Defaults to PremierDraft,QuickDraft.
 func New(setFetcher SetFetcher, fetcher Fetcher, store datasets.Store) *Scheduler {
 	hour := defaultRefreshHour
 	if v := os.Getenv("SYNC_REFRESH_HOUR"); v != "" {
@@ -62,11 +72,25 @@ func New(setFetcher SetFetcher, fetcher Fetcher, store datasets.Store) *Schedule
 		}
 	}
 
+	formats := defaultFormats
+	if v := os.Getenv("SYNC_FORMATS"); v != "" {
+		var parsed []string
+		for _, f := range strings.Split(v, ",") {
+			if t := strings.TrimSpace(f); t != "" {
+				parsed = append(parsed, t)
+			}
+		}
+		if len(parsed) > 0 {
+			formats = parsed
+		}
+	}
+
 	return &Scheduler{
 		fetcher:      fetcher,
 		setFetcher:   setFetcher,
 		store:        store,
 		overrideSets: override,
+		formats:      formats,
 		refreshHour:  hour,
 		newTicker:    defaultTicker,
 	}
@@ -83,7 +107,7 @@ func (s *Scheduler) Start(ctx context.Context) {
 	if len(s.overrideSets) > 0 {
 		src = "SYNC_ACTIVE_SETS override"
 	}
-	log.Printf("[sync] scheduler starting: refresh_hour=%d sets_source=%s", s.refreshHour, src)
+	log.Printf("[sync] scheduler starting: refresh_hour=%d sets_source=%s formats=%v", s.refreshHour, src, s.formats)
 
 	// Run an immediate fetch on startup so the first day isn't missed.
 	s.runFetch(ctx)
@@ -134,35 +158,62 @@ func (s *Scheduler) runFetch(ctx context.Context) {
 		return
 	}
 
-	log.Printf("[sync] fetching ratings for %d sets: %v", len(sets), sets)
+	log.Printf("[sync] fetching ratings for %d sets x %d formats: sets=%v formats=%v", len(sets), len(s.formats), sets, s.formats)
 
 	for _, setCode := range sets {
-		if ctx.Err() != nil {
-			return
-		}
-		ratings, err := s.fetcher.FetchCardRatings(ctx, setCode, "PremierDraft")
-		if err != nil {
-			log.Printf("[sync] fetch %s: %v", setCode, err)
-			continue
-		}
+		for _, format := range s.formats {
+			if ctx.Err() != nil {
+				return
+			}
 
-		if len(ratings) == 0 {
-			log.Printf("[sync] WARNING: 0 cards returned for %s/PremierDraft — set code may not match 17Lands expansion code", setCode)
-			continue
-		}
+			ratings, err := s.fetcher.FetchCardRatings(ctx, setCode, format)
+			if err != nil {
+				log.Printf("[sync] fetch %s/%s: %v", setCode, format, err)
+				continue
+			}
 
-		sr := draftdata.SetRatings{
-			SetCode:     setCode,
-			DraftFormat: "PremierDraft",
-			FetchedAt:   time.Now().UTC(),
-			Cards:       ratings,
-		}
+			if len(ratings) == 0 {
+				log.Printf("[sync] WARNING: 0 cards returned for %s/%s — set code may not match 17Lands expansion code", setCode, format)
+				continue
+			}
 
-		if err := s.store.UpsertRatings(ctx, sr); err != nil {
-			log.Printf("[sync] upsert %s: %v", setCode, err)
-			continue
-		}
+			sr := draftdata.SetRatings{
+				SetCode:     setCode,
+				DraftFormat: format,
+				FetchedAt:   time.Now().UTC(),
+				Cards:       ratings,
+			}
 
-		log.Printf("[sync] refreshed %s: %d cards", setCode, len(ratings))
+			if err := s.store.UpsertRatings(ctx, sr); err != nil {
+				log.Printf("[sync] upsert %s/%s: %v", setCode, format, err)
+				continue
+			}
+
+			log.Printf("[sync] refreshed %s/%s: %d cards", setCode, format, len(ratings))
+
+			// Fetch and persist per-color-combination win rates. A failure here is
+			// non-fatal — card ratings are already stored and color data is best-effort.
+			if ctx.Err() != nil {
+				return
+			}
+
+			colorRatings, err := s.fetcher.FetchColorRatings(ctx, setCode, format)
+			if err != nil {
+				log.Printf("[sync] fetch color ratings %s/%s: %v", setCode, format, err)
+				continue
+			}
+
+			if len(colorRatings) == 0 {
+				log.Printf("[sync] no color ratings returned for %s/%s", setCode, format)
+				continue
+			}
+
+			if err := s.store.UpsertColorRatings(ctx, setCode, format, colorRatings); err != nil {
+				log.Printf("[sync] upsert color ratings %s/%s: %v", setCode, format, err)
+				continue
+			}
+
+			log.Printf("[sync] refreshed color ratings %s/%s: %d combinations", setCode, format, len(colorRatings))
+		}
 	}
 }

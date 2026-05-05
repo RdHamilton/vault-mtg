@@ -63,3 +63,70 @@ func TestFetchCardRatings(t *testing.T) {
 		require.Error(t, err)
 	})
 }
+
+func TestFetchColorRatings(t *testing.T) {
+	t.Run("returns color ratings on 200", func(t *testing.T) {
+		fixture := []seventeenlands.ColorRating{
+			{ColorCombination: "WU", WinRate: 0.58, GamesPlayed: 5000},
+			{ColorCombination: "BG", WinRate: 0.52, GamesPlayed: 3200},
+			{ColorCombination: "R", WinRate: 0.49, GamesPlayed: 2100},
+		}
+
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			assert.Equal(t, "/color_ratings/data", r.URL.Path)
+			assert.Equal(t, "FDN", r.URL.Query().Get("expansion"))
+			assert.Equal(t, "PremierDraft", r.URL.Query().Get("format"))
+			w.Header().Set("Content-Type", "application/json")
+			json.NewEncoder(w).Encode(fixture)
+		}))
+		defer srv.Close()
+
+		client := seventeenlands.NewClientWithBase(srv.URL, srv.Client())
+		ratings, err := client.FetchColorRatings(context.Background(), "FDN", "PremierDraft")
+
+		require.NoError(t, err)
+		require.Len(t, ratings, 3)
+		assert.Equal(t, "WU", ratings[0].ColorCombination)
+		assert.InDelta(t, 0.58, ratings[0].WinRate, 0.001)
+		assert.Equal(t, 5000, ratings[0].GamesPlayed)
+	})
+
+	t.Run("returns error on non-200", func(t *testing.T) {
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.WriteHeader(http.StatusNotFound)
+		}))
+		defer srv.Close()
+
+		client := seventeenlands.NewClientWithBase(srv.URL, srv.Client())
+		_, err := client.FetchColorRatings(context.Background(), "FDN", "PremierDraft")
+
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "404")
+	})
+
+	t.Run("returns error on invalid JSON", func(t *testing.T) {
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.Write([]byte("not-json"))
+		}))
+		defer srv.Close()
+
+		client := seventeenlands.NewClientWithBase(srv.URL, srv.Client())
+		_, err := client.FetchColorRatings(context.Background(), "FDN", "PremierDraft")
+
+		require.Error(t, err)
+	})
+
+	t.Run("returns empty slice when no color data", func(t *testing.T) {
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.Header().Set("Content-Type", "application/json")
+			w.Write([]byte("[]"))
+		}))
+		defer srv.Close()
+
+		client := seventeenlands.NewClientWithBase(srv.URL, srv.Client())
+		ratings, err := client.FetchColorRatings(context.Background(), "FDN", "PremierDraft")
+
+		require.NoError(t, err)
+		assert.Empty(t, ratings)
+	})
+}

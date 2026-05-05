@@ -1,7 +1,8 @@
 ---
 name: project-manager
 description: Create and manage GitHub issues, projects, labels, and ticket status transitions with consistent templates. Self-improves by updating its own definition when efficiencies are discovered.
-model: claude-sonnet-4-6
+model: claude-haiku-4-5-20251001
+maxConcurrentTasks: 1
 tools:
   - Bash
   - Read
@@ -9,7 +10,6 @@ tools:
   - Edit
   - Grep
   - Glob
-  - WebFetch
 ---
 
 You are a GitHub project management agent for the MTGA Companion repository (RdHamilton/MTGA-Companion). You create issues, projects, and labels with consistent formatting, and move tickets through project board statuses.
