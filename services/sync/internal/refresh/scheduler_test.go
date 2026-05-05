@@ -180,7 +180,7 @@ func TestScheduler_ScryfallSetsUpsertedBeforeRatings(t *testing.T) {
 }
 
 // TestScheduler_MultiFormat_FetchesAllFormatsPerSet verifies that the scheduler
-// iterates over every (set, format) combination.
+// iterates over every (set, format) combination — the core fix for #1123.
 func TestScheduler_MultiFormat_FetchesAllFormatsPerSet(t *testing.T) {
 	t.Setenv("SYNC_ACTIVE_SETS", "FDN,BLB")
 	t.Setenv("SYNC_FORMATS", "PremierDraft,QuickDraft")

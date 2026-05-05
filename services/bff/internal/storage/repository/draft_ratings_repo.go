@@ -50,23 +50,27 @@ func NewDraftRatingsRepository(db DB) *DraftRatingsRepository {
 // given setCode and draftFormat.  The CachedAt field is set to MAX(cached_at)
 // from the card ratings rows.
 //
+// color and rarity are resolved by LEFT JOIN-ing against the cards table so
+// that the sync service does not need to duplicate Scryfall metadata.
+//
 // Returns (nil, nil) when no rows exist for the requested set/format so that the
 // caller can distinguish a missing result from a database error.
 func (r *DraftRatingsRepository) GetRatings(ctx context.Context, setCode, draftFormat string) (*DraftRatingsResult, error) {
 	const cardQuery = `
 		SELECT
-			arena_id,
-			name,
-			COALESCE(color, ''),
-			COALESCE(rarity, ''),
-			gihwr,
-			ohwr,
-			alsa,
-			ata,
-			gih_count,
-			MAX(cached_at) OVER () AS max_cached_at
-		FROM draft_card_ratings
-		WHERE set_code = $1 AND draft_format = $2`
+			dcr.arena_id,
+			dcr.name,
+			COALESCE(c.colors, ''),
+			COALESCE(c.rarity, ''),
+			dcr.gihwr,
+			dcr.ohwr,
+			dcr.alsa,
+			dcr.ata,
+			dcr.gih_count,
+			MAX(dcr.cached_at) OVER () AS max_cached_at
+		FROM draft_card_ratings dcr
+		LEFT JOIN cards c ON c.arena_id = dcr.arena_id
+		WHERE dcr.set_code = $1 AND dcr.draft_format = $2`
 
 	rows, err := r.db.QueryContext(ctx, cardQuery, setCode, draftFormat)
 	if err != nil {

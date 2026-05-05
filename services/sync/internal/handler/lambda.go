@@ -6,6 +6,8 @@ package handler
 import (
 	"context"
 	"log"
+	"os"
+	"strings"
 	"time"
 
 	"github.com/ramonehamilton/mtga-sync/internal/datasets"
@@ -13,9 +15,9 @@ import (
 	"github.com/ramonehamilton/mtga-sync/internal/seventeenlands"
 )
 
-// defaultFormats are the draft formats synced on every invocation.
-// Sealed is opt-in — it consumes separate 17Lands quota and is less commonly
-// needed for draft-oriented features.
+// defaultFormats is the canonical list of 17Lands draft formats synced per set.
+// Sealed is omitted by default — it has far fewer games logged and the data is
+// lower confidence. Set SYNC_FORMATS to override (e.g. "PremierDraft,QuickDraft,Sealed").
 var defaultFormats = []string{"PremierDraft", "QuickDraft"}
 
 // Fetcher retrieves card and color ratings from an external source.
@@ -30,16 +32,43 @@ type SyncHandler struct {
 	fetcher      Fetcher
 	store        datasets.Store
 	overrideSets []string // non-empty when caller provides an explicit set list
-	formats      []string // draft formats to sync per set
+	formats      []string // draft formats to sync; read from SYNC_FORMATS env var
 }
 
 // New creates a SyncHandler. overrideSets may be nil/empty to use DB-driven active sets.
+//
+// The formats list is read from SYNC_FORMATS (comma-separated). If unset, defaultFormats
+// is used: PremierDraft and QuickDraft.
 func New(fetcher Fetcher, store datasets.Store, overrideSets []string) *SyncHandler {
+	formats := defaultFormats
+	if v := os.Getenv("SYNC_FORMATS"); v != "" {
+		var parsed []string
+		for _, f := range strings.Split(v, ",") {
+			if t := strings.TrimSpace(f); t != "" {
+				parsed = append(parsed, t)
+			}
+		}
+		if len(parsed) > 0 {
+			formats = parsed
+		}
+	}
+
 	return &SyncHandler{
 		fetcher:      fetcher,
 		store:        store,
 		overrideSets: overrideSets,
-		formats:      defaultFormats,
+		formats:      formats,
+	}
+}
+
+// NewWithFormats creates a SyncHandler with an explicit formats list, bypassing the
+// SYNC_FORMATS env var. Intended for tests that need deterministic format control.
+func NewWithFormats(fetcher Fetcher, store datasets.Store, overrideSets, formats []string) *SyncHandler {
+	return &SyncHandler{
+		fetcher:      fetcher,
+		store:        store,
+		overrideSets: overrideSets,
+		formats:      formats,
 	}
 }
 
@@ -59,7 +88,8 @@ func (h *SyncHandler) Handle(ctx context.Context, _ any) error {
 		return nil
 	}
 
-	log.Printf("[sync] fetching ratings for %d set(s) x %d format(s): sets=%v formats=%v", len(sets), len(h.formats), sets, h.formats)
+	log.Printf("[sync] fetching ratings for %d set(s) x %d format(s): sets=%v formats=%v",
+		len(sets), len(h.formats), sets, h.formats)
 
 	for _, setCode := range sets {
 		for _, format := range h.formats {
