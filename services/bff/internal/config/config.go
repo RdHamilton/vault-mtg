@@ -60,6 +60,16 @@ type Config struct {
 	// indistinguishable in production from a working stack and allowed
 	// issue #1169 to ship undetected.
 	DaemonJWTSecret string
+
+	// DaemonLatestVersion is the semver of the most recently published daemon
+	// binary.  Sourced from BFF_DAEMON_LATEST_VERSION.
+	// Defaults to "0.1.0" when unset so the endpoint always returns a non-empty
+	// response in development without failing startup.
+	DaemonLatestVersion string
+
+	// DaemonReleasedAt is the RFC3339 timestamp when DaemonLatestVersion was
+	// published.  Sourced from BFF_DAEMON_RELEASED_AT.  Empty string when unset.
+	DaemonReleasedAt string
 }
 
 // Load reads configuration from environment variables, applies defaults, and
@@ -101,6 +111,11 @@ func Load() (*Config, error) {
 		}
 	}
 
+	daemonLatestVersion := os.Getenv("BFF_DAEMON_LATEST_VERSION")
+	if daemonLatestVersion == "" {
+		daemonLatestVersion = "0.1.0"
+	}
+
 	cfg := &Config{
 		Env:                                 env,
 		DatabaseURL:                         dbURL,
@@ -108,6 +123,8 @@ func Load() (*Config, error) {
 		DraftRatingsBypassFreshnessCheck:    false,
 		AllowedOrigins:                      allowedOrigins,
 		DaemonJWTSecret:                     daemonJWTSecret,
+		DaemonLatestVersion:                 daemonLatestVersion,
+		DaemonReleasedAt:                    os.Getenv("BFF_DAEMON_RELEASED_AT"),
 	}
 
 	if raw := os.Getenv("DRAFT_RATINGS_STALENESS_THRESHOLD_HOURS"); raw != "" {

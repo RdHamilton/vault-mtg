@@ -169,6 +169,10 @@ func main() {
 		}
 	}
 
+	// GET /api/v1/daemon/version — latest daemon version (public, no auth).
+	daemonVersionHandler := handlers.NewDaemonVersionHandler(cfg)
+	r.Get("/api/v1/daemon/version", daemonVersionHandler.GetDaemonVersion)
+
 	// GET /api/v1/draft-ratings/{setCode}/{format} — draft card and color ratings.
 	if draftRatingsHandler != nil {
 		r.Get("/api/v1/draft-ratings/{setCode}/{format}", draftRatingsHandler.GetDraftRatings)

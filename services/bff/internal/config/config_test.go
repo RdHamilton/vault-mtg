@@ -310,6 +310,75 @@ func TestLoad_AllowedOrigins_ParsesCommaSeparated(t *testing.T) {
 	}
 }
 
+// TestLoad_DaemonLatestVersion_DefaultWhenUnset verifies that when
+// BFF_DAEMON_LATEST_VERSION is not set the config defaults to "0.1.0" so that
+// GET /api/v1/daemon/version always returns a non-empty response in development.
+func TestLoad_DaemonLatestVersion_DefaultWhenUnset(t *testing.T) {
+	t.Setenv("MTGA_ENV", "")
+	t.Setenv("DATABASE_URL", "")
+	t.Setenv("BFF_DAEMON_LATEST_VERSION", "")
+
+	cfg, err := config.Load()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if cfg.DaemonLatestVersion != "0.1.0" {
+		t.Errorf("expected default DaemonLatestVersion '0.1.0', got %q", cfg.DaemonLatestVersion)
+	}
+}
+
+// TestLoad_DaemonLatestVersion_FromEnv verifies that BFF_DAEMON_LATEST_VERSION
+// is surfaced as Config.DaemonLatestVersion.
+func TestLoad_DaemonLatestVersion_FromEnv(t *testing.T) {
+	t.Setenv("MTGA_ENV", "")
+	t.Setenv("DATABASE_URL", "")
+	t.Setenv("BFF_DAEMON_LATEST_VERSION", "0.5.2")
+
+	cfg, err := config.Load()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if cfg.DaemonLatestVersion != "0.5.2" {
+		t.Errorf("expected DaemonLatestVersion '0.5.2', got %q", cfg.DaemonLatestVersion)
+	}
+}
+
+// TestLoad_DaemonReleasedAt_EmptyWhenUnset verifies that when
+// BFF_DAEMON_RELEASED_AT is not set Config.DaemonReleasedAt is empty string.
+func TestLoad_DaemonReleasedAt_EmptyWhenUnset(t *testing.T) {
+	t.Setenv("MTGA_ENV", "")
+	t.Setenv("DATABASE_URL", "")
+	t.Setenv("BFF_DAEMON_RELEASED_AT", "")
+
+	cfg, err := config.Load()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if cfg.DaemonReleasedAt != "" {
+		t.Errorf("expected empty DaemonReleasedAt, got %q", cfg.DaemonReleasedAt)
+	}
+}
+
+// TestLoad_DaemonReleasedAt_FromEnv verifies that BFF_DAEMON_RELEASED_AT is
+// surfaced as Config.DaemonReleasedAt.
+func TestLoad_DaemonReleasedAt_FromEnv(t *testing.T) {
+	t.Setenv("MTGA_ENV", "")
+	t.Setenv("DATABASE_URL", "")
+	t.Setenv("BFF_DAEMON_RELEASED_AT", "2026-05-01T12:00:00Z")
+
+	cfg, err := config.Load()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if cfg.DaemonReleasedAt != "2026-05-01T12:00:00Z" {
+		t.Errorf("expected DaemonReleasedAt '2026-05-01T12:00:00Z', got %q", cfg.DaemonReleasedAt)
+	}
+}
+
 // TestLoad_AllowedOrigins_TrimsWhitespace verifies that leading/trailing
 // whitespace around comma-separated values is stripped.
 func TestLoad_AllowedOrigins_TrimsWhitespace(t *testing.T) {
