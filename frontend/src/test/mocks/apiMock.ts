@@ -306,6 +306,21 @@ export const mockSystem = {
   connectDaemon: vi.fn(() => Promise.resolve()),
 };
 
+// bffDraftRatings mock
+export const mockBffDraftRatings = {
+  getDraftRatings: vi.fn(() => Promise.resolve({
+    data: {
+      set_code: 'DSK',
+      draft_format: 'PremierDraft',
+      cached_at: new Date().toISOString(),
+      card_ratings: [],
+      color_ratings: [],
+    },
+    cacheDegraded: false,
+    cacheAgeHours: undefined,
+  })),
+};
+
 // Combined API mock export
 export const mockApi = {
   cards: mockCards,
@@ -320,6 +335,7 @@ export const mockApi = {
   notes: mockNotes,
   mlSuggestions: mockMLSuggestions,
   standard: mockStandard,
+  bffDraftRatings: mockBffDraftRatings,
 };
 
 // Legacy mock kept for backwards compatibility with tests that haven't migrated
@@ -464,6 +480,9 @@ export function resetMocks() {
     if (vi.isMockFunction(mock)) mock.mockClear();
   });
   Object.values(mockStandard).forEach((mock) => {
+    if (vi.isMockFunction(mock)) mock.mockClear();
+  });
+  Object.values(mockBffDraftRatings).forEach((mock) => {
     if (vi.isMockFunction(mock)) mock.mockClear();
   });
   Object.values(mockWailsApp).forEach((mock) => {

@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { drafts, cards } from '@/services/api';
+import { drafts, cards, bffDraftRatings } from '@/services/api';
+import { BffColorRating } from '@/services/api/bffDraftRatings';
 import { models, pickquality, grading, gui } from '@/types/models';
 
 // No-op stubs - replay control not implemented in REST API
@@ -37,6 +38,7 @@ import MissingCards from '../components/MissingCards';
 import DraftStatistics from '../components/DraftStatistics';
 import PerformanceMetrics from '../components/PerformanceMetrics';
 import FormatInsights from '../components/FormatInsights';
+import ColorRatingsPanel from '../components/ColorRatingsPanel';
 import CurrentPackPicker from '../components/CurrentPackPicker';
 import { analyzeSynergies, shouldHighlightCard } from '../utils/synergy';
 import { useDownload } from '@/context/DownloadContext';
@@ -48,6 +50,7 @@ interface DraftState {
     packs: models.DraftPackSession[];
     setCards: models.SetCard[];
     ratings: gui.CardRatingWithTier[];
+    colorRatings: BffColorRating[];
     loading: boolean;
     error: string | null;
 }
@@ -77,6 +80,7 @@ const Draft: React.FC = () => {
         packs: [],
         setCards: [],
         ratings: [],
+        colorRatings: [],
         loading: true,
         error: null,
     });
@@ -308,17 +312,20 @@ const Draft: React.FC = () => {
 
             // Load draft data
             console.log('[loadActiveDraft] Loading data for session:', session.ID, 'SetCode:', session.SetCode);
-            const [picks, packs, setCards, ratings] = await Promise.all([
+            const draftType = session.DraftType || 'PremierDraft';
+            const [picks, packs, setCards, ratings, colorRatingsResult] = await Promise.all([
                 drafts.getDraftPicks(session.ID),
                 getDraftPacks(session.ID),
                 cards.getSetCards(session.SetCode),
-                cards.getCardRatings(session.SetCode, session.DraftType),
+                cards.getCardRatings(session.SetCode, draftType),
+                bffDraftRatings.getDraftRatings(session.SetCode, draftType).catch(() => null),
             ]);
             console.log('[loadActiveDraft] Data loaded successfully:');
             console.log('  - Picks:', picks?.length || 0);
             console.log('  - Packs:', packs?.length || 0);
             console.log('  - SetCards:', setCards?.length || 0);
             console.log('  - Ratings:', ratings?.length || 0);
+            console.log('  - ColorRatings:', colorRatingsResult?.data?.color_ratings?.length || 0);
 
             // Always store ALL set cards for synergy analysis
             // In replay mode, we'll filter the display later in the render
@@ -329,6 +336,7 @@ const Draft: React.FC = () => {
                 packs: packs || [],
                 setCards: setCards || [],
                 ratings: ratings || [],
+                colorRatings: colorRatingsResult?.data?.color_ratings || [],
                 loading: false,
                 error: null,
             });
@@ -1116,6 +1124,9 @@ const Draft: React.FC = () => {
                             })}
                         </div>
                     </div>
+
+                    {/* Color Win Rates from BFF */}
+                    <ColorRatingsPanel colorRatings={state.colorRatings} />
 
                     {/* Tier List */}
                     <TierList
