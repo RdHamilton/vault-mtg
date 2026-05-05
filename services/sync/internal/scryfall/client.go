@@ -45,8 +45,26 @@ func NewClientWithBase(baseURL string, httpClient *http.Client) *Client {
 	return &Client{baseURL: baseURL, httpClient: httpClient}
 }
 
-// FetchSets retrieves all Arena-playable expansion and core sets from Scryfall.
-// It filters to sets where set_type is "expansion" or "core" AND digital is true.
+// isDraftableSetType reports whether the Scryfall set_type is eligible for Arena
+// draft rating sync.  We include the five types that can appear in Arena draft
+// queues:
+//
+//   - "expansion"        — normal booster sets (standard-legal)
+//   - "core"             — core sets
+//   - "masters"          — reprint / Masters sets released on Arena
+//   - "draft_innovation" — chaos draft and special draft experiences
+//   - "alchemy"          — Alchemy-specific supplemental sets
+func isDraftableSetType(t string) bool {
+	switch t {
+	case "expansion", "core", "masters", "draft_innovation", "alchemy":
+		return true
+	}
+	return false
+}
+
+// FetchSets retrieves all Arena-playable draft sets from Scryfall.
+// It filters to sets where digital is true AND set_type is one of the
+// draft-eligible types (expansion, core, masters, draft_innovation, alchemy).
 func (c *Client) FetchSets(ctx context.Context) ([]ScryfallSet, error) {
 	u, err := url.Parse(c.baseURL)
 	if err != nil {
@@ -76,7 +94,7 @@ func (c *Client) FetchSets(ctx context.Context) ([]ScryfallSet, error) {
 
 	var result []ScryfallSet
 	for _, s := range envelope.Data {
-		if s.Digital && (s.SetType == "expansion" || s.SetType == "core") {
+		if s.Digital && isDraftableSetType(s.SetType) {
 			result = append(result, s)
 		}
 	}

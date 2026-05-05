@@ -22,9 +22,12 @@ func NewPostgresStore(pool *pgxpool.Pool) *PostgresStore {
 	return &PostgresStore{pool: pool}
 }
 
-// GetActiveSets returns set codes where is_standard_legal = TRUE.
+// GetActiveSets returns set codes where is_draft_active = TRUE.
+// This includes all Arena-draftable sets regardless of Standard legality
+// (e.g. masters, alchemy, and draft_innovation sets that Scryfall classifies
+// outside "expansion"/"core" but which appear in Arena draft queues).
 func (s *PostgresStore) GetActiveSets(ctx context.Context) ([]string, error) {
-	rows, err := s.pool.Query(ctx, `SELECT code FROM sets WHERE is_standard_legal = TRUE ORDER BY code`)
+	rows, err := s.pool.Query(ctx, `SELECT code FROM sets WHERE is_draft_active = TRUE ORDER BY code`)
 	if err != nil {
 		return nil, fmt.Errorf("query active sets: %w", err)
 	}
@@ -106,20 +109,22 @@ func (s *PostgresStore) UpsertRatings(ctx context.Context, ratings draftdata.Set
 }
 
 // UpsertSets upserts set metadata into the sets table and marks each set as
-// standard legal. Existing rows are updated via ON CONFLICT; rows not present
-// in the incoming slice are left unchanged (they may have been rotated out
-// manually or by a prior migration).
+// draft-active (is_draft_active = TRUE). Existing rows are updated via ON CONFLICT;
+// rows not present in the incoming slice are left unchanged (they may have been
+// deactivated manually or by a prior migration).
+// Note: is_standard_legal is intentionally not touched here — Standard legality
+// is a separate concept from draft availability and is managed by BFF migrations.
 func (s *PostgresStore) UpsertSets(ctx context.Context, sets []scryfall.ScryfallSet) error {
 	const q = `
-		INSERT INTO sets (code, name, released_at, set_type, card_count, is_standard_legal, last_updated)
+		INSERT INTO sets (code, name, released_at, set_type, card_count, is_draft_active, last_updated)
 		VALUES ($1, $2, $3, $4, $5, TRUE, NOW())
 		ON CONFLICT (code) DO UPDATE SET
-			name              = EXCLUDED.name,
-			released_at       = EXCLUDED.released_at,
-			set_type          = EXCLUDED.set_type,
-			card_count        = EXCLUDED.card_count,
-			is_standard_legal = TRUE,
-			last_updated      = NOW()
+			name            = EXCLUDED.name,
+			released_at     = EXCLUDED.released_at,
+			set_type        = EXCLUDED.set_type,
+			card_count      = EXCLUDED.card_count,
+			is_draft_active = TRUE,
+			last_updated    = NOW()
 	`
 
 	for _, set := range sets {
