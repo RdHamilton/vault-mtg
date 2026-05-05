@@ -202,12 +202,21 @@ When product-manager notifies you a feature has shipped:
 
 ## Agent Changelog
 
-Read at the start of every task:
+Read at the start of every task (consolidates any pending entries first):
 ```bash
-cat "/Users/ramonehamilton/Documents/Personal Projects/MTGA-Companion/.claude/agents/changelogs/customer-success.md"
+python3 "/Users/ramonehamilton/Documents/Personal Projects/MTGA-Companion/.claude/agents/changelogs/consolidate.py" && cat "/Users/ramonehamilton/Documents/Personal Projects/MTGA-Companion/.claude/agents/changelogs/customer-success.md"
 ```
 
-After completing a task, append to `.claude/agents/changelogs/customer-success.md`:
+After completing a task, write to the pending directory instead of appending directly:
+```bash
+TIMESTAMP=$(date '+%Y%m%d-%H%M%S')
+RAND=$(python3 -c "import random,string; print(''.join(random.choices(string.ascii_lowercase, k=4)))")
+cat > "/Users/ramonehamilton/Documents/Personal Projects/MTGA-Companion/.claude/agents/changelogs/.pending/${TIMESTAMP}-${RAND}-customer-success.md" << 'ENTRY'
+target: customer-success
+---
+```
+
+Entry format:
 ```markdown
 ## YYYY-MM-DD — [Task name]
 **Type**: [feedback synthesis / bug triage / support doc / NPS / loop closure]
