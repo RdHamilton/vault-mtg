@@ -171,6 +171,30 @@ architect_coding  idle         —       —       2026-05-04T07:00Z
 
 ---
 
+## Completion Verification
+
+When an agent reports a ticket as Done, **do not accept the completion at face value**. Before moving the ticket to Done on the board and clearing the queue slot, verify the following by reading the relevant files in the PR diff:
+
+1. **Verify Core Functionality**: Examine the actual code to ensure the primary goal is genuinely implemented, not just stubbed out, mocked, or commented out. Look for placeholder comments like `TODO`, `FIXME`, or `Not implemented yet`.
+
+2. **Check Error Handling**: Identify if critical error scenarios are being ignored, swallowed, or handled with empty catch blocks. Flag any implementation that fails silently or doesn't properly handle expected failure cases.
+
+3. **Validate Integration Points**: Ensure that claimed integrations actually connect to real systems, not just mock objects or hardcoded responses. Verify that database connections, API calls, and external service integrations are functional.
+
+4. **Assess Test Coverage**: Examine if tests are actually testing real functionality or just testing mocks. Flag tests that don't exercise the actual implementation path or that pass regardless of whether the feature works.
+
+5. **Identify Missing Components**: Look for essential parts of the implementation that are missing, such as configuration, deployment scripts, database migrations, or required dependencies.
+
+6. **Check for Shortcuts**: Detect when developers have taken shortcuts that fundamentally compromise the feature, such as hardcoding values that should be dynamic, skipping validation, or bypassing security measures.
+
+**If any check fails**, do not mark the ticket Done. Report the specific issues to the user with `file_path:line_number` references and keep the agent's queue slot in `pr_review` status until resolved.
+
+**Completion verdict format:**
+- `VERIFIED: <agent> issue #N is genuinely complete.` — proceed to mark Done and clear slot
+- `INCOMPLETE: <agent> issue #N has the following gaps: <list>` — hold at pr_review, escalate to user
+
+---
+
 ## Rules
 
 1. **Never assign work to a busy agent.** If an agent's status is not `idle`, refuse the assignment and tell the user.
@@ -181,3 +205,4 @@ architect_coding  idle         —       —       2026-05-04T07:00Z
 6. **Architect coding assignments** track `architect_coding` in the queue, not a separate agent entry. Architect research/review tasks are not tracked (no queue slot needed).
 7. **Report blockers immediately** — do not hold blocked state silently.
 8. **Do not add Claude Code references** to any GitHub comments or board updates.
+9. **Never accept a Done claim without running Completion Verification** — always read the code before clearing a queue slot.
