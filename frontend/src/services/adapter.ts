@@ -11,10 +11,10 @@
 
 import * as api from './api';
 import {
-  connect as wsConnect,
-  disconnect as wsDisconnect,
-  EventsOn as WsEventsOn,
-  EventsOff as WsEventsOff,
+  connect as sseConnect,
+  disconnect as sseDisconnect,
+  EventsOn as SseEventsOn,
+  EventsOff as SseEventsOff,
 } from './websocketClient';
 import { configureApi, healthCheck } from './apiClient';
 import { models, gui } from '@/types/models';
@@ -62,12 +62,12 @@ export async function initializeServices(options?: {
     throw new Error('REST API not available');
   }
 
-  // Connect WebSocket
+  // Connect SSE stream
   try {
-    await wsConnect();
-    console.log('[Adapter] REST API mode enabled');
+    await sseConnect();
+    console.log('[Adapter] REST API mode enabled with SSE');
   } catch (error) {
-    console.error('[Adapter] WebSocket connection failed:', error);
+    console.error('[Adapter] SSE connection failed:', error);
   }
 
   isInitialized = true;
@@ -77,7 +77,7 @@ export async function initializeServices(options?: {
  * Cleanup services on app shutdown.
  */
 export function cleanupServices(): void {
-  wsDisconnect();
+  sseDisconnect();
   isInitialized = false;
 }
 
@@ -268,14 +268,14 @@ export const systemAdapter = {
  */
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export function EventsOn(eventName: string, callback: (...data: any[]) => void): () => void {
-  return WsEventsOn(eventName, callback);
+  return SseEventsOn(eventName, callback);
 }
 
 /**
  * Unsubscribe from events.
  */
 export function EventsOff(eventName: string, ...additionalEventNames: string[]): void {
-  WsEventsOff(eventName, ...additionalEventNames);
+  SseEventsOff(eventName, ...additionalEventNames);
 }
 
 // ============================================================================

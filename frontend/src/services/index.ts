@@ -6,7 +6,7 @@
  *
  * These services are designed to replace Wails bindings, enabling:
  * - REST API communication instead of direct Go function calls
- * - WebSocket-based real-time events instead of Wails EventsOn/EventsOff
+ * - SSE-based real-time events (fetch + Authorization header) instead of Wails EventsOn/EventsOff
  * - Better testability with standard HTTP mocking
  * - Potential for running as a standalone web app (without Wails)
  */
@@ -27,7 +27,7 @@ export {
   type ApiError,
 } from './apiClient';
 
-// WebSocket Client
+// SSE Client (replaces WebSocket — public API unchanged)
 export {
   configureWebSocket,
   getWebSocketConfig,
