@@ -298,6 +298,7 @@ Note: The project board Milestone field (PVTF_lAHOABsZ684BMSNnzg7nLOo) is read-o
 - `ui` (#0e8a16) - User interface features
 - `backend` (#1d76db) - Backend service code
 - `deployment` (#e4e669) - Deployment and release pipeline
+- `manual` (#e4e669) - Manual task requiring human action (e.g., AWS Console, domain registrar)
 
 **Priority/Release labels:**
 - `high priority` (#b60205) - High priority

@@ -8,6 +8,31 @@
 **Discoveries**: architectural notes, missing test coverage, scope concerns, or context for future reviews (or "None")
 -->
 
+## 2026-05-05 — PR #1277: docs: add manual regression test plan and pre-release checklist
+**Ticket(s)**: N/A (ad-hoc)
+**Verdict**: APPROVED
+**Checks**: go vet: skip | go test: skip | gofumpt: skip | CLAUDE.md: pass
+**Discoveries**: None
+
+## 2026-05-05 — PR #1277: docs: add manual regression test plan and pre-release checklist
+**Ticket(s)**: None (documentation)
+**Verdict**: APPROVED ✓
+**Checks**: CLAUDE.md ✓ (Go checks skipped — documentation-only)
+**Discoveries**: Two comprehensive guides added:
+- REGRESSION.md: P0/P1/P2 manual test flows with prerequisites, steps, and failure modes
+- RELEASE_CHECKLIST.md: Pre-release runbook covering gates, deploy, smoke checks, rollback, and sign-off
+Both docs align with existing automated smoke tests and engineering practices.
+
+## 2026-05-05 — PR #1276: chore(agents): fix changelog concurrent write race via pending-file pattern
+**Ticket(s)**: none (infrastructure refactor)
+**Verdict**: APPROVED ✓
+**Checks**: go vet ✓ | go test ✓ | gofmt ✓ | CLAUDE.md ✓
+**Discoveries**: 
+- Agents now write pending files to `.claude/agents/changelogs/.pending/` instead of appending directly
+- `consolidate.py` merges pending files serially into target changelogs (no race condition)
+- All 8 agent definitions updated; daemon also received update-check feature (proper test coverage)
+- Merged PR #1276 successfully
+
 ## 2026-05-05 — PR #1271: feat(daemon): embed build version via -ldflags and add updatecheck package (#1262)
 **Ticket(s)**: #1262
 **Verdict**: APPROVED ✓
