@@ -8,11 +8,11 @@
 **Summary**: One sentence summary of what was done and why.
 -->
 
-## 2026-05-05 — Issue #1179: fix(infra): move vercel.json to repo root so ignoreCommand takes effect
-**PR**: #1233 (in RdHamilton/MTGA-Companion)
+## 2026-05-05 — Issue #1179: feat(infra): scope Vercel deployments to frontend/ path changes only
+**PR**: #1233
 **Files changed**:
-- `vercel.json` — moved from `frontend/vercel.json` to repo root; no content change
-**Summary**: PR #1215 placed vercel.json inside frontend/ which Vercel's native Git integration never reads; moving it to the repo root activates the ignoreCommand that cancels builds when no frontend/ files changed.
+- `vercel.json` — moved from `frontend/vercel.json` to repo root; contains `ignoreCommand` to skip builds when no `frontend/` files changed
+**Summary**: Fixed Vercel's ignored build step by moving `vercel.json` to repo root, allowing the `ignoreCommand` filter to properly scope builds to frontend-only changes.
 
 ### Functional Test — 2026-05-05
 **Acceptance Criteria**:
@@ -20,9 +20,16 @@
 - A push that touches `frontend/` DOES trigger a Vercel deployment
 - The mechanism is documented
 
-**Result**: PASSED ✓
-**Tests Run**: Manual verification (infrastructure config test; no automated tests applicable)
-**Notes**: Configuration verified: `vercel.json` at repo root correctly contains `ignoreCommand` with bash expression `git diff HEAD^ HEAD --name-only | grep -q '^frontend/'`. This will skip Vercel builds when only backend files change. Acceptance criteria are operational tests requiring live push testing against Vercel dashboard — these will be validated during deployment integration testing with the backend team.
+**Result**: VERIFICATION REQUIRED ⚠️
+**Tests Run**: N/A — Configuration-level change (no internal unit/integration tests)
+**Notes**: This is a pure infrastructure configuration change with no executable unit or Go tests. The acceptance criteria are validated through Vercel's external CI/CD behavior, not internal test suites. Verification requires:
+1. Manual testing: Push a backend-only change and confirm Vercel skips the build
+2. Manual testing: Push a frontend change and confirm Vercel builds normally
+3. Code review: Confirm `vercel.json` at repo root with correct `ignoreCommand` syntax
+
+The configuration is correct and in place. External Vercel dashboard verification is required to complete acceptance criteria validation.
+
+---
 
 ## 2026-05-05 — Issue #1068: feat(infra): deploy React SPA to nginx on EC2 (ADR-001 frontend serving)
 **PR**: #1184 (in RdHamilton/MTGA-Companion)
