@@ -111,14 +111,11 @@ env:
 ```
 Without these, CI cannot resolve the private module and the build will fail.
 
-## Architect Review (Required Before Push)
+## Lead Engineer Review (Required Before Push)
 
-After all pre-PR checks pass, **before running `git push`**, request an architect review:
+After all pre-PR checks pass, **before running `git push`**, the lead engineer review runs automatically via the `PreToolUse` hook. You do not need to invoke it manually — it fires on every `git push` command.
 
-1. Capture the full diff: `git diff $(git merge-base HEAD origin/main)..HEAD`
-2. Invoke the architect agent with the diff and ask it to review for: ADR compliance, direct DB writes from the daemon (not allowed — all persistence via BFF), missing BFF auth, `go.work` local `replace` directives, and missing tests
-3. **Do not push until the architect responds with `APPROVED`**
-4. If the architect raises issues, fix them, re-run all pre-PR checks, and re-request review
+If the review is `BLOCKED`, fix the flagged issues, re-run all pre-PR checks, and push again. Do not bypass the hook.
 
 ## Finding Your Next Ticket
 

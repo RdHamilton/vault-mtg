@@ -98,14 +98,11 @@ npm run test:run              # all component tests must pass
 
 If any command fails, fix the issue first. Do not open the PR until all checks pass.
 
-## Architect Review (Required Before Push)
+## Lead Engineer Review (Required Before Push)
 
-After all pre-PR checks pass, **before running `git push`**, request an architect review:
+After all pre-PR checks pass, **before running `git push`**, the lead engineer review runs automatically via the `PreToolUse` hook. You do not need to invoke it manually — it fires on every `git push` command.
 
-1. Capture the full diff: `git diff $(git merge-base HEAD origin/main)..HEAD`
-2. Invoke the architect agent with the diff and ask it to review for: ADR compliance, direct `fetch` calls outside the adapter layer, WebSocket usage, and missing tests
-3. **Do not push until the architect responds with `APPROVED`**
-4. If the architect raises issues, fix them, re-run all pre-PR checks, and re-request review
+If the review is `BLOCKED`, fix the flagged issues, re-run all pre-PR checks, and push again. Do not bypass the hook.
 
 ## Serving (EC2 + nginx)
 
