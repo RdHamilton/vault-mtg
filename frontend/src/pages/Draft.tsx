@@ -1126,9 +1126,7 @@ const Draft: React.FC = () => {
                     </div>
 
                     {/* Color Win Rates from BFF */}
-                    {state.colorRatings.length > 0 && (
-                        <ColorRatingsPanel colorRatings={state.colorRatings} />
-                    )}
+                    <ColorRatingsPanel colorRatings={state.colorRatings} />
 
                     {/* Tier List */}
                     <TierList

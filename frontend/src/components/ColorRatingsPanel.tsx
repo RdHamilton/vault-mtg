@@ -84,7 +84,7 @@ const ColorRatingsPanel: React.FC<ColorRatingsPanelProps> = ({ colorRatings }) =
               <span className="color-name">{colorLabel(cr.color_combination)}</span>
               <span className={`win-rate ${cls}`}>{pct}%</span>
               {cr.games_played !== undefined && (
-                <span className="games-played">({cr.games_played.toLocaleString()} games)</span>
+                <span className="games-played">({cr.games_played.toLocaleString('en-US')} games)</span>
               )}
             </div>
           );

@@ -482,6 +482,9 @@ export function resetMocks() {
   Object.values(mockStandard).forEach((mock) => {
     if (vi.isMockFunction(mock)) mock.mockClear();
   });
+  Object.values(mockBffDraftRatings).forEach((mock) => {
+    if (vi.isMockFunction(mock)) mock.mockClear();
+  });
   Object.values(mockWailsApp).forEach((mock) => {
     if (vi.isMockFunction(mock)) mock.mockClear();
   });

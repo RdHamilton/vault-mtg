@@ -86,4 +86,18 @@ describe('ColorRatingsPanel', () => {
     const row = screen.getByTestId('color-rating-UB');
     expect(row).toHaveClass('wr-below');
   });
+
+  it('applies wr-good class to win rates 54–57%', () => {
+    const good: BffColorRating[] = [{ color_combination: 'BR', win_rate: 0.541 }];
+    render(<ColorRatingsPanel colorRatings={good} />);
+    const row = screen.getByTestId('color-rating-BR');
+    expect(row).toHaveClass('wr-good');
+  });
+
+  it('applies wr-average class to win rates 50–54%', () => {
+    const avg: BffColorRating[] = [{ color_combination: 'WG', win_rate: 0.52 }];
+    render(<ColorRatingsPanel colorRatings={avg} />);
+    const row = screen.getByTestId('color-rating-WG');
+    expect(row).toHaveClass('wr-average');
+  });
 });
