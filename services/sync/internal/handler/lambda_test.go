@@ -2,7 +2,10 @@ package handler_test
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/json"
 	"errors"
+	"fmt"
 	"testing"
 	"time"
 
@@ -42,12 +45,23 @@ type stubStore struct {
 	upserted             []draftdata.SetRatings
 	upsertFn             func(setCode string) error
 	upsertedColorRatings []stubColorUpsert
+
+	// hash support -- populate storedHashes to simulate existing stored hashes.
+	storedHashes []stubSetHashCall
+	hashGetErr   error
+	hashSetErr   error
+	setHashCalls []stubSetHashCall
 }
 
 type stubColorUpsert struct {
 	setCode     string
 	draftFormat string
 	ratings     []seventeenlands.ColorRating
+}
+
+type stubSetHashCall struct {
+	key  string
+	hash string
 }
 
 func (s *stubStore) GetActiveSets(_ context.Context) ([]string, error) {
@@ -75,11 +89,23 @@ func (s *stubStore) UpsertColorRatings(_ context.Context, setCode, draftFormat s
 	return nil
 }
 
-func (s *stubStore) GetHash(_ context.Context, _ string) (string, error) {
+func (s *stubStore) GetHash(_ context.Context, key string) (string, error) {
+	if s.hashGetErr != nil {
+		return "", s.hashGetErr
+	}
+	for _, h := range s.storedHashes {
+		if h.key == key {
+			return h.hash, nil
+		}
+	}
 	return "", nil
 }
 
-func (s *stubStore) SetHash(_ context.Context, _ string, _ string) error {
+func (s *stubStore) SetHash(_ context.Context, key, hash string) error {
+	if s.hashSetErr != nil {
+		return s.hashSetErr
+	}
+	s.setHashCalls = append(s.setHashCalls, stubSetHashCall{key, hash})
 	return nil
 }
 
@@ -98,7 +124,7 @@ func TestHandle_WithOverrideSets(t *testing.T) {
 	err := h.Handle(context.Background(), nil)
 
 	require.NoError(t, err)
-	// 2 sets × 1 format = 2 card-rating calls.
+	// 2 sets x 1 format = 2 card-rating calls.
 	assert.Equal(t, 2, fetcher.called)
 	require.Len(t, store.upserted, 2)
 	setCodes := map[string]bool{}
@@ -121,7 +147,7 @@ func TestHandle_WithDBSets(t *testing.T) {
 	err := h.Handle(context.Background(), nil)
 
 	require.NoError(t, err)
-	// 1 set × 1 format = 1 call.
+	// 1 set x 1 format = 1 call.
 	assert.Equal(t, 1, fetcher.called)
 	require.Len(t, store.upserted, 1)
 	for _, u := range store.upserted {
@@ -166,14 +192,14 @@ func TestHandle_FetchErrorContinues(t *testing.T) {
 	}
 
 	store := &stubStore{}
-	// Use a single format so call counts are deterministic: 2 sets × 1 format = 2 calls.
+	// Use a single format so call counts are deterministic: 2 sets x 1 format = 2 calls.
 	h := handler.NewWithFormats(custom, store, []string{"SET1", "SET2"}, []string{"PremierDraft"})
 	err := h.Handle(context.Background(), nil)
 
 	require.NoError(t, err)
-	// 2 sets × 1 format = 2 card-fetch calls.
+	// 2 sets x 1 format = 2 card-fetch calls.
 	assert.Equal(t, 2, custom.called)
-	// Only SET2 should have been upserted (once — single format).
+	// Only SET2 should have been upserted (once -- single format).
 	require.Len(t, store.upserted, 1)
 	for _, u := range store.upserted {
 		assert.Equal(t, "SET2", u.SetCode)
@@ -189,7 +215,7 @@ func TestHandle_EmptyCardsSkipsUpsert(t *testing.T) {
 	err := h.Handle(context.Background(), nil)
 
 	require.NoError(t, err)
-	assert.Equal(t, 1, fetcher.called) // 1 set × 1 format
+	assert.Equal(t, 1, fetcher.called) // 1 set x 1 format
 	assert.Empty(t, store.upserted)
 }
 
@@ -212,12 +238,12 @@ func TestHandle_UpsertErrorContinues(t *testing.T) {
 		},
 	}
 
-	// Single format so upsert count is deterministic: 2 sets × 1 format = 2 upsert calls.
+	// Single format so upsert count is deterministic: 2 sets x 1 format = 2 upsert calls.
 	h := handler.NewWithFormats(fetcher, store, []string{"SET1", "SET2"}, []string{"PremierDraft"})
 	err := h.Handle(context.Background(), nil)
 
 	require.NoError(t, err)
-	// 2 sets × 1 format = 2 upsert attempts.
+	// 2 sets x 1 format = 2 upsert attempts.
 	assert.Equal(t, 2, upsertCalls)
 	// Only SET2 row succeeds (1 format).
 	require.Len(t, upserted, 1)
@@ -258,9 +284,9 @@ func TestHandle_ColorRatingsFetchedAndStored(t *testing.T) {
 	err := h.Handle(context.Background(), nil)
 
 	require.NoError(t, err)
-	// Card ratings: 1 set × 2 formats = 2 fetches.
+	// Card ratings: 1 set x 2 formats = 2 fetches.
 	assert.Equal(t, 2, fetcher.called)
-	// Color ratings: 1 set × 2 formats = 2 fetches.
+	// Color ratings: 1 set x 2 formats = 2 fetches.
 	assert.Equal(t, 2, fetcher.colorsCalled)
 	// Both persisted.
 	assert.Len(t, store.upserted, 2)
@@ -309,13 +335,13 @@ func TestHandle_FetchedAtIsNonZero(t *testing.T) {
 	require.Len(t, store.upserted, 1)
 
 	sr := store.upserted[0]
-	assert.False(t, sr.FetchedAt.IsZero(), "FetchedAt must not be zero — cached_at would be 0001-01-01 in Postgres")
+	assert.False(t, sr.FetchedAt.IsZero(), "FetchedAt must not be zero -- cached_at would be 0001-01-01 in Postgres")
 	assert.True(t, sr.FetchedAt.After(before) || sr.FetchedAt.Equal(before),
 		"FetchedAt should be >= time before Handle was called")
 }
 
 // TestHandle_MultiFormat_AllFormatsPerSet verifies that each (set, format) pair is
-// fetched independently — the core behaviour introduced by #1123.
+// fetched independently -- the core behaviour introduced by #1123.
 func TestHandle_MultiFormat_AllFormatsPerSet(t *testing.T) {
 	fetcher := &formatTrackingFetcher{
 		cards: []seventeenlands.CardRating{{Name: "Lightning Bolt", ALSA: 1.5}},
@@ -327,7 +353,7 @@ func TestHandle_MultiFormat_AllFormatsPerSet(t *testing.T) {
 	err := h.Handle(context.Background(), nil)
 
 	require.NoError(t, err)
-	// 1 set × 2 formats = 2 fetch calls.
+	// 1 set x 2 formats = 2 fetch calls.
 	assert.Equal(t, 2, fetcher.called)
 	// Both formats should be persisted.
 	require.Len(t, store.upserted, 2)
@@ -349,7 +375,7 @@ func TestHandle_MultiFormat_MultipleSetsCrossFormats(t *testing.T) {
 	err := h.Handle(context.Background(), nil)
 
 	require.NoError(t, err)
-	// 3 sets × 2 formats = 6 fetch calls.
+	// 3 sets x 2 formats = 6 fetch calls.
 	assert.Equal(t, 6, fetcher.called)
 	require.Len(t, store.upserted, 6)
 
@@ -397,7 +423,7 @@ func TestHandle_SyncFormatsEnvVar(t *testing.T) {
 	err := h.Handle(context.Background(), nil)
 
 	require.NoError(t, err)
-	// 1 set × 3 formats (from env) = 3 fetch calls.
+	// 1 set x 3 formats (from env) = 3 fetch calls.
 	assert.Equal(t, 3, fetcher.called)
 	require.Len(t, store.upserted, 3)
 	gotFormats := make([]string, len(store.upserted))
@@ -405,6 +431,116 @@ func TestHandle_SyncFormatsEnvVar(t *testing.T) {
 		gotFormats[i] = sr.DraftFormat
 	}
 	assert.ElementsMatch(t, []string{"PremierDraft", "QuickDraft", "Sealed"}, gotFormats)
+}
+
+// --- hash delta-skip tests ---
+
+// TestHandle_HashMatch_SkipSync verifies that when the stored hash matches the
+// computed hash of fetched card ratings, the upsert is skipped and SetHash is
+// NOT called again.
+func TestHandle_HashMatch_SkipSync(t *testing.T) {
+	cards := []seventeenlands.CardRating{{Name: "Lightning Bolt", ALSA: 1.5}}
+	rawBytes, err := json.Marshal(cards)
+	require.NoError(t, err)
+	existingHash := fmt.Sprintf("%x", sha256.Sum256(rawBytes))
+
+	fetcher := &stubFetcher{cards: cards}
+	store := &stubStore{
+		storedHashes: []stubSetHashCall{
+			{key: "FDN/PremierDraft", hash: existingHash},
+		},
+	}
+
+	h := handler.NewWithFormats(fetcher, store, []string{"FDN"}, []string{"PremierDraft"})
+	err = h.Handle(context.Background(), nil)
+
+	require.NoError(t, err)
+	// Fetch still happens (we need the data to compute the hash).
+	assert.Equal(t, 1, fetcher.called)
+	// Upsert must be skipped.
+	assert.Empty(t, store.upserted, "UpsertRatings must not be called when hash matches")
+	// SetHash must NOT be called.
+	assert.Empty(t, store.setHashCalls, "SetHash must not be called when hash matches")
+}
+
+// TestHandle_HashDifferent_SyncProceeds verifies that when the stored hash differs
+// from the newly computed hash, the sync proceeds and SetHash IS called with the
+// new hash.
+func TestHandle_HashDifferent_SyncProceeds(t *testing.T) {
+	cards := []seventeenlands.CardRating{{Name: "Island", ALSA: 8.0}}
+	rawBytes, err := json.Marshal(cards)
+	require.NoError(t, err)
+	newHash := fmt.Sprintf("%x", sha256.Sum256(rawBytes))
+
+	fetcher := &stubFetcher{cards: cards}
+	store := &stubStore{
+		storedHashes: []stubSetHashCall{
+			{key: "FDN/PremierDraft", hash: "stale-hash-from-previous-run"},
+		},
+	}
+
+	h := handler.NewWithFormats(fetcher, store, []string{"FDN"}, []string{"PremierDraft"})
+	err = h.Handle(context.Background(), nil)
+
+	require.NoError(t, err)
+	// Sync must proceed.
+	require.Len(t, store.upserted, 1, "UpsertRatings must be called when hash differs")
+	// SetHash must be called with the new hash.
+	require.Len(t, store.setHashCalls, 1, "SetHash must be called after successful upsert")
+	assert.Equal(t, "FDN/PremierDraft", store.setHashCalls[0].key)
+	assert.Equal(t, newHash, store.setHashCalls[0].hash)
+}
+
+// TestHandle_NoStoredHash_SyncProceeds verifies that on first run (empty stored hash)
+// the sync proceeds and SetHash is called to seed the initial hash.
+func TestHandle_NoStoredHash_SyncProceeds(t *testing.T) {
+	cards := []seventeenlands.CardRating{{Name: "Plains", ALSA: 9.0}}
+	rawBytes, err := json.Marshal(cards)
+	require.NoError(t, err)
+	expectedHash := fmt.Sprintf("%x", sha256.Sum256(rawBytes))
+
+	fetcher := &stubFetcher{cards: cards}
+	store := &stubStore{} // no storedHashes -- simulates first run
+
+	h := handler.NewWithFormats(fetcher, store, []string{"BLB"}, []string{"QuickDraft"})
+	err = h.Handle(context.Background(), nil)
+
+	require.NoError(t, err)
+	// Sync must proceed.
+	require.Len(t, store.upserted, 1, "UpsertRatings must be called on first run")
+	// SetHash must seed the initial hash.
+	require.Len(t, store.setHashCalls, 1, "SetHash must be called to seed hash on first run")
+	assert.Equal(t, "BLB/QuickDraft", store.setHashCalls[0].key)
+	assert.Equal(t, expectedHash, store.setHashCalls[0].hash)
+}
+
+// TestHandle_HashDeterministicAcrossOrdering verifies that two identical card sets
+// in different order produce the same stored hash. This is AC #2 of #1100: the hash
+// must be computed on a sorted (by MtgaID ascending) payload so that API response
+// ordering does not affect whether a sync is skipped.
+func TestHandle_HashDeterministicAcrossOrdering(t *testing.T) {
+	// Two cards defined in ascending MtgaID order.
+	cardA := seventeenlands.CardRating{MtgaID: 100, Name: "Lightning Bolt", ALSA: 1.5}
+	cardB := seventeenlands.CardRating{MtgaID: 200, Name: "Island", ALSA: 8.0}
+
+	// First run: cards arrive in ascending order.
+	fetcherAsc := &stubFetcher{cards: []seventeenlands.CardRating{cardA, cardB}}
+	storeAsc := &stubStore{}
+	h1 := handler.NewWithFormats(fetcherAsc, storeAsc, []string{"FDN"}, []string{"PremierDraft"})
+	require.NoError(t, h1.Handle(context.Background(), nil))
+	require.Len(t, storeAsc.setHashCalls, 1, "SetHash must be called on first run")
+	hashAsc := storeAsc.setHashCalls[0].hash
+
+	// Second run: same cards but in descending order (reversed).
+	fetcherDesc := &stubFetcher{cards: []seventeenlands.CardRating{cardB, cardA}}
+	storeDesc := &stubStore{}
+	h2 := handler.NewWithFormats(fetcherDesc, storeDesc, []string{"FDN"}, []string{"PremierDraft"})
+	require.NoError(t, h2.Handle(context.Background(), nil))
+	require.Len(t, storeDesc.setHashCalls, 1, "SetHash must be called on first run")
+	hashDesc := storeDesc.setHashCalls[0].hash
+
+	assert.Equal(t, hashAsc, hashDesc,
+		"hash must be identical regardless of API response ordering (sorted by MtgaID before hashing)")
 }
 
 // --- helpers ---
