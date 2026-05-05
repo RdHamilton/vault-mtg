@@ -1,0 +1,16 @@
+{
+  "name": "mtga-orchestrator",
+  "version": "1.0.0",
+  "type": "module",
+  "scripts": {
+    "manager": "tsx orchestrate.ts"
+  },
+  "dependencies": {
+    "@anthropic-ai/claude-agent-sdk": "^0.2.128"
+  },
+  "devDependencies": {
+    "@types/node": "^25.6.0",
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.2"
+  }
+}

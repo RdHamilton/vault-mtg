@@ -11,6 +11,44 @@ This is the system-wide record of all changes made across the project. Every age
 **Summary**: One sentence summary of what was done and why.
 -->
 
+## 2026-05-05 — [backend-engineer] Issue #1130: fix(sync): expand Scryfall filter to include alchemy, masters, and draft_innovation sets
+**PR**: #1189
+**Files changed**:
+- `services/bff/internal/storage/migrations/postgres/000062_add_is_draft_active.down.sql` — migration rollback: drop is_draft_active column
+- `services/bff/internal/storage/migrations/postgres/000062_add_is_draft_active.up.sql` — migration: add is_draft_active column to sets table with backfill from is_standard_legal
+- `services/sync/internal/datasets/postgres_store.go` — updated UpsertSets to set is_draft_active=TRUE; updated GetActiveSets to query is_draft_active=TRUE
+- `services/sync/internal/datasets/store.go` — updated Store interface signatures for is_draft_active column
+- `services/sync/internal/scryfall/client.go` — added isDraftableSetType helper covering expansion, core, masters, draft_innovation, alchemy
+- `services/sync/internal/scryfall/client_test.go` — updated and added tests for all 5 draftable set types and excluded types
+**Summary**: Expanded the Scryfall set filter to cover all Arena-draftable set types (masters, draft_innovation, alchemy) and added a dedicated is_draft_active column to separate draft availability from Standard legality.
+
+## 2026-05-04 — [backend-engineer] Issue #1135: fix(sync): wire color ratings fetch into scheduler and Lambda handler
+**PR**: #1191
+**Files changed**:
+- `services/sync/internal/seventeenlands/rating.go` — added ColorRating struct
+- `services/sync/internal/seventeenlands/client.go` — added FetchColorRatings method
+- `services/sync/internal/seventeenlands/client_test.go` — unit tests for FetchColorRatings
+- `services/sync/internal/datasets/store.go` — added UpsertColorRatings to Store interface
+- `services/sync/internal/datasets/postgres_store.go` — implemented UpsertColorRatings with DELETE + batch INSERT
+- `services/sync/internal/datasets/postgres_store_test.go` — updated stubs and added tests
+- `services/sync/internal/refresh/scheduler.go` — wired color ratings fetch after card ratings per set/format
+- `services/sync/internal/refresh/scheduler_test.go` — scheduler color ratings tests
+- `services/sync/internal/handler/lambda.go` — wired color ratings fetch into Lambda handler
+- `services/sync/internal/handler/lambda_test.go` — Lambda color ratings tests
+**Summary**: Wired the color ratings fetch (17Lands /color_ratings/data) into both the scheduler and Lambda handler so draft_color_ratings are populated after each card ratings sync run for every active set and format.
+
+## 2026-05-05 — [architect] PR #1200: fix: replace integer 0/1 with FALSE/TRUE in E2E fixtures
+**PR**: #1200
+**Files changed**:
+- `frontend/tests/e2e/fixtures/test-data.sql` — replaced integer 0/1 literals with FALSE/TRUE for boolean columns (is_standard_legal, rotation_enabled, from_draft_pick, completed, can_swap) to fix SQLSTATE 42804 crash on PostgreSQL 16
+**Summary**: Fixed E2E smoke test startup crash caused by PostgreSQL 16 rejecting integer literals for boolean columns; updated all affected boolean columns in the test fixture SQL while intentionally leaving accounts.is_default as integer (non-boolean column).
+
+## 2026-05-05 — [infrastructure] Issue #1068: feat(infra): deploy React SPA to nginx on EC2 (ADR-001 frontend serving)
+**PR**: #1184 (in RdHamilton/MTGA-Companion)
+**Files changed**:
+- `.github/workflows/frontend.yml` — new workflow: builds React/Vite SPA and deploys dist/ to EC2 nginx webroot via S3 + SSM with atomic staging-dir swap
+**Summary**: Added the frontend deploy workflow that builds the SPA with VITE_BFF_URL=/api/v1 and atomically deploys it to /var/www/mtga-companion/ on EC2 via SSM RunShellScript, completing ADR-001 frontend serving without any nginx config changes.
+
 ## 2026-05-04 — [architect] Issue #1025: Vercel→BFF connectivity ADR and CORS update
 **PR**: #1174 (merged)
 **ADR**: N/A
