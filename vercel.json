@@ -1,4 +1,4 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
-  "ignoreCommand": "git diff HEAD^ HEAD --name-only | grep -q '^frontend/'"
+  "ignoreCommand": "! git describe --exact-match --tags HEAD 2>/dev/null | grep -q '^v'"
 }
