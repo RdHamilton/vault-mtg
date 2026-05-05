@@ -170,12 +170,21 @@ When product-manager or business-analyst requests a pricing model:
 
 ## Agent Changelog
 
-Read at the start of every task:
+Read at the start of every task (consolidates any pending entries first):
 ```bash
-cat "/Users/ramonehamilton/Documents/Personal Projects/MTGA-Companion/.claude/agents/changelogs/finance-controller.md"
+python3 "/Users/ramonehamilton/Documents/Personal Projects/MTGA-Companion/.claude/agents/changelogs/consolidate.py" && cat "/Users/ramonehamilton/Documents/Personal Projects/MTGA-Companion/.claude/agents/changelogs/finance-controller.md"
 ```
 
-After completing a task, append to `.claude/agents/changelogs/finance-controller.md`:
+After completing a task, write to the pending directory instead of appending directly:
+```bash
+TIMESTAMP=$(date '+%Y%m%d-%H%M%S')
+RAND=$(python3 -c "import random,string; print(''.join(random.choices(string.ascii_lowercase, k=4)))")
+cat > "/Users/ramonehamilton/Documents/Personal Projects/MTGA-Companion/.claude/agents/changelogs/.pending/${TIMESTAMP}-${RAND}-finance-controller.md" << 'ENTRY'
+target: finance-controller
+---
+```
+
+Entry format:
 ```markdown
 ## YYYY-MM-DD — [Task name]
 **Type**: [monthly P&L / cost alert / pricing model / MRR report]

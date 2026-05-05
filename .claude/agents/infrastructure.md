@@ -211,21 +211,24 @@ gh api graphql -f query='mutation { updateProjectV2ItemFieldValue(input: { proje
 
 Your changelog records every task you have completed. It is your institutional memory — read it before starting any task.
 
-**Read at the start of every task:**
+**Read at the start of every task (consolidates any pending entries first):**
 ```bash
-cat /Users/ramonehamilton/Documents/Personal\ Projects/MTGA-Companion/.claude/agents/changelogs/infrastructure.md
+python3 "/Users/ramonehamilton/Documents/Personal Projects/MTGA-Companion/.claude/agents/changelogs/consolidate.py" && cat "/Users/ramonehamilton/Documents/Personal Projects/MTGA-Companion/.claude/agents/changelogs/infrastructure.md"
 ```
 
-**After completing a task** (after opening the PR), append to:
-`.claude/agents/changelogs/infrastructure.md` in the MTGA-Companion repo
-
-Use this format:
-```markdown
+**After completing a task** (after opening the PR), write to the pending directory instead of appending directly — this avoids concurrent write conflicts:
+```bash
+TIMESTAMP=$(date '+%Y%m%d-%H%M%S')
+RAND=$(python3 -c "import random,string; print(''.join(random.choices(string.ascii_lowercase, k=4)))")
+cat > "/Users/ramonehamilton/Documents/Personal Projects/MTGA-Companion/.claude/agents/changelogs/.pending/${TIMESTAMP}-${RAND}-infrastructure.md" << 'ENTRY'
+target: infrastructure
+---
 ## YYYY-MM-DD — Issue #NNN: <title>
 **PR**: #NNN (in RdHamilton/mtga-companion-infra)
 **Files changed**:
 - `path/to/file` — short description
 **Summary**: One sentence summary of what was done and why.
+ENTRY
 ```
 
 ## Rules

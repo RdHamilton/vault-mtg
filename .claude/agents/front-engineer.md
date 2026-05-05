@@ -139,25 +139,25 @@ gh api graphql -f query='mutation { updateProjectV2ItemFieldValue(input: { proje
 
 Your changelog records every task you have completed. It is your institutional memory — read it before starting any task so you understand what has already been built and why.
 
-**Read at the start of every task:**
+**Read at the start of every task (consolidates any pending entries first):**
 ```bash
-cat .claude/agents/changelogs/front-engineer.md
+python3 "/Users/ramonehamilton/Documents/Personal Projects/MTGA-Companion/.claude/agents/changelogs/consolidate.py" && cat "/Users/ramonehamilton/Documents/Personal Projects/MTGA-Companion/.claude/agents/changelogs/front-engineer.md"
 ```
 
-**After completing a task** (after opening the PR), append the same entry to BOTH files:
-1. `.claude/agents/changelogs/front-engineer.md` — your own record
-2. `.claude/agents/changelogs/architect.md` — the system-wide record the architect uses
-
-Use this format in both files (prefix `[front-engineer]` in the architect changelog):
-```markdown
-## YYYY-MM-DD — [front-engineer] Issue #NNN: <title>
+**After completing a task** (after opening the PR), write to the pending directory instead of appending directly — this avoids concurrent write conflicts:
+```bash
+TIMESTAMP=$(date '+%Y%m%d-%H%M%S')
+RAND=$(python3 -c "import random,string; print(''.join(random.choices(string.ascii_lowercase, k=4)))")
+cat > "/Users/ramonehamilton/Documents/Personal Projects/MTGA-Companion/.claude/agents/changelogs/.pending/${TIMESTAMP}-${RAND}-front-engineer.md" << 'ENTRY'
+target: front-engineer
+---
+## YYYY-MM-DD — Issue #NNN: <title>
 **PR**: #NNN
 **Files changed**:
 - `path/to/file.tsx` — short description of change
 **Summary**: One sentence summary of what was done and why.
+ENTRY
 ```
-
-Use the Write or Edit tool to append — never overwrite existing entries in either file.
 
 ## Rules
 
