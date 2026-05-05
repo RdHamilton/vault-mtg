@@ -1,0 +1,111 @@
+name: Deploy Frontend to EC2
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'frontend/**'
+      - '.github/workflows/frontend.yml'
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+  id-token: write  # required for OIDC-based AWS auth
+
+jobs:
+  build-and-deploy:
+    name: Build and Deploy React SPA
+    runs-on: ubuntu-latest
+    environment: production
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+        working-directory: frontend
+
+      - name: Build React SPA
+        run: npm run build
+        working-directory: frontend
+        env:
+          # When served from EC2, nginx proxies /api/v1 to the BFF on the same host.
+          # Using a relative path means no CORS and no hardcoded domain.
+          VITE_BFF_URL: /api/v1
+
+      - name: Package dist as tarball
+        run: tar -czf frontend-dist.tar.gz -C frontend/dist .
+
+      - name: Configure AWS credentials (OIDC)
+        uses: aws-actions/configure-aws-credentials@v6
+        with:
+          role-to-assume: ${{ secrets.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: us-east-1
+
+      - name: Upload dist tarball to S3
+        run: |
+          aws s3 cp frontend-dist.tar.gz \
+            s3://${{ secrets.DEPLOY_BUCKET }}/frontend/${{ github.sha }}/frontend-dist.tar.gz
+
+      - name: Deploy to EC2 via SSM
+        run: |
+          COMMAND_ID=$(aws ssm send-command \
+            --instance-ids "${{ secrets.EC2_INSTANCE_ID }}" \
+            --document-name "AWS-RunShellScript" \
+            --parameters 'commands=[
+              "set -e",
+              "DEPLOY_DIR=/var/www/mtga-companion",
+              "STAGING_DIR=/var/www/mtga-companion-staging",
+              "BUCKET=${{ secrets.DEPLOY_BUCKET }}",
+              "SHA=${{ github.sha }}",
+              "rm -rf \"$STAGING_DIR\" && mkdir -p \"$STAGING_DIR\"",
+              "aws s3 cp \"s3://$BUCKET/frontend/$SHA/frontend-dist.tar.gz\" /tmp/frontend-dist.tar.gz",
+              "tar -xzf /tmp/frontend-dist.tar.gz -C \"$STAGING_DIR\"",
+              "rm -rf \"${DEPLOY_DIR}.old\"",
+              "[ -d \"$DEPLOY_DIR\" ] && mv \"$DEPLOY_DIR\" \"${DEPLOY_DIR}.old\" || true",
+              "mv \"$STAGING_DIR\" \"$DEPLOY_DIR\"",
+              "chown -R nginx:nginx \"$DEPLOY_DIR\"",
+              "chmod -R 755 \"$DEPLOY_DIR\"",
+              "nginx -t && systemctl reload nginx",
+              "rm -f /tmp/frontend-dist.tar.gz",
+              "echo \"Frontend deploy complete: $SHA\""
+            ]' \
+            --region us-east-1 \
+            --query "Command.CommandId" \
+            --output text)
+
+          echo "SSM Command ID: $COMMAND_ID"
+
+          for i in $(seq 1 30); do
+            STATUS=$(aws ssm get-command-invocation \
+              --command-id "$COMMAND_ID" \
+              --instance-id "${{ secrets.EC2_INSTANCE_ID }}" \
+              --region us-east-1 \
+              --query "Status" \
+              --output text 2>/dev/null || echo "Pending")
+            echo "[$i/30] Status: $STATUS"
+            if [ "$STATUS" = "Success" ]; then
+              echo "Frontend deployment succeeded."
+              exit 0
+            elif [ "$STATUS" = "Failed" ] || [ "$STATUS" = "Cancelled" ] || [ "$STATUS" = "TimedOut" ]; then
+              echo "Frontend deployment failed with status: $STATUS"
+              aws ssm get-command-invocation \
+                --command-id "$COMMAND_ID" \
+                --instance-id "${{ secrets.EC2_INSTANCE_ID }}" \
+                --region us-east-1 \
+                --query "StandardErrorContent" \
+                --output text
+              exit 1
+            fi
+            sleep 10
+          done
+          echo "Timed out waiting for SSM command"
+          exit 1

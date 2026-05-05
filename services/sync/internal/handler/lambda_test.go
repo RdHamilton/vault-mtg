@@ -79,13 +79,14 @@ func (s *stubStore) UpsertColorRatings(_ context.Context, setCode, draftFormat s
 var _ datasets.Store = (*stubStore)(nil)
 
 // TestHandle_WithOverrideSets verifies that override sets bypass the DB.
+// Uses a single explicit format so the assertion counts are deterministic.
 func TestHandle_WithOverrideSets(t *testing.T) {
 	fetcher := &stubFetcher{
 		cards: []seventeenlands.CardRating{{Name: "Lightning Bolt", ALSA: 1.5}},
 	}
 	store := &stubStore{}
 
-	h := handler.New(fetcher, store, []string{"FDN", "BLB"})
+	h := handler.NewWithFormats(fetcher, store, []string{"FDN", "BLB"}, []string{"PremierDraft"})
 	err := h.Handle(context.Background(), nil)
 
 	require.NoError(t, err)
@@ -108,7 +109,7 @@ func TestHandle_WithDBSets(t *testing.T) {
 	}
 	store := &stubStore{dbSets: []string{"DSK"}}
 
-	h := handler.New(fetcher, store, nil)
+	h := handler.NewWithFormats(fetcher, store, nil, []string{"PremierDraft"})
 	err := h.Handle(context.Background(), nil)
 
 	require.NoError(t, err)
@@ -148,21 +149,17 @@ func TestHandle_GetActiveSetsError(t *testing.T) {
 // TestHandle_FetchErrorContinues verifies that a fetch failure for one set does not
 // abort the remaining sets.
 func TestHandle_FetchErrorContinues(t *testing.T) {
-	callCount := 0
-	fetcher := &stubFetcher{}
-	fetcher.err = nil
-	// Return an error only on the first call using a custom stubFetcher that
-	// counts calls.
+	// Return an error only for SET1; SET2 returns valid cards.
 	custom := &countingFetcher{
 		results: map[string]fetchResult{
 			"SET1": {err: errors.New("upstream timeout")},
 			"SET2": {cards: []seventeenlands.CardRating{{Name: "Island", ALSA: 8.0}}},
 		},
 	}
-	_ = callCount
 
 	store := &stubStore{}
-	h := handler.New(custom, store, []string{"SET1", "SET2"})
+	// Use a single format so call counts are deterministic: 2 sets × 1 format = 2 calls.
+	h := handler.NewWithFormats(custom, store, []string{"SET1", "SET2"}, []string{"PremierDraft"})
 	err := h.Handle(context.Background(), nil)
 
 	require.NoError(t, err)
@@ -180,7 +177,7 @@ func TestHandle_EmptyCardsSkipsUpsert(t *testing.T) {
 	fetcher := &stubFetcher{cards: []seventeenlands.CardRating{}} // 0 cards
 	store := &stubStore{}
 
-	h := handler.New(fetcher, store, []string{"FDN"})
+	h := handler.NewWithFormats(fetcher, store, []string{"FDN"}, []string{"PremierDraft"})
 	err := h.Handle(context.Background(), nil)
 
 	require.NoError(t, err)
@@ -207,7 +204,8 @@ func TestHandle_UpsertErrorContinues(t *testing.T) {
 		},
 	}
 
-	h := handler.New(fetcher, store, []string{"SET1", "SET2"})
+	// Single format so upsert count is deterministic: 2 sets × 1 format = 2 upsert calls.
+	h := handler.NewWithFormats(fetcher, store, []string{"SET1", "SET2"}, []string{"PremierDraft"})
 	err := h.Handle(context.Background(), nil)
 
 	require.NoError(t, err)
@@ -230,7 +228,7 @@ func TestHandle_ContextCancelled(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel() // cancel immediately
 
-	h := handler.New(fetcher, store, []string{"SET1", "SET2"})
+	h := handler.NewWithFormats(fetcher, store, []string{"SET1", "SET2"}, []string{"PremierDraft"})
 	err := h.Handle(ctx, nil)
 
 	require.ErrorIs(t, err, context.Canceled)
@@ -296,11 +294,11 @@ func TestHandle_FetchedAtIsNonZero(t *testing.T) {
 	}
 	store := &stubStore{}
 
-	h := handler.New(fetcher, store, []string{"BLB"})
+	h := handler.NewWithFormats(fetcher, store, []string{"BLB"}, []string{"PremierDraft"})
 	err := h.Handle(context.Background(), nil)
 
 	require.NoError(t, err)
-	require.Len(t, store.upserted, 2)
+	require.Len(t, store.upserted, 1)
 
 	sr := store.upserted[0]
 	assert.False(t, sr.FetchedAt.IsZero(), "FetchedAt must not be zero — cached_at would be 0001-01-01 in Postgres")
@@ -308,7 +306,117 @@ func TestHandle_FetchedAtIsNonZero(t *testing.T) {
 		"FetchedAt should be >= time before Handle was called")
 }
 
+// TestHandle_MultiFormat_AllFormatsPerSet verifies that each (set, format) pair is
+// fetched independently — the core behaviour introduced by #1123.
+func TestHandle_MultiFormat_AllFormatsPerSet(t *testing.T) {
+	fetcher := &formatTrackingFetcher{
+		cards: []seventeenlands.CardRating{{Name: "Lightning Bolt", ALSA: 1.5}},
+	}
+	store := &stubStore{}
+
+	formats := []string{"PremierDraft", "QuickDraft"}
+	h := handler.NewWithFormats(fetcher, store, []string{"FDN"}, formats)
+	err := h.Handle(context.Background(), nil)
+
+	require.NoError(t, err)
+	// 1 set × 2 formats = 2 fetch calls.
+	assert.Equal(t, 2, fetcher.called)
+	// Both formats should be persisted.
+	require.Len(t, store.upserted, 2)
+	gotFormats := []string{store.upserted[0].DraftFormat, store.upserted[1].DraftFormat}
+	assert.ElementsMatch(t, formats, gotFormats)
+}
+
+// TestHandle_MultiFormat_MultipleSetsCrossFormats verifies that every (set, format)
+// combination is fetched when there are multiple sets and formats.
+func TestHandle_MultiFormat_MultipleSetsCrossFormats(t *testing.T) {
+	fetcher := &formatTrackingFetcher{
+		cards: []seventeenlands.CardRating{{Name: "Island", ALSA: 7.5}},
+	}
+	store := &stubStore{}
+
+	sets := []string{"FDN", "BLB", "DSK"}
+	formats := []string{"PremierDraft", "QuickDraft"}
+	h := handler.NewWithFormats(fetcher, store, sets, formats)
+	err := h.Handle(context.Background(), nil)
+
+	require.NoError(t, err)
+	// 3 sets × 2 formats = 6 fetch calls.
+	assert.Equal(t, 6, fetcher.called)
+	require.Len(t, store.upserted, 6)
+
+	// Verify every (set, format) pair appears exactly once.
+	type pair struct{ set, format string }
+	got := make(map[pair]bool)
+	for _, sr := range store.upserted {
+		got[pair{sr.SetCode, sr.DraftFormat}] = true
+	}
+	for _, s := range sets {
+		for _, f := range formats {
+			assert.True(t, got[pair{s, f}], "expected upsert for set=%s format=%s", s, f)
+		}
+	}
+}
+
+// TestHandle_MultiFormat_DraftFormatStoredCorrectly verifies that the DraftFormat
+// field in SetRatings matches the format that was requested from 17Lands.
+func TestHandle_MultiFormat_DraftFormatStoredCorrectly(t *testing.T) {
+	fetcher := &formatTrackingFetcher{
+		cards: []seventeenlands.CardRating{{Name: "Forest", ALSA: 9.0}},
+	}
+	store := &stubStore{}
+
+	h := handler.NewWithFormats(fetcher, store, []string{"FDN"}, []string{"QuickDraft"})
+	err := h.Handle(context.Background(), nil)
+
+	require.NoError(t, err)
+	require.Len(t, store.upserted, 1)
+	assert.Equal(t, "FDN", store.upserted[0].SetCode)
+	assert.Equal(t, "QuickDraft", store.upserted[0].DraftFormat)
+}
+
+// TestHandle_SyncFormatsEnvVar verifies that SYNC_FORMATS overrides the default
+// format list when handler.New is used (not NewWithFormats).
+func TestHandle_SyncFormatsEnvVar(t *testing.T) {
+	t.Setenv("SYNC_FORMATS", "PremierDraft,QuickDraft,Sealed")
+
+	fetcher := &formatTrackingFetcher{
+		cards: []seventeenlands.CardRating{{Name: "Swamp", ALSA: 8.0}},
+	}
+	store := &stubStore{}
+
+	h := handler.New(fetcher, store, []string{"FDN"})
+	err := h.Handle(context.Background(), nil)
+
+	require.NoError(t, err)
+	// 1 set × 3 formats (from env) = 3 fetch calls.
+	assert.Equal(t, 3, fetcher.called)
+	require.Len(t, store.upserted, 3)
+	gotFormats := make([]string, len(store.upserted))
+	for i, sr := range store.upserted {
+		gotFormats[i] = sr.DraftFormat
+	}
+	assert.ElementsMatch(t, []string{"PremierDraft", "QuickDraft", "Sealed"}, gotFormats)
+}
+
 // --- helpers ---
+
+// formatTrackingFetcher records the (setCode, format) pairs it was called with.
+type formatTrackingFetcher struct {
+	called int
+	calls  []struct{ setCode, format string }
+	cards  []seventeenlands.CardRating
+}
+
+func (f *formatTrackingFetcher) FetchCardRatings(_ context.Context, setCode, format string) ([]seventeenlands.CardRating, error) {
+	f.called++
+	f.calls = append(f.calls, struct{ setCode, format string }{setCode, format})
+	return f.cards, nil
+}
+
+func (f *formatTrackingFetcher) FetchColorRatings(_ context.Context, _, _ string) ([]seventeenlands.ColorRating, error) {
+	return nil, nil
+}
 
 type fetchResult struct {
 	cards []seventeenlands.CardRating

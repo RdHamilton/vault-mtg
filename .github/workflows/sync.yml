@@ -37,6 +37,12 @@ jobs:
           GOPRIVATE: github.com/RdHamilton/MTGA-Companion
         run: go build ./...
 
+      - name: Build Lambda binary (bootstrap)
+        env:
+          GONOSUMDB: github.com/RdHamilton/MTGA-Companion
+          GOPRIVATE: github.com/RdHamilton/MTGA-Companion
+        run: GOOS=linux GOARCH=amd64 go build -o bootstrap ./cmd/lambda/main.go
+
       - name: Test
         env:
           GONOSUMDB: github.com/RdHamilton/MTGA-Companion

@@ -178,7 +178,8 @@ func TestMockStore_ZeroFetchedAt_AcceptedByMock(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, got)
 	assert.Len(t, got.Cards, 1)
-	// Mock stores FetchedAt as-is (zero) — the real defensive default lives in PostgresStore.
+	// FetchedAt in the mock is stored as-is (zero) — the real defensive default
+	// lives in PostgresStore.UpsertRatings and is covered by integration tests.
 	assert.True(t, got.FetchedAt.IsZero(), "mock store stores FetchedAt as provided (zero)")
 }
 
