@@ -5,6 +5,9 @@ package handler
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/json"
+	"fmt"
 	"log"
 	"os"
 	"strings"
@@ -16,7 +19,7 @@ import (
 )
 
 // defaultFormats is the canonical list of 17Lands draft formats synced per set.
-// Sealed is omitted by default — it has far fewer games logged and the data is
+// Sealed is omitted by default -- it has far fewer games logged and the data is
 // lower confidence. Set SYNC_FORMATS to override (e.g. "PremierDraft,QuickDraft,Sealed").
 var defaultFormats = []string{"PremierDraft", "QuickDraft"}
 
@@ -75,7 +78,7 @@ func NewWithFormats(fetcher Fetcher, store datasets.Store, overrideSets, formats
 // Handle is the Lambda handler function. It is invoked by EventBridge Scheduler
 // and performs a single ratings refresh across all active sets and formats.
 //
-// The event payload is ignored — EventBridge scheduled events carry no
+// The event payload is ignored -- EventBridge scheduled events carry no
 // application-level data. Any invocation triggers a full sync.
 func (h *SyncHandler) Handle(ctx context.Context, _ any) error {
 	sets, err := h.activeSets(ctx)
@@ -97,58 +100,95 @@ func (h *SyncHandler) Handle(ctx context.Context, _ any) error {
 				return ctx.Err()
 			}
 
-			ratings, err := h.fetcher.FetchCardRatings(ctx, setCode, format)
-			if err != nil {
-				log.Printf("[sync] fetch %s/%s: %v", setCode, format, err)
-				continue
-			}
-
-			if len(ratings) == 0 {
-				log.Printf("[sync] WARNING: 0 cards returned for %s/%s — set code may not match 17Lands expansion code", setCode, format)
-				continue
-			}
-
-			sr := draftdata.SetRatings{
-				SetCode:     setCode,
-				DraftFormat: format,
-				FetchedAt:   time.Now().UTC(),
-				Cards:       ratings,
-			}
-
-			if err := h.store.UpsertRatings(ctx, sr); err != nil {
-				log.Printf("[sync] upsert %s/%s: %v", setCode, format, err)
-				continue
-			}
-
-			log.Printf("[sync] refreshed %s/%s: %d cards", setCode, format, len(ratings))
-
-			// Fetch and persist per-color-combination win rates. A failure here is
-			// non-fatal — card ratings are already stored and color data is best-effort.
-			if ctx.Err() != nil {
-				return ctx.Err()
-			}
-
-			colorRatings, err := h.fetcher.FetchColorRatings(ctx, setCode, format)
-			if err != nil {
-				log.Printf("[sync] fetch color ratings %s/%s: %v", setCode, format, err)
-				continue
-			}
-
-			if len(colorRatings) == 0 {
-				log.Printf("[sync] no color ratings returned for %s/%s", setCode, format)
-				continue
-			}
-
-			if err := h.store.UpsertColorRatings(ctx, setCode, format, colorRatings); err != nil {
-				log.Printf("[sync] upsert color ratings %s/%s: %v", setCode, format, err)
-				continue
-			}
-
-			log.Printf("[sync] refreshed color ratings %s/%s: %d combinations", setCode, format, len(colorRatings))
+			h.syncSetFormat(ctx, setCode, format)
 		}
 	}
 
 	return nil
+}
+
+// syncSetFormat fetches, hash-checks, and persists card and color ratings for
+// one (setCode, format) pair. All errors are logged and treated as non-fatal so
+// that a single failure does not abort the remaining set/format pairs.
+func (h *SyncHandler) syncSetFormat(ctx context.Context, setCode, format string) {
+	ratings, err := h.fetcher.FetchCardRatings(ctx, setCode, format)
+	if err != nil {
+		log.Printf("[sync] fetch %s/%s: %v", setCode, format, err)
+		return
+	}
+
+	if len(ratings) == 0 {
+		log.Printf("[sync] WARNING: 0 cards returned for %s/%s -- set code may not match 17Lands expansion code", setCode, format)
+		return
+	}
+
+	// Compute a SHA-256 hash of the fetched card ratings. If the data matches
+	// the last stored hash we skip the upsert -- upstream data is unchanged.
+	hashKey := fmt.Sprintf("%s/%s", setCode, format)
+	rawBytes, marshalErr := json.Marshal(ratings)
+	if marshalErr != nil {
+		log.Printf("[sync] marshal %s/%s for hash: %v -- proceeding with sync", setCode, format, marshalErr)
+		rawBytes = nil
+	}
+
+	if rawBytes != nil {
+		newHash := fmt.Sprintf("%x", sha256.Sum256(rawBytes))
+
+		storedHash, hashErr := h.store.GetHash(ctx, hashKey)
+		if hashErr != nil {
+			log.Printf("[sync] get hash %s/%s: %v -- proceeding with sync", setCode, format, hashErr)
+		} else if storedHash == newHash {
+			log.Printf("[sync] skipping sync for %s -- data unchanged", hashKey)
+			return
+		}
+	}
+
+	sr := draftdata.SetRatings{
+		SetCode:     setCode,
+		DraftFormat: format,
+		FetchedAt:   time.Now().UTC(),
+		Cards:       ratings,
+	}
+
+	if err := h.store.UpsertRatings(ctx, sr); err != nil {
+		log.Printf("[sync] upsert %s/%s: %v", setCode, format, err)
+		return
+	}
+
+	log.Printf("[sync] refreshed %s/%s: %d cards", setCode, format, len(ratings))
+
+	// Store the hash after a successful upsert so the next run can skip
+	// unchanged data. A failure here is non-fatal.
+	if rawBytes != nil {
+		newHash := fmt.Sprintf("%x", sha256.Sum256(rawBytes))
+		if hashErr := h.store.SetHash(ctx, hashKey, newHash); hashErr != nil {
+			log.Printf("[sync] set hash %s/%s: %v", setCode, format, hashErr)
+		}
+	}
+
+	// Fetch and persist per-color-combination win rates. A failure here is
+	// non-fatal -- card ratings are already stored and color data is best-effort.
+	if ctx.Err() != nil {
+		return
+	}
+
+	colorRatings, err := h.fetcher.FetchColorRatings(ctx, setCode, format)
+	if err != nil {
+		log.Printf("[sync] fetch color ratings %s/%s: %v", setCode, format, err)
+		return
+	}
+
+	if len(colorRatings) == 0 {
+		log.Printf("[sync] no color ratings returned for %s/%s", setCode, format)
+		return
+	}
+
+	if err := h.store.UpsertColorRatings(ctx, setCode, format, colorRatings); err != nil {
+		log.Printf("[sync] upsert color ratings %s/%s: %v", setCode, format, err)
+		return
+	}
+
+	log.Printf("[sync] refreshed color ratings %s/%s: %d combinations", setCode, format, len(colorRatings))
 }
 
 func (h *SyncHandler) activeSets(ctx context.Context) ([]string, error) {
