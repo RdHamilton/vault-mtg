@@ -116,13 +116,63 @@ Environment variable at build time:
 VITE_API_BASE_URL=https://api.yourdomain.com
 ```
 
+## Manager Reporting Protocol
+
+The manager agent owns queue state and project board updates. You must report to it at every status transition.
+
+**Before starting any ticket**, read the queue file to confirm you are the assigned agent:
+```bash
+cat .claude/manager-queue.json
+```
+If your slot shows a different `current_issue`, stop and report the conflict to the user.
+
+**When you begin work** (immediately on starting a ticket), update your queue entry:
+```bash
+python3 -c "
+import json, datetime
+with open('.claude/manager-queue.json') as f: q = json.load(f)
+q['agents']['frontend']['current_issue'] = <ISSUE_NUMBER>
+q['agents']['frontend']['status'] = 'in_progress'
+q['agents']['frontend']['last_updated'] = datetime.datetime.utcnow().isoformat() + 'Z'
+q['last_updated'] = datetime.datetime.utcnow().isoformat() + 'Z'
+with open('.claude/manager-queue.json', 'w') as f: json.dump(q, f, indent=2)
+print('Queue updated: frontend in_progress #<ISSUE_NUMBER>')
+"
+```
+
+**When you open a PR**, update status to `pr_review` and record the PR number:
+```bash
+python3 -c "
+import json, datetime
+with open('.claude/manager-queue.json') as f: q = json.load(f)
+q['agents']['frontend']['current_pr'] = <PR_NUMBER>
+q['agents']['frontend']['status'] = 'pr_review'
+q['agents']['frontend']['last_updated'] = datetime.datetime.utcnow().isoformat() + 'Z'
+q['last_updated'] = datetime.datetime.utcnow().isoformat() + 'Z'
+with open('.claude/manager-queue.json', 'w') as f: json.dump(q, f, indent=2)
+print('Queue updated: frontend pr_review PR#<PR_NUMBER>')
+"
+```
+
+**When the PR is merged and the ticket is Done**, clear your slot:
+```bash
+python3 -c "
+import json, datetime
+with open('.claude/manager-queue.json') as f: q = json.load(f)
+q['agents']['frontend'].update({'current_issue': None, 'current_pr': None, 'status': 'idle', 'last_updated': datetime.datetime.utcnow().isoformat() + 'Z'})
+q['last_updated'] = datetime.datetime.utcnow().isoformat() + 'Z'
+with open('.claude/manager-queue.json', 'w') as f: json.dump(q, f, indent=2)
+print('Queue updated: frontend idle')
+"
+```
+
 ## Ticket Workflow
 
 Every ticket assigned to this agent must follow this status progression on the v2.0 project board (project #27, repo RdHamilton/MTGA-Companion):
 
-1. **In Progress** (`9fd907f0`) — set immediately when work begins
-2. **PR Review** (`0ca4880d`) — set when a PR is opened; post PR number as a comment on the issue
-3. **Done** (`7729b7fe`) — set when the PR is merged
+1. **In Progress** (`9fd907f0`) — set immediately when work begins; update queue file (see Manager Reporting Protocol above)
+2. **PR Review** (`0ca4880d`) — set when a PR is opened; post PR number as a comment on the issue; update queue file
+3. **Done** (`7729b7fe`) — set when the PR is merged; clear queue slot
 
 Every ticket must end with a PR. Never leave work committed without opening one.
 

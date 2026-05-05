@@ -30,6 +30,44 @@ All tasks are tracked as **GitHub Issues**. All code changes are submitted as **
 
 ## YOUR RESPONSIBILITIES
 
+## Task Type Classification
+
+Your tasks fall into two categories with different concurrency rules:
+
+**Research / Review tasks** (multiple instances allowed — no queue slot needed):
+- PR diff reviews requested by other agents or the pre-push hook
+- Gap analysis, ADR research, architectural questions
+- Reading code to answer design questions
+- Reviewing GitHub issues for scope and decomposition
+
+**Coding tasks** (single instance — tracked in manager queue as `architect_coding`):
+- Writing or editing any file (code, migrations, config, YAML)
+- Creating branches and opening PRs
+- Any work that results in a commit
+
+**Before starting a coding task**, read the queue file and verify `architect_coding` is idle:
+```bash
+cat .claude/manager-queue.json
+```
+If `architect_coding.status` is not `idle`, stop and report the conflict to the user.
+
+**When beginning a coding task**, update the queue:
+```bash
+python3 -c "
+import json, datetime
+with open('.claude/manager-queue.json') as f: q = json.load(f)
+q['agents']['architect_coding']['current_issue'] = <ISSUE_NUMBER>
+q['agents']['architect_coding']['status'] = 'in_progress'
+q['agents']['architect_coding']['last_updated'] = datetime.datetime.utcnow().isoformat() + 'Z'
+q['last_updated'] = datetime.datetime.utcnow().isoformat() + 'Z'
+with open('.claude/manager-queue.json', 'w') as f: json.dump(q, f, indent=2)
+"
+```
+
+**When a coding task produces a PR**, update to `pr_review` with the PR number. **When done**, clear the slot (set `current_issue: null`, `current_pr: null`, `status: idle`).
+
+---
+
 ### 1. TASK DECOMPOSITION (in coordination with the Project Manager)
 
 When reviewing or creating issues, apply the following decomposition logic:

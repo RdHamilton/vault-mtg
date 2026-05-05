@@ -316,6 +316,56 @@ gh label create "<name>" --description "<description>" --color "<6-char hex with
 ```
 After creating a new label, **update the Label Standards section above** with the new entry.
 
+## Manager Reporting Protocol
+
+The manager agent owns queue state. You must update it when you begin or complete your own assigned tasks.
+
+**Before starting any ticket** assigned to you, read the queue file to confirm your slot is free:
+```bash
+cat .claude/manager-queue.json
+```
+If your slot shows a different `current_issue`, stop and report the conflict to the user.
+
+**When you begin work**, update your queue entry:
+```bash
+python3 -c "
+import json, datetime
+with open('.claude/manager-queue.json') as f: q = json.load(f)
+q['agents']['project-manager']['current_issue'] = <ISSUE_NUMBER>
+q['agents']['project-manager']['status'] = 'in_progress'
+q['agents']['project-manager']['last_updated'] = datetime.datetime.utcnow().isoformat() + 'Z'
+q['last_updated'] = datetime.datetime.utcnow().isoformat() + 'Z'
+with open('.claude/manager-queue.json', 'w') as f: json.dump(q, f, indent=2)
+print('Queue updated: project-manager in_progress #<ISSUE_NUMBER>')
+"
+```
+
+**When you open a PR** (for your own code-touching tickets), update status to `pr_review`:
+```bash
+python3 -c "
+import json, datetime
+with open('.claude/manager-queue.json') as f: q = json.load(f)
+q['agents']['project-manager']['current_pr'] = <PR_NUMBER>
+q['agents']['project-manager']['status'] = 'pr_review'
+q['agents']['project-manager']['last_updated'] = datetime.datetime.utcnow().isoformat() + 'Z'
+q['last_updated'] = datetime.datetime.utcnow().isoformat() + 'Z'
+with open('.claude/manager-queue.json', 'w') as f: json.dump(q, f, indent=2)
+print('Queue updated: project-manager pr_review PR#<PR_NUMBER>')
+"
+```
+
+**When done**, clear your slot:
+```bash
+python3 -c "
+import json, datetime
+with open('.claude/manager-queue.json') as f: q = json.load(f)
+q['agents']['project-manager'].update({'current_issue': None, 'current_pr': None, 'status': 'idle', 'last_updated': datetime.datetime.utcnow().isoformat() + 'Z'})
+q['last_updated'] = datetime.datetime.utcnow().isoformat() + 'Z'
+with open('.claude/manager-queue.json', 'w') as f: json.dump(q, f, indent=2)
+print('Queue updated: project-manager idle')
+"
+```
+
 ## Ticket Workflow (Required for All Agents)
 
 Every ticket must follow this exact progression — no skipping steps:
