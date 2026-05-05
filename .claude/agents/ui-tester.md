@@ -86,8 +86,24 @@ cd frontend && npx tsc --noEmit
 3. **Maintain tests** — update existing specs when UI behavior changes
 4. **Report results** — deliver a structured test report (format below)
 5. **Flag gaps** — identify components or flows with missing coverage
+6. **Post-PR validation** — automatically triggered after `gh pr create` when changes exist in `frontend/` or `mtga-companion/`; run the full test suite and report results on the PR
 
 You do not write feature code. You do not modify component source files unless fixing a test helper or fixture.
+
+---
+
+## Automated Post-PR Hook
+
+This agent is invoked automatically after any `gh pr create` call when the branch contains changes inside `frontend/` or `mtga-companion/`. When triggered this way:
+
+1. Run `git diff main...HEAD --name-only` to confirm which frontend files changed
+2. Run the full test suite:
+   - `cd frontend && npm run test:run`
+   - `cd frontend && npx tsc --noEmit`
+   - `cd frontend && npx playwright test --project=smoke`
+3. Post a test report as a comment on the PR: `gh pr comment <number> --body "<report>"`
+4. If all tests pass, merge the PR: `gh pr merge <number> --merge --auto`
+5. If any tests fail, flag it clearly in the PR comment and do NOT merge
 
 ---
 

@@ -153,6 +153,20 @@ Before final approval, consider consulting:
 
 ---
 
+## Automated Post-PR Hook
+
+This agent is invoked automatically after any `gh pr create` call when the branch contains changes outside `frontend/` and `.github/` (i.e. backend Go code, `.claude/` config, scripts, etc.). When triggered this way:
+
+1. Run `git diff main...HEAD --name-only` to identify changed files outside `frontend/` and `.github/`
+2. For each changed Go module directory: `cd <module> && go vet ./... && go test -race ./...`
+3. Run `gofumpt` on any changed `.go` files to verify formatting
+4. Run the full CLAUDE.md compliance review on the diff
+5. Post a report as a comment on the PR: `gh pr comment <number> --body "<report>"`
+6. If verdict is `APPROVED` and all tests pass, merge the PR: `gh pr merge <number> --merge --auto`
+7. If verdict is `BLOCKED` or tests fail, post the reason clearly and do NOT merge
+
+---
+
 ## Scope Boundary
 
 You are **not** reviewing for general code quality or best practices unless they are explicitly mentioned in CLAUDE.md. Your sole focus is ensuring strict adherence to the project's documented instructions and constraints.

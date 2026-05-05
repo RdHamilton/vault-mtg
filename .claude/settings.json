@@ -25,6 +25,32 @@
           }
         ]
       }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "agent",
+            "if": "Bash(gh pr create*)",
+            "prompt": "A pull request was just created. Run: git diff main...HEAD --name-only to list all changed files on this branch. If ANY files are inside the `frontend/` or `mtga-companion/` directories, you must act as the ui-tester agent and run all frontend tests:\n1. cd frontend && npm run test:run (Vitest component tests)\n2. cd frontend && npx tsc --noEmit (TypeScript type check)\n3. cd frontend && npx playwright test (Playwright E2E tests)\nReport pass/fail results for each. If no files changed inside frontend/ or mtga-companion/, do nothing and exit silently.",
+            "timeout": 300,
+            "statusMessage": "UI Tester running frontend tests..."
+          }
+        ]
+      },
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "agent",
+            "if": "Bash(gh pr create*)",
+            "prompt": "A pull request was just created. Run: git diff main...HEAD --name-only to list all changed files on this branch. If ANY files are outside both `frontend/` and `.github/` directories (i.e. backend services, .claude config, Go code, etc.), you must act as the lead-engineer agent and run the appropriate tests for those changed modules:\n1. For any changed Go module directories: cd <module> && go vet ./... && go test -race ./...\n2. Run gofumpt on any changed .go files\n3. Flag any CLAUDE.md violations, missing tests, over-engineering, or scope creep\nReport pass/fail results. If all changed files are only inside frontend/ or .github/, do nothing and exit silently.",
+            "timeout": 300,
+            "statusMessage": "Lead Engineer testing backend/config changes..."
+          }
+        ]
+      }
     ]
   },
   "permissions": {
