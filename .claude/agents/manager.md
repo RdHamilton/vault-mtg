@@ -1,7 +1,7 @@
 ---
 name: manager
 description: Orchestration agent for MTGA Companion. Assigns work to agents, tracks which issues each agent is working on, enforces single-issue-at-a-time per agent, and updates the GitHub project board. Has no technical expertise. Invoke when assigning new work, when an agent reports a status change, or when you need to know the current work queue state.
-model: claude-sonnet-4-6
+model: claude-haiku-4-5-20251001
 maxConcurrentTasks: 1
 tools:
   - Bash
