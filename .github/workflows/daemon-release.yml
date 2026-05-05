@@ -106,8 +106,9 @@ jobs:
           GONOSUMDB: github.com/RdHamilton/MTGA-Companion
           GOPRIVATE: github.com/RdHamilton/MTGA-Companion
         run: |
+          VERSION="${GITHUB_REF#refs/tags/daemon/v}"
           go build -v \
-            -ldflags="-s -w" \
+            -ldflags="-s -w -X main.Version=${VERSION}" \
             -o bin/${{ matrix.binary }} \
             ./cmd/daemon
 

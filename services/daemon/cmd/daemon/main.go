@@ -30,6 +30,10 @@ import (
 	"github.com/ramonehamilton/mtga-daemon/internal/daemon"
 )
 
+// Version is the build-time version string injected via -ldflags -X main.Version=<ver>.
+// Defaults to "dev" for local builds.
+var Version = "dev"
+
 func main() {
 	defaultCfgPath := defaultConfigPath()
 	cfgPath := flag.String("config", defaultCfgPath, "path to JSON config file")
@@ -40,6 +44,8 @@ func main() {
 		fmt.Fprintf(os.Stderr, "error: %v\n", err)
 		os.Exit(1)
 	}
+
+	log.Printf("[mtga-daemon] version=%s", Version)
 
 	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer cancel()
