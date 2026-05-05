@@ -9,7 +9,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bash '/Users/ramonehamilton/Documents/Personal Projects/MTGA-Companion/.claude/hooks/architect-pre-push.sh'"
+            "command": "bash .claude/hooks/architect-pre-push.sh"
           }
         ]
       },
