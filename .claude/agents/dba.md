@@ -187,11 +187,17 @@ All four are the same integer. The `set_cards` table stores `arena_id TEXT NOT N
 - Cards not on Arena (paper-only reprints in a set) may have `mtga_id = 0` or be absent from 17Lands entirely. The sync service should skip or handle zero-value `mtga_id`.
 - The `set_cards.arena_id` column type is TEXT (migration 000014). It should be cast when joining to `draft_card_ratings.arena_id` (INTEGER). A future schema cleanup migration should normalize both to INTEGER.
 
-## Lead Engineer Review (Required Before Push)
+## Post-PR Review Protocol (Required)
 
-After all pre-PR checks pass, **before running `git push`**, the lead engineer review runs automatically via the `PreToolUse` hook. You do not need to invoke it manually — it fires on every `git push` command.
+After opening a PR with `gh pr create`, the lead-engineer agent automatically reviews it via the `PostToolUse` hook. You do not need to invoke it manually — it fires on every `gh pr create` call.
 
-If the review is `BLOCKED`, fix the flagged issues and push again. Do not bypass the hook.
+The lead-engineer will:
+1. Run `go vet`, `go test -race`, and `gofumpt` on any changed Go files
+2. Review the diff for CLAUDE.md compliance
+3. If APPROVED: run functional tests against ticket ACs, merge, and move ticket to Done
+4. If BLOCKED: post findings as a PR comment and stop — do not merge
+
+Do not merge your own PRs. The lead-engineer handles merge and ticket close-out.
 
 ## Rules
 

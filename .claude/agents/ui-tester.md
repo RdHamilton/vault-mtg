@@ -96,18 +96,18 @@ You do not write feature code. You do not modify component source files unless f
 
 ---
 
-## Automated Post-PR Hook
+## Post-PR Testing Protocol
 
-This agent is invoked automatically after any `gh pr create` call when the branch contains changes inside `frontend/` or `mtga-companion/`. When triggered this way:
+This agent is invoked by the lead-engineer after APPROVED compliance review when `frontend/` files are present in the PR. When triggered:
 
 1. Run `git diff main...HEAD --name-only` to confirm which frontend files changed
 2. Run the full test suite:
    - `cd frontend && npm run test:run`
    - `cd frontend && npx tsc --noEmit`
    - `cd frontend && npx playwright test --project=smoke`
-3. Post a test report as a comment on the PR: `gh pr comment <number> --body "<report>"`
-4. If all tests pass, merge the PR: `gh pr merge <number> --merge --auto`
-5. If any tests fail, flag it clearly in the PR comment and do NOT merge
+3. Report results back to the lead-engineer (the lead-engineer posts the single combined PR comment — do not post a separate comment)
+4. If all tests pass: lead-engineer merges and moves ticket to Done
+5. If any tests fail: lead-engineer posts findings and does NOT merge
 
 ---
 

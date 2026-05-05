@@ -8,6 +8,49 @@
 **Discoveries**: architectural notes, missing test coverage, scope concerns, or context for future reviews (or "None")
 -->
 
+## 2026-05-05 — PR #1271: feat(daemon): embed build version via -ldflags and add updatecheck package (#1262)
+**Ticket(s)**: #1262
+**Verdict**: APPROVED ✓
+**Checks**: go vet: pass | go test: pass | gofumpt: clean | CLAUDE.md: pass
+**Discoveries**: Branch included 3 prior commits (bff fail-fast, vercel tag-deploy, plan file deletion) already merged to main — rebased branch onto main to resolve conflict before merge. 8 unit tests via httptest all pass including User-Agent header verification. 24-hour ticker wiring (design note item 4) correctly deferred to ticket 3 per design note split — not in #1262 AC.
+
+## 2026-05-05 — PR #1269: feat(sync): skip Lambda sync when data hash unchanged (#1100)
+**Ticket(s)**: #1100
+**Verdict**: BLOCKED ✗
+**Checks**: go vet: pass | go test: pass | gofumpt: clean | CLAUDE.md: pass
+**Discoveries**: AC #2 violated — hash computed on unsorted ratings slice. Ticket requires sort by MtgaID ascending before marshal to ensure deterministic, order-independent hashing. Without sorting, any API response reorder triggers a spurious full upsert, defeating the delta-skip purpose. Fix: `slices.SortFunc` by MtgaID before `json.Marshal`. Also needs a test asserting hash is order-independent.
+
+
+## 2026-05-05 — PR #1270: docs: update README and DEPLOYMENT for Vercel-canonical frontend (#1242)
+**Ticket(s)**: #1242
+**Verdict**: APPROVED ✓
+**Checks**: go vet: skip | go test: skip | gofumpt: skip | CLAUDE.md: pass
+**Discoveries**: docs/DEPLOYMENT.md does not exist in repo; AC condition was "if present" so docs/README.md ADR index update is an acceptable substitution. All nginx references correctly framed as DR/preview only.
+
+## 2026-05-05 — PR #1267: feat(bff): add GET /api/v1/daemon/version endpoint (#1261)
+**Ticket(s)**: #1261
+**Verdict**: APPROVED ✓
+**Checks**: go vet: pass | go test: pass | gofumpt: clean | CLAUDE.md: pass
+**Discoveries**: Public endpoint registered on no-auth router; Cache-Control: public, max-age=300; reads cfg.DaemonLatestVersion env var with "0.1.0" default. Handler tests via httptest cover all ACs.
+
+## 2026-05-05 — PR #1266: feat(sync): extend Store interface for hash read/write (#1099)
+**Ticket(s)**: #1099
+**Verdict**: APPROVED ✓
+**Checks**: go vet: pass | go test: pass | gofumpt: clean | CLAUDE.md: pass
+**Discoveries**: GetHash/SetHash added to Store interface; postgres_store upsert via ON CONFLICT; pgx.ErrNoRows returns ("", nil) as first-run sentinel. Migration 000065 (renumbered from 000064 to avoid conflict with pgvector 000064).
+
+## 2026-05-05 — PR #1265: feat(db): enable pgvector extension via migration (#1244)
+**Ticket(s)**: #1244
+**Verdict**: APPROVED ✓
+**Checks**: go vet: skip | go test: skip | gofumpt: skip | CLAUDE.md: pass
+**Discoveries**: Idempotent CREATE EXTENSION IF NOT EXISTS vector; no shared_preload_libraries (RDS-compliant). Migration 000064.
+
+## 2026-05-05 — PR #1264: infra: demote EC2 frontend deploy to manual-dispatch only (#1239)
+**Ticket(s)**: #1239
+**Verdict**: APPROVED ✓
+**Checks**: go vet: skip | go test: skip | gofumpt: skip | CLAUDE.md: pass
+**Discoveries**: Removed push trigger from .github/workflows/frontend.yml; workflow_dispatch only. ADR-007 compliance — EC2 nginx now DR/preview only, Vercel is canonical.
+
 ## 2026-05-05 — PR #1233: fix(infra): move vercel.json to repo root so ignoreCommand takes effect
 **Ticket(s)**: #1179
 **Verdict**: APPROVED ✓

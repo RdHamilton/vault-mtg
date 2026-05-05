@@ -100,11 +100,17 @@ npm run test:run              # all component tests must pass
 
 If any command fails, fix the issue first. Do not open the PR until all checks pass.
 
-## Lead Engineer Review (Required Before Push)
+## Post-PR Review Protocol (Required)
 
-After all pre-PR checks pass, **before running `git push`**, the lead engineer review runs automatically via the `PreToolUse` hook. You do not need to invoke it manually — it fires on every `git push` command.
+After opening a PR with `gh pr create`, the lead-engineer agent automatically reviews it via the `PostToolUse` hook. You do not need to invoke it manually — it fires on every `gh pr create` call.
 
-If the review is `BLOCKED`, fix the flagged issues, re-run all pre-PR checks, and push again. Do not bypass the hook.
+The lead-engineer will:
+1. Review the diff for CLAUDE.md compliance
+2. If APPROVED and `frontend/` files changed: spawn the ui-tester for vitest + tsc + playwright smoke, then merge and move ticket to Done
+3. If APPROVED and no `frontend/` files changed: run functional tests against ticket ACs, merge, and move ticket to Done
+4. If BLOCKED: post findings as a PR comment and stop — do not merge
+
+Do not merge your own PRs. The lead-engineer handles merge and ticket close-out.
 
 ## Serving (EC2 + nginx)
 

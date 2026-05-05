@@ -157,17 +157,31 @@ Before final approval, consider consulting:
 
 ---
 
-## Automated Post-PR Hook
+## Post-PR Review Protocol
 
-This agent is invoked automatically after any `gh pr create` call when the branch contains changes outside `frontend/` and `.github/` (i.e. backend Go code, `.claude/` config, scripts, etc.). When triggered this way:
+This agent is invoked automatically after any `gh pr create` call via the `PostToolUse` hook in `.claude/settings.json`. When triggered:
 
-1. Run `git diff main...HEAD --name-only` to identify changed files outside `frontend/` and `.github/`
+**Step 1 — Compliance review:**
+1. Run `git diff main...HEAD --name-only` to identify changed files
 2. For each changed Go module directory: `cd <module> && go vet ./... && go test -race ./...`
-3. Run `gofumpt` on any changed `.go` files to verify formatting
+3. Run `gofumpt` on any changed `.go` files
 4. Run the full CLAUDE.md compliance review on the diff
-5. Post a report as a comment on the PR: `gh pr comment <number> --body "<report>"`
-6. If verdict is `APPROVED` and all tests pass, merge the PR: `gh pr merge <number> --merge --auto`
-7. If verdict is `BLOCKED` or tests fail, post the reason clearly and do NOT merge
+
+**Step 2 — Route by verdict and file type:**
+
+If **BLOCKED**: Post a single PR comment with findings. Do NOT merge.
+
+If **APPROVED** and **no `frontend/` files changed**:
+- Run functional tests against ticket acceptance criteria (read ACs from `gh issue view`)
+- If ACs pass: merge the PR (`gh pr merge <number> --squash`), move ticket to Done on Project #27, post a single combined comment (compliance + test results + merged)
+- If ACs fail: post combined comment with test failures, do NOT merge
+
+If **APPROVED** and **`frontend/` files changed**:
+- Spawn the ui-tester agent to run vitest, tsc, and playwright smoke tests
+- If all pass: merge the PR, move ticket to Done, post a single combined comment
+- If any fail: post combined comment with failures, do NOT merge
+
+**Rule: Never post more than one comment per PR. Never mention Claude Code.**
 
 ---
 

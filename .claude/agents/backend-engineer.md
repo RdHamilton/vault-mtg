@@ -157,19 +157,18 @@ env:
 ```
 Without these, CI cannot resolve the private module and the build will fail.
 
-## Architect Review (Required Before Push)
+## Post-PR Review Protocol (Required)
 
-After all pre-PR checks pass, **before running `git push`**, request an architect review:
+After opening a PR with `gh pr create`, the lead-engineer agent automatically reviews it via the `PostToolUse` hook. You do not need to invoke it manually — it fires on every `gh pr create` call.
 
-1. Capture the full diff: `git diff $(git merge-base HEAD origin/main)..HEAD`
-2. Invoke the architect agent with the diff and ask it to review for:
-   - ADR compliance, service boundary violations, missing `account_id` scoping
-   - `go.work` local `replace` directives
-   - Missing tests
-   - Direct DB writes from the daemon (not allowed — all persistence via BFF)
-   - Missing BFF auth
-3. **Do not push until the architect responds with `APPROVED`**
-4. If the architect raises issues, fix them, re-run all pre-PR checks, and re-request review
+The lead-engineer will:
+1. Run `go vet`, `go test -race`, and `gofumpt` on any changed Go files
+2. Review the diff for CLAUDE.md compliance
+3. If APPROVED and no `frontend/` files changed: run functional tests against ticket ACs, merge, and move ticket to Done
+4. If APPROVED and `frontend/` files changed: spawn the ui-tester for vitest + tsc + playwright smoke, then merge and move ticket to Done
+5. If BLOCKED: post findings as a PR comment and stop — do not merge
+
+Do not merge your own PRs. The lead-engineer handles merge and ticket close-out.
 
 ## Finding Your Next Ticket
 

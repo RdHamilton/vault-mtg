@@ -148,6 +148,17 @@ Tags:
     Value: !Ref Environment
 ```
 
+## Post-PR Review Protocol (Required)
+
+After opening a PR with `gh pr create`, the lead-engineer agent automatically reviews it via the `PostToolUse` hook. You do not need to invoke it manually — it fires on every `gh pr create` call.
+
+The lead-engineer will:
+1. Review the diff for CLAUDE.md compliance
+2. If APPROVED: run functional tests against ticket ACs, merge, and move ticket to Done
+3. If BLOCKED: post findings as a PR comment and stop — do not merge
+
+Do not merge your own PRs. The lead-engineer handles merge and ticket close-out.
+
 ## PR Checklist
 
 Before opening a PR for any infrastructure change:
