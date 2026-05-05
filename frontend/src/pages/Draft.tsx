@@ -4,19 +4,6 @@ import { drafts, cards, bffDraftRatings } from '@/services/api';
 import { BffColorRating } from '@/services/api/bffDraftRatings';
 import { models, pickquality, grading, gui } from '@/types/models';
 
-// No-op stubs - replay control not implemented in REST API
-async function pauseReplay(): Promise<void> {
-  console.warn('PauseReplay: Not implemented in REST API');
-}
-
-async function resumeReplay(): Promise<void> {
-  console.warn('ResumeReplay: Not implemented in REST API');
-}
-
-async function stopReplay(): Promise<void> {
-  console.warn('StopReplay: Not implemented in REST API');
-}
-
 // Helper to get completed drafts with limit support
 async function getCompletedDraftSessions(limit?: number): Promise<models.DraftSession[]> {
   const sessions = await drafts.getCompletedDraftSessions();
@@ -29,7 +16,6 @@ async function getDraftPacks(sessionId: string): Promise<models.DraftPackSession
 }
 
 import { EventsOn } from '@/services/websocketClient';
-import { getReplayState } from '../App';
 import TierList from '../components/TierList';
 import { DraftGrade } from '../components/DraftGrade';
 import { WinRatePrediction } from '../components/WinRatePrediction';
@@ -483,26 +469,12 @@ const Draft: React.FC = () => {
     // Call all hooks at the top before any conditional returns
     // ========================================
 
-    // Get replay state
-    const replayState = getReplayState();
-    const isReplayMode = replayState.isActive;
-    const isReplayPaused = replayState.isPaused;
-
     // Compute display cards for active draft (used in render)
     const pickedCardIds = state.session ? getPickedCardIds() : new Set<string>();
     const displayCards = useMemo(() => {
         if (!state.session) return [];
-        console.log('[displayCards] Computing display cards. isReplayMode:', isReplayMode, 'picks:', state.picks.length, 'setCards:', state.setCards.length);
-        if (isReplayMode && state.picks.length > 0) {
-            // Recalculate picked card IDs inside useMemo to ensure correct dependencies
-            const pickedIds = new Set(state.picks.map(pick => pick.CardID));
-            const filtered = state.setCards.filter(card => pickedIds.has(card.ArenaID));
-            console.log('[displayCards] Replay mode: filtered to', filtered.length, 'picked cards');
-            return filtered;
-        }
-        console.log('[displayCards] Normal mode: showing all', state.setCards.length, 'cards');
         return state.setCards;
-    }, [state.session, isReplayMode, state.setCards, state.picks]);
+    }, [state.session, state.setCards]);
 
     // Calculate synergy analysis for highlighting
     const synergyAnalysis = useMemo(() => {
@@ -873,54 +845,6 @@ const Draft: React.FC = () => {
 
     return (
         <div className="draft-container">
-            {/* Replay Controls - Bottom Left */}
-            {isReplayMode && (
-                <div className="replay-controls">
-                    {isReplayPaused ? (
-                        <button
-                            className="replay-btn replay-resume"
-                            onClick={async () => {
-                                try {
-                                    await resumeReplay();
-                                } catch (error) {
-                                    console.error('Failed to resume replay:', error);
-                                }
-                            }}
-                            title="Resume replay"
-                        >
-                            ▶️ Resume
-                        </button>
-                    ) : (
-                        <button
-                            className="replay-btn replay-pause"
-                            onClick={async () => {
-                                try {
-                                    await pauseReplay();
-                                } catch (error) {
-                                    console.error('Failed to pause replay:', error);
-                                }
-                            }}
-                            title="Pause replay"
-                        >
-                            ⏸️ Pause
-                        </button>
-                    )}
-                    <button
-                        className="replay-btn replay-stop"
-                        onClick={async () => {
-                            try {
-                                await stopReplay();
-                            } catch (error) {
-                                console.error('Failed to stop replay:', error);
-                            }
-                        }}
-                        title="Stop replay and return to normal mode"
-                    >
-                        ⏹️ Stop
-                    </button>
-                </div>
-            )}
-
             <div className="draft-header">
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', width: '100%' }}>
                     <div>
@@ -962,25 +886,23 @@ const Draft: React.FC = () => {
                 {/* Left: Card Grid / Current Pack (~25% width) */}
                 <div className="card-grid-section">
                     {/* View Toggle */}
-                    {!isReplayMode && (
-                        <div className="view-toggle">
-                            <button
-                                className={`toggle-btn ${showCurrentPack ? 'active' : ''}`}
-                                onClick={() => setShowCurrentPack(true)}
-                            >
-                                Current Pack
-                            </button>
-                            <button
-                                className={`toggle-btn ${!showCurrentPack ? 'active' : ''}`}
-                                onClick={() => setShowCurrentPack(false)}
-                            >
-                                All Set Cards
-                            </button>
-                        </div>
-                    )}
+                    <div className="view-toggle">
+                        <button
+                            className={`toggle-btn ${showCurrentPack ? 'active' : ''}`}
+                            onClick={() => setShowCurrentPack(true)}
+                        >
+                            Current Pack
+                        </button>
+                        <button
+                            className={`toggle-btn ${!showCurrentPack ? 'active' : ''}`}
+                            onClick={() => setShowCurrentPack(false)}
+                        >
+                            All Set Cards
+                        </button>
+                    </div>
 
                     {/* Current Pack Picker View */}
-                    {!isReplayMode && showCurrentPack && state.session && (
+                    {showCurrentPack && state.session && (
                         <CurrentPackPicker
                             sessionID={state.session.ID}
                             onRefresh={loadActiveDraft}
@@ -988,9 +910,9 @@ const Draft: React.FC = () => {
                     )}
 
                     {/* Set Cards Grid View */}
-                    {(isReplayMode || !showCurrentPack) && (
+                    {!showCurrentPack && (
                         <>
-                            <h2>{isReplayMode ? 'Picked Cards' : 'Set Cards'} ({displayCards.length})</h2>
+                            <h2>Set Cards ({displayCards.length})</h2>
                             <div className="card-grid">
                                 {displayCards.map(card => {
                                     const isPicked = pickedCardIds.has(card.ArenaID);

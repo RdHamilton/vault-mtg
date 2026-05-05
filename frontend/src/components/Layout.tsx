@@ -1,9 +1,8 @@
 import { useState, useEffect } from 'react';
-import { Link, useLocation, useNavigate } from 'react-router-dom';
+import { Link, useLocation } from 'react-router-dom';
 import Footer from './Footer';
 import { system } from '@/services/api';
 import { EventsOn, EventsOff } from '@/services/websocketClient';
-import { getReplayState, subscribeToReplayState } from '../App';
 import { gui } from '@/types/models';
 import './Layout.css';
 
@@ -13,7 +12,6 @@ interface LayoutProps {
 
 const Layout = ({ children }: LayoutProps) => {
   const location = useLocation();
-  const navigate = useNavigate();
   const [connectionStatus, setConnectionStatus] = useState<gui.ConnectionStatus>(
     new gui.ConnectionStatus({
       status: 'standalone',
@@ -23,9 +21,6 @@ const Layout = ({ children }: LayoutProps) => {
       port: 0,
     })
   );
-  const [replayActive, setReplayActive] = useState(getReplayState().isActive);
-  const [replayPaused, setReplayPaused] = useState(getReplayState().isPaused);
-
   const isActive = (path: string) => location.pathname === path;
 
   // Derive activeTab from current route (computed value, not state)
@@ -52,17 +47,7 @@ const Layout = ({ children }: LayoutProps) => {
 
   const activeTab = getActiveTab();
 
-  // Subscribe to replay state changes
-  useEffect(() => {
-    console.log('[Layout] Subscribing to replay state changes');
-    const unsubscribe = subscribeToReplayState((state) => {
-      console.log('[Layout] Replay state updated:', state);
-      setReplayActive(state.isActive);
-      setReplayPaused(state.isPaused);
-    });
 
-    return unsubscribe;
-  }, []);
 
   // Load connection status on mount
   useEffect(() => {
@@ -89,17 +74,6 @@ const Layout = ({ children }: LayoutProps) => {
       EventsOff('daemon:connected');
     };
   }, []);
-
-  const handleResumeReplay = async () => {
-    // Replay control not implemented in REST API yet
-    console.log('Resume replay not implemented in REST API');
-  };
-
-  const handleStopReplay = async () => {
-    // Replay control not implemented in REST API yet
-    console.log('Stop replay not implemented in REST API');
-    navigate('/settings');
-  };
 
   return (
     <div className="app-container" data-testid="app-container">
@@ -230,71 +204,6 @@ const Layout = ({ children }: LayoutProps) => {
           >
             Result Breakdown
           </Link>
-        </div>
-      )}
-
-      {/* Floating Replay Control Banner - Only shown when replay is paused, not on settings or draft page */}
-      {replayActive && replayPaused && location.pathname !== '/settings' && location.pathname !== '/draft' && (
-        <div style={{
-          position: 'fixed',
-          bottom: '60px',
-          right: '20px',
-          background: '#ff9800',
-          color: 'white',
-          padding: '16px 24px',
-          borderRadius: '8px',
-          boxShadow: '0 4px 12px rgba(0,0,0,0.3)',
-          zIndex: 1000,
-          display: 'flex',
-          alignItems: 'center',
-          gap: '16px',
-          fontWeight: 'bold',
-        }}>
-          <span data-testid="replay-paused-label">⏸️ Replay Paused</span>
-          <button
-            onClick={handleResumeReplay}
-            data-testid="replay-resume-button"
-            style={{
-              background: '#00c853',
-              color: 'white',
-              border: 'none',
-              padding: '8px 16px',
-              borderRadius: '4px',
-              cursor: 'pointer',
-              fontWeight: 'bold',
-            }}
-          >
-            ▶️ Resume
-          </button>
-          <button
-            onClick={handleStopReplay}
-            data-testid="replay-stop-button"
-            style={{
-              background: '#f44336',
-              color: 'white',
-              border: 'none',
-              padding: '8px 16px',
-              borderRadius: '4px',
-              cursor: 'pointer',
-              fontWeight: 'bold',
-            }}
-          >
-            ⏹️ Stop
-          </button>
-          <button
-            onClick={() => navigate('/settings')}
-            data-testid="replay-settings-button"
-            style={{
-              background: 'transparent',
-              color: 'white',
-              border: '1px solid white',
-              padding: '8px 16px',
-              borderRadius: '4px',
-              cursor: 'pointer',
-            }}
-          >
-            Settings
-          </button>
         </div>
       )}
 

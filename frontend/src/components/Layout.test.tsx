@@ -16,41 +16,10 @@ vi.mock('@/context/DownloadContext', () => ({
   DownloadProvider: ({ children }: { children: React.ReactNode }) => children,
 }));
 
-// Mock the getReplayState and subscribeToReplayState functions
-const mockReplayState = {
-  isActive: false,
-  isPaused: false,
-  progress: null,
-};
-
-interface ReplayState {
-  isActive: boolean;
-  isPaused: boolean;
-  progress: null | unknown;
-}
-
-const mockSubscribers: Array<(state: ReplayState) => void> = [];
-
-vi.mock('../App', () => ({
-  getReplayState: vi.fn(() => mockReplayState),
-  subscribeToReplayState: vi.fn((callback) => {
-    mockSubscribers.push(callback);
-    return () => {
-      const index = mockSubscribers.indexOf(callback);
-      if (index > -1) {
-        mockSubscribers.splice(index, 1);
-      }
-    };
-  }),
-}));
-
 describe('Layout Component', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockEventEmitter.clear();
-    mockSubscribers.length = 0;
-    mockReplayState.isActive = false;
-    mockReplayState.isPaused = false;
     mockSystem.getStatus.mockResolvedValue({
       status: 'standalone',
       connected: false,
@@ -181,94 +150,6 @@ describe('Layout Component', () => {
         const statusBadge = screen.getByTestId('connection-status-badge');
         expect(statusBadge).toHaveClass('status-connected');
       });
-    });
-  });
-
-  describe('Replay Controls', () => {
-    it('should not show replay controls when replay is inactive', () => {
-      render(
-        <Layout>
-          <div>Test Content</div>
-        </Layout>
-      );
-
-      expect(screen.queryByTestId('replay-paused-label')).not.toBeInTheDocument();
-    });
-
-    it('should show replay controls when replay is active and paused', async () => {
-      mockReplayState.isActive = true;
-      mockReplayState.isPaused = true;
-
-      render(
-        <Layout>
-          <div>Test Content</div>
-        </Layout>,
-        { initialRoute: '/' }
-      );
-
-      await waitFor(() => {
-        expect(screen.getByTestId('replay-paused-label')).toBeInTheDocument();
-        expect(screen.getByTestId('replay-resume-button')).toBeInTheDocument();
-        expect(screen.getByTestId('replay-stop-button')).toBeInTheDocument();
-      });
-    });
-
-    it('should not show replay controls on settings page', () => {
-      mockReplayState.isActive = true;
-      mockReplayState.isPaused = true;
-
-      render(
-        <Layout>
-          <div>Test Content</div>
-        </Layout>,
-        { initialRoute: '/settings' }
-      );
-
-      expect(screen.queryByTestId('replay-paused-label')).not.toBeInTheDocument();
-    });
-
-    it('should not show replay controls on draft page', () => {
-      mockReplayState.isActive = true;
-      mockReplayState.isPaused = true;
-
-      render(
-        <Layout>
-          <div>Test Content</div>
-        </Layout>,
-        { initialRoute: '/draft' }
-      );
-
-      expect(screen.queryByTestId('replay-paused-label')).not.toBeInTheDocument();
-    });
-
-    it('should have ResumeReplay function available', () => {
-      mockReplayState.isActive = true;
-      mockReplayState.isPaused = true;
-
-      render(
-        <Layout>
-          <div>Test Content</div>
-        </Layout>,
-        { initialRoute: '/' }
-      );
-
-      // Verify the mock function exists
-      expect(mockSystem.resumeReplay).toBeDefined();
-    });
-
-    it('should have StopReplay function available', () => {
-      mockReplayState.isActive = true;
-      mockReplayState.isPaused = true;
-
-      render(
-        <Layout>
-          <div>Test Content</div>
-        </Layout>,
-        { initialRoute: '/' }
-      );
-
-      // Verify the mock function exists
-      expect(mockSystem.stopReplay).toBeDefined();
     });
   });
 

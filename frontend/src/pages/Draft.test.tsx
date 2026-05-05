@@ -7,16 +7,6 @@ import { mockDrafts, mockCards } from '@/test/mocks/apiMock';
 import { mockEventEmitter } from '@/test/mocks/websocketMock';
 import { models, gui } from '@/types/models';
 
-// Mock the getReplayState function from App.tsx
-vi.mock('../App', () => ({
-  getReplayState: vi.fn(() => ({
-    isActive: false,
-    isPaused: false,
-    progress: null,
-  })),
-  subscribeToReplayState: vi.fn(() => () => {}),
-}));
-
 // Helper function to create mock data
 function createMockDraftSession(overrides: Partial<models.DraftSession> = {}): models.DraftSession {
   return new models.DraftSession({
