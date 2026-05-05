@@ -413,3 +413,35 @@ func TestSavePreservesAllExistingFields(t *testing.T) {
 	assert.Equal(t, "acc-99", m["account_id"])
 	assert.Equal(t, "jwt-xyz", m["daemon_jwt"])
 }
+
+// ---- DisableUpdateCheck ----
+
+// TestDisableUpdateCheckDefaultsFalse verifies that update checks are enabled by default.
+func TestDisableUpdateCheckDefaultsFalse(t *testing.T) {
+	t.Setenv("MTGA_DAEMON_CLOUD_API_URL", "http://localhost:9000")
+
+	cfg, err := config.Load("")
+	require.NoError(t, err)
+	assert.False(t, cfg.DisableUpdateCheck)
+}
+
+// TestDisableUpdateCheckEnvVar verifies that MTGA_DAEMON_DISABLE_UPDATE_CHECK=1 disables checks.
+func TestDisableUpdateCheckEnvVar(t *testing.T) {
+	t.Setenv("MTGA_DAEMON_CLOUD_API_URL", "http://localhost:9000")
+	t.Setenv("MTGA_DAEMON_DISABLE_UPDATE_CHECK", "1")
+
+	cfg, err := config.Load("")
+	require.NoError(t, err)
+	assert.True(t, cfg.DisableUpdateCheck)
+}
+
+// TestDisableUpdateCheckEnvVarZeroDoesNotDisable verifies that
+// MTGA_DAEMON_DISABLE_UPDATE_CHECK=0 does NOT disable checks.
+func TestDisableUpdateCheckEnvVarZeroDoesNotDisable(t *testing.T) {
+	t.Setenv("MTGA_DAEMON_CLOUD_API_URL", "http://localhost:9000")
+	t.Setenv("MTGA_DAEMON_DISABLE_UPDATE_CHECK", "0")
+
+	cfg, err := config.Load("")
+	require.NoError(t, err)
+	assert.False(t, cfg.DisableUpdateCheck)
+}

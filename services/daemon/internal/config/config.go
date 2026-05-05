@@ -74,6 +74,11 @@ type Config struct {
 	// each time the daemon starts, before the poller begins reading.
 	// Default: true.
 	LogPreserveOnStart bool `json:"log_preserve_on_start"`
+
+	// DisableUpdateCheck disables the periodic daemon version check when true.
+	// Controlled by the MTGA_DAEMON_DISABLE_UPDATE_CHECK=1 environment variable.
+	// Default: false (version checks are enabled).
+	DisableUpdateCheck bool `json:"disable_update_check,omitempty"`
 }
 
 // Load reads daemon configuration. Sources in priority order:
@@ -251,6 +256,9 @@ func applyEnv(cfg *Config) {
 	}
 	if v := os.Getenv("MTGA_DAEMON_LOG_ARCHIVE_DIR"); v != "" {
 		cfg.LogArchiveDir = v
+	}
+	if os.Getenv("MTGA_DAEMON_DISABLE_UPDATE_CHECK") == "1" {
+		cfg.DisableUpdateCheck = true
 	}
 }
 

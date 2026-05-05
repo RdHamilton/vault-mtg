@@ -51,6 +51,7 @@ func main() {
 	defer cancel()
 
 	svc := daemon.New(cfg)
+	svc.WithVersion(Version)
 	log.Printf("[mtga-daemon] starting, cloud_api=%s", cfg.CloudAPIURL)
 
 	if err := svc.Run(ctx); err != nil {

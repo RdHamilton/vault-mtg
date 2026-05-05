@@ -433,6 +433,37 @@ rm ./mtga-companion
 del mtga-companion.exe
 ```
 
+## Automatic Version Checks
+
+The daemon checks for newer releases every 24 hours by querying the MTGA Companion BFF. If a newer version is available, it logs a single warning line:
+
+```
+[mtga-daemon] WARN: new version available: 0.4.0 (current: 0.3.0) — https://github.com/RdHamilton/MTGA-Companion/releases/tag/daemon/v0.4.0
+```
+
+The check also runs once immediately after the daemon starts. It uses a 5-second HTTP timeout and never blocks event ingestion — any network failure is logged at INFO level and silently ignored.
+
+### Disabling the Version Check
+
+Set the environment variable `MTGA_DAEMON_DISABLE_UPDATE_CHECK=1` to skip all version checks:
+
+**macOS/Linux:**
+```bash
+export MTGA_DAEMON_DISABLE_UPDATE_CHECK=1
+./mtga-daemon
+```
+
+**macOS launchd plist** — add to the `EnvironmentVariables` dict in `~/Library/LaunchAgents/MTGACompanionDaemon.plist`:
+```xml
+<key>EnvironmentVariables</key>
+<dict>
+    <key>MTGA_DAEMON_DISABLE_UPDATE_CHECK</key>
+    <string>1</string>
+</dict>
+```
+
+**Windows Task Scheduler** — add an environment variable via the task's Properties dialog, or pass it in the install script before registering the task.
+
 ## Advanced Configuration
 
 ### Custom Port

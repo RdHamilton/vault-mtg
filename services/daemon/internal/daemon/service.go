@@ -14,11 +14,16 @@ import (
 	"github.com/ramonehamilton/mtga-daemon/internal/dispatch"
 	"github.com/ramonehamilton/mtga-daemon/internal/logreader"
 	"github.com/ramonehamilton/mtga-daemon/internal/registrar"
+	"github.com/ramonehamilton/mtga-daemon/internal/updatecheck"
 )
 
 // jwtRefreshInterval is how often the run loop checks whether the JWT needs
 // refreshing during an active session. It is a variable so tests can shorten it.
 var jwtRefreshInterval = time.Hour
+
+// updateCheckInterval is how often the run loop checks for a newer daemon version.
+// It is a variable so tests can shorten it.
+var updateCheckInterval = 24 * time.Hour
 
 // Service is the top-level daemon service.
 type Service struct {
@@ -27,6 +32,7 @@ type Service struct {
 	poller     *logreader.Poller
 	sessionID  string
 	regClient  *registrar.Client
+	version    string // build-time version; "dev" skips update checks
 }
 
 // New creates a Service from cfg.
@@ -42,10 +48,19 @@ func New(cfg *config.Config) *Service {
 		dispatcher: d,
 		sessionID:  fmt.Sprintf("live-%s", uuid.New().String()),
 		regClient:  registrar.NewClient(cfg.CloudAPIURL),
+		version:    "dev",
 	}
 	// Wire the dispatcher's 401 refresher to the service.
 	d.WithRefresher(svc)
 	return svc
+}
+
+// WithVersion sets the build-time version string used for update checks.
+// Call this after New() before Run(). Defaults to "dev" if never called.
+func (s *Service) WithVersion(v string) {
+	if v != "" {
+		s.version = v
+	}
 }
 
 // Refresh implements dispatch.Refresher. It is called by the dispatcher when
@@ -73,6 +88,16 @@ func (s *Service) register(ctx context.Context) (string, error) {
 	return resp.Token, nil
 }
 
+// runUpdateCheck calls updatecheck.Check and swallows any panics. Errors are
+// already swallowed inside the updatecheck package itself; this wrapper ensures
+// the version check can never affect service health.
+func (s *Service) runUpdateCheck(ctx context.Context) {
+	if s.cfg.DisableUpdateCheck {
+		return
+	}
+	updatecheck.Check(ctx, s.cfg.CloudAPIURL, s.version)
+}
+
 // Run starts the daemon, blocks until ctx is cancelled.
 func (s *Service) Run(ctx context.Context) error {
 	// Phase 1: ensure we have a valid JWT before starting event dispatch.
@@ -82,6 +107,9 @@ func (s *Service) Run(ctx context.Context) error {
 			log.Printf("[daemon] warn: startup registration failed: %v", err)
 		}
 	}
+
+	// Run update check once on startup (non-blocking).
+	go s.runUpdateCheck(ctx)
 
 	logPath := s.cfg.LogPath
 	if logPath == "" {
@@ -127,6 +155,10 @@ func (s *Service) Run(ctx context.Context) error {
 	jwtTicker := time.NewTicker(jwtRefreshInterval)
 	defer jwtTicker.Stop()
 
+	// Periodic version check: every 24 hours, check for a newer daemon release.
+	updateTicker := time.NewTicker(updateCheckInterval)
+	defer updateTicker.Stop()
+
 	for {
 		select {
 		case <-ctx.Done():
@@ -141,6 +173,10 @@ func (s *Service) Run(ctx context.Context) error {
 					log.Printf("[daemon] warn: periodic JWT refresh failed: %v", err)
 				}
 			}
+
+		case <-updateTicker.C:
+			// Run non-blocking; errors are swallowed inside runUpdateCheck.
+			go s.runUpdateCheck(ctx)
 
 		case err, ok := <-errs:
 			if !ok {

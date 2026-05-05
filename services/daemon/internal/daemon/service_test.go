@@ -337,3 +337,119 @@ func TestRunSkipsRefreshWhenSyncDisabled(t *testing.T) {
 	assert.Equal(t, int32(0), registerCalls.Load(),
 		"register must not be called when sync is disabled")
 }
+
+// ---------------------------------------------------------------------------
+// Update check ticker tests
+//
+// Strategy: set updateCheckInterval to a very short duration so the ticker
+// fires quickly, then cancel the context. Count how many times the BFF
+// version endpoint was called.
+// ---------------------------------------------------------------------------
+
+// TestRunFiresUpdateCheckOnStartupAndTicker verifies that the update check is
+// called once on startup (via goroutine) and again when the ticker fires.
+func TestRunFiresUpdateCheckOnStartupAndTicker(t *testing.T) {
+	var versionCalls atomic.Int32
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/api/v1/daemon/version":
+			versionCalls.Add(1)
+			w.Header().Set("Content-Type", "application/json")
+			fmt.Fprint(w, `{"latest":"0.1.0","released_at":"2026-01-01T00:00:00Z","download_url":"https://example.com"}`)
+		case "/api/daemon/register":
+			w.Header().Set("Content-Type", "application/json")
+			freshJWT := makeTestJWT(time.Now().Add(30 * 24 * time.Hour).Unix())
+			fmt.Fprintf(w, `{"token":%q,"daemon_id":"test-id"}`, freshJWT)
+		default:
+			w.WriteHeader(http.StatusAccepted)
+		}
+	}))
+	defer srv.Close()
+
+	freshJWT := makeTestJWT(time.Now().Add(30 * 24 * time.Hour).Unix())
+	cfg := &config.Config{
+		CloudAPIURL:        srv.URL,
+		IngestPath:         "/v1/ingest/events",
+		APIKey:             "test-api-key",
+		AccountID:          "acc-update-check",
+		SyncEnabled:        true,
+		DaemonJWT:          freshJWT,
+		LogPath:            "/dev/null",
+		DisableUpdateCheck: false,
+	}
+
+	svc := New(cfg)
+	svc.WithVersion("0.1.0") // same as latest — no WARN, but check still fires
+
+	oldUpdateInterval := updateCheckInterval
+	updateCheckInterval = 20 * time.Millisecond
+	t.Cleanup(func() { updateCheckInterval = oldUpdateInterval })
+
+	ctx, cancel := context.WithTimeout(context.Background(), 200*time.Millisecond)
+	defer cancel()
+
+	_ = svc.Run(ctx)
+
+	// Startup goroutine + at least one ticker fire = at least 2 calls.
+	assert.GreaterOrEqual(t, versionCalls.Load(), int32(2),
+		"expected startup check plus at least one ticker-driven check")
+}
+
+// TestRunSkipsUpdateCheckWhenDisabled verifies that no call to the version
+// endpoint is made when DisableUpdateCheck is true.
+func TestRunSkipsUpdateCheckWhenDisabled(t *testing.T) {
+	var versionCalls atomic.Int32
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/api/v1/daemon/version" {
+			versionCalls.Add(1)
+		}
+		w.WriteHeader(http.StatusAccepted)
+	}))
+	defer srv.Close()
+
+	freshJWT := makeTestJWT(time.Now().Add(30 * 24 * time.Hour).Unix())
+	cfg := &config.Config{
+		CloudAPIURL:        srv.URL,
+		IngestPath:         "/v1/ingest/events",
+		APIKey:             "test-api-key",
+		AccountID:          "acc-no-update-check",
+		SyncEnabled:        true,
+		DaemonJWT:          freshJWT,
+		LogPath:            "/dev/null",
+		DisableUpdateCheck: true,
+	}
+
+	svc := New(cfg)
+	svc.WithVersion("0.1.0")
+
+	oldUpdateInterval := updateCheckInterval
+	updateCheckInterval = 20 * time.Millisecond
+	t.Cleanup(func() { updateCheckInterval = oldUpdateInterval })
+
+	ctx, cancel := context.WithTimeout(context.Background(), 200*time.Millisecond)
+	defer cancel()
+
+	_ = svc.Run(ctx)
+
+	assert.Equal(t, int32(0), versionCalls.Load(),
+		"version endpoint must not be called when DisableUpdateCheck is true")
+}
+
+// TestWithVersion sets version and verifies it is stored correctly.
+func TestWithVersion(t *testing.T) {
+	cfg := &config.Config{
+		CloudAPIURL: "http://localhost",
+		IngestPath:  "/v1/ingest/events",
+	}
+	svc := New(cfg)
+	assert.Equal(t, "dev", svc.version)
+
+	svc.WithVersion("1.2.3")
+	assert.Equal(t, "1.2.3", svc.version)
+
+	// Empty string must be ignored.
+	svc.WithVersion("")
+	assert.Equal(t, "1.2.3", svc.version)
+}
