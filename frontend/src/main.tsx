@@ -7,7 +7,7 @@ import { DownloadProvider } from './context/DownloadContext'
 import { TaskProgressProvider } from './context/TaskProgressContext'
 import { initializeServices } from './services/adapter'
 
-// Initialize services (REST API and WebSocket) before rendering
+// Initialize services (REST API and WebSocket) before rendering — see #1243 for Vercel BFF smoke-test
 initializeServices().then(() => {
   createRoot(document.getElementById('root')!).render(
     <StrictMode>
