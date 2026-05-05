@@ -12,6 +12,18 @@
             "command": "bash .claude/hooks/architect-pre-push.sh"
           }
         ]
+      },
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "agent",
+            "if": "Bash(gh pr create*)",
+            "prompt": "You are the lead-engineer code reviewer. An agent is about to open a pull request. Review all changes on the current branch by running: git diff main...HEAD and git log main...HEAD --oneline. Check against CLAUDE.md rules — flag over-engineering, scope creep, unnecessary complexity, missing tests, or any violations of project conventions.\n\nIf the PR is ready, output ONLY this exact JSON: {\"continue\": true}\nIf the PR should be blocked, output ONLY this exact JSON: {\"continue\": false, \"stopReason\": \"Lead Engineer BLOCKED: <your specific reason>\"}\n\nOutput nothing else.",
+            "timeout": 120,
+            "statusMessage": "Lead Engineer reviewing changes before PR..."
+          }
+        ]
       }
     ]
   },

@@ -8,6 +8,32 @@
 **Summary**: One sentence summary of what was done and why.
 -->
 
+## 2026-05-05 — [backend-engineer] Issue #1130: fix(sync): expand Scryfall filter to include alchemy, masters, and draft_innovation sets
+**PR**: #1189
+**Files changed**:
+- `services/bff/internal/storage/migrations/postgres/000062_add_is_draft_active.down.sql` — migration rollback: drop is_draft_active column
+- `services/bff/internal/storage/migrations/postgres/000062_add_is_draft_active.up.sql` — migration: add is_draft_active column to sets table with backfill from is_standard_legal
+- `services/sync/internal/datasets/postgres_store.go` — updated UpsertSets to set is_draft_active=TRUE; updated GetActiveSets to query is_draft_active=TRUE
+- `services/sync/internal/datasets/store.go` — updated Store interface signatures for is_draft_active column
+- `services/sync/internal/scryfall/client.go` — added isDraftableSetType helper covering expansion, core, masters, draft_innovation, alchemy
+- `services/sync/internal/scryfall/client_test.go` — updated and added tests for all 5 draftable set types and excluded types
+**Summary**: Expanded the Scryfall set filter to cover all Arena-draftable set types (masters, draft_innovation, alchemy) and added a dedicated is_draft_active column to separate draft availability from Standard legality.
+
+## 2026-05-04 — [backend-engineer] Issue #1135: fix(sync): wire color ratings fetch into scheduler and Lambda handler
+**PR**: #1191
+**Files changed**:
+- `services/sync/internal/seventeenlands/rating.go` — added ColorRating struct
+- `services/sync/internal/seventeenlands/client.go` — added FetchColorRatings method
+- `services/sync/internal/seventeenlands/client_test.go` — unit tests for FetchColorRatings
+- `services/sync/internal/datasets/store.go` — added UpsertColorRatings to Store interface
+- `services/sync/internal/datasets/postgres_store.go` — implemented UpsertColorRatings with DELETE + batch INSERT
+- `services/sync/internal/datasets/postgres_store_test.go` — updated stubs and added tests
+- `services/sync/internal/refresh/scheduler.go` — wired color ratings fetch after card ratings per set/format
+- `services/sync/internal/refresh/scheduler_test.go` — scheduler color ratings tests
+- `services/sync/internal/handler/lambda.go` — wired color ratings fetch into Lambda handler
+- `services/sync/internal/handler/lambda_test.go` — Lambda color ratings tests
+**Summary**: Wired the color ratings fetch (17Lands /color_ratings/data) into both the scheduler and Lambda handler so draft_color_ratings are populated after each card ratings sync run for every active set and format.
+
 ## 2026-05-04 — [bff] Issue #1173: wire IngestHandler to persist events before broadcast
 **PR**: #1178
 **Files changed**:
@@ -93,7 +119,7 @@
 - `services/sync/internal/refresh/scheduler.go` — daily scheduler; queries DB for active sets, SYNC_ACTIVE_SETS env overrides
 - `services/sync/internal/refresh/scheduler_test.go` — startup fetch, DB-sourced sets, and no-sets skip tests
 - `services/bff/internal/storage/migrations/postgres/000057_create_sync_user_grants.up.sql` — mtga_sync Postgres role scoped to card/ratings tables
-- `services/bff/internal/storage/migrations/postgres/000057_create_sync_user_grants.down.sql` — drop mtga_sync role
+- `services/bff/internal/storage/migrations/postgres/000058_fix_standard_legal_sets.down.sql` — drop mtga_sync role
 - `.github/workflows/sync.yml` — path-filtered CI (build, test, vet)
 - `go.work` — added services/sync module
 **Summary**: Scaffolded the sync service as an independent Go module per ADR-001 Approach B; active sets are resolved dynamically from sets.is_standard_legal rather than a static env var, with SYNC_ACTIVE_SETS retained as a local override.
