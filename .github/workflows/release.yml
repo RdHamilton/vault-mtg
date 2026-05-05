@@ -201,6 +201,69 @@ jobs:
           sleep 10
         done
 
+    # Reads DAEMON_JWT_SECRET from SSM Parameter Store (SecureString) and writes
+    # it into /etc/mtga-companion/env on the EC2 instance via SSM RunCommand.
+    # Mirrors the ALLOWED_ORIGINS pattern above but uses --with-decryption since
+    # the parameter is stored as a SecureString.
+    #
+    # PREREQUISITE: the SSM parameter /mtga-companion/prod/daemon-jwt-secret must
+    # exist as a SecureString before this workflow runs. Create it once with a
+    # cryptographically random value, e.g.:
+    #   aws ssm put-parameter \
+    #     --name /mtga-companion/prod/daemon-jwt-secret \
+    #     --value "$(openssl rand -hex 32)" \
+    #     --type SecureString --region us-east-1
+    #
+    # The EC2 instance role must grant ssm:GetParameter and kms:Decrypt on this
+    # parameter (and the default SSM KMS key) for the runtime fetch path.
+    - name: Provision DAEMON_JWT_SECRET on EC2
+      run: |
+        DAEMON_JWT_SECRET=$(aws ssm get-parameter \
+          --name /mtga-companion/prod/daemon-jwt-secret \
+          --with-decryption \
+          --region us-east-1 \
+          --query Parameter.Value \
+          --output text)
+
+        if [ -z "$DAEMON_JWT_SECRET" ]; then
+          echo "ERROR: DAEMON_JWT_SECRET parameter is empty in SSM."
+          exit 1
+        fi
+
+        COMMAND_ID=$(aws ssm send-command \
+          --instance-ids "${{ secrets.EC2_INSTANCE_ID }}" \
+          --document-name "AWS-RunShellScript" \
+          --parameters commands=["mkdir -p /etc/mtga-companion && if grep -q '^DAEMON_JWT_SECRET=' /etc/mtga-companion/env 2>/dev/null; then sed -i 's|^DAEMON_JWT_SECRET=.*|DAEMON_JWT_SECRET=${DAEMON_JWT_SECRET}|' /etc/mtga-companion/env; else echo 'DAEMON_JWT_SECRET=${DAEMON_JWT_SECRET}' >> /etc/mtga-companion/env; fi && chmod 600 /etc/mtga-companion/env"] \
+          --region us-east-1 \
+          --query "Command.CommandId" \
+          --output text)
+
+        echo "Provision SSM Command ID: $COMMAND_ID"
+
+        for i in $(seq 1 18); do
+          STATUS=$(aws ssm get-command-invocation \
+            --command-id "$COMMAND_ID" \
+            --instance-id "${{ secrets.EC2_INSTANCE_ID }}" \
+            --region us-east-1 \
+            --query "Status" \
+            --output text 2>/dev/null || echo "Pending")
+          echo "[$i/18] Status: $STATUS"
+          if [ "$STATUS" = "Success" ]; then
+            echo "DAEMON_JWT_SECRET provisioned."
+            break
+          elif [ "$STATUS" = "Failed" ] || [ "$STATUS" = "Cancelled" ] || [ "$STATUS" = "TimedOut" ]; then
+            echo "Provision failed with status: $STATUS"
+            aws ssm get-command-invocation \
+              --command-id "$COMMAND_ID" \
+              --instance-id "${{ secrets.EC2_INSTANCE_ID }}" \
+              --region us-east-1 \
+              --query "StandardErrorContent" \
+              --output text
+            exit 1
+          fi
+          sleep 10
+        done
+
     - name: Deploy to EC2 via SSM
       run: |
         COMMAND_ID=$(aws ssm send-command \

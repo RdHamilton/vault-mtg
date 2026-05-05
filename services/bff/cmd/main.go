@@ -9,7 +9,6 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
-	"strings"
 	"syscall"
 	"time"
 
@@ -28,9 +27,8 @@ import (
 )
 
 var (
-	port            = flag.Int("port", 8080, "HTTP server port")
-	databaseURL     = flag.String("database-url", os.Getenv("DATABASE_URL"), "PostgreSQL connection string")
-	daemonJWTSecret = strings.TrimSpace(os.Getenv("DAEMON_JWT_SECRET"))
+	port        = flag.Int("port", 8080, "HTTP server port")
+	databaseURL = flag.String("database-url", os.Getenv("DATABASE_URL"), "PostgreSQL connection string")
 )
 
 func runMigrationsWithRetry(dsn string, timeout time.Duration) error {
@@ -76,11 +74,13 @@ func main() {
 	ingestHandler := handlers.NewIngestHandler(sseBroadcaster)
 
 	// Wire daemon register handler when DAEMON_JWT_SECRET is set.
+	// Production startup is guarded in config.Load() which fails fast when
+	// the secret is missing — only development reaches the empty branch.
 	var daemonRegisterHandler *handlers.DaemonRegisterHandler
-	if daemonJWTSecret != "" {
-		daemonRegisterHandler = handlers.NewDaemonRegisterHandler(daemonJWTSecret)
+	if cfg.DaemonJWTSecret != "" {
+		daemonRegisterHandler = handlers.NewDaemonRegisterHandler(cfg.DaemonJWTSecret)
 	} else {
-		log.Println("DAEMON_JWT_SECRET not set — daemon registration endpoint disabled.")
+		log.Println("DAEMON_JWT_SECRET not set — daemon registration endpoint disabled (development only).")
 	}
 
 	// Wire API key handler and auth middleware when a database is available.
@@ -148,8 +148,8 @@ func main() {
 	// Requires a valid daemon JWT so user_id is derived from the verified token,
 	// never from a caller-supplied header.
 	if apiKeysHandler != nil {
-		if daemonJWTSecret != "" {
-			r.With(bffmiddleware.DaemonJWTAuth(daemonJWTSecret)).Post("/api/keys", apiKeysHandler.CreateAPIKey)
+		if cfg.DaemonJWTSecret != "" {
+			r.With(bffmiddleware.DaemonJWTAuth(cfg.DaemonJWTSecret)).Post("/api/keys", apiKeysHandler.CreateAPIKey)
 		} else {
 			// No JWT secret configured — omit the route entirely rather than
 			// serving it without authentication.
@@ -177,8 +177,8 @@ func main() {
 	// POST /v1/ingest/events — JWT auth takes priority when secret is configured;
 	// falls back to API-key auth, then unguarded (dev mode).
 	switch {
-	case daemonJWTSecret != "":
-		r.With(bffmiddleware.DaemonJWTAuth(daemonJWTSecret)).Post("/v1/ingest/events", ingestHandler.IngestEvent)
+	case cfg.DaemonJWTSecret != "":
+		r.With(bffmiddleware.DaemonJWTAuth(cfg.DaemonJWTSecret)).Post("/v1/ingest/events", ingestHandler.IngestEvent)
 	case apiKeyAuthMiddl != nil:
 		r.With(apiKeyAuthMiddl).Post("/v1/ingest/events", ingestHandler.IngestEvent)
 	default:

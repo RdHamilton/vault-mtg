@@ -50,6 +50,16 @@ type Config struct {
 	// Defaults to localhost-only values when the variable is not set so that
 	// local development requires no environment configuration.
 	AllowedOrigins []string
+
+	// DaemonJWTSecret is the HMAC signing key used to validate daemon-issued
+	// JWTs on POST /v1/ingest/events and POST /api/keys.
+	//
+	// Sourced from DAEMON_JWT_SECRET.  When MTGA_ENV=production this value
+	// must be non-empty or Load returns an error — without it the daemon
+	// registration and ingest endpoints are silently disabled, which is
+	// indistinguishable in production from a working stack and allowed
+	// issue #1169 to ship undetected.
+	DaemonJWTSecret string
 }
 
 // Load reads configuration from environment variables, applies defaults, and
@@ -69,6 +79,12 @@ func Load() (*Config, error) {
 
 	if env == "production" && dbURL == "" {
 		return nil, fmt.Errorf("DATABASE_URL must be set when MTGA_ENV=production")
+	}
+
+	daemonJWTSecret := strings.TrimSpace(os.Getenv("DAEMON_JWT_SECRET"))
+
+	if env == "production" && daemonJWTSecret == "" {
+		return nil, fmt.Errorf("DAEMON_JWT_SECRET must be set when MTGA_ENV=production")
 	}
 
 	allowedOrigins := defaultAllowedOrigins
@@ -91,6 +107,7 @@ func Load() (*Config, error) {
 		DraftRatingsStalenessThresholdHours: DefaultStalenessThresholdHours,
 		DraftRatingsBypassFreshnessCheck:    false,
 		AllowedOrigins:                      allowedOrigins,
+		DaemonJWTSecret:                     daemonJWTSecret,
 	}
 
 	if raw := os.Getenv("DRAFT_RATINGS_STALENESS_THRESHOLD_HOURS"); raw != "" {
