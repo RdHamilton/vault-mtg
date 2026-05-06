@@ -301,10 +301,13 @@ jobs:
           --query Parameter.Value \
           --output text)
 
+        SHELL_CMD="SECRET=\$(aws secretsmanager get-secret-value --secret-id ${DB_SECRET_ARN} --region us-east-1 --query SecretString --output text) && DB_USER=\$(echo \"\$SECRET\" | python3 -c 'import sys,json; d=json.load(sys.stdin); print(d[\"username\"])') && DB_PASS=\$(echo \"\$SECRET\" | python3 -c 'import sys,json,urllib.parse; d=json.load(sys.stdin); print(urllib.parse.quote(d[\"password\"], safe=\"\"))') && DATABASE_URL=\"postgres://\${DB_USER}:\${DB_PASS}@${DB_ENDPOINT}:5432/${DB_NAME}\" && mkdir -p /etc/mtga-companion && if grep -q '^DATABASE_URL=' /etc/mtga-companion/env 2>/dev/null; then sed -i \"s|^DATABASE_URL=.*|DATABASE_URL=\${DATABASE_URL}|\" /etc/mtga-companion/env; else echo \"DATABASE_URL=\${DATABASE_URL}\" >> /etc/mtga-companion/env; fi && chmod 600 /etc/mtga-companion/env"
+        PARAMS=$(SHELL_CMD="$SHELL_CMD" python3 -c "import json, os; print('commands=' + json.dumps([os.environ['SHELL_CMD']]))")
+
         COMMAND_ID=$(aws ssm send-command \
           --instance-ids "${{ secrets.EC2_INSTANCE_ID }}" \
           --document-name "AWS-RunShellScript" \
-          --parameters "commands=[\"SECRET=\\$(aws secretsmanager get-secret-value --secret-id ${DB_SECRET_ARN} --region us-east-1 --query SecretString --output text) && DB_USER=\\$(echo \\$SECRET | python3 -c \\\"import sys,json; d=json.load(sys.stdin); print(d['username'])\\\") && DB_PASS=\\$(echo \\$SECRET | python3 -c \\\"import sys,json,urllib.parse; d=json.load(sys.stdin); print(urllib.parse.quote(d['password'], safe=''))\\\") && DATABASE_URL=\\\"postgres://\\${DB_USER}:\\${DB_PASS}@${DB_ENDPOINT}:5432/${DB_NAME}\\\" && if grep -q '^DATABASE_URL=' /etc/mtga-companion/env 2>/dev/null; then sed -i \\\"s|^DATABASE_URL=.*|DATABASE_URL=\\${DATABASE_URL}|\\\" /etc/mtga-companion/env; else echo \\\"DATABASE_URL=\\${DATABASE_URL}\\\" >> /etc/mtga-companion/env; fi && chmod 600 /etc/mtga-companion/env\"]" \
+          --parameters "$PARAMS" \
           --region us-east-1 \
           --query "Command.CommandId" \
           --output text)
