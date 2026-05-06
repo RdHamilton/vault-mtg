@@ -160,11 +160,17 @@ jobs:
         aws s3 cp services/bff/mtga-bff \
           s3://${{ secrets.DEPLOY_BUCKET }}/releases/${{ github.sha }}/mtga-bff
 
-    # Reads ALLOWED_ORIGINS from SSM Parameter Store (runner side) and writes it into
-    # /etc/mtga-companion/env on the EC2 instance via SSM RunCommand.
-    # The sed + grep pattern is idempotent: it replaces the line if the key already
-    # exists, otherwise it appends it. The BFF service restart at the end of the
-    # Deploy step picks up the updated value.
+    # Upload provisioning scripts to S3 so the EC2 instance can fetch and run them.
+    # Scripts live in scripts/deploy/ and are uploaded once per deploy run.
+    - name: Upload deploy scripts to S3
+      run: |
+        aws s3 sync scripts/deploy/ \
+          s3://${{ secrets.DEPLOY_BUCKET }}/scripts/ \
+          --exclude "*" --include "*.sh"
+
+    # Reads ALLOWED_ORIGINS from SSM Parameter Store on the EC2 instance and writes it
+    # into /etc/mtga-companion/env.  The script handles upsert (replace or append).
+    # The BFF service restart at the end of the deploy step picks up the updated value.
     #
     # PREREQUISITE: the SSM parameter /mtga-companion/production/ALLOWED_ORIGINS must
     # exist before this workflow runs. Create or update it with:
@@ -174,19 +180,10 @@ jobs:
     #     --type String --overwrite --region us-east-1
     - name: Provision ALLOWED_ORIGINS on EC2
       run: |
-        ALLOWED_ORIGINS=$(aws ssm get-parameter \
-          --name /mtga-companion/production/ALLOWED_ORIGINS \
-          --region us-east-1 \
-          --query Parameter.Value \
-          --output text)
-
-        SHELL_CMD="mkdir -p /etc/mtga-companion && if grep -q '^ALLOWED_ORIGINS=' /etc/mtga-companion/env 2>/dev/null; then sed -i 's|^ALLOWED_ORIGINS=.*|ALLOWED_ORIGINS=${ALLOWED_ORIGINS}|' /etc/mtga-companion/env; else echo 'ALLOWED_ORIGINS=${ALLOWED_ORIGINS}' >> /etc/mtga-companion/env; fi"
-        PARAMS=$(SHELL_CMD="$SHELL_CMD" python3 -c "import json, os; print('commands=' + json.dumps([os.environ['SHELL_CMD']]))")
-
         COMMAND_ID=$(aws ssm send-command \
           --instance-ids "${{ secrets.EC2_INSTANCE_ID }}" \
           --document-name "AWS-RunShellScript" \
-          --parameters "$PARAMS" \
+          --parameters 'commands=["aws s3 cp s3://${{ secrets.DEPLOY_BUCKET }}/scripts/provision-env.sh /tmp/provision-env.sh && chmod +x /tmp/provision-env.sh && /tmp/provision-env.sh ALLOWED_ORIGINS /mtga-companion/production/ALLOWED_ORIGINS"]' \
           --region us-east-1 \
           --query "Command.CommandId" \
           --output text)
@@ -217,45 +214,22 @@ jobs:
           sleep 10
         done
 
-
-    # Fetches the RDS master credential from Secrets Manager ON the EC2 instance
-    # so the plaintext password never touches the workflow runner or GitHub logs.
+    # Fetches the RDS credential from Secrets Manager ON the EC2 instance and writes
+    # DATABASE_URL into /etc/mtga-companion/env.  The plaintext password never touches
+    # the GitHub Actions runner or appears in workflow logs.
     # The instance IAM role must have secretsmanager:GetSecretValue on the secret ARN
     # (already granted via the EC2 CloudFormation stack).
-    # The DATABASE_URL is built with URL-encoded password to handle special characters.
     #
-    # PREREQUISITE: /mtga-companion/production/db-secret-arn SSM parameter must exist:
-    #   aws ssm put-parameter \
-    #     --name /mtga-companion/production/db-secret-arn \
-    #     --value "<RDS secret ARN from rds stack output DBSecretArn>" \
-    #     --type String --region us-east-1
+    # PREREQUISITE: the following SSM parameters must exist before this workflow runs:
+    #   /mtga-companion/production/db-secret-arn  (RDS secret ARN from rds stack output)
+    #   /mtga-companion/production/db-endpoint     (RDS hostname)
+    #   /mtga-companion/production/db-name         (database name)
     - name: Provision DATABASE_URL on EC2
       run: |
-        DB_SECRET_ARN=$(aws ssm get-parameter \
-          --name /mtga-companion/production/db-secret-arn \
-          --region us-east-1 \
-          --query Parameter.Value \
-          --output text)
-
-        DB_ENDPOINT=$(aws ssm get-parameter \
-          --name /mtga-companion/production/db-endpoint \
-          --region us-east-1 \
-          --query Parameter.Value \
-          --output text)
-
-        DB_NAME=$(aws ssm get-parameter \
-          --name /mtga-companion/production/db-name \
-          --region us-east-1 \
-          --query Parameter.Value \
-          --output text)
-
-        SHELL_CMD="SECRET=\$(aws secretsmanager get-secret-value --secret-id ${DB_SECRET_ARN} --region us-east-1 --query SecretString --output text) && DB_USER=\$(echo \"\$SECRET\" | python3 -c 'import sys,json; d=json.load(sys.stdin); print(d[\"username\"])') && DB_PASS=\$(echo \"\$SECRET\" | python3 -c 'import sys,json,urllib.parse; d=json.load(sys.stdin); print(urllib.parse.quote(d[\"password\"], safe=\"\"))') && DATABASE_URL=\"postgres://\${DB_USER}:\${DB_PASS}@${DB_ENDPOINT}:5432/${DB_NAME}\" && mkdir -p /etc/mtga-companion && if grep -q '^DATABASE_URL=' /etc/mtga-companion/env 2>/dev/null; then sed -i \"s|^DATABASE_URL=.*|DATABASE_URL=\${DATABASE_URL}|\" /etc/mtga-companion/env; else echo \"DATABASE_URL=\${DATABASE_URL}\" >> /etc/mtga-companion/env; fi && chmod 600 /etc/mtga-companion/env"
-        PARAMS=$(SHELL_CMD="$SHELL_CMD" python3 -c "import json, os; print('commands=' + json.dumps([os.environ['SHELL_CMD']]))")
-
         COMMAND_ID=$(aws ssm send-command \
           --instance-ids "${{ secrets.EC2_INSTANCE_ID }}" \
           --document-name "AWS-RunShellScript" \
-          --parameters "$PARAMS" \
+          --parameters 'commands=["aws s3 cp s3://${{ secrets.DEPLOY_BUCKET }}/scripts/provision-db-url.sh /tmp/provision-db-url.sh && chmod +x /tmp/provision-db-url.sh && /tmp/provision-db-url.sh"]' \
           --region us-east-1 \
           --query "Command.CommandId" \
           --output text)
@@ -286,8 +260,9 @@ jobs:
           sleep 10
         done
 
-    # Reads CLERK_SECRET_KEY from SSM Parameter Store (SecureString) and writes
-    # it into /etc/mtga-companion/env on the EC2 instance via SSM RunCommand.
+    # Reads CLERK_SECRET_KEY from SSM Parameter Store (SecureString) on the EC2 instance
+    # and writes it into /etc/mtga-companion/env.  The --with-decryption flag is handled
+    # by the provision-env.sh script running on the instance under the instance IAM role.
     #
     # PREREQUISITE: the SSM parameter /mtga-companion/production/CLERK_SECRET_KEY must
     # exist as a SecureString before this workflow runs. Create it once with:
@@ -297,25 +272,10 @@ jobs:
     #     --type SecureString --region us-east-1 --profile personal
     - name: Provision CLERK_SECRET_KEY on EC2
       run: |
-        CLERK_SECRET_KEY=$(aws ssm get-parameter \
-          --name /mtga-companion/production/CLERK_SECRET_KEY \
-          --with-decryption \
-          --region us-east-1 \
-          --query Parameter.Value \
-          --output text)
-
-        if [ -z "$CLERK_SECRET_KEY" ]; then
-          echo "ERROR: CLERK_SECRET_KEY parameter is empty in SSM."
-          exit 1
-        fi
-
-        SHELL_CMD="mkdir -p /etc/mtga-companion && if grep -q '^CLERK_SECRET_KEY=' /etc/mtga-companion/env 2>/dev/null; then sed -i 's|^CLERK_SECRET_KEY=.*|CLERK_SECRET_KEY=${CLERK_SECRET_KEY}|' /etc/mtga-companion/env; else echo 'CLERK_SECRET_KEY=${CLERK_SECRET_KEY}' >> /etc/mtga-companion/env; fi && chmod 600 /etc/mtga-companion/env"
-        PARAMS=$(CLERK_SECRET_KEY="$CLERK_SECRET_KEY" SHELL_CMD="$SHELL_CMD" python3 -c "import json, os; print('commands=' + json.dumps([os.environ['SHELL_CMD']]))")
-
         COMMAND_ID=$(aws ssm send-command \
           --instance-ids "${{ secrets.EC2_INSTANCE_ID }}" \
           --document-name "AWS-RunShellScript" \
-          --parameters "$PARAMS" \
+          --parameters 'commands=["aws s3 cp s3://${{ secrets.DEPLOY_BUCKET }}/scripts/provision-env.sh /tmp/provision-env.sh && chmod +x /tmp/provision-env.sh && /tmp/provision-env.sh CLERK_SECRET_KEY /mtga-companion/production/CLERK_SECRET_KEY --with-decryption"]' \
           --region us-east-1 \
           --query "Command.CommandId" \
           --output text)
@@ -346,18 +306,19 @@ jobs:
           sleep 10
         done
 
+    # Downloads stage-binary.sh from S3 and runs it on EC2.
+    # DEPLOY_BUCKET and DEPLOY_SHA are passed as SSM environment variables so no
+    # values containing special characters are embedded in the JSON command string.
     - name: Stage binary on EC2 via SSM
       run: |
-        SHELL_CMD="aws s3 cp s3://${{ secrets.DEPLOY_BUCKET }}/releases/${{ github.sha }}/mtga-bff /usr/local/bin/mtga-bff.next && chmod +x /usr/local/bin/mtga-bff.next && mv /usr/local/bin/mtga-bff.next /usr/local/bin/mtga-bff"
-        PARAMS=$(SHELL_CMD="$SHELL_CMD" python3 -c "import json, os; print('commands=' + json.dumps([os.environ['SHELL_CMD']]))")
-
         COMMAND_ID=$(aws ssm send-command \
           --instance-ids "${{ secrets.EC2_INSTANCE_ID }}" \
           --document-name "AWS-RunShellScript" \
-          --parameters "$PARAMS" \
+          --parameters 'commands=["aws s3 cp s3://${{ secrets.DEPLOY_BUCKET }}/scripts/stage-binary.sh /tmp/stage-binary.sh && chmod +x /tmp/stage-binary.sh && /tmp/stage-binary.sh"]' \
           --region us-east-1 \
           --query "Command.CommandId" \
-          --output text)
+          --output text \
+          --environment-variables "DEPLOY_BUCKET=${{ secrets.DEPLOY_BUCKET }},DEPLOY_SHA=${{ github.sha }}")
 
         echo "Stage SSM Command ID: $COMMAND_ID"
 
@@ -387,13 +348,10 @@ jobs:
 
     - name: Restart BFF service via SSM
       run: |
-        SHELL_CMD="systemctl restart mtga-bff"
-        PARAMS=$(SHELL_CMD="$SHELL_CMD" python3 -c "import json, os; print('commands=' + json.dumps([os.environ['SHELL_CMD']]))")
-
         COMMAND_ID=$(aws ssm send-command \
           --instance-ids "${{ secrets.EC2_INSTANCE_ID }}" \
           --document-name "AWS-RunShellScript" \
-          --parameters "$PARAMS" \
+          --parameters 'commands=["aws s3 cp s3://${{ secrets.DEPLOY_BUCKET }}/scripts/restart-bff.sh /tmp/restart-bff.sh && chmod +x /tmp/restart-bff.sh && /tmp/restart-bff.sh"]' \
           --region us-east-1 \
           --query "Command.CommandId" \
           --output text)
@@ -426,13 +384,10 @@ jobs:
 
     - name: Post-deploy health check
       run: |
-        SHELL_CMD="for i in \$(seq 1 10); do if curl -sf http://127.0.0.1:8080/healthz > /dev/null; then echo 'healthz OK'; exit 0; fi; sleep 5; done; exit 1"
-        PARAMS=$(SHELL_CMD="$SHELL_CMD" python3 -c "import json, os; print('commands=' + json.dumps([os.environ['SHELL_CMD']]))")
-
         COMMAND_ID=$(aws ssm send-command \
           --instance-ids "${{ secrets.EC2_INSTANCE_ID }}" \
           --document-name "AWS-RunShellScript" \
-          --parameters "$PARAMS" \
+          --parameters 'commands=["aws s3 cp s3://${{ secrets.DEPLOY_BUCKET }}/scripts/healthcheck-bff.sh /tmp/healthcheck-bff.sh && chmod +x /tmp/healthcheck-bff.sh && /tmp/healthcheck-bff.sh"]' \
           --region us-east-1 \
           --query "Command.CommandId" \
           --output text)

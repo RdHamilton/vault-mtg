@@ -51,32 +51,25 @@ jobs:
           aws s3 cp frontend-dist.tar.gz \
             s3://${{ secrets.DEPLOY_BUCKET }}/frontend/${{ github.sha }}/frontend-dist.tar.gz
 
+      # Upload the deploy script so EC2 can fetch and run it via SSM.
+      - name: Upload deploy script to S3
+        run: |
+          aws s3 cp scripts/deploy/deploy-frontend.sh \
+            s3://${{ secrets.DEPLOY_BUCKET }}/scripts/deploy-frontend.sh
+
+      # Downloads deploy-frontend.sh from S3 and runs it on EC2.
+      # DEPLOY_BUCKET and DEPLOY_SHA are passed as SSM environment variables so no
+      # values containing special characters are embedded in the JSON command string.
       - name: Deploy to EC2 via SSM
         run: |
           COMMAND_ID=$(aws ssm send-command \
             --instance-ids "${{ secrets.EC2_INSTANCE_ID }}" \
             --document-name "AWS-RunShellScript" \
-            --parameters 'commands=[
-              "set -e",
-              "DEPLOY_DIR=/var/www/mtga-companion",
-              "STAGING_DIR=/var/www/mtga-companion-staging",
-              "BUCKET=${{ secrets.DEPLOY_BUCKET }}",
-              "SHA=${{ github.sha }}",
-              "rm -rf \"$STAGING_DIR\" && mkdir -p \"$STAGING_DIR\"",
-              "aws s3 cp \"s3://$BUCKET/frontend/$SHA/frontend-dist.tar.gz\" /tmp/frontend-dist.tar.gz",
-              "tar -xzf /tmp/frontend-dist.tar.gz -C \"$STAGING_DIR\"",
-              "rm -rf \"${DEPLOY_DIR}.old\"",
-              "[ -d \"$DEPLOY_DIR\" ] && mv \"$DEPLOY_DIR\" \"${DEPLOY_DIR}.old\" || true",
-              "mv \"$STAGING_DIR\" \"$DEPLOY_DIR\"",
-              "chown -R nginx:nginx \"$DEPLOY_DIR\"",
-              "chmod -R 755 \"$DEPLOY_DIR\"",
-              "nginx -t && systemctl reload nginx",
-              "rm -f /tmp/frontend-dist.tar.gz",
-              "echo \"Frontend deploy complete: $SHA\""
-            ]' \
+            --parameters 'commands=["aws s3 cp s3://${{ secrets.DEPLOY_BUCKET }}/scripts/deploy-frontend.sh /tmp/deploy-frontend.sh && chmod +x /tmp/deploy-frontend.sh && /tmp/deploy-frontend.sh"]' \
             --region us-east-1 \
             --query "Command.CommandId" \
-            --output text)
+            --output text \
+            --environment-variables "DEPLOY_BUCKET=${{ secrets.DEPLOY_BUCKET }},DEPLOY_SHA=${{ github.sha }}")
 
           echo "SSM Command ID: $COMMAND_ID"
 
