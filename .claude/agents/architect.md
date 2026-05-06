@@ -147,7 +147,7 @@ mtga-companion-web (separate repo — RdHamilton/mtga-companion-web)
 Local path: /Users/ramonehamilton/Documents/Personal Projects/mtga-companion-web
 ```
 
-### Target Architecture (v2.0 — Cloud SaaS)
+### Target Architecture (v0.x — Cloud SaaS Beta)
 
 ```
 User Machine
