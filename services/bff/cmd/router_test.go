@@ -23,6 +23,21 @@ import (
 	"github.com/ramonehamilton/mtga-bff/internal/storage/repository"
 )
 
+// stubUserRepo is a ClerkUserLookup stub that always returns a fixed user (id=1).
+type stubUserRepo struct {
+	failWith error
+}
+
+func (s *stubUserRepo) UpsertByClerkUserID(_ context.Context, _ string) (*repository.User, error) {
+	if s.failWith != nil {
+		return nil, s.failWith
+	}
+
+	clerkID := "user_stub"
+
+	return &repository.User{ID: 1, Email: "stub@clerk.local", ClerkUserID: &clerkID, SubscriptionTier: "free"}, nil
+}
+
 // ──────────────────────────────────────────────────────────────────────────────
 // Test helpers
 // ──────────────────────────────────────────────────────────────────────────────
@@ -103,7 +118,8 @@ func (s *stubDraftGetter) GetRatings(_ context.Context, _, _ string) (*repositor
 	return nil, nil
 }
 
-// depsWithClerk builds minimal RouterDeps with ClerkAuthMiddl set.
+// depsWithClerk builds minimal RouterDeps with ClerkAuthMiddl and
+// ClerkUserResolver set (stub repo returns user id=1).
 func depsWithClerk(t *testing.T) RouterDeps {
 	t.Helper()
 
@@ -111,9 +127,10 @@ func depsWithClerk(t *testing.T) RouterDeps {
 	ingest := handlers.NewIngestHandler(&noopBroadcaster{})
 
 	return RouterDeps{
-		Broker:         broker,
-		IngestHandler:  ingest,
-		ClerkAuthMiddl: bffmiddleware.RequireClerkAuth("sk_test_dummy"),
+		Broker:            broker,
+		IngestHandler:     ingest,
+		ClerkAuthMiddl:    bffmiddleware.RequireClerkAuth("sk_test_dummy"),
+		ClerkUserResolver: bffmiddleware.ClerkUserResolver(&stubUserRepo{}),
 	}
 }
 
@@ -347,5 +364,74 @@ func TestRouter_SSE_Returns503_WhenNoAuthConfigured(t *testing.T) {
 
 	if rr.Code != http.StatusServiceUnavailable {
 		t.Fatalf("GET /api/v1/events no auth: want 503, got %d", rr.Code)
+	}
+}
+
+// ──────────────────────────────────────────────────────────────────────────────
+// ClerkUserResolver middleware tests
+// ──────────────────────────────────────────────────────────────────────────────
+
+// TestRouter_SSE_ValidJWT_WithResolver_ReachesHandler verifies that a valid
+// Clerk JWT combined with a working ClerkUserResolver stub resolves the int64
+// user ID and reaches the SSE handler.
+//
+// httptest.ResponseRecorder does not implement http.Flusher, so the SSE
+// handler returns 500 "streaming not supported" — that is expected behaviour
+// from the SSE infrastructure, not from the auth layer.  What must NOT happen
+// is a 401 from Clerk middleware or a JSON 500 from the resolver middleware.
+func TestRouter_SSE_ValidJWT_WithResolver_ReachesHandler(t *testing.T) {
+	jwt := setupClerkBackend(t)
+
+	deps := depsWithClerk(t) // includes stubUserRepo returning id=1
+	r := BuildRouter(minimalConfig(), deps)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/events", nil)
+	req.Header.Set("Authorization", "Bearer "+jwt)
+	rr := httptest.NewRecorder()
+	r.ServeHTTP(rr, req)
+
+	body := rr.Body.String()
+
+	// A 401 from Clerk middleware indicates a token problem — must not happen.
+	if rr.Code == http.StatusUnauthorized {
+		t.Fatalf("GET /api/v1/events with resolver: unexpected 401 — body: %s", body)
+	}
+
+	// A JSON 500 from the resolver indicates the stub repo failed — must not happen.
+	// The only acceptable 500 is the SSE "streaming not supported" plain-text response.
+	if rr.Code == http.StatusInternalServerError {
+		var errBody map[string]string
+		if err := json.NewDecoder(rr.Body).Decode(&errBody); err == nil {
+			if errBody["error"] == "internal server error" {
+				t.Fatalf("GET /api/v1/events with resolver: resolver returned 500 — body: %s", body)
+			}
+		}
+	}
+}
+
+// TestRouter_SSE_ValidJWT_ResolverDBError_Returns500 verifies that when the
+// user repo returns an error (e.g. DB down), the resolver middleware returns 500.
+func TestRouter_SSE_ValidJWT_ResolverDBError_Returns500(t *testing.T) {
+	jwt := setupClerkBackend(t)
+
+	broker := sse.NewWithHeartbeat(0)
+	ingest := handlers.NewIngestHandler(&noopBroadcaster{})
+
+	deps := RouterDeps{
+		Broker:            broker,
+		IngestHandler:     ingest,
+		ClerkAuthMiddl:    bffmiddleware.RequireClerkAuth("sk_test_dummy"),
+		ClerkUserResolver: bffmiddleware.ClerkUserResolver(&stubUserRepo{failWith: context.DeadlineExceeded}),
+	}
+
+	r := BuildRouter(minimalConfig(), deps)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/events", nil)
+	req.Header.Set("Authorization", "Bearer "+jwt)
+	rr := httptest.NewRecorder()
+	r.ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusInternalServerError {
+		t.Fatalf("resolver DB error: want 500, got %d", rr.Code)
 	}
 }

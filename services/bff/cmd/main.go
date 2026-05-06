@@ -99,6 +99,7 @@ func main() {
 	var (
 		apiKeysHandler      *handlers.APIKeysHandler
 		apiKeyAuthMiddl     func(http.Handler) http.Handler
+		clerkUserResolver   func(http.Handler) http.Handler
 		draftRatingsHandler *handlers.DraftRatingsHandler
 	)
 
@@ -117,6 +118,10 @@ func main() {
 
 		daemonEventsRepo := repository.NewDaemonEventsRepository(sqlDB)
 		ingestHandler = ingestHandler.WithRepository(daemonEventsRepo)
+
+		// Wire Clerk→DB user ID bridge when both Clerk and a database are available.
+		userRepo := repository.NewUserRepository(sqlDB)
+		clerkUserResolver = bffmiddleware.ClerkUserResolver(userRepo)
 	} else {
 		log.Printf("WARN: no DATABASE_URL — API key auth unavailable (env=%s); guarded endpoints return 503", cfg.Env)
 	}
@@ -128,6 +133,7 @@ func main() {
 		APIKeysHandler:      apiKeysHandler,
 		DraftRatingsHandler: draftRatingsHandler,
 		ClerkAuthMiddl:      clerkAuthMiddl,
+		ClerkUserResolver:   clerkUserResolver,
 		APIKeyAuthMiddl:     apiKeyAuthMiddl,
 	})
 
@@ -170,6 +176,7 @@ type RouterDeps struct {
 	APIKeysHandler      *handlers.APIKeysHandler
 	DraftRatingsHandler *handlers.DraftRatingsHandler
 	ClerkAuthMiddl      func(http.Handler) http.Handler
+	ClerkUserResolver   func(http.Handler) http.Handler
 	APIKeyAuthMiddl     func(http.Handler) http.Handler
 }
 
@@ -261,6 +268,13 @@ func BuildRouter(cfg *config.Config, deps RouterDeps) http.Handler {
 		// Protected group — all routes inside require a valid Clerk JWT.
 		r.Group(func(r chi.Router) {
 			r.Use(deps.ClerkAuthMiddl)
+
+			// ClerkUserResolver bridges the Clerk string user ID to the DB int64
+			// user ID required by handlers.  When not configured (e.g. no DB in
+			// development) the group still works but UserIDFromContext returns 0.
+			if deps.ClerkUserResolver != nil {
+				r.Use(deps.ClerkUserResolver)
+			}
 
 			// GET /api/v1/events — SSE stream for browser clients.
 			r.Get("/api/v1/events", sseHandler)
