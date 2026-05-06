@@ -6,6 +6,7 @@ toolchain go1.25.9
 
 require (
 	github.com/RdHamilton/MTGA-Companion/services/contract v0.1.0
+	github.com/clerk/clerk-sdk-go/v2 v2.5.1
 	github.com/go-chi/chi/v5 v5.2.5
 	github.com/go-chi/cors v1.2.2
 	github.com/golang-migrate/migrate/v4 v4.19.1
@@ -14,6 +15,7 @@ require (
 )
 
 require (
+	github.com/go-jose/go-jose/v3 v3.0.4 // indirect
 	github.com/golang-jwt/jwt/v5 v5.3.1 // indirect
 	github.com/google/uuid v1.6.0 // indirect
 	github.com/jackc/pgerrcode v0.0.0-20220416144525-469b46aa5efa // indirect

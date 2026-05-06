@@ -70,6 +70,19 @@ type Config struct {
 	// DaemonReleasedAt is the RFC3339 timestamp when DaemonLatestVersion was
 	// published.  Sourced from BFF_DAEMON_RELEASED_AT.  Empty string when unset.
 	DaemonReleasedAt string
+
+	// ClerkSecretKey is the Clerk backend API secret key used to verify Clerk
+	// session JWTs on protected browser-facing routes.
+	//
+	// Sourced from CLERK_SECRET_KEY.  When MTGA_ENV=production this value must
+	// be non-empty or Load returns an error — without it the ClerkAuth
+	// middleware cannot be constructed and protected routes would be
+	// inaccessible.
+	//
+	// The actual secret value must be stored in AWS SSM Parameter Store and
+	// injected as an environment variable at deploy time.  See
+	// infrastructure/ssm/parameters.md for the parameter path.
+	ClerkSecretKey string
 }
 
 // Load reads configuration from environment variables, applies defaults, and
@@ -95,6 +108,12 @@ func Load() (*Config, error) {
 
 	if env == "production" && daemonJWTSecret == "" {
 		return nil, fmt.Errorf("DAEMON_JWT_SECRET must be set when MTGA_ENV=production")
+	}
+
+	clerkSecretKey := strings.TrimSpace(os.Getenv("CLERK_SECRET_KEY"))
+
+	if env == "production" && clerkSecretKey == "" {
+		return nil, fmt.Errorf("CLERK_SECRET_KEY must be set when MTGA_ENV=production")
 	}
 
 	allowedOrigins := defaultAllowedOrigins
@@ -125,6 +144,7 @@ func Load() (*Config, error) {
 		DaemonJWTSecret:                     daemonJWTSecret,
 		DaemonLatestVersion:                 daemonLatestVersion,
 		DaemonReleasedAt:                    os.Getenv("BFF_DAEMON_RELEASED_AT"),
+		ClerkSecretKey:                      clerkSecretKey,
 	}
 
 	if raw := os.Getenv("DRAFT_RATINGS_STALENESS_THRESHOLD_HOURS"); raw != "" {

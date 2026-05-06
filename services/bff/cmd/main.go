@@ -83,6 +83,18 @@ func main() {
 		log.Println("DAEMON_JWT_SECRET not set — daemon registration endpoint disabled (development only).")
 	}
 
+	// Wire Clerk auth middleware when CLERK_SECRET_KEY is configured.
+	// This middleware protects browser-facing routes by verifying Clerk session
+	// JWTs.  When the key is absent (e.g. development without a Clerk account)
+	// the middleware is nil and callers fall back to the API-key path or serve
+	// a 503.
+	var clerkAuthMiddl func(http.Handler) http.Handler
+	if cfg.ClerkSecretKey != "" {
+		clerkAuthMiddl = bffmiddleware.RequireClerkAuth(cfg.ClerkSecretKey)
+	} else {
+		log.Println("CLERK_SECRET_KEY not set — Clerk JWT auth disabled (development only).")
+	}
+
 	// Wire API key handler and auth middleware when a database is available.
 	var (
 		apiKeysHandler      *handlers.APIKeysHandler
@@ -130,15 +142,19 @@ func main() {
 
 	// GET /api/v1/events — SSE stream for browser clients.
 	//
-	// Auth middleware is ALWAYS required.  Without a database the endpoint
-	// returns 503 Service Unavailable rather than falling back to an
-	// unauthenticated stream.  This closes the security gap reported in
-	// issue #1141 where the endpoint was unguarded when DATABASE_URL was
-	// unset.
+	// Auth middleware is ALWAYS required.  Clerk JWT auth takes precedence when
+	// CLERK_SECRET_KEY is set; falls back to API-key auth when a database is
+	// available; otherwise returns 503.
+	//
+	// This closes the security gap reported in issue #1141 where the endpoint
+	// was unguarded when DATABASE_URL was unset.
 	sseHandler := broker.Handler(bffmiddleware.UserIDFromContext)
-	if apiKeyAuthMiddl != nil {
+	switch {
+	case clerkAuthMiddl != nil:
+		r.With(clerkAuthMiddl).Get("/api/v1/events", sseHandler)
+	case apiKeyAuthMiddl != nil:
 		r.With(apiKeyAuthMiddl).Get("/api/v1/events", sseHandler)
-	} else {
+	default:
 		r.Get("/api/v1/events", func(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, "service unavailable — database not configured", http.StatusServiceUnavailable)
 		})

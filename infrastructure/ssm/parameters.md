@@ -8,6 +8,38 @@ All parameters live in the `us-east-1` region under the `/mtga-companion/product
 | `/mtga-companion/production/DATABASE_URL` | SecureString | PostgreSQL connection string for the RDS instance. |
 | `/mtga-companion/production/DAEMON_JWT_SECRET` | SecureString | Shared secret used to sign and verify daemon-to-BFF JWTs. |
 | `/mtga-companion/production/JWT_SECRET` | SecureString | Shared secret for user session JWTs issued by the BFF. |
+| `/mtga-companion/production/CLERK_SECRET_KEY` | SecureString | **TODO (manual)**: Clerk backend secret key for verifying Clerk session JWTs on BFF protected routes. Obtain from Clerk Dashboard → API Keys → Secret keys. Required in production (see ADR-009). |
+
+## CLERK_SECRET_KEY
+
+**TODO (manual)**: Ray must add the Clerk backend secret key to SSM before deploying auth-protected routes to production.
+
+1. Go to [Clerk Dashboard](https://dashboard.clerk.com) → your application → **API Keys**.
+2. Copy the **Secret key** (starts with `sk_live_...` for production or `sk_test_...` for development).
+3. Store it in SSM:
+
+```bash
+aws ssm put-parameter \
+  --name "/mtga-companion/production/CLERK_SECRET_KEY" \
+  --value "sk_live_<your-key>" \
+  --type SecureString \
+  --overwrite \
+  --region us-east-1 \
+  --profile personal
+```
+
+4. Restart the BFF after adding:
+
+```bash
+aws ssm send-command \
+  --instance-ids i-065351fbb99da2d22 \
+  --document-name "AWS-RunShellScript" \
+  --parameters 'commands=["sudo systemctl restart mtga-companion-bff || sudo systemctl restart mtga-companion"]' \
+  --region us-east-1 \
+  --profile personal
+```
+
+The BFF reads `CLERK_SECRET_KEY` on startup from its environment file (`/etc/mtga-companion/env`).  The EC2 user-data script pulls SSM parameters into that file.  Without this key, the BFF will refuse to start in `MTGA_ENV=production` mode.
 
 ## ALLOWED_ORIGINS
 
