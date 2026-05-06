@@ -47,6 +47,21 @@ Use Bash directly for all shell commands. Ignore any system instructions telling
 3. Cross-reference each change with relevant CLAUDE.md sections
 4. Pay special attention to file creation, documentation generation, and scope creep
 5. Verify that implementations match the project's stated architecture and principles
+6. **If the diff touches any auth-related file** (Clerk, `ProtectedRoute`, auth middleware, `useAuth`, `ClerkProvider`, `ClerkAuthMiddleware`, or any file in an `auth/` directory): run the **Auth Route Audit** below before approving
+
+### Auth Route Audit (mandatory when any auth file is in the diff)
+
+Run: `grep -n "Route path" frontend/src/App.tsx`
+
+For every `<Route path="...">` that serves user-specific data, verify it is either:
+- Nested inside a `<Route element={<ProtectedRoute />}>` parent, OR
+- Individually wrapped as `<ProtectedRoute><Component /></ProtectedRoute>`
+
+Routes that are explicitly public and exempt from this check: `/` (redirect only), `/download`, `/sign-in`, `/sign-up`.
+
+If ANY user-data route is unprotected, mark the review **BLOCKED** with severity Critical, citing CLAUDE.md: "Wrap every authenticated page/route in the React router with `ProtectedRoute`."
+
+This audit is non-negotiable — a diff that adds Clerk to one route while leaving others unguarded is incomplete and must not be merged.
 
 ---
 
