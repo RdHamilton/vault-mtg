@@ -154,11 +154,11 @@ jobs:
     # Deploy step picks up the updated value.
     #
     # PREREQUISITE: the SSM parameter /mtga-companion/production/ALLOWED_ORIGINS must
-    # exist before this workflow runs. Create it once with:
+    # exist before this workflow runs. Create or update it with:
     #   aws ssm put-parameter \
     #     --name /mtga-companion/production/ALLOWED_ORIGINS \
-    #     --value "https://mtga-companion.vercel.app,https://*.vercel.app" \
-    #     --type String --region us-east-1
+    #     --value "https://app.vaultmtg.app,https://vaultmtg.app,https://www.vaultmtg.app" \
+    #     --type String --overwrite --region us-east-1
     - name: Provision ALLOWED_ORIGINS on EC2
       run: |
         ALLOWED_ORIGINS=$(aws ssm get-parameter \
@@ -167,10 +167,13 @@ jobs:
           --query Parameter.Value \
           --output text)
 
+        SHELL_CMD="mkdir -p /etc/mtga-companion && if grep -q '^ALLOWED_ORIGINS=' /etc/mtga-companion/env 2>/dev/null; then sed -i 's|^ALLOWED_ORIGINS=.*|ALLOWED_ORIGINS=${ALLOWED_ORIGINS}|' /etc/mtga-companion/env; else echo 'ALLOWED_ORIGINS=${ALLOWED_ORIGINS}' >> /etc/mtga-companion/env; fi"
+        PARAMS=$(SHELL_CMD="$SHELL_CMD" python3 -c "import json, os; print('commands=' + json.dumps([os.environ['SHELL_CMD']]))")
+
         COMMAND_ID=$(aws ssm send-command \
           --instance-ids "${{ secrets.EC2_INSTANCE_ID }}" \
           --document-name "AWS-RunShellScript" \
-          --parameters commands=["mkdir -p /etc/mtga-companion && if grep -q '^ALLOWED_ORIGINS=' /etc/mtga-companion/env 2>/dev/null; then sed -i 's|^ALLOWED_ORIGINS=.*|ALLOWED_ORIGINS=${ALLOWED_ORIGINS}|' /etc/mtga-companion/env; else echo 'ALLOWED_ORIGINS=${ALLOWED_ORIGINS}' >> /etc/mtga-companion/env; fi"] \
+          --parameters "$PARAMS" \
           --region us-east-1 \
           --query "Command.CommandId" \
           --output text)
@@ -230,10 +233,13 @@ jobs:
           exit 1
         fi
 
+        SHELL_CMD="mkdir -p /etc/mtga-companion && if grep -q '^DAEMON_JWT_SECRET=' /etc/mtga-companion/env 2>/dev/null; then sed -i 's|^DAEMON_JWT_SECRET=.*|DAEMON_JWT_SECRET=${DAEMON_JWT_SECRET}|' /etc/mtga-companion/env; else echo 'DAEMON_JWT_SECRET=${DAEMON_JWT_SECRET}' >> /etc/mtga-companion/env; fi && chmod 600 /etc/mtga-companion/env"
+        PARAMS=$(SHELL_CMD="$SHELL_CMD" python3 -c "import json, os; print('commands=' + json.dumps([os.environ['SHELL_CMD']]))")
+
         COMMAND_ID=$(aws ssm send-command \
           --instance-ids "${{ secrets.EC2_INSTANCE_ID }}" \
           --document-name "AWS-RunShellScript" \
-          --parameters commands=["mkdir -p /etc/mtga-companion && if grep -q '^DAEMON_JWT_SECRET=' /etc/mtga-companion/env 2>/dev/null; then sed -i 's|^DAEMON_JWT_SECRET=.*|DAEMON_JWT_SECRET=${DAEMON_JWT_SECRET}|' /etc/mtga-companion/env; else echo 'DAEMON_JWT_SECRET=${DAEMON_JWT_SECRET}' >> /etc/mtga-companion/env; fi && chmod 600 /etc/mtga-companion/env"] \
+          --parameters "$PARAMS" \
           --region us-east-1 \
           --query "Command.CommandId" \
           --output text)
