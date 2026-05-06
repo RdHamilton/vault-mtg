@@ -25,7 +25,7 @@ const AuthBar = () => {
       </Show>
       <Show when="signed-in">
         <div className="auth-bar-signed-in" data-testid="auth-signed-in">
-          <UserButton afterSignOutUrl="/" />
+          <UserButton />
         </div>
       </Show>
     </div>
