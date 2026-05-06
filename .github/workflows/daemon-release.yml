@@ -62,6 +62,9 @@ jobs:
 
     strategy:
       fail-fast: false
+      # Targets: Windows (amd64), macOS (amd64 + arm64).
+      # Linux desktop daemon is out of scope -- the daemon is a consumer app for Windows/macOS only.
+      # To add Linux, append {goos: linux, goarch: amd64} to the matrix below.
       matrix:
         include:
           - goos: windows

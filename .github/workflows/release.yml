@@ -13,11 +13,9 @@ on:
         type: choice
         options: ['false', 'true']
       skip_e2e:
-        description: 'Skip E2E smoke tests (emergency releases only)'
-        required: false
-        default: 'false'
-        type: choice
-        options: ['false', 'true']
+        description: 'Emergency override -- skip E2E smoke gate. Requires justification in run name.'
+        type: boolean
+        default: false
   # Allow other workflows to call this as a reusable workflow
   workflow_call:
     inputs:
@@ -49,7 +47,7 @@ jobs:
   e2e-smoke-gate:
     name: E2E Smoke Gate
     uses: ./.github/workflows/e2e-smoke.yml
-    if: inputs.skip_e2e != 'true'
+    if: inputs.skip_e2e != true && inputs.skip_e2e != 'true'
 
   # Run BFF integration tests after E2E smoke passes.
   # Blocks the release if any integration test fails.
@@ -100,9 +98,9 @@ jobs:
     - name: Generate changelog
       run: |
         echo "## What's Changed" > changelog.md
-        git log $(git describe --tags --abbrev=0 HEAD^ 2>/dev/null || git rev-list --max-parents=0 HEAD)..HEAD --pretty=format:"* %s (%h)" >> changelog.md || echo "* Initial release" >> changelog.md
+        git log $(git describe --tags --abbrev=0 --match 'v*' HEAD^ 2>/dev/null || git rev-list --max-parents=0 HEAD)..HEAD --pretty=format:"* %s (%h)" >> changelog.md || echo "* Initial release" >> changelog.md
         echo "" >> changelog.md
-        echo "**Full Changelog**: https://github.com/${{ github.repository }}/compare/$(git describe --tags --abbrev=0 HEAD^ 2>/dev/null || echo 'v0.0.0')...${{ inputs.tag }}" >> changelog.md
+        echo "**Full Changelog**: https://github.com/${{ github.repository }}/compare/$(git describe --tags --abbrev=0 --match 'v*' HEAD^ 2>/dev/null || echo 'v0.0.0')...${{ inputs.tag }}" >> changelog.md
 
     - name: Create Release
       uses: softprops/action-gh-release@v3
