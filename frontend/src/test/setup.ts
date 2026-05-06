@@ -4,6 +4,20 @@ import { afterEach, vi } from 'vitest';
 import { mockWailsRuntime, mockEventEmitter } from './mocks/websocketMock';
 import { mockApi, resetMocks } from './mocks/apiMock';
 
+// Mock @clerk/react globally so components that use Clerk work in tests
+// without a real ClerkProvider or publishable key.
+// Default behaviour: signed-in so route tests reach protected pages.
+// Override per-test with vi.mocked(@clerk/react).useAuth for signed-out scenarios.
+vi.mock('@clerk/react', () => ({
+  ClerkProvider: ({ children }: { children: unknown }) => children,
+  Show: ({ when, children }: { when: string; children: unknown }) =>
+    when === 'signed-in' ? children : null,
+  SignInButton: ({ children }: { children: unknown }) => children,
+  SignUpButton: ({ children }: { children: unknown }) => children,
+  UserButton: () => null,
+  useAuth: () => ({ isLoaded: true, isSignedIn: true }),
+}));
+
 // Mock WebSocket client globally
 vi.mock('@/services/websocketClient', () => mockWailsRuntime);
 

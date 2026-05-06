@@ -1,0 +1,46 @@
+.auth-bar {
+  padding: 0 12px;
+  display: flex;
+  align-items: center;
+}
+
+.auth-bar-signed-out {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.auth-bar-signed-in {
+  display: flex;
+  align-items: center;
+}
+
+.auth-btn {
+  padding: 6px 14px;
+  border: none;
+  border-radius: 4px;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background-color 0.2s, color 0.2s;
+}
+
+.auth-btn-signin {
+  background-color: transparent;
+  color: #aaaaaa;
+  border: 1px solid #555555;
+}
+
+.auth-btn-signin:hover {
+  color: #ffffff;
+  border-color: #aaaaaa;
+}
+
+.auth-btn-signup {
+  background-color: #4a9eff;
+  color: #ffffff;
+}
+
+.auth-btn-signup:hover {
+  background-color: #3a8eef;
+}

@@ -19,6 +19,11 @@
   display: flex;
 }
 
+.tab-bar-right {
+  display: flex;
+  align-items: center;
+}
+
 .connection-status-indicator {
   padding: 0 16px;
   display: flex;

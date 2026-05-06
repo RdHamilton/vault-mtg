@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import Footer from './Footer';
+import AuthBar from './AuthBar';
 import { system } from '@/services/api';
 import { EventsOn, EventsOff } from '@/services/websocketClient';
 import { gui } from '@/types/models';
@@ -144,9 +145,12 @@ const Layout = ({ children }: LayoutProps) => {
             Settings
           </Link>
         </div>
-        <div className="connection-status-indicator">
-          <div className={`status-badge-compact status-${connectionStatus.status}`} title={connectionStatus.status} data-testid="connection-status-badge">
-            <span className="status-dot-compact"></span>
+        <div className="tab-bar-right">
+          <AuthBar />
+          <div className="connection-status-indicator">
+            <div className={`status-badge-compact status-${connectionStatus.status}`} title={connectionStatus.status} data-testid="connection-status-badge">
+              <span className="status-dot-compact"></span>
+            </div>
           </div>
         </div>
       </div>

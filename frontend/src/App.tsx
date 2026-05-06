@@ -18,6 +18,7 @@ import Meta from './pages/Meta';
 import Settings from './pages/Settings';
 import Download from './pages/Download';
 import KeyboardShortcutsHandler from './components/KeyboardShortcutsHandler';
+import ProtectedRoute from './components/ProtectedRoute';
 import { EventsOn } from './services/adapter';
 import { updateReplayState } from './utils/replayState';
 import { gui } from '@/types/models';
@@ -130,7 +131,7 @@ function App() {
           <Route path="/" element={<Navigate to="/match-history" replace />} />
           <Route path="/match-history" element={<MatchHistory />} />
           <Route path="/quests" element={<Quests />} />
-          <Route path="/draft" element={<Draft />} />
+          <Route path="/draft" element={<ProtectedRoute><Draft /></ProtectedRoute>} />
           <Route path="/draft-analytics" element={<DraftAnalytics />} />
           <Route path="/decks" element={<Decks />} />
           <Route path="/deck-builder/:deckID" element={<DeckBuilder />} />
