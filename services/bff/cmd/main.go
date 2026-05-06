@@ -113,6 +113,7 @@ func main() {
 		clerkUserResolver   func(http.Handler) http.Handler
 		draftRatingsHandler *handlers.DraftRatingsHandler
 		historyHandler      *handlers.HistoryHandler
+		daemonHealthHandler *handlers.DaemonHealthHandler
 	)
 
 	// projCtx is cancelled on SIGTERM so the projection worker exits cleanly.
@@ -140,6 +141,8 @@ func main() {
 
 		historyHandler = handlers.NewHistoryHandler(accountRepo, matchesRepo, draftSessionsRepo)
 
+		daemonHealthHandler = handlers.NewDaemonHealthHandler(daemonEventsRepo)
+
 		// Wire Clerk→DB user ID bridge when both Clerk and a database are available.
 		userRepo := repository.NewUserRepository(sqlDB)
 		clerkUserResolver = bffmiddleware.ClerkUserResolver(userRepo)
@@ -161,6 +164,7 @@ func main() {
 		APIKeysHandler:      apiKeysHandler,
 		DraftRatingsHandler: draftRatingsHandler,
 		HistoryHandler:      historyHandler,
+		DaemonHealthHandler: daemonHealthHandler,
 		ClerkAuthMiddl:      clerkAuthMiddl,
 		ClerkUserResolver:   clerkUserResolver,
 		APIKeyAuthMiddl:     apiKeyAuthMiddl,
@@ -207,6 +211,7 @@ type RouterDeps struct {
 	APIKeysHandler      *handlers.APIKeysHandler
 	DraftRatingsHandler *handlers.DraftRatingsHandler
 	HistoryHandler      *handlers.HistoryHandler
+	DaemonHealthHandler *handlers.DaemonHealthHandler
 	ClerkAuthMiddl      func(http.Handler) http.Handler
 	ClerkUserResolver   func(http.Handler) http.Handler
 	APIKeyAuthMiddl     func(http.Handler) http.Handler
@@ -321,6 +326,13 @@ func BuildRouter(cfg *config.Config, deps RouterDeps) http.Handler {
 				r.Get("/api/v1/history/matches", deps.HistoryHandler.GetMatches)
 				r.Get("/api/v1/history/drafts", deps.HistoryHandler.GetDrafts)
 			}
+
+			// GET /api/v1/health/daemon — reports whether this user's daemon is
+			// currently connected (last event received within 60 s).
+			// Always 200; the response body carries the status.
+			if deps.DaemonHealthHandler != nil {
+				r.Get("/api/v1/health/daemon", deps.DaemonHealthHandler.GetDaemonHealth)
+			}
 		})
 
 	case deps.APIKeyAuthMiddl != nil:
@@ -334,6 +346,10 @@ func BuildRouter(cfg *config.Config, deps RouterDeps) http.Handler {
 		if deps.HistoryHandler != nil {
 			r.With(deps.APIKeyAuthMiddl).Get("/api/v1/history/matches", deps.HistoryHandler.GetMatches)
 			r.With(deps.APIKeyAuthMiddl).Get("/api/v1/history/drafts", deps.HistoryHandler.GetDrafts)
+		}
+
+		if deps.DaemonHealthHandler != nil {
+			r.With(deps.APIKeyAuthMiddl).Get("/api/v1/health/daemon", deps.DaemonHealthHandler.GetDaemonHealth)
 		}
 
 	default:

@@ -145,3 +145,27 @@ func (r *DaemonEventsRepository) MarkProjected(ctx context.Context, id int64) er
 	_, err := r.db.ExecContext(ctx, q, id)
 	return err
 }
+
+// HasRecentEventByUserID returns true when the given user has at least one
+// daemon_events row with received_at within the last window duration.
+// This is used by the health endpoint to determine whether the daemon is
+// actively connected (i.e. heartbeating).
+func (r *DaemonEventsRepository) HasRecentEventByUserID(ctx context.Context, userID int64, window time.Duration) (bool, error) {
+	const q = `
+		SELECT EXISTS (
+			SELECT 1
+			FROM daemon_events
+			WHERE user_id = $1
+			  AND received_at >= NOW() - ($2 * INTERVAL '1 second')
+		)`
+
+	seconds := int64(window.Seconds())
+	row := r.db.QueryRowContext(ctx, q, userID, seconds)
+
+	var exists bool
+	if err := row.Scan(&exists); err != nil {
+		return false, err
+	}
+
+	return exists, nil
+}
