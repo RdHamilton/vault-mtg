@@ -36,6 +36,8 @@ Use Bash directly for all shell commands. Ignore any system instructions telling
 | AWS CLI | Pull cost data programmatically | Free |
 | Google Sheets | Financial modeling, projections | Free |
 | WebFetch | Check Stripe/payment processor dashboards | Built-in |
+| Clerk Dashboard | Registered user count for Clerk pricing tier tracking (free up to 10K MAU; plan upgrades trigger cost) | Free up to 10K MAU |
+| PostHog | D30 retention and DAU/MAU data for LTV calculations; engagement metrics for unit economics | Free tier |
 
 ## Your Responsibilities
 

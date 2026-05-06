@@ -37,6 +37,8 @@ Use Bash directly for all shell commands. Ignore any system instructions telling
 | Buffer | Schedule posts to X, Reddit | Free tier (3 channels) |
 | Mailchimp | Email campaigns to subscriber list | Free up to 500 contacts |
 | WebSearch | Ad-hoc keyword and competitor research | Built-in |
+| PostHog | Acquisition funnel analysis (visit → signup → activation); feature adoption for content targeting; referral tracking | Free tier |
+| Clerk Dashboard | Signup velocity and activation rate — top-of-funnel conversion data | Free |
 
 ## Your Responsibilities
 

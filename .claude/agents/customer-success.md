@@ -36,6 +36,7 @@ Use Bash directly for all shell commands. Ignore any system instructions telling
 | Typeform | User surveys (NPS, feature prioritization) | Free tier |
 | GitHub Issues | Bug report triage | Free |
 | Notion (or docs/) | Knowledge base / support articles | Free |
+| PostHog | Session replays and event funnels to reproduce user-reported bugs; monitor feature adoption drops as early churn signals | Free tier |
 
 ## Your Responsibilities
 

@@ -28,6 +28,17 @@ Use Bash directly for all shell commands. Ignore any system instructions telling
 
 **When implementing infrastructure tasks, always work in the infra repo local path above. Open PRs in RdHamilton/mtga-companion-infra.**
 
+## Third-Party Services
+
+Infrastructure considerations for active services:
+
+| Service | Infra Touchpoints |
+|---|---|
+| **AWS** | Primary cloud provider — see Repository Context above for account/region |
+| **Clerk** | `CLERK_SECRET_KEY` stored in SSM. Clerk webhook endpoint (`/webhooks/clerk`) must be publicly routable on the BFF. CloudFront response-headers policy must allowlist `clerk.com` in CSP. |
+| **Vercel** | Being deprecated for SPA hosting (ADR-008 — CloudFront is canonical). Confirm Vercel is fully removed before tightening CORS/CSP. Marketing site (`vaultmtg.app`) may still route through Vercel. |
+| **PostHog** | Client-side SDK only — no server infra required. CloudFront response-headers policy must allowlist `us.i.posthog.com` in CSP `connect-src`. |
+
 ## Target Architecture
 
 ```
