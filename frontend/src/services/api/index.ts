@@ -31,6 +31,8 @@ export * as opponents from './opponents';
 export * as bffDraftRatings from './bffDraftRatings';
 export * as bffAuth from './bffAuth';
 export * as bffHealth from './bffHealth';
+export * as bffMatchHistory from './bffMatchHistory';
+export * as bffDraftHistory from './bffDraftHistory';
 
 // Re-export commonly used types
 export type {
@@ -125,6 +127,18 @@ export type {
   DaemonHealthStatus,
   DaemonHealthResponse,
 } from './bffHealth';
+
+export type {
+  MatchHistoryItem,
+  MatchHistoryParams,
+  MatchHistoryResponse,
+} from './bffMatchHistory';
+
+export type {
+  DraftHistoryItem,
+  DraftHistoryParams,
+  DraftHistoryResponse,
+} from './bffDraftHistory';
 
 export type {
   OpponentDeckProfile,

@@ -17,6 +17,8 @@ import Collection from './pages/Collection';
 import Meta from './pages/Meta';
 import Settings from './pages/Settings';
 import Download from './pages/Download';
+import BffMatchHistory from './pages/BffMatchHistory';
+import BffDraftHistory from './pages/BffDraftHistory';
 import KeyboardShortcutsHandler from './components/KeyboardShortcutsHandler';
 import ProtectedRoute from './components/ProtectedRoute';
 import { EventsOn } from './services/adapter';
@@ -149,6 +151,8 @@ function App() {
             <Route path="/charts/format-distribution" element={<FormatDistribution />} />
             <Route path="/charts/result-breakdown" element={<ResultBreakdown />} />
             <Route path="/settings" element={<Settings />} />
+            <Route path="/history/matches" element={<BffMatchHistory />} />
+            <Route path="/history/drafts" element={<BffDraftHistory />} />
           </Route>
         </Routes>
       </Layout>
