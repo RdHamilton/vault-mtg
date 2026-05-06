@@ -21,6 +21,7 @@ vi.mock('@clerk/react', () => ({
   SignInButton: ({ children }: { children: unknown }) => children,
   SignUpButton: ({ children }: { children: unknown }) => children,
   UserButton: () => null,
+  RedirectToSignIn: () => <div data-testid="redirect-to-sign-in" />,
   useAuth: () => mockUseAuth(),
   useUser: () => ({
     isLoaded: true,
@@ -132,7 +133,7 @@ describe('App', () => {
       renderAppWithRoute('/match-history');
 
       await waitFor(() => {
-        expect(screen.getByTestId('protected-route-prompt')).toBeInTheDocument();
+        expect(screen.getByTestId('redirect-to-sign-in')).toBeInTheDocument();
       });
       expect(screen.queryByTestId('match-history-page')).not.toBeInTheDocument();
 

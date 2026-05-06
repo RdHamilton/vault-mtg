@@ -1,5 +1,5 @@
 import { Outlet } from 'react-router-dom';
-import { useAuth, SignInButton } from '@clerk/react';
+import { useAuth, RedirectToSignIn } from '@clerk/react';
 import './ProtectedRoute.css';
 
 interface ProtectedRouteProps {
@@ -28,25 +28,7 @@ const ProtectedRoute = ({ children }: ProtectedRouteProps) => {
   }
 
   if (!isSignedIn) {
-    return (
-      <div className="protected-route-prompt" data-testid="protected-route-prompt">
-        <div className="protected-route-card">
-          <h2 className="protected-route-title" data-testid="protected-route-title">
-            Sign in to continue
-          </h2>
-          <p className="protected-route-subtitle">
-            Create an account or sign in to access this page.
-          </p>
-          <div className="protected-route-actions">
-            <SignInButton mode="modal">
-              <button className="protected-route-btn" data-testid="protected-route-sign-in-btn">
-                Sign In
-              </button>
-            </SignInButton>
-          </div>
-        </div>
-      </div>
-    );
+    return <RedirectToSignIn />;
   }
 
   // Layout route: render nested routes via Outlet
