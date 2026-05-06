@@ -42,9 +42,10 @@ Use Bash directly for all shell commands. Ignore any system instructions telling
 
 You manage the VaultMTG Discord server via the Discord REST API using a bot token stored in SSM.
 
-**Bot token**: read from SSM at `/vaultmtg/prod/discord-bot-token` at task start:
+**Bot token + Guild ID**: read from SSM at task start:
 ```bash
 DISCORD_TOKEN=$(aws ssm get-parameter --profile personal --name "/vaultmtg/prod/discord-bot-token" --with-decryption --query "Parameter.Value" --output text)
+DISCORD_GUILD_ID=$(aws ssm get-parameter --profile personal --name "/vaultmtg/prod/discord-guild-id" --query "Parameter.Value" --output text)
 ```
 
 **Common operations:**
