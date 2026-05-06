@@ -8,6 +8,22 @@
 **Discoveries**: architectural notes, missing test coverage, scope concerns, or context for future reviews (or "None")
 -->
 
+## 2026-05-06 — PR #1375: fix(agents): correct stale module path and project #27 refs
+**Ticket(s)**: CodeRabbit feedback (non-ticket)
+**Verdict**: APPROVED ✓
+**Checks**: go vet ✓ | go test ✓ | gofumpt ✓ (skipped) | CLAUDE.md ✓
+**Discoveries**: Documentation-only correction. Fixed stale import path (`github.com/ramonehamilton/mtga-contract` → `github.com/RdHamilton/MTGA-Companion/services/contract`) and updated project refs (#27 → #28). Low-risk maintenance.
+
+## 2026-05-06 — PR #1375: fix(agents): correct stale module path and project #27 refs
+
+**Tickets**: N/A (documentation fix)
+
+**Verdict**: APPROVED ✓
+
+**Checks**: CLAUDE.md ✓ · (Go/frontend skipped — doc-only)
+
+**Discoveries**: Documentation-only correction of stale references flagged by CodeRabbit on PR #1374. Fixes incorrect import path (`github.com/ramonehamilton/mtga-contract` → `github.com/RdHamilton/MTGA-Companion/services/contract`) in backend-engineer.md and updates project board references (#27 → #28) in both backend-engineer.md and project-manager.md. Scope correctly limited to CodeRabbit findings. Already merged.
+
 ## 2026-05-05 — PR #1277: docs: add manual regression test plan and pre-release checklist
 **Ticket(s)**: N/A (ad-hoc)
 **Verdict**: APPROVED

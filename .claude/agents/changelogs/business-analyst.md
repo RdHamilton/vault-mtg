@@ -6,3 +6,8 @@
 **Output**: [file path]
 **Key finding**: [the one insight that changes how PM should think about something]
 -->
+
+## 2026-05-06 — Beta success metrics and funnel to 50K MAU
+**Type**: ad-hoc
+**Output**: returned inline to product-manager planning session
+**Key finding**: Untapped.gg pulls ~2–3M monthly visits against an estimated 1–3M MAU player base that uses companion tools; reaching 50K MAU requires ~500K–750K monthly organic visits with a 2–5% visit-to-signup rate and 25–35% D30 retention — the retention rate is the dominant lever, not acquisition volume.
