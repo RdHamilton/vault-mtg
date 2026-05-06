@@ -30,6 +30,7 @@ export * as mlSuggestions from './mlSuggestions';
 export * as opponents from './opponents';
 export * as bffDraftRatings from './bffDraftRatings';
 export * as bffAuth from './bffAuth';
+export * as bffHealth from './bffHealth';
 
 // Re-export commonly used types
 export type {
@@ -119,6 +120,11 @@ export type {
   CreateAPIKeyRequest,
   CreateAPIKeyResponse,
 } from './bffAuth';
+
+export type {
+  DaemonHealthStatus,
+  DaemonHealthResponse,
+} from './bffHealth';
 
 export type {
   OpponentDeckProfile,
