@@ -429,10 +429,46 @@ gh api repos/RdHamilton/MTGA-Companion/milestones --method POST \
   --field description="<description>"
 ```
 
+## Deduplication Check (REQUIRED before every issue creation)
+
+**Before creating any issue, you MUST check for an existing issue with the same title. Never skip this step.**
+
+```bash
+# Search open issues for an exact or near-exact title match
+gh issue list --state open --search "<issue title>" --json number,title,state \
+  | python3 -c "
+import sys, json, sys
+needle = '<issue title>'.lower()
+for i in json.load(sys.stdin):
+    if needle in i['title'].lower() or i['title'].lower() in needle:
+        print(f\"DUPLICATE FOUND: #{i['number']} [{i['state']}] {i['title']}\")
+        sys.exit(1)
+print('no duplicate — safe to create')
+"
+
+# Also check closed issues (duplicate may have been closed and recreated)
+gh issue list --state closed --search "<issue title>" --json number,title,state \
+  | python3 -c "
+import sys, json
+needle = '<issue title>'.lower()
+for i in json.load(sys.stdin):
+    if needle in i['title'].lower() or i['title'].lower() in needle:
+        print(f\"CLOSED DUPLICATE EXISTS: #{i['number']} {i['title']}\")
+"
+```
+
+**Decision rules:**
+- **Open duplicate found** → STOP. Do not create. Return the existing issue number to the caller.
+- **Closed duplicate found** → Review whether it was legitimately closed (done) or erroneously closed (abandoned/duplicate). If done, do not recreate. If the work genuinely needs to be redone, reopen the original issue instead of creating a new one: `gh issue reopen <NUMBER>`.
+- **No duplicate** → Proceed with creation.
+
+This check is what prevents the board from filling with duplicate tickets across agent retries.
+
 ## Rules
 
 1. NEVER create an issue without: (a) at least one label, (b) an **Agent** line in the body, (c) `--milestone "<title>"` on `gh issue create`, (d) **Status = Todo** set on the board immediately after `item-add`, and (e) Agent set on the board. All five are required. Missing Status breaks board views; missing Milestone breaks release tracking. The board's Milestone column auto-derives from the issue milestone — do not set it separately via GraphQL.
    - **Every new ticket MUST have Status = Todo set immediately after board add — never leave status blank.** Use `gh project item-edit --project-id <id> --id <item-id> --field-id <status-field-id> --single-select-option-id <todo-option-id>` (Project #27 Todo option: `6263f412`).
+   - **Run the Deduplication Check section above BEFORE calling `gh issue create`. This is a hard gate — no exceptions.**
 2. NEVER create a project without all 5 status columns configured
 3. Always use the existing label if one fits - check the list above first
 4. **ALWAYS add every new issue to the v2.0 project board immediately after creating it** — run `gh project item-add 27 --owner RdHamilton --url <issue_url>` as the very next command after `gh issue create`. This is non-negotiable; issues not on the board are invisible to the team.
