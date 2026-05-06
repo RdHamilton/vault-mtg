@@ -8,7 +8,7 @@ const mockUseAuth = vi.fn();
 
 vi.mock('@clerk/react', () => ({
   useAuth: () => mockUseAuth(),
-  SignInButton: ({ children }: { children: React.ReactNode }) => <>{children}</>,
+  RedirectToSignIn: () => <div data-testid="redirect-to-sign-in" />,
 }));
 
 // ─── Children (wrapper) usage ────────────────────────────────────────────────
@@ -27,7 +27,7 @@ describe('ProtectedRoute — children (wrapper) usage', () => {
     expect(screen.queryByTestId('protected-content')).not.toBeInTheDocument();
   });
 
-  it('shows sign-in prompt when user is not authenticated', () => {
+  it('redirects to sign-in when user is not authenticated', () => {
     mockUseAuth.mockReturnValue({ isLoaded: true, isSignedIn: false });
     render(
       <MemoryRouter>
@@ -36,8 +36,7 @@ describe('ProtectedRoute — children (wrapper) usage', () => {
         </ProtectedRoute>
       </MemoryRouter>
     );
-    expect(screen.getByTestId('protected-route-prompt')).toBeInTheDocument();
-    expect(screen.getByTestId('protected-route-sign-in-btn')).toBeInTheDocument();
+    expect(screen.getByTestId('redirect-to-sign-in')).toBeInTheDocument();
     expect(screen.queryByTestId('protected-content')).not.toBeInTheDocument();
   });
 
@@ -51,32 +50,7 @@ describe('ProtectedRoute — children (wrapper) usage', () => {
       </MemoryRouter>
     );
     expect(screen.getByTestId('protected-content')).toBeInTheDocument();
-    expect(screen.queryByTestId('protected-route-prompt')).not.toBeInTheDocument();
-  });
-
-  it('sign-in prompt includes a sign-in button', () => {
-    mockUseAuth.mockReturnValue({ isLoaded: true, isSignedIn: false });
-    render(
-      <MemoryRouter>
-        <ProtectedRoute>
-          <div>content</div>
-        </ProtectedRoute>
-      </MemoryRouter>
-    );
-    const btn = screen.getByTestId('protected-route-sign-in-btn');
-    expect(btn).toHaveTextContent('Sign In');
-  });
-
-  it('prompt title says "Sign in to continue"', () => {
-    mockUseAuth.mockReturnValue({ isLoaded: true, isSignedIn: false });
-    render(
-      <MemoryRouter>
-        <ProtectedRoute>
-          <div>content</div>
-        </ProtectedRoute>
-      </MemoryRouter>
-    );
-    expect(screen.getByTestId('protected-route-title')).toHaveTextContent('Sign in to continue');
+    expect(screen.queryByTestId('redirect-to-sign-in')).not.toBeInTheDocument();
   });
 });
 
@@ -98,7 +72,7 @@ describe('ProtectedRoute — layout route (Outlet) usage', () => {
     expect(screen.queryByTestId('outlet-content')).not.toBeInTheDocument();
   });
 
-  it('shows sign-in prompt when unauthenticated (no children passed)', () => {
+  it('redirects to sign-in when unauthenticated (no children passed)', () => {
     mockUseAuth.mockReturnValue({ isLoaded: true, isSignedIn: false });
     render(
       <MemoryRouter initialEntries={['/protected']}>
@@ -109,7 +83,7 @@ describe('ProtectedRoute — layout route (Outlet) usage', () => {
         </Routes>
       </MemoryRouter>
     );
-    expect(screen.getByTestId('protected-route-prompt')).toBeInTheDocument();
+    expect(screen.getByTestId('redirect-to-sign-in')).toBeInTheDocument();
     expect(screen.queryByTestId('outlet-content')).not.toBeInTheDocument();
   });
 
@@ -125,7 +99,7 @@ describe('ProtectedRoute — layout route (Outlet) usage', () => {
       </MemoryRouter>
     );
     expect(screen.getByTestId('outlet-content')).toBeInTheDocument();
-    expect(screen.queryByTestId('protected-route-prompt')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('redirect-to-sign-in')).not.toBeInTheDocument();
   });
 
   it('blocks access to all nested routes when unauthenticated', () => {
@@ -140,7 +114,7 @@ describe('ProtectedRoute — layout route (Outlet) usage', () => {
         </Routes>
       </MemoryRouter>
     );
-    expect(screen.getByTestId('protected-route-prompt')).toBeInTheDocument();
+    expect(screen.getByTestId('redirect-to-sign-in')).toBeInTheDocument();
     expect(screen.queryByTestId('match-history')).not.toBeInTheDocument();
   });
 });
