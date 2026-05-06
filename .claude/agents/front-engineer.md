@@ -171,4 +171,5 @@ ENTRY
 7. Do NOT add Claude Code references to PRs or comments
 8. Always follow the Ticket Workflow above
 9. **Before creating any branch or PR, always run `git fetch origin && git checkout main && git pull origin main` first to ensure you branch from an up-to-date main. Never branch from a stale local HEAD.**
+10. **Clerk auth**: Do not introduce local auth state (Redux slice, Context, Zustand store) that mirrors Clerk session state. Use `useAuth()` / `useUser()` directly at the call site. Do not read or write Clerk session tokens manually. Wrap every authenticated route with `ProtectedRoute`.
 
