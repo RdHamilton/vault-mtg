@@ -13,6 +13,7 @@ import (
 	"time"
 
 	contract "github.com/RdHamilton/MTGA-Companion/services/contract"
+	"github.com/getsentry/sentry-go"
 	"github.com/go-chi/chi/v5"
 	chimiddleware "github.com/go-chi/chi/v5/middleware"
 	"github.com/go-chi/cors"
@@ -54,6 +55,25 @@ func main() {
 	cfg, err := config.Load()
 	if err != nil {
 		log.Fatalf("config: %v", err)
+	}
+
+	// Initialise Sentry error monitoring.  The DSN is read from SENTRY_DSN
+	// (sourced from SSM /vaultmtg/prod/sentry-bff-dsn at deploy time).
+	// When empty, Sentry is disabled — all SDK calls become no-ops.
+	// The DSN is never logged.
+	if cfg.SentryDSN != "" {
+		if err := sentry.Init(sentry.ClientOptions{
+			Dsn:              cfg.SentryDSN,
+			Environment:      cfg.Env,
+			TracesSampleRate: 0.1,
+		}); err != nil {
+			log.Fatalf("sentry.Init: %v", err)
+		}
+		// Flush buffered events before the process exits.
+		defer sentry.Flush(2 * time.Second)
+		log.Println("Sentry initialised.")
+	} else {
+		log.Println("SENTRY_DSN not set — Sentry disabled (development mode only).")
 	}
 
 	if cfg.DatabaseURL != "" {
@@ -124,6 +144,7 @@ func main() {
 		ClerkAuthMiddl:      clerkAuthMiddl,
 		ClerkUserResolver:   clerkUserResolver,
 		APIKeyAuthMiddl:     apiKeyAuthMiddl,
+		SentryMiddl:         bffmiddleware.NewSentryMiddleware(),
 	})
 
 	srv := &http.Server{
@@ -166,6 +187,10 @@ type RouterDeps struct {
 	ClerkAuthMiddl      func(http.Handler) http.Handler
 	ClerkUserResolver   func(http.Handler) http.Handler
 	APIKeyAuthMiddl     func(http.Handler) http.Handler
+	// SentryMiddl is the Sentry panic/error capture middleware.  When non-nil
+	// it is installed as the outermost middleware so it captures panics from
+	// all downstream handlers.  Safe to omit in tests and development.
+	SentryMiddl func(http.Handler) http.Handler
 }
 
 // BuildRouter constructs and returns the chi router for the BFF service.
@@ -175,6 +200,12 @@ func BuildRouter(cfg *config.Config, deps RouterDeps) http.Handler {
 	r := chi.NewRouter()
 	r.Use(chimiddleware.RequestID)
 	r.Use(chimiddleware.Logger)
+	// SentryMiddl is installed before chi's Recoverer so that panics are
+	// captured by Sentry before being swallowed.  Repanic=true (set inside
+	// NewSentryMiddleware) ensures chi.Recoverer still writes the 500 response.
+	if deps.SentryMiddl != nil {
+		r.Use(deps.SentryMiddl)
+	}
 	r.Use(chimiddleware.Recoverer)
 	// AllowedOrigins is configured via the ALLOWED_ORIGINS environment variable
 	// (comma-separated list).  See ADR-006 for the full connectivity design.

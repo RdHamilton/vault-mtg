@@ -379,6 +379,40 @@ func TestLoad_DaemonReleasedAt_FromEnv(t *testing.T) {
 	}
 }
 
+// TestLoad_SentryDSN_EmptyWhenUnset verifies that when SENTRY_DSN is not set
+// Config.SentryDSN is an empty string (Sentry disabled).
+func TestLoad_SentryDSN_EmptyWhenUnset(t *testing.T) {
+	t.Setenv("MTGA_ENV", "development")
+	t.Setenv("DATABASE_URL", "")
+	t.Setenv("SENTRY_DSN", "")
+
+	cfg, err := config.Load()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if cfg.SentryDSN != "" {
+		t.Errorf("expected empty SentryDSN when SENTRY_DSN unset, got %q", cfg.SentryDSN)
+	}
+}
+
+// TestLoad_SentryDSN_FromEnv verifies that SENTRY_DSN is surfaced as
+// Config.SentryDSN for callers (with leading/trailing whitespace trimmed).
+func TestLoad_SentryDSN_FromEnv(t *testing.T) {
+	t.Setenv("MTGA_ENV", "development")
+	t.Setenv("DATABASE_URL", "")
+	t.Setenv("SENTRY_DSN", "  https://key@o0.ingest.sentry.io/0  ")
+
+	cfg, err := config.Load()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if cfg.SentryDSN != "https://key@o0.ingest.sentry.io/0" {
+		t.Errorf("expected trimmed SentryDSN, got %q", cfg.SentryDSN)
+	}
+}
+
 // TestLoad_AllowedOrigins_TrimsWhitespace verifies that leading/trailing
 // whitespace around comma-separated values is stripped.
 func TestLoad_AllowedOrigins_TrimsWhitespace(t *testing.T) {
