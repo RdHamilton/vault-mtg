@@ -28,6 +28,7 @@
   padding: 0 16px;
   display: flex;
   align-items: center;
+  gap: 8px;
 }
 
 .status-badge-compact {

@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import Footer from './Footer';
 import AuthBar from './AuthBar';
+import DaemonHealthIndicator from './DaemonHealthIndicator';
 import { system } from '@/services/api';
 import { EventsOn, EventsOff } from '@/services/websocketClient';
 import { gui } from '@/types/models';
@@ -148,6 +149,7 @@ const Layout = ({ children }: LayoutProps) => {
         <div className="tab-bar-right">
           <AuthBar />
           <div className="connection-status-indicator">
+            <DaemonHealthIndicator />
             <div className={`status-badge-compact status-${connectionStatus.status}`} title={connectionStatus.status} data-testid="connection-status-badge">
               <span className="status-dot-compact"></span>
             </div>

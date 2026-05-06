@@ -1,0 +1,21 @@
+.daemon-health-indicator {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  cursor: help;
+  transition: background-color 0.3s ease;
+}
+
+.daemon-health-connected {
+  background-color: #22c55e; /* green-500 */
+}
+
+.daemon-health-disconnected {
+  background-color: #ef4444; /* red-500 */
+}
+
+.daemon-health-loading,
+.daemon-health-error {
+  background-color: #6b7280; /* gray-500 */
+}
