@@ -194,17 +194,26 @@ for i in json.load(sys.stdin)['items']:
 
 ## Ticket Workflow
 
-Every ticket assigned to this agent must follow this status progression on the v2.0 project board (project #27, repo RdHamilton/MTGA-Companion):
+Every ticket assigned to this agent must follow this status progression on the v0.2.0 project board (project #28, repo RdHamilton/MTGA-Companion):
 
-1. **In Progress** (`9fd907f0`) — set immediately when work begins; update queue file (see Manager Reporting Protocol above)
-2. **PR Review** (`0ca4880d`) — set when a PR is opened; post PR number as a comment on the issue; update queue file
-3. **Done** (`7729b7fe`) — set when the PR is merged; clear queue slot
+1. **In Progress** (`0abb281c`) — set immediately when work begins; update queue file (see Manager Reporting Protocol above)
+2. **PR Review** (`d7bdb5e8`) — set when a PR is opened; post PR number as a comment on the issue; update queue file
+3. **Done** (`64ec33a1`) — set when the PR is merged; clear queue slot
 
 Every ticket must end with a PR. Never leave work committed without opening one.
 
 ```bash
-gh api graphql -f query='mutation { updateProjectV2ItemFieldValue(input: { projectId: "PVT_kwHOABsZ684BMSNn" itemId: "ITEM_ID" fieldId: "PVTSSF_lAHOABsZ684BMSNnzg7nLOc" value: { singleSelectOptionId: "OPTION_ID" } }) { projectV2Item { id } } }'
+gh api graphql -f query='mutation { updateProjectV2ItemFieldValue(input: { projectId: "PVT_kwHOABsZ684BW1IS" itemId: "ITEM_ID" fieldId: "PVTSSF_lAHOABsZ684BW1ISzhSGRhI" value: { singleSelectOptionId: "OPTION_ID" } }) { projectV2Item { id } } }'
 ```
+
+## Versioning Policy
+
+This project uses Semantic Versioning (semver.org). Current version: `v0.1.0` (beta).
+- **Patch** (`0.1.x`) — bug fixes only; no new public APIs
+- **Minor** (`0.x.0`) — new backward-compatible features
+- **Major** (`x.0.0`) — breaking changes (rare in 0.x phase)
+- Tag releases as `v0.2.0`, `v0.3.0`, etc. — never use build-number suffixes like `v2.0.0.4`
+- `services/contract` module tags follow the same semver scheme: `services/contract/v0.x.y`
 
 ## Agent Changelog
 

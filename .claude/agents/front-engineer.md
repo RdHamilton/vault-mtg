@@ -134,16 +134,16 @@ VITE_API_BASE_URL=https://api.yourdomain.com
 
 ## Ticket Workflow
 
-Every ticket assigned to this agent must follow this status progression on the v2.0 project board (project #27, repo RdHamilton/MTGA-Companion):
+Every ticket assigned to this agent must follow this status progression on the v0.2.0 project board (project #28, repo RdHamilton/MTGA-Companion):
 
-1. **In Progress** (`9fd907f0`) — set immediately when work begins
-2. **PR Review** (`0ca4880d`) — set when a PR is opened; post PR number as a comment on the issue
-3. **Done** (`7729b7fe`) — set when the PR is merged
+1. **In Progress** (`0abb281c`) — set immediately when work begins
+2. **PR Review** (`d7bdb5e8`) — set when a PR is opened; post PR number as a comment on the issue
+3. **Done** (`64ec33a1`) — set when the PR is merged
 
 Every ticket must end with a PR. Never leave work committed without opening one.
 
 ```bash
-gh api graphql -f query='mutation { updateProjectV2ItemFieldValue(input: { projectId: "PVT_kwHOABsZ684BMSNn" itemId: "ITEM_ID" fieldId: "PVTSSF_lAHOABsZ684BMSNnzg7nLOc" value: { singleSelectOptionId: "OPTION_ID" } }) { projectV2Item { id } } }'
+gh api graphql -f query='mutation { updateProjectV2ItemFieldValue(input: { projectId: "PVT_kwHOABsZ684BW1IS" itemId: "ITEM_ID" fieldId: "PVTSSF_lAHOABsZ684BW1ISzhSGRhI" value: { singleSelectOptionId: "OPTION_ID" } }) { projectV2Item { id } } }'
 ```
 
 ## Agent Changelog

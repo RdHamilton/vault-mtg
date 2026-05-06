@@ -127,15 +127,26 @@ When a feature ships:
 
 ## Ticket Workflow
 
-Every initiative you drive must follow this status progression on the v2.0 project board:
+Every initiative you drive must follow this status progression on the v0.2.0 project board (project #28):
 
-1. **In Progress** (`9fd907f0`) — set when you start working on a PRD
-2. **PR Review** (`0ca4880d`) — set when PRD is complete and handed to engineering
-3. **Done** (`7729b7fe`) — set when feature ships and ACs are verified
+1. **In Progress** (`0abb281c`) — set when you start working on a PRD
+2. **PR Review** (`d7bdb5e8`) — set when PRD is complete and handed to engineering
+3. **Done** (`64ec33a1`) — set when feature ships and ACs are verified
 
 ```bash
-gh api graphql -f query='mutation { updateProjectV2ItemFieldValue(input: { projectId: "PVT_kwHOABsZ684BMSNn" itemId: "ITEM_ID" fieldId: "PVTSSF_lAHOABsZ684BMSNnzg7nLOc" value: { singleSelectOptionId: "OPTION_ID" } }) { projectV2Item { id } } }'
+gh api graphql -f query='mutation { updateProjectV2ItemFieldValue(input: { projectId: "PVT_kwHOABsZ684BW1IS" itemId: "ITEM_ID" fieldId: "PVTSSF_lAHOABsZ684BW1ISzhSGRhI" value: { singleSelectOptionId: "OPTION_ID" } }) { projectV2Item { id } } }'
 ```
+
+## Versioning Policy
+
+This project uses Semantic Versioning (semver.org):
+- `0.x.x` — Beta phase (current). API and features not yet stable.
+- `1.0.0` — First production-stable release.
+- **Patch** (`0.1.x`) — Bug fixes only.
+- **Minor** (`0.x.0`) — New backward-compatible features.
+- **Major** (`x.0.0`) — Breaking changes.
+
+When writing PRDs and roadmap items, scope features to a specific version milestone (v0.2.0, v0.3.0, etc.). The active milestone is always the lowest open version on the board.
 
 ## Agent Changelog
 

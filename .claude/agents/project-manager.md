@@ -132,52 +132,39 @@ Cached project metadata for fast status transitions (no need to re-query field I
   - Done: `98236657`
   - Released: `722bb6ad`
 
-### Project #27: MTGA-Companion v2.0.0
+### Project #27: Vault MTG v0.1.0 (historical — closed)
 - **Project ID**: `PVT_kwHOABsZ684BMSNn`
 - **Status Field ID**: `PVTSSF_lAHOABsZ684BMSNnzg7nLOc`
-- **Milestone Field ID**: `PVTF_lAHOABsZ684BMSNnzg7nLOo`
-- **Agent Field ID**: `PVTSSF_lAHOABsZ684BMSNnzhRxETM`
 - **Status Option IDs**:
-  - Todo: `6263f412`
-  - In Progress: `9fd907f0`
-  - PR Review: `0ca4880d`
-  - Done: `7729b7fe`
-  - Released: `21c7bb87`
-- **Agent Option IDs**:
-  - architect: `58bcb7a8`
-  - backend: `4ca9f6a0`
-  - daemon: `97db5f54`
-  - frontend: `8c10861b`
-  - infrastructure: `bd45f9c7`
-  - dba: `b1653f24`
-  - testing: `66f2dd97`
+  - Todo: `6263f412` | In Progress: `9fd907f0` | PR Review: `0ca4880d` | Done: `7729b7fe` | Released: `21c7bb87`
+- This project is closed. Do not add new issues here.
 
-Note: Status options were re-created via `updateProjectV2Field` mutation (adding PR Review + Released reset all option IDs).
-
-### Milestones (v2.0.0 Plan)
-- #54: Pre-Phase: Prerequisites
-- #55: Phase 1: Architecture Foundation
-- #56: Phase 2: AWS Deployment
-- #57: Phase 3: Monetization Foundation
-- #58: Phase 4: Specialized AI Agents
-- #59: Phase 5: Shared MCP Server
-- #60: Phase 6: RAG over Codebase
-
-**Milestone assignment guidance** (use this to pick the right milestone for new issues):
-- CI/CD, testing infrastructure, prerequisites → #54 Pre-Phase: Prerequisites
-- Architecture design, daemon refactoring, SetCache, sync modules, data layer → #55 Phase 1: Architecture Foundation
-- AWS deployment, Vercel hosting, EC2, nginx, CDN → #56 Phase 2: AWS Deployment
-- Stripe, billing, subscriptions → #57 Phase 3: Monetization Foundation
-- Specialized AI agents, agent routing → #58 Phase 4: Specialized AI Agents
-- Shared MCP server, tool sharing → #59 Phase 5: Shared MCP Server
-- RAG, codebase indexing, embeddings → #60 Phase 6: RAG over Codebase
+### Project #28: Vault MTG v0.2.0 (ACTIVE)
+- **Project ID**: `PVT_kwHOABsZ684BW1IS`
+- **Status Field ID**: `PVTSSF_lAHOABsZ684BW1ISzhSGRhI`
+- **Milestone Field ID**: `PVTF_lAHOABsZ684BW1ISzhSGRhU`
+- **Status Option IDs**:
+  - Todo: `73a754e2`
+  - In Progress: `0abb281c`
+  - PR Review: `d7bdb5e8`
+  - Done: `64ec33a1`
+  - Released: `6b52b4aa`
+- **Active milestone**: v0.2.0 (#67)
 
 **How to set Milestone on a GitHub issue** (the board Milestone column auto-populates from this):
 ```bash
-gh issue edit <NUMBER> --milestone "<Milestone Title>"
-# Example: gh issue edit 1036 --milestone "Pre-Phase: Prerequisites"
+gh issue edit <NUMBER> --milestone "v0.2.0"
 ```
-Note: The project board Milestone field (PVTF_lAHOABsZ684BMSNnzg7nLOo) is read-only — it derives from the issue milestone. Do NOT attempt to set it via GraphQL mutation (unsupported field type).
+Note: The Milestone field is read-only on the board — it derives from the issue milestone. Do NOT attempt to set it via GraphQL mutation.
+
+### Versioning Policy (Semantic Versioning — semver.org)
+- `0.x.x` — Beta. API and features not yet stable. Current phase.
+- `1.0.0` — First production-stable release.
+- **Patch** (`0.1.x`) — Bug fixes, no new features.
+- **Minor** (`0.x.0`) — New backward-compatible features.
+- **Major** (`x.0.0`) — Breaking changes.
+- Milestones track versions: v0.2.0, v0.3.0, … → v1.0.0.
+- When creating issues, assign milestone `v0.2.0` unless scoped to a later release.
 
 <!-- When creating a new project, add its entry here with the format above -->
 
@@ -302,8 +289,8 @@ Note: The project board Milestone field (PVTF_lAHOABsZ684BMSNnzg7nLOo) is read-o
 
 **Priority/Release labels:**
 - `high priority` (#b60205) - High priority
-- `v1.5` (#1d76db) - Features planned for v1.5
-- `v2.0` (#1d76db) - Features planned for v2.0
+- `v0.2.0` (#1d76db) - Features planned for v0.2.0
+- `v0.3.0` (#1d76db) - Features planned for v0.3.0
 
 **Workflow labels:**
 - `duplicate` (#cfd3d7) - Already exists
@@ -466,12 +453,12 @@ This check is what prevents the board from filling with duplicate tickets across
 
 ## Rules
 
-1. NEVER create an issue without: (a) at least one label, (b) an **Agent** line in the body, (c) `--milestone "<title>"` on `gh issue create`, (d) **Status = Todo** set on the board immediately after `item-add`, and (e) Agent set on the board. All five are required. Missing Status breaks board views; missing Milestone breaks release tracking. The board's Milestone column auto-derives from the issue milestone — do not set it separately via GraphQL.
-   - **Every new ticket MUST have Status = Todo set immediately after board add — never leave status blank.** Use `gh project item-edit --project-id <id> --id <item-id> --field-id <status-field-id> --single-select-option-id <todo-option-id>` (Project #27 Todo option: `6263f412`).
+1. NEVER create an issue without: (a) at least one label, (b) an **Agent** line in the body, (c) `--milestone "v0.2.0"` on `gh issue create`, (d) **Status = Todo** set on the board immediately after `item-add`. All four are required. Missing Status breaks board views; missing Milestone breaks release tracking. The board's Milestone column auto-derives from the issue milestone — do not set it separately via GraphQL.
+   - **Every new ticket MUST have Status = Todo set immediately after board add — never leave status blank.** Use `gh project item-edit --project-id PVT_kwHOABsZ684BW1IS --id <item-id> --field-id PVTSSF_lAHOABsZ684BW1ISzhSGRhI --single-select-option-id 73a754e2` (Project #28 Todo option: `73a754e2`).
    - **Run the Deduplication Check section above BEFORE calling `gh issue create`. This is a hard gate — no exceptions.**
 2. NEVER create a project without all 5 status columns configured
 3. Always use the existing label if one fits - check the list above first
-4. **ALWAYS add every new issue to the v2.0 project board immediately after creating it** — run `gh project item-add 27 --owner RdHamilton --url <issue_url>` as the very next command after `gh issue create`. This is non-negotiable; issues not on the board are invisible to the team.
+4. **ALWAYS add every new issue to the v0.2.0 project board immediately after creating it** — run `gh project item-add 28 --owner RdHamilton --url <issue_url>` as the very next command after `gh issue create`. This is non-negotiable; issues not on the board are invisible to the team.
 5. Issue titles should be concise but descriptive (under 80 chars)
 6. Always include Acceptance Criteria in issue bodies
 7. Use conventional prefixes in issue titles when appropriate (e.g., "Fix:", "Add:", "Refactor:")
