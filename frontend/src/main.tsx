@@ -8,6 +8,11 @@ import { DownloadProvider } from './context/DownloadContext'
 import { TaskProgressProvider } from './context/TaskProgressContext'
 import { initializeServices } from './services/adapter'
 
+// Social OAuth providers (Google, Facebook, Apple) are enabled in the Clerk Dashboard
+// under "Social connections" — no additional code required here.
+// Dashboard: https://dashboard.clerk.com → Social connections
+// VITE_CLERK_PUBLISHABLE_KEY is read automatically by ClerkProvider from the environment.
+
 const rootElement = document.getElementById('root')!
 
 const renderApp = () => {
