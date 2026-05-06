@@ -113,7 +113,7 @@ export default defineConfig({
     },
     // Vite dev server on port 3000 with REST API mode
     {
-      command: 'VITE_USE_REST_API=true npm run dev',
+      command: 'VITE_USE_REST_API=true VITE_CLERK_TEST_MODE=true npm run dev',
       url: 'http://localhost:3000',
       timeout: 60 * 1000,
       reuseExistingServer: !process.env.CI,

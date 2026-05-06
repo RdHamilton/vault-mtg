@@ -8,6 +8,12 @@ export default defineConfig({
   resolve: {
     alias: {
       '@': path.resolve(__dirname, './src'),
+      // When VITE_CLERK_TEST_MODE=true (E2E tests), replace @clerk/react with a
+      // lightweight mock that reads auth state from window.__CLERK_TEST_STATE__.
+      // This avoids requiring a real Clerk publishable key in test environments.
+      ...(process.env.VITE_CLERK_TEST_MODE === 'true'
+        ? { '@clerk/react': path.resolve(__dirname, './src/test/mocks/clerkMock.tsx') }
+        : {}),
     },
   },
   server: {
