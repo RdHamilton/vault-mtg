@@ -380,16 +380,16 @@ const Quests = () => {
             {activeQuests.length === 0 && !hasQuestData ? (
               <EmptyState
                 icon="📋"
-                title="Waiting for quest data"
-                message="Launch MTGA and play a game to see your quests here."
-                helpText="Quest data is captured from MTGA log files. Make sure detailed logging is enabled in MTGA: Options > View Account > Detailed Logs (Plugin Support)."
+                heading="Waiting for quest data"
+                subtext="Launch MTGA and play a game to see your quests here."
+                variant="no-data"
               />
             ) : activeQuests.length === 0 && hasQuestData ? (
               <EmptyState
                 icon="📋"
-                title="All quests completed!"
-                message="Check back tomorrow for new quests."
-                helpText="Daily quests reset each day. Your completed quests are shown in the history below."
+                heading="All quests completed!"
+                subtext="Check back tomorrow for new quests."
+                variant="no-data"
               />
             ) : (
               <div className="active-quests-grid">
@@ -500,16 +500,16 @@ const Quests = () => {
             {questHistory.length === 0 ? (
               <EmptyState
                 icon="📜"
-                title="No quest history"
-                message="No completed quests found for the selected time period."
-                helpText="Try adjusting the date range or complete some quests to see your history here."
+                heading="No quest history"
+                subtext="No completed quests found for the selected time period."
+                variant="no-data"
               />
             ) : filteredHistory.length === 0 ? (
               <EmptyState
                 icon="🔍"
-                title="No matching quests"
-                message="No quests match your current filters."
-                helpText="Try adjusting your status or type filters to see more results."
+                heading="No matching quests"
+                subtext="No quests match your current filters."
+                variant="no-data"
               />
             ) : (
               <>

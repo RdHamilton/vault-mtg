@@ -310,9 +310,9 @@ const DeckPerformance = () => {
       {!loading && !error && deckStats.length === 0 && (
         <EmptyState
           icon="🃏"
-          title="No deck data"
-          message="Play matches with different decks to see your deck performance statistics."
-          helpText="Try adjusting the filters if you've played matches but don't see data here."
+          heading="No deck data"
+          subtext="Play matches with different decks to see your deck performance statistics."
+          variant="no-data"
         />
       )}
 

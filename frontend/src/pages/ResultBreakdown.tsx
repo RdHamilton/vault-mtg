@@ -171,9 +171,9 @@ const ResultBreakdown = () => {
       {!loading && !error && !metrics && (
         <EmptyState
           icon="📊"
-          title="No performance data"
-          message="Play some matches to see your detailed performance breakdown."
-          helpText="Statistics include win rates, match outcomes, and performance trends."
+          heading="No performance data"
+          subtext="Play some matches to see your detailed performance breakdown."
+          variant="no-data"
         />
       )}
 

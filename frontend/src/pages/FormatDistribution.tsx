@@ -279,9 +279,9 @@ const FormatDistribution = () => {
       {!loading && !error && formatStats.length === 0 && (
         <EmptyState
           icon="🎯"
-          title="No format data"
-          message="Play matches in different formats to see your format distribution."
-          helpText="Try adjusting the date range if you've played matches but don't see data here."
+          heading="No format data"
+          subtext="Play matches in different formats to see your format distribution."
+          variant="no-data"
         />
       )}
 

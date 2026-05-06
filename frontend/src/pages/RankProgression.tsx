@@ -184,9 +184,9 @@ const RankProgression = () => {
       {!loading && !error && timeline.length === 0 && (
         <EmptyState
           icon="🏆"
-          title="No rank progression data"
-          message={`Play ${format === 'constructed' ? 'ranked constructed' : 'limited (draft/sealed)'} matches to track your rank progression over time.`}
-          helpText={`Your rank changes will be displayed here as you climb the ${format === 'constructed' ? 'Constructed' : 'Limited'} ladder.`}
+          heading="No rank progression data"
+          subtext={`Play ${format === 'constructed' ? 'ranked constructed' : 'limited (draft/sealed)'} matches to track your rank progression over time.`}
+          variant="no-data"
         />
       )}
 

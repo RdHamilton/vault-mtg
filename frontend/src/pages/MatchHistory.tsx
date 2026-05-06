@@ -426,16 +426,16 @@ const MatchHistory = () => {
         dateRange === 'all' && cardFormat === 'all' && queueType === 'all' && result === 'all' ? (
           <EmptyState
             icon="🎮"
-            title="No matches yet"
-            message="Start playing MTG Arena to begin tracking your match history!"
-            helpText="Make sure detailed logging is enabled in MTGA: Options → View Account → Detailed Logs (Plugin Support)"
+            heading="No matches yet"
+            subtext="Start playing MTG Arena to begin tracking your match history!"
+            variant="no-data"
           />
         ) : (
           <EmptyState
             icon="🔍"
-            title="No matches found"
-            message="Try adjusting your filters to see more results."
-            helpText="You can change the date range, card format, queue type, or result filter above."
+            heading="No matches found"
+            subtext="Try adjusting your filters to see more results."
+            variant="no-data"
           />
         )
       )}

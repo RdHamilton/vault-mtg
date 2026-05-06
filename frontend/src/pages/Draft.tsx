@@ -28,6 +28,7 @@ import ColorRatingsPanel from '../components/ColorRatingsPanel';
 import CurrentPackPicker from '../components/CurrentPackPicker';
 import { analyzeSynergies, shouldHighlightCard } from '../utils/synergy';
 import { useDownload } from '@/context/DownloadContext';
+import EmptyState from '../components/EmptyState';
 import './Draft.css';
 
 interface DraftState {
@@ -754,20 +755,12 @@ const Draft: React.FC = () => {
                         <p>Loading draft history...</p>
                     </div>
                 ) : historicalState.sessions.length === 0 ? (
-                    <div className="draft-empty">
-                        <h2>No Draft History</h2>
-                        <p>Complete a Quick Draft in MTG Arena to see your draft history here.</p>
-                        <div className="empty-help">
-                            <h3>How it works:</h3>
-                            <ul>
-                                <li>Start a Quick Draft in MTG Arena</li>
-                                <li>The draft assistant will automatically detect and display</li>
-                                <li>See all cards from the set with pick highlighting</li>
-                                <li>View your pick history and synergies</li>
-                                <li>Completed drafts will appear here with stats</li>
-                            </ul>
-                        </div>
-                    </div>
+                    <EmptyState
+                        icon="🎯"
+                        heading="No Draft History"
+                        subtext="Complete a Quick Draft in MTG Arena to see your draft history here."
+                        variant="no-data"
+                    />
                 ) : (
                     <div className="historical-drafts">
                         <div className="drafts-grid">

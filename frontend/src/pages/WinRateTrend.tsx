@@ -135,9 +135,9 @@ const WinRateTrend = () => {
       {!loading && !error && (!analysis || chartData.length === 0) && (
         <EmptyState
           icon="📈"
-          title="Not enough data"
-          message="Play at least 5 matches to see your win rate trends over time."
-          helpText="Your win rate will be tracked daily, weekly, or monthly depending on your selected date range."
+          heading="Not enough data"
+          subtext="Play at least 5 matches to see your win rate trends over time."
+          variant="no-data"
         />
       )}
 

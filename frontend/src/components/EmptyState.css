@@ -14,14 +14,16 @@
   opacity: 0.6;
 }
 
-.empty-state-title {
+/* Heading — new API */
+.empty-state-heading {
   font-size: 24px;
   font-weight: 600;
   color: #ffffff;
   margin: 0 0 12px 0;
 }
 
-.empty-state-message {
+/* Subtext — new API */
+.empty-state-subtext {
   font-size: 16px;
   color: #aaaaaa;
   margin: 0 0 8px 0;
@@ -29,11 +31,29 @@
   line-height: 1.5;
 }
 
-.empty-state-help {
+.empty-state-cta {
+  display: inline-block;
+  margin-top: 20px;
+  padding: 10px 24px;
+  background-color: #4a9eff;
+  color: #ffffff;
+  border-radius: 6px;
+  text-decoration: none;
   font-size: 14px;
-  color: #888888;
-  margin: 8px 0 0 0;
-  max-width: 600px;
-  line-height: 1.5;
-  font-style: italic;
+  font-weight: 600;
+  transition: background-color 0.2s ease;
+}
+
+.empty-state-cta:hover {
+  background-color: #2a7edf;
+  color: #ffffff;
+}
+
+/* Variant: coming-soon — muted, no CTA */
+.empty-state--coming-soon .empty-state-icon {
+  opacity: 0.4;
+}
+
+.empty-state--coming-soon .empty-state-heading {
+  color: #cccccc;
 }

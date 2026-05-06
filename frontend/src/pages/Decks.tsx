@@ -5,6 +5,7 @@ import { gui } from '@/types/models';
 import { useRotationNotifications } from '@/hooks/useRotationNotifications';
 import { useSettings } from '@/hooks/useSettings';
 import { RotationBanner } from '@/components/RotationBanner';
+import EmptyState from '@/components/EmptyState';
 import './Decks.css';
 
 type ExportFormat = 'arena' | 'moxfield' | 'archidekt' | 'mtgo' | 'mtggoldfish' | 'plaintext';
@@ -272,14 +273,19 @@ export default function Decks() {
 
       {/* Decks Grid */}
       {deckList.length === 0 ? (
-        <div className="empty-state">
-          <div className="empty-icon">📦</div>
-          <h2>No Decks Yet</h2>
-          <p>Create your first deck to get started!</p>
-          <button className="create-deck-button-large" onClick={() => setShowCreateDialog(true)}>
-            + Create New Deck
-          </button>
-        </div>
+        <>
+          <EmptyState
+            icon="📦"
+            heading="No Decks Yet"
+            subtext="Create your first deck to get started!"
+            variant="no-data"
+          />
+          <div style={{ display: 'flex', justifyContent: 'center', marginTop: '-16px' }}>
+            <button className="create-deck-button-large" onClick={() => setShowCreateDialog(true)}>
+              + Create New Deck
+            </button>
+          </div>
+        </>
       ) : (
         <div className="decks-grid">
           {deckList.map((deck) => (

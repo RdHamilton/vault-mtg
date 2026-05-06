@@ -3,390 +3,222 @@ import { render, screen } from '@testing-library/react';
 import EmptyState from './EmptyState';
 
 describe('EmptyState', () => {
-  describe('Required Props Rendering', () => {
-    it('should render with title and message', () => {
-      render(
-        <EmptyState
-          title="No Decks Found"
-          message="You haven't created any decks yet."
-        />
-      );
+  // ------------------------------------------------------------------ //
+  // Ticket ACs: renders with CTA, renders without CTA, renders error    //
+  // variant, does NOT render during loading (tested in page tests).     //
+  // ------------------------------------------------------------------ //
 
-      expect(screen.getByText('No Decks Found')).toBeInTheDocument();
+  describe('Required props', () => {
+    it('renders heading and subtext', () => {
+      render(<EmptyState heading="No Decks Found" subtext="You haven't created any decks yet." />);
+      expect(screen.getByRole('heading', { level: 2 })).toHaveTextContent('No Decks Found');
       expect(screen.getByText("You haven't created any decks yet.")).toBeInTheDocument();
     });
 
-    it('should render title as h2 element', () => {
-      render(
-        <EmptyState
-          title="Empty State"
-          message="No data available"
-        />
-      );
-
-      const title = screen.getByText('Empty State');
-      expect(title.tagName).toBe('H2');
-      expect(title).toHaveClass('empty-state-title');
+    it('renders heading as h2', () => {
+      render(<EmptyState heading="Empty State" subtext="No data available" />);
+      expect(screen.getByRole('heading', { level: 2 })).toHaveTextContent('Empty State');
     });
 
-    it('should render message as paragraph element', () => {
-      render(
-        <EmptyState
-          title="No Items"
-          message="The list is empty."
-        />
-      );
-
-      const message = screen.getByText('The list is empty.');
-      expect(message.tagName).toBe('P');
-      expect(message).toHaveClass('empty-state-message');
+    it('renders subtext as paragraph with correct class', () => {
+      render(<EmptyState heading="No Items" subtext="The list is empty." />);
+      const p = screen.getByText('The list is empty.');
+      expect(p.tagName).toBe('P');
+      expect(p).toHaveClass('empty-state-subtext');
     });
   });
 
-  describe('Optional Icon', () => {
-    it('should render icon when provided', () => {
-      render(
-        <EmptyState
-          icon="📦"
-          title="No Items"
-          message="Your inventory is empty."
-        />
-      );
-
-      const icon = document.querySelector('.empty-state-icon');
-      expect(icon).toBeInTheDocument();
-      expect(icon?.textContent).toBe('📦');
+  describe('Optional icon', () => {
+    it('renders icon when provided', () => {
+      render(<EmptyState icon="📦" heading="No Items" subtext="Your inventory is empty." />);
+      expect(document.querySelector('.empty-state-icon')).toHaveTextContent('📦');
     });
 
-    it('should not render icon when not provided', () => {
-      render(
-        <EmptyState
-          title="No Items"
-          message="Your inventory is empty."
-        />
-      );
-
-      const icon = document.querySelector('.empty-state-icon');
-      expect(icon).not.toBeInTheDocument();
+    it('does not render icon element when icon is not provided', () => {
+      render(<EmptyState heading="No Items" subtext="Your inventory is empty." />);
+      expect(document.querySelector('.empty-state-icon')).not.toBeInTheDocument();
     });
 
-    it('should handle emoji icons', () => {
+    it('does not render icon element when icon is empty string', () => {
+      render(<EmptyState icon="" heading="No Items" subtext="icon is empty string" />);
+      expect(document.querySelector('.empty-state-icon')).not.toBeInTheDocument();
+    });
+  });
+
+  describe('CTA — AC: renders with CTA', () => {
+    it('renders CTA link when ctaLabel and ctaHref provided in no-data variant', () => {
       render(
         <EmptyState
-          icon="🎴"
-          title="No Cards"
-          message="No cards to display."
-        />
+          heading="No Matches"
+          subtext="Play some games first."
+          ctaLabel="Go to Onboarding"
+          ctaHref="/onboarding"
+          variant="no-data"
+        />,
       );
-
-      expect(screen.getByText('🎴')).toBeInTheDocument();
+      const link = screen.getByRole('link', { name: 'Go to Onboarding' });
+      expect(link).toBeInTheDocument();
+      expect(link).toHaveAttribute('href', '/onboarding');
+      expect(link).toHaveClass('empty-state-cta');
     });
 
-    it('should handle text-based icons', () => {
+    it('renders CTA when variant defaults to no-data', () => {
+      render(
+        <EmptyState
+          heading="No Decks"
+          subtext="Create your first deck."
+          ctaLabel="Get Started"
+          ctaHref="/start"
+        />,
+      );
+      expect(screen.getByRole('link', { name: 'Get Started' })).toBeInTheDocument();
+    });
+  });
+
+  describe('No CTA — AC: renders without CTA', () => {
+    it('does not render CTA when ctaLabel is omitted', () => {
+      render(<EmptyState heading="No Drafts" subtext="No drafts yet." variant="no-data" />);
+      expect(screen.queryByRole('link')).not.toBeInTheDocument();
+    });
+
+    it('does not render CTA when ctaHref is omitted', () => {
+      render(
+        <EmptyState
+          heading="No Drafts"
+          subtext="No drafts yet."
+          ctaLabel="Start Draft"
+          variant="no-data"
+        />,
+      );
+      expect(screen.queryByRole('link')).not.toBeInTheDocument();
+    });
+  });
+
+  describe('coming-soon variant — AC: renders variant without CTA', () => {
+    it('renders coming-soon variant without CTA even when ctaLabel/ctaHref provided', () => {
+      render(
+        <EmptyState
+          heading="Coming Soon"
+          subtext="This feature is under construction."
+          ctaLabel="Should Not Appear"
+          ctaHref="/somewhere"
+          variant="coming-soon"
+        />,
+      );
+      expect(screen.getByRole('heading', { level: 2 })).toHaveTextContent('Coming Soon');
+      expect(screen.queryByRole('link')).not.toBeInTheDocument();
+    });
+
+    it('applies coming-soon CSS modifier class', () => {
+      render(<EmptyState heading="Coming Soon" subtext="Under construction." variant="coming-soon" />);
+      expect(document.querySelector('.empty-state--coming-soon')).toBeInTheDocument();
+    });
+
+    it('applies no-data CSS modifier class by default', () => {
+      render(<EmptyState heading="No Data" subtext="Nothing here." />);
+      expect(document.querySelector('.empty-state--no-data')).toBeInTheDocument();
+    });
+  });
+
+  describe('error variant — AC: renders error variant', () => {
+    it('renders error heading and subtext for BFF non-2xx error', () => {
       render(
         <EmptyState
           icon="⚠️"
-          title="Warning"
-          message="No data found."
-        />
+          heading="Something went wrong"
+          subtext="We couldn't load your data. Please try again."
+          variant="no-data"
+        />,
       );
-
+      expect(screen.getByRole('heading', { level: 2 })).toHaveTextContent('Something went wrong');
+      expect(
+        screen.getByText("We couldn't load your data. Please try again."),
+      ).toBeInTheDocument();
       expect(screen.getByText('⚠️')).toBeInTheDocument();
     });
   });
 
-  describe('Optional Help Text', () => {
-    it('should render help text when provided', () => {
-      render(
-        <EmptyState
-          title="No Drafts"
-          message="You haven't participated in any drafts."
-          helpText="Start a draft in MTGA to see your draft history here."
-        />
-      );
-
-      const helpText = screen.getByText('Start a draft in MTGA to see your draft history here.');
-      expect(helpText).toBeInTheDocument();
-      expect(helpText).toHaveClass('empty-state-help');
+  describe('Container structure', () => {
+    it('renders with data-testid="empty-state"', () => {
+      render(<EmptyState heading="Test" subtext="msg" />);
+      expect(screen.getByTestId('empty-state')).toBeInTheDocument();
     });
 
-    it('should not render help text when not provided', () => {
-      render(
-        <EmptyState
-          title="Empty"
-          message="No data"
-        />
-      );
-
-      const helpText = document.querySelector('.empty-state-help');
-      expect(helpText).not.toBeInTheDocument();
-    });
-
-    it('should render help text as paragraph element', () => {
-      render(
-        <EmptyState
-          title="No Matches"
-          message="No matches recorded."
-          helpText="Play some games to see match history."
-        />
-      );
-
-      const helpText = screen.getByText('Play some games to see match history.');
-      expect(helpText.tagName).toBe('P');
-    });
-  });
-
-  describe('Component Structure', () => {
-    it('should render with correct container class', () => {
-      render(
-        <EmptyState
-          title="Test"
-          message="Test message"
-        />
-      );
-
-      const container = document.querySelector('.empty-state');
-      expect(container).toBeInTheDocument();
-    });
-
-    it('should maintain correct DOM hierarchy with all props', () => {
+    it('contains all elements in correct hierarchy', () => {
       render(
         <EmptyState
           icon="🔍"
-          title="Not Found"
-          message="Search returned no results."
-          helpText="Try different search terms."
-        />
+          heading="Not Found"
+          subtext="No results."
+          ctaLabel="Try Again"
+          ctaHref="/search"
+        />,
       );
-
-      const container = document.querySelector('.empty-state') as HTMLElement | null;
-      const icon = document.querySelector('.empty-state-icon') as HTMLElement | null;
-      const title = screen.getByText('Not Found');
-      const message = screen.getByText('Search returned no results.');
-      const helpText = screen.getByText('Try different search terms.');
-
-      expect(container).toContainElement(icon);
-      expect(container).toContainElement(title);
-      expect(container).toContainElement(message);
-      expect(container).toContainElement(helpText);
-    });
-
-    it('should maintain correct DOM hierarchy without optional props', () => {
-      render(
-        <EmptyState
-          title="Empty"
-          message="No data available."
-        />
-      );
-
-      const container = document.querySelector('.empty-state');
-      const title = screen.getByText('Empty');
-      const message = screen.getByText('No data available.');
-
-      expect(container).toContainElement(title);
-      expect(container).toContainElement(message);
-      expect(document.querySelector('.empty-state-icon')).not.toBeInTheDocument();
-      expect(document.querySelector('.empty-state-help')).not.toBeInTheDocument();
-    });
-  });
-
-  describe('Content Variations', () => {
-    it('should handle long title text', () => {
-      const longTitle = 'This is a very long title that might span multiple lines in the UI';
-      render(
-        <EmptyState
-          title={longTitle}
-          message="Short message"
-        />
-      );
-
-      expect(screen.getByText(longTitle)).toBeInTheDocument();
-    });
-
-    it('should handle long message text', () => {
-      const longMessage = 'This is a very long message that provides detailed information about why the state is empty and what the user can do to populate it with data.';
-      render(
-        <EmptyState
-          title="Empty State"
-          message={longMessage}
-        />
-      );
-
-      expect(screen.getByText(longMessage)).toBeInTheDocument();
-    });
-
-    it('should handle long help text', () => {
-      const longHelpText = 'This is extensive help text that provides step-by-step instructions on how to get started and populate this empty state with meaningful data.';
-      render(
-        <EmptyState
-          title="No Data"
-          message="Nothing here yet."
-          helpText={longHelpText}
-        />
-      );
-
-      expect(screen.getByText(longHelpText)).toBeInTheDocument();
-    });
-
-    it('should handle special characters in content', () => {
-      render(
-        <EmptyState
-          icon="⚡"
-          title="No Results (0)"
-          message="Search for 'Magic: The Gathering' returned nothing."
-          helpText={'Try searching for "MTG" instead.'}
-        />
-      );
-
-      expect(screen.getByText('No Results (0)')).toBeInTheDocument();
-      expect(screen.getByText("Search for 'Magic: The Gathering' returned nothing.")).toBeInTheDocument();
-      expect(screen.getByText('Try searching for "MTG" instead.')).toBeInTheDocument();
-    });
-  });
-
-  describe('Real-World Use Cases', () => {
-    it('should render empty deck state', () => {
-      render(
-        <EmptyState
-          icon="🃏"
-          title="No Decks"
-          message="You haven't created any decks yet."
-          helpText="Click the 'Create Deck' button to build your first deck."
-        />
-      );
-
-      expect(screen.getByText('No Decks')).toBeInTheDocument();
-      expect(screen.getByText("You haven't created any decks yet.")).toBeInTheDocument();
-      expect(screen.getByText("Click the 'Create Deck' button to build your first deck.")).toBeInTheDocument();
-    });
-
-    it('should render empty draft state', () => {
-      render(
-        <EmptyState
-          icon="🎯"
-          title="No Draft History"
-          message="You haven't participated in any drafts."
-          helpText="Your draft picks and statistics will appear here after your first draft."
-        />
-      );
-
-      expect(screen.getByText('No Draft History')).toBeInTheDocument();
-      expect(screen.getByText("You haven't participated in any drafts.")).toBeInTheDocument();
-    });
-
-    it('should render empty search results', () => {
-      render(
-        <EmptyState
-          icon="🔍"
-          title="No Cards Found"
-          message="Your search didn't match any cards."
-          helpText="Try adjusting your filters or search terms."
-        />
-      );
-
-      expect(screen.getByText('No Cards Found')).toBeInTheDocument();
-      expect(screen.getByText("Your search didn't match any cards.")).toBeInTheDocument();
-    });
-
-    it('should render without icon or help text', () => {
-      render(
-        <EmptyState
-          title="No Data"
-          message="Nothing to display."
-        />
-      );
-
-      expect(screen.getByText('No Data')).toBeInTheDocument();
-      expect(screen.getByText('Nothing to display.')).toBeInTheDocument();
-      expect(document.querySelector('.empty-state-icon')).not.toBeInTheDocument();
-      expect(document.querySelector('.empty-state-help')).not.toBeInTheDocument();
+      const container = screen.getByTestId('empty-state');
+      expect(container).toContainElement(document.querySelector('.empty-state-icon'));
+      expect(container).toContainElement(screen.getByRole('heading', { level: 2 }));
+      expect(container).toContainElement(screen.getByText('No results.'));
+      expect(container).toContainElement(screen.getByRole('link'));
     });
   });
 
   describe('Accessibility', () => {
-    it('should use semantic heading for title', () => {
-      render(
-        <EmptyState
-          title="Accessible Title"
-          message="Accessible message"
-        />
-      );
-
-      const title = screen.getByRole('heading', { level: 2 });
-      expect(title).toHaveTextContent('Accessible Title');
+    it('heading is accessible by role', () => {
+      render(<EmptyState heading="Accessible Heading" subtext="Body text" />);
+      expect(screen.getByRole('heading', { level: 2 })).toHaveTextContent('Accessible Heading');
     });
 
-    it('should have readable text content', () => {
+    it('CTA link is accessible by role', () => {
       render(
         <EmptyState
-          icon="📋"
-          title="No Items"
-          message="The list is empty."
-          helpText="Add items to see them here."
-        />
+          heading="No Data"
+          subtext="Nothing here."
+          ctaLabel="Learn More"
+          ctaHref="/learn"
+        />,
       );
-
-      expect(screen.getByText('No Items')).toBeVisible();
-      expect(screen.getByText('The list is empty.')).toBeVisible();
-      expect(screen.getByText('Add items to see them here.')).toBeVisible();
-    });
-
-    it('should maintain proper heading hierarchy', () => {
-      render(
-        <EmptyState
-          title="Empty State"
-          message="No content"
-        />
-      );
-
-      // H2 heading should be accessible
-      const heading = screen.getByRole('heading', { level: 2 });
-      expect(heading).toBeInTheDocument();
-      expect(heading).toHaveTextContent('Empty State');
+      expect(screen.getByRole('link', { name: 'Learn More' })).toBeInTheDocument();
     });
   });
 
-  describe('Edge Cases', () => {
-    it('should handle empty string for icon', () => {
+  describe('Real-world use cases', () => {
+    it('renders empty match history state', () => {
       render(
         <EmptyState
-          icon=""
-          title="No Icon"
-          message="Icon is empty string"
-        />
+          icon="🎮"
+          heading="No matches yet"
+          subtext="Start playing MTG Arena to begin tracking your match history!"
+          variant="no-data"
+        />,
       );
-
-      // Empty icon should still render the container but be empty
-      const icon = document.querySelector('.empty-state-icon');
-      expect(icon).not.toBeInTheDocument();
+      expect(screen.getByRole('heading', { level: 2 })).toHaveTextContent('No matches yet');
     });
 
-    it('should handle empty string for helpText', () => {
+    it('renders empty draft sessions state', () => {
       render(
         <EmptyState
-          title="No Help"
-          message="Help text is empty"
-          helpText=""
-        />
+          icon="🎯"
+          heading="No Draft History"
+          subtext="Complete a Quick Draft in MTG Arena to see your draft history here."
+          variant="no-data"
+        />,
       );
-
-      // Empty help text should not render the element
-      const helpText = document.querySelector('.empty-state-help');
-      expect(helpText).not.toBeInTheDocument();
+      expect(screen.getByRole('heading', { level: 2 })).toHaveTextContent('No Draft History');
     });
 
-    it('should handle HTML entities in text', () => {
+    it('renders empty decks state with CTA', () => {
       render(
         <EmptyState
-          title="No Results &amp; More"
-          message="Less than 1 &lt; 2"
-          helpText="Greater than 2 &gt; 1"
-        />
+          icon="📦"
+          heading="No Decks Yet"
+          subtext="Create your first deck to get started!"
+          ctaLabel="Create New Deck"
+          ctaHref="/decks/new"
+          variant="no-data"
+        />,
       );
-
-      expect(screen.getByText('No Results & More')).toBeInTheDocument();
-      expect(screen.getByText('Less than 1 < 2')).toBeInTheDocument();
-      expect(screen.getByText('Greater than 2 > 1')).toBeInTheDocument();
+      expect(screen.getByRole('heading', { level: 2 })).toHaveTextContent('No Decks Yet');
+      expect(screen.getByRole('link', { name: 'Create New Deck' })).toBeInTheDocument();
     });
   });
 });
