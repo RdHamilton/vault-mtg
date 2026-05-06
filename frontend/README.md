@@ -335,12 +335,17 @@ Ensure you're using `ResponsiveContainer`:
 
 ## Deployment
 
-Production traffic is served by **Vercel** (canonical frontend host). Vercel builds from `frontend/**` on every push to `main` and provides global CDN, preview deploys per PR, and zero-config TLS.
+Production traffic for `https://app.vaultmtg.app` is served from **S3 + CloudFront**. The build output (`frontend/dist/`) is synced to the `vaultmtg-app-spa` S3 bucket and a CloudFront invalidation is issued. Bucket name and distribution ID are read from SSM at deploy time.
 
-The EC2 nginx static-serve path is **DR/preview only** and is not the production frontend. See the architectural decisions for details:
+Deploys run on `push: tags: ['v*']` (production tag) or `workflow_dispatch` — see [`.github/workflows/deploy-spa.yml`](../.github/workflows/deploy-spa.yml). Pushes to `main` do not deploy.
 
-- [ADR-006: Vercel BFF Connectivity](../docs/adr/006-vercel-bff-connectivity.md) — how the Vercel-hosted SPA connects to the Go BFF
-- [ADR-007: Frontend Serving Model](../docs/adr/007-frontend-serving-model.md) — rationale for Vercel as the canonical host
+**Vercel** is wired up for **PR preview deploys only**. Production tags skip Vercel via the `vercel.json` `ignoreCommand` at the repo root.
+
+For the full deploy model, infrastructure inventory, SSM parameters, and rollback steps, see [`docs/DEPLOYMENT.md`](../docs/DEPLOYMENT.md). For the architectural decisions:
+
+- [ADR-008: Frontend Serving Model — S3+CloudFront Canonical, Vercel Preview-Only](../docs/adr/ADR-008-frontend-serving-model.md) — current source of truth
+- [ADR-006: Vercel BFF Connectivity](../docs/adr/006-vercel-bff-connectivity.md) — CORS and `VITE_BFF_URL` semantics for cross-origin BFF
+- [ADR-007: Frontend Serving Model](../docs/adr/007-frontend-serving-model.md) — superseded by ADR-008; kept for historical context
 
 ## Resources
 

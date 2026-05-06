@@ -10,8 +10,12 @@ This directory contains all technical documentation for the MTGA-Companion proje
 - **[MIGRATION_TO_SERVICE_ARCHITECTURE.md](MIGRATION_TO_SERVICE_ARCHITECTURE.md)** - Service architecture migration guide
 
 ### Architectural Decision Records (ADRs)
-- **[ADR-006: Vercel BFF Connectivity](adr/006-vercel-bff-connectivity.md)** - How the Vercel frontend connects to the Go BFF on EC2
-- **[ADR-007: Frontend Serving Model](adr/007-frontend-serving-model.md)** - Vercel is the canonical production frontend; EC2 nginx is DR/preview only
+- **[ADR-008: Frontend Serving Model — S3+CloudFront Canonical, Vercel Preview-Only](adr/ADR-008-frontend-serving-model.md)** - Current source of truth: S3+CloudFront for all three frontend properties; Vercel is preview-only; EC2 nginx serves the API only
+- **[ADR-007: Frontend Serving Model](adr/007-frontend-serving-model.md)** - Superseded by ADR-008. Previously declared Vercel canonical; kept for historical context
+- **[ADR-006: Vercel BFF Connectivity](adr/006-vercel-bff-connectivity.md)** - How frontend SPAs connect to the Go BFF over CORS
+
+### Deployment & Operations
+- **[DEPLOYMENT.md](DEPLOYMENT.md)** - Production deploy model, SSM parameter inventory, rollback procedure, and CI workflow reference
 
 ### Development Guides
 - **[DEVELOPMENT.md](DEVELOPMENT.md)** - Development setup and workflow

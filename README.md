@@ -696,17 +696,21 @@ For a complete list of dependencies, see [`go.mod`](go.mod) and [`frontend/packa
 
 ## Deployment
 
+For the full deploy model, infrastructure inventory, SSM parameters, and rollback steps, see [`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md).
+
 ### Frontend Serving Model
 
-Production traffic for `https://mtgacompanion.com` is served by **Vercel** (the canonical frontend host). Vercel provides global CDN, atomic preview deploys per PR, and zero-config TLS.
+Production traffic for `https://app.vaultmtg.app` is served from **S3 + CloudFront**. Each frontend property (`app.vaultmtg.app`, `vaultmtg.app`, `rhamiltoneng.com`) has its own S3 bucket, CloudFront distribution, and ACM certificate. Bucket names and distribution IDs are read from SSM at deploy time.
 
-The EC2 nginx static-serve path is **DR/preview only** — it is not the production frontend. Do not treat EC2 nginx as the authoritative serving path.
+**Vercel** is wired up for **PR preview deploys only**. Production tags (`v*`) skip Vercel via the `vercel.json` `ignoreCommand`. Vercel does not serve any production hostname.
 
-See [ADR-007: Frontend Serving Model](docs/adr/007-frontend-serving-model.md) for the full decision record and rationale. See [ADR-006](docs/adr/006-vercel-bff-connectivity.md) for Vercel → BFF connectivity details.
+**EC2 nginx** serves the BFF/API on `api.vaultmtg.app` only. There is no `location /` static-serve block on EC2 in production — frontends are served by CloudFront, not by the instance.
+
+See [ADR-008: Frontend Serving Model — S3+CloudFront Canonical, Vercel Preview-Only](docs/adr/ADR-008-frontend-serving-model.md) for the full decision record and rationale. ADR-008 supersedes ADR-001 (EC2 nginx canonical) and ADR-007 (Vercel canonical). See [ADR-006](docs/adr/006-vercel-bff-connectivity.md) for cross-origin BFF connectivity details.
 
 ### Backend (BFF)
 
-The Go BFF runs on EC2 behind nginx (`/api/v1/` proxy). The daemon binary ships via GitHub Releases for Windows (amd64) and macOS (arm64/amd64). See [Daemon Installation](docs/DAEMON_INSTALLATION.md) for setup instructions.
+The Go BFF runs on a single EC2 instance behind nginx, which proxies `/api/v1/` to the BFF on `127.0.0.1:8080`. The BFF reads its config (`DATABASE_URL`, `ALLOWED_ORIGINS`, `JWT_SECRET`, `DAEMON_JWT_SECRET`) from SSM Parameter Store at startup. The daemon binary ships via GitHub Releases for Windows (amd64) and macOS (arm64/amd64). See [Daemon Installation](docs/DAEMON_INSTALLATION.md) for setup instructions.
 
 ## Contributing
 
