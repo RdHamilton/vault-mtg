@@ -5,9 +5,19 @@ import { test, expect } from '@playwright/test';
  *
  * Tests the Draft page functionality including navigation and content display.
  * Uses REST API backend for testing.
+ *
+ * Note: /draft is behind ProtectedRoute (added in #1300). Tests inject a signed-in
+ * Clerk test state via window.__CLERK_TEST_STATE__ so ProtectedRoute renders the
+ * Draft content rather than the sign-in prompt. This requires Playwright to be
+ * started with VITE_CLERK_TEST_MODE=true (set in playwright.config.ts webServer command).
  */
 test.describe('Draft', () => {
   test.beforeEach(async ({ page }) => {
+    // Inject signed-in Clerk state so ProtectedRoute passes through to Draft content.
+    await page.addInitScript(() => {
+      (window as unknown as Record<string, unknown>).__CLERK_TEST_STATE__ = { isSignedIn: true };
+    });
+
     await page.goto('/');
     await expect(page.locator('[data-testid="app-container"]')).toBeVisible({ timeout: 10000 });
 
@@ -33,7 +43,7 @@ test.describe('Draft', () => {
       const draftEmpty = page.locator('.draft-empty');
 
       // Wait for either content type to appear
-      await expect(draftContainer.or(draftEmpty)).toBeVisible({ timeout: 10000 });
+      await expect(draftContainer.or(draftEmpty).first()).toBeVisible({ timeout: 10000 });
 
       const hasContainer = await draftContainer.isVisible();
       const hasEmpty = await draftEmpty.isVisible();
@@ -47,7 +57,7 @@ test.describe('Draft', () => {
       const draftEmpty = page.locator('.draft-empty');
 
       // Wait for content to load
-      await expect(draftContainer.or(draftEmpty).or(historicalSection)).toBeVisible({ timeout: 10000 });
+      await expect(draftContainer.or(draftEmpty).or(historicalSection).first()).toBeVisible({ timeout: 10000 });
 
       const hasHistorical = await historicalSection.isVisible();
       const hasDraftContent = await draftContainer.isVisible();
@@ -75,15 +85,15 @@ test.describe('Draft', () => {
       const draftEmpty = page.locator('.draft-empty');
       const historicalSection = page.locator('text=Historical Drafts');
 
-      await expect(draftContainer.or(draftEmpty).or(historicalSection)).toBeVisible({ timeout: 10000 });
+      await expect(draftContainer.or(draftEmpty).or(historicalSection).first()).toBeVisible({ timeout: 10000 });
 
       // Look for Build Deck button in the page
       const buildDeckButton = page.locator('button.btn-build-deck, button:has-text("Build Deck")');
       const hasBuildButton = await buildDeckButton.first().isVisible().catch(() => false);
 
-      // If there are draft sessions, there should be a Build Deck button
-      const hasDraftContent = await draftContainer.isVisible().catch(() => false);
-      if (hasDraftContent) {
+      // Only assert Build Deck button if actual draft session cards are present (not just the empty-state container)
+      const hasDraftSessions = await page.locator('.draft-session, .draft-history-item, .draft-card').first().isVisible().catch(() => false);
+      if (hasDraftSessions) {
         expect(hasBuildButton).toBeTruthy();
       }
     });
@@ -94,7 +104,7 @@ test.describe('Draft', () => {
       const draftEmpty = page.locator('.draft-empty');
       const historicalSection = page.locator('text=Historical Drafts');
 
-      await expect(draftContainer.or(draftEmpty).or(historicalSection)).toBeVisible({ timeout: 10000 });
+      await expect(draftContainer.or(draftEmpty).or(historicalSection).first()).toBeVisible({ timeout: 10000 });
 
       // Find a Build Deck button
       const buildDeckButton = page.locator('button.btn-build-deck, button:has-text("Build Deck")').first();
@@ -119,7 +129,7 @@ test.describe('Draft', () => {
       const draftEmpty = page.locator('.draft-empty');
       const historicalSection = page.locator('text=Historical Drafts');
 
-      await expect(draftContainer.or(draftEmpty).or(historicalSection)).toBeVisible({ timeout: 10000 });
+      await expect(draftContainer.or(draftEmpty).or(historicalSection).first()).toBeVisible({ timeout: 10000 });
 
       // Find a Build Deck button
       const buildDeckButton = page.locator('button.btn-build-deck, button:has-text("Build Deck")').first();
@@ -149,7 +159,7 @@ test.describe('Draft', () => {
       const draftEmpty = page.locator('.draft-empty');
       const historicalSection = page.locator('text=Historical Drafts');
 
-      await expect(draftContainer.or(draftEmpty).or(historicalSection)).toBeVisible({ timeout: 10000 });
+      await expect(draftContainer.or(draftEmpty).or(historicalSection).first()).toBeVisible({ timeout: 10000 });
 
       // Find a Build Deck button
       const buildDeckButton = page.locator('button.btn-build-deck, button:has-text("Build Deck")').first();
@@ -188,7 +198,7 @@ test.describe('Draft', () => {
       const draftEmpty = page.locator('.draft-empty');
       const historicalSection = page.locator('text=Historical Drafts');
 
-      await expect(draftContainer.or(draftEmpty).or(historicalSection)).toBeVisible({ timeout: 10000 });
+      await expect(draftContainer.or(draftEmpty).or(historicalSection).first()).toBeVisible({ timeout: 10000 });
 
       // Find a Build Deck button
       const buildDeckButton = page.locator('button.btn-build-deck, button:has-text("Build Deck")').first();
@@ -218,7 +228,7 @@ test.describe('Draft', () => {
       const draftEmpty = page.locator('.draft-empty');
       const historicalSection = page.locator('text=Historical Drafts');
 
-      await expect(draftContainer.or(draftEmpty).or(historicalSection)).toBeVisible({ timeout: 10000 });
+      await expect(draftContainer.or(draftEmpty).or(historicalSection).first()).toBeVisible({ timeout: 10000 });
 
       // Find a Build Deck button
       const buildDeckButton = page.locator('button.btn-build-deck, button:has-text("Build Deck")').first();
