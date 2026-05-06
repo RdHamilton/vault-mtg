@@ -8,12 +8,18 @@ import { DownloadProvider } from './context/DownloadContext'
 import { TaskProgressProvider } from './context/TaskProgressContext'
 import { initializeServices } from './services/adapter'
 
+// Clerk publishable key — set VITE_CLERK_PUBLISHABLE_KEY in .env (see .env.example).
+// Social OAuth providers (Google, Facebook, Apple) are enabled in the Clerk Dashboard
+// under "Social connections" — no additional code required here.
+// Dashboard: https://dashboard.clerk.com → Social connections
+const clerkPublishableKey = import.meta.env.VITE_CLERK_PUBLISHABLE_KEY as string
+
 const rootElement = document.getElementById('root')!
 
 const renderApp = () => {
   createRoot(rootElement).render(
     <StrictMode>
-      <ClerkProvider afterSignOutUrl="/">
+      <ClerkProvider publishableKey={clerkPublishableKey} afterSignOutUrl="/">
         <AppProvider>
           <DownloadProvider>
             <TaskProgressProvider>
