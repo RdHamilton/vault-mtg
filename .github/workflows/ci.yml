@@ -57,6 +57,7 @@ jobs:
     outputs:
       bff: ${{ steps.filter.outputs.bff }}
       frontend: ${{ steps.filter.outputs.frontend }}
+      sync: ${{ steps.filter.outputs.sync }}
     steps:
     - name: Checkout code
       uses: actions/checkout@v6
@@ -72,6 +73,9 @@ jobs:
             - '.github/workflows/ci.yml'
           frontend:
             - 'frontend/**'
+            - '.github/workflows/ci.yml'
+          sync:
+            - 'services/sync/**'
             - '.github/workflows/ci.yml'
 
   bff-unit-tests:
@@ -108,7 +112,7 @@ jobs:
       env:
         GONOSUMDB: github.com/RdHamilton/MTGA-Companion
         GOPRIVATE: github.com/RdHamilton/MTGA-Companion
-      run: go test -v -short -coverprofile=coverage.out -covermode=atomic ./...
+      run: go test -race -v -short -coverprofile=coverage.out -covermode=atomic ./...
 
     - name: Upload coverage to Codecov
       uses: codecov/codecov-action@v6
@@ -158,3 +162,119 @@ jobs:
         files: ./frontend/coverage/coverage-final.json
         flags: frontend
         fail_ci_if_error: false
+
+  go-lint:
+    name: Go Lint
+    needs: detect-changes
+    if: needs.detect-changes.outputs.bff == 'true'
+    runs-on: ubuntu-latest
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v6
+
+    - name: Set up Go
+      uses: actions/setup-go@v5
+      with:
+        go-version: '1.25'
+
+    - name: go vet — all modules
+      env:
+        GONOSUMDB: github.com/RdHamilton/MTGA-Companion
+        GOPRIVATE: github.com/RdHamilton/MTGA-Companion
+      run: |
+        for mod in services/bff services/daemon services/sync services/contract; do
+          echo "=== go vet $mod ==="
+          (cd "$mod" && go vet ./...)
+        done
+
+    - name: Install gofumpt
+      run: go install mvdan.cc/gofumpt@latest
+
+    - name: gofumpt check — all modules
+      run: |
+        OUT=$(gofumpt -l services/bff services/daemon services/sync services/contract)
+        if [ -n "$OUT" ]; then
+          echo "gofumpt formatting violations:"
+          echo "$OUT"
+          exit 1
+        fi
+        echo "gofumpt clean."
+
+  sync-unit-tests:
+    name: Sync Unit Tests
+    needs: detect-changes
+    if: needs.detect-changes.outputs.sync == 'true'
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v6
+
+    - name: Set up Go
+      uses: actions/setup-go@v5
+      with:
+        go-version: '1.25'
+
+    - name: Configure private module access
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      run: |
+        git config --global url."https://${GITHUB_TOKEN}@github.com/".insteadOf "https://github.com/"
+
+    - name: Download dependencies
+      working-directory: services/sync
+      env:
+        GONOSUMDB: github.com/RdHamilton/MTGA-Companion
+        GOPRIVATE: github.com/RdHamilton/MTGA-Companion
+        GOFLAGS: -mod=mod
+      run: go mod download
+
+    - name: Run Sync unit tests
+      working-directory: services/sync
+      env:
+        GONOSUMDB: github.com/RdHamilton/MTGA-Companion
+        GOPRIVATE: github.com/RdHamilton/MTGA-Companion
+      run: go test -race -v -short -coverprofile=coverage.out -covermode=atomic ./...
+
+    - name: Upload coverage to Codecov
+      uses: codecov/codecov-action@v6
+      with:
+        files: ./services/sync/coverage.out
+        flags: sync-unit
+        fail_ci_if_error: false
+
+  frontend-e2e:
+    name: Frontend E2E Tests
+    needs: detect-changes
+    if: needs.detect-changes.outputs.frontend == 'true'
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v6
+
+    - name: Set up Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '20'
+        cache: 'npm'
+        cache-dependency-path: frontend/package-lock.json
+
+    - name: Install dependencies
+      run: cd frontend && npm ci
+
+    - name: Install Playwright browsers
+      run: cd frontend && npx playwright install chromium --with-deps
+
+    - name: Run E2E tests
+      run: cd frontend && npm run test:e2e:pipeline
+      env:
+        CI: true
+
+    - name: Upload Playwright report
+      if: always()
+      uses: actions/upload-artifact@v4
+      with:
+        name: playwright-e2e-report
+        path: frontend/playwright-report/
+        retention-days: 7

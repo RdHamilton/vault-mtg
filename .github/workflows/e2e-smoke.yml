@@ -57,7 +57,12 @@ jobs:
         npx playwright install chromium --with-deps
 
     - name: Build API server
-      run: go build -o bin/apiserver ./cmd/apiserver
+      env:
+        GONOSUMDB: github.com/RdHamilton/MTGA-Companion
+        GOPRIVATE: github.com/RdHamilton/MTGA-Companion
+      run: |
+        cd services/bff
+        go build -o ../../bin/mtga-bff ./cmd/main.go
 
     - name: Run E2E smoke tests
       run: |

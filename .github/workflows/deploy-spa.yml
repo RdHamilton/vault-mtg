@@ -72,3 +72,16 @@ jobs:
           aws cloudfront create-invalidation \
             --distribution-id ${{ steps.ssm.outputs.dist_id }} \
             --paths "/*"
+
+      - name: Post-deploy SPA smoke check
+        run: |
+          for i in $(seq 1 6); do
+            if curl -fsSL https://app.vaultmtg.app/ | grep -q '<div id="root"'; then
+              echo "SPA smoke check passed."
+              exit 0
+            fi
+            echo "Attempt $i/6 failed, waiting 10s..."
+            sleep 10
+          done
+          echo "SPA smoke check failed after 60s"
+          exit 1

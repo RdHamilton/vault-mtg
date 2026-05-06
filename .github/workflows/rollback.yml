@@ -1,0 +1,110 @@
+name: Rollback BFF
+
+on:
+  workflow_dispatch:
+    inputs:
+      sha:
+        description: 'Git SHA of the release to roll back to (must exist in S3 releases/)'
+        required: true
+        type: string
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  rollback:
+    name: Roll Back BFF to SHA
+    runs-on: ubuntu-latest
+    environment: production
+    concurrency:
+      group: bff-prod-deploy
+      cancel-in-progress: false
+
+    steps:
+    - name: Configure AWS credentials (OIDC)
+      uses: aws-actions/configure-aws-credentials@v4
+      with:
+        role-to-assume: ${{ secrets.AWS_DEPLOY_ROLE_ARN }}
+        aws-region: us-east-1
+
+    - name: Stage rollback binary on EC2
+      run: |
+        SHELL_CMD="aws s3 cp s3://${{ secrets.DEPLOY_BUCKET }}/releases/${{ inputs.sha }}/mtga-bff /usr/local/bin/mtga-bff.next && chmod +x /usr/local/bin/mtga-bff.next && mv /usr/local/bin/mtga-bff.next /usr/local/bin/mtga-bff"
+        PARAMS=$(SHELL_CMD="$SHELL_CMD" python3 -c "import json, os; print('commands=' + json.dumps([os.environ['SHELL_CMD']]))")
+        COMMAND_ID=$(aws ssm send-command \
+          --instance-ids "${{ secrets.EC2_INSTANCE_ID }}" \
+          --document-name "AWS-RunShellScript" \
+          --parameters "$PARAMS" \
+          --region us-east-1 \
+          --query "Command.CommandId" \
+          --output text)
+        echo "Stage Command ID: $COMMAND_ID"
+        for i in $(seq 1 60); do
+          STATUS=$(aws ssm get-command-invocation \
+            --command-id "$COMMAND_ID" \
+            --instance-id "${{ secrets.EC2_INSTANCE_ID }}" \
+            --region us-east-1 \
+            --query "Status" \
+            --output text 2>/dev/null || echo "Pending")
+          echo "[$i/60] $STATUS"
+          if [ "$STATUS" = "Success" ]; then break; fi
+          if [ "$STATUS" = "Failed" ] || [ "$STATUS" = "Cancelled" ] || [ "$STATUS" = "TimedOut" ]; then
+            aws ssm get-command-invocation --command-id "$COMMAND_ID" --instance-id "${{ secrets.EC2_INSTANCE_ID }}" --region us-east-1 --query "StandardErrorContent" --output text
+            exit 1
+          fi
+          sleep 10
+        done
+
+    - name: Restart BFF service
+      run: |
+        SHELL_CMD="systemctl restart mtga-bff"
+        PARAMS=$(SHELL_CMD="$SHELL_CMD" python3 -c "import json, os; print('commands=' + json.dumps([os.environ['SHELL_CMD']]))")
+        COMMAND_ID=$(aws ssm send-command \
+          --instance-ids "${{ secrets.EC2_INSTANCE_ID }}" \
+          --document-name "AWS-RunShellScript" \
+          --parameters "$PARAMS" \
+          --region us-east-1 \
+          --query "Command.CommandId" \
+          --output text)
+        for i in $(seq 1 12); do
+          STATUS=$(aws ssm get-command-invocation \
+            --command-id "$COMMAND_ID" \
+            --instance-id "${{ secrets.EC2_INSTANCE_ID }}" \
+            --region us-east-1 \
+            --query "Status" \
+            --output text 2>/dev/null || echo "Pending")
+          if [ "$STATUS" = "Success" ]; then break; fi
+          if [ "$STATUS" = "Failed" ] || [ "$STATUS" = "Cancelled" ] || [ "$STATUS" = "TimedOut" ]; then
+            aws ssm get-command-invocation --command-id "$COMMAND_ID" --instance-id "${{ secrets.EC2_INSTANCE_ID }}" --region us-east-1 --query "StandardErrorContent" --output text
+            exit 1
+          fi
+          sleep 10
+        done
+
+    - name: Post-rollback health check
+      run: |
+        SHELL_CMD="for i in \$(seq 1 10); do if curl -sf http://127.0.0.1:8080/healthz > /dev/null; then echo 'healthz OK'; exit 0; fi; sleep 5; done; exit 1"
+        PARAMS=$(SHELL_CMD="$SHELL_CMD" python3 -c "import json, os; print('commands=' + json.dumps([os.environ['SHELL_CMD']]))")
+        COMMAND_ID=$(aws ssm send-command \
+          --instance-ids "${{ secrets.EC2_INSTANCE_ID }}" \
+          --document-name "AWS-RunShellScript" \
+          --parameters "$PARAMS" \
+          --region us-east-1 \
+          --query "Command.CommandId" \
+          --output text)
+        for i in $(seq 1 15); do
+          STATUS=$(aws ssm get-command-invocation \
+            --command-id "$COMMAND_ID" \
+            --instance-id "${{ secrets.EC2_INSTANCE_ID }}" \
+            --region us-east-1 \
+            --query "Status" \
+            --output text 2>/dev/null || echo "Pending")
+          if [ "$STATUS" = "Success" ]; then echo "Rollback healthy."; exit 0; fi
+          if [ "$STATUS" = "Failed" ] || [ "$STATUS" = "Cancelled" ] || [ "$STATUS" = "TimedOut" ]; then
+            aws ssm get-command-invocation --command-id "$COMMAND_ID" --instance-id "${{ secrets.EC2_INSTANCE_ID }}" --region us-east-1 --query "StandardErrorContent" --output text
+            exit 1
+          fi
+          sleep 10
+        done
+        exit 1
