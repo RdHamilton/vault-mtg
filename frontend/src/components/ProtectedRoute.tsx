@@ -1,14 +1,20 @@
+import { Outlet } from 'react-router-dom';
 import { useAuth, SignInButton } from '@clerk/react';
 import './ProtectedRoute.css';
 
 interface ProtectedRouteProps {
-  children: React.ReactNode;
+  children?: React.ReactNode;
 }
 
 /**
- * ProtectedRoute wraps content that requires authentication.
+ * ProtectedRoute guards content that requires authentication.
  * When the user is not signed in, it renders a sign-in prompt instead.
- * Used for routes that require a Clerk session (e.g., Draft).
+ *
+ * Supports two usage patterns:
+ *   1. Layout route (React Router v6): <Route element={<ProtectedRoute />}>
+ *      — renders <Outlet /> when authenticated so nested routes render normally.
+ *   2. Wrapper (legacy): <ProtectedRoute><Component /></ProtectedRoute>
+ *      — renders children when authenticated.
  */
 const ProtectedRoute = ({ children }: ProtectedRouteProps) => {
   const { isSignedIn, isLoaded } = useAuth();
@@ -25,9 +31,11 @@ const ProtectedRoute = ({ children }: ProtectedRouteProps) => {
     return (
       <div className="protected-route-prompt" data-testid="protected-route-prompt">
         <div className="protected-route-card">
-          <h2 className="protected-route-title">Sign in to access Draft</h2>
+          <h2 className="protected-route-title" data-testid="protected-route-title">
+            Sign in to continue
+          </h2>
           <p className="protected-route-subtitle">
-            Create an account or sign in to use the live draft assistant.
+            Create an account or sign in to access this page.
           </p>
           <div className="protected-route-actions">
             <SignInButton mode="modal">
@@ -41,6 +49,12 @@ const ProtectedRoute = ({ children }: ProtectedRouteProps) => {
     );
   }
 
+  // Layout route: render nested routes via Outlet
+  if (children === undefined) {
+    return <Outlet />;
+  }
+
+  // Wrapper usage: render provided children
   return <>{children}</>;
 };
 

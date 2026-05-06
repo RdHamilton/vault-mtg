@@ -128,23 +128,28 @@ function App() {
       <KeyboardShortcutsHandler />
       <Layout>
         <Routes>
+          {/* Public routes — no auth required */}
           <Route path="/" element={<Navigate to="/match-history" replace />} />
-          <Route path="/match-history" element={<MatchHistory />} />
-          <Route path="/quests" element={<Quests />} />
-          <Route path="/draft" element={<ProtectedRoute><Draft /></ProtectedRoute>} />
-          <Route path="/draft-analytics" element={<DraftAnalytics />} />
-          <Route path="/decks" element={<Decks />} />
-          <Route path="/deck-builder/:deckID" element={<DeckBuilder />} />
-          <Route path="/deck-builder/draft/:draftEventID" element={<DeckBuilder />} />
-          <Route path="/collection" element={<Collection />} />
-          <Route path="/meta" element={<Meta />} />
-          <Route path="/charts/win-rate-trend" element={<WinRateTrend />} />
-          <Route path="/charts/deck-performance" element={<DeckPerformance />} />
-          <Route path="/charts/rank-progression" element={<RankProgression />} />
-          <Route path="/charts/format-distribution" element={<FormatDistribution />} />
-          <Route path="/charts/result-breakdown" element={<ResultBreakdown />} />
-          <Route path="/settings" element={<Settings />} />
           <Route path="/download" element={<Download />} />
+
+          {/* Protected routes — require Clerk authentication */}
+          <Route element={<ProtectedRoute />}>
+            <Route path="/match-history" element={<MatchHistory />} />
+            <Route path="/quests" element={<Quests />} />
+            <Route path="/draft" element={<Draft />} />
+            <Route path="/draft-analytics" element={<DraftAnalytics />} />
+            <Route path="/decks" element={<Decks />} />
+            <Route path="/deck-builder/:deckID" element={<DeckBuilder />} />
+            <Route path="/deck-builder/draft/:draftEventID" element={<DeckBuilder />} />
+            <Route path="/collection" element={<Collection />} />
+            <Route path="/meta" element={<Meta />} />
+            <Route path="/charts/win-rate-trend" element={<WinRateTrend />} />
+            <Route path="/charts/deck-performance" element={<DeckPerformance />} />
+            <Route path="/charts/rank-progression" element={<RankProgression />} />
+            <Route path="/charts/format-distribution" element={<FormatDistribution />} />
+            <Route path="/charts/result-breakdown" element={<ResultBreakdown />} />
+            <Route path="/settings" element={<Settings />} />
+          </Route>
         </Routes>
       </Layout>
       <ToastContainer />

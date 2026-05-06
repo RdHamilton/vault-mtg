@@ -6,6 +6,29 @@ import { mockEventEmitter } from '@/test/mocks/websocketMock';
 import { resetReplayState, getReplayState } from './utils/replayState';
 import { gui } from '@/types/models';
 
+// Controllable Clerk mock — defaults to signed-in so all existing route tests pass.
+// Per-test override: mockUseAuth.mockReturnValueOnce({ ... }) for signed-out scenarios.
+const mockUseAuth = vi.fn(() => ({
+  isLoaded: true,
+  isSignedIn: true,
+  getToken: () => Promise.resolve('clerk-test-token-stub'),
+}));
+
+vi.mock('@clerk/react', () => ({
+  ClerkProvider: ({ children }: { children: unknown }) => children,
+  Show: ({ when, children }: { when: string; children: unknown }) =>
+    when === 'signed-in' ? children : null,
+  SignInButton: ({ children }: { children: unknown }) => children,
+  SignUpButton: ({ children }: { children: unknown }) => children,
+  UserButton: () => null,
+  useAuth: () => mockUseAuth(),
+  useUser: () => ({
+    isLoaded: true,
+    isSignedIn: true,
+    user: { id: 'user_test_123', emailAddresses: [{ emailAddress: 'test@example.com' }] },
+  }),
+}));
+
 // Helper to set initial route before rendering App (which has its own Router)
 function renderAppWithRoute(route: string = '/') {
   window.history.pushState({}, 'Test page', route);
@@ -98,6 +121,29 @@ describe('App', () => {
   });
 
   describe('Routing', () => {
+    it('should show sign-in prompt on protected routes when unauthenticated', async () => {
+      // Override Clerk to simulate a signed-out user for this test only
+      mockUseAuth.mockReturnValue({
+        isLoaded: true,
+        isSignedIn: false,
+        getToken: () => Promise.resolve(null),
+      });
+
+      renderAppWithRoute('/match-history');
+
+      await waitFor(() => {
+        expect(screen.getByTestId('protected-route-prompt')).toBeInTheDocument();
+      });
+      expect(screen.queryByTestId('match-history-page')).not.toBeInTheDocument();
+
+      // Restore default for subsequent tests
+      mockUseAuth.mockReturnValue({
+        isLoaded: true,
+        isSignedIn: true,
+        getToken: () => Promise.resolve('clerk-test-token-stub'),
+      });
+    });
+
     it('should redirect root to /match-history', async () => {
       renderAppWithRoute('/');
 
