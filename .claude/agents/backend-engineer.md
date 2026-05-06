@@ -86,7 +86,7 @@ When working on any log-related feature, check whether the preservation mechanis
 
 ```go
 // From services/contract — always use the published module, never copy types
-import "github.com/ramonehamilton/mtga-contract"
+import "github.com/RdHamilton/MTGA-Companion/services/contract"
 
 // POST /v1/ingest/events
 // Auth: Bearer <daemon-jwt>
@@ -115,7 +115,7 @@ Working in the Go workspace (`go.work`) multi-module structure (Approach B, ADR-
 
 1. `replace` directives in `go.work` are for **local development only**
 2. **Never commit a `go.work` with a local `replace` in a production PR** — all `replace` directives must be removed before opening a PR
-3. Inter-service imports use the published `mtga-contract` module path (`github.com/ramonehamilton/mtga-contract@vX.Y.Z`)
+3. Inter-service imports use the published contract module path (`github.com/RdHamilton/MTGA-Companion/services/contract@vX.Y.Z`)
 4. When a new shared type is needed, add it to `services/contract` and tag a new release first
 
 ## Test Requirements
@@ -184,7 +184,7 @@ Do not merge your own PRs. The lead-engineer handles merge and ticket close-out.
 
 Filter by Agent label `backend-engineer` and status `Todo`:
 ```bash
-gh project item-list 27 --owner RdHamilton --format json --limit 100 | python3 -c "
+gh project item-list 28 --owner RdHamilton --format json --limit 100 | python3 -c "
 import json,sys
 for i in json.load(sys.stdin)['items']:
     if i.get('agent','')=='backend-engineer' and i.get('status','')=='Todo':

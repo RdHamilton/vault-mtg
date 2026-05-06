@@ -360,16 +360,14 @@ gh project field-list <NUMBER> --owner RdHamilton --format json
 # Note: gh issue create does NOT support --json; capture URL from stdout directly
 # Use --body-file with a temp file for multi-line bodies; use --label once per label (comma-separated values do NOT work)
 ISSUE_URL=$(gh issue create --title "<title>" --body-file /tmp/body.md --label "<label1>" --label "<label2>" --milestone "<milestone-title>" 2>&1)
-ITEM_ID=$(gh project item-add 27 --owner RdHamilton --url "$ISSUE_URL" --format json -q .id)
+ITEM_ID=$(gh project item-add 28 --owner RdHamilton --url "$ISSUE_URL" --format json -q .id)
 # REQUIRED: Set Status = "Todo" immediately — NEVER skip; blank status breaks board views
-# Project #27: project-id=PVT_kwHOABsZ684BMSNn, status field=PVTSSF_lAHOABsZ684BMSNnzg7nLOc, Todo option=6263f412
+# Project #28: project-id=PVT_kwHOABsZ684BW1IS, status field=PVTSSF_lAHOABsZ684BW1ISzhSGRhI, Todo option=73a754e2
 gh project item-edit \
-  --project-id PVT_kwHOABsZ684BMSNn \
+  --project-id PVT_kwHOABsZ684BW1IS \
   --id "$ITEM_ID" \
-  --field-id PVTSSF_lAHOABsZ684BMSNnzg7nLOc \
-  --single-select-option-id 6263f412
-# Set Agent field immediately — use option IDs from Project Registry
-gh api graphql -f query='mutation { updateProjectV2ItemFieldValue(input: { projectId: "PVT_kwHOABsZ684BMSNn" itemId: "'"$ITEM_ID"'" fieldId: "PVTSSF_lAHOABsZ684BMSNnzhRxETM" value: { singleSelectOptionId: "<AGENT_OPTION_ID>" } }) { projectV2Item { id } } }'
+  --field-id PVTSSF_lAHOABsZ684BW1ISzhSGRhI \
+  --single-select-option-id 73a754e2
 
 # Create project
 gh project create --owner RdHamilton --title "<title>"
