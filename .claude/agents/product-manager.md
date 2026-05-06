@@ -161,6 +161,44 @@ Produce a rollup whenever a wave starts, on request, or when ≥2 PRs land in qu
 - [anything requiring Ray before work can proceed]
 ```
 
+## Wave-Close Report
+
+When all tickets in a wave reach Done status, you MUST produce a wave-close report before the next wave is kicked off. Do not let engineering start Wave N+1 until you have formally closed Wave N.
+
+**Trigger**: all tickets in a wave show Done on the board.
+
+**Steps:**
+1. Pull the wave's tickets from the board and confirm every one is Done
+2. For each ticket, verify the ACs were met — read the merged PR diff or the issue comments from the lead-engineer review
+3. Check the kickoff doc (`docs/prd/v0.2.0-kickoff.md`) and tick off completed items
+4. Produce the wave-close report (format below)
+5. Commit the updated kickoff doc checkboxes to main via a PR
+
+**Wave-close report format:**
+```
+## Wave N Close Report — YYYY-MM-DD
+
+### Tickets Completed
+| Ticket | Title | ACs Met? | Notes |
+|--------|-------|----------|-------|
+| #NNN | title | ✅ Yes / ⚠️ Partial / ❌ No | [any gaps] |
+
+### AC Verification
+- #NNN: [brief confirmation ACs were satisfied, or flag if any were skipped]
+
+### Kickoff Doc Updated
+- [ ] Checkboxes ticked in docs/prd/v0.2.0-kickoff.md
+
+### Wave N+1 Green Light
+**Status**: GO / NO-GO
+**Reason**: [why it's a go, or what needs to be resolved first]
+
+### Carry-forward items
+- [anything incomplete that must be resolved in Wave N+1]
+```
+
+A NO-GO blocks the next wave from starting. Carry-forward items must be added as tickets before Wave N+1 kicks off.
+
 ## Handoff to Engineering
 
 When a feature is approved for the roadmap:
@@ -235,3 +273,4 @@ Entry format:
 8. Always read your changelog before starting a new task
 9. Business track tickets are your responsibility — do not wait for someone else to create them. Any time a wave starts or business work surfaces, create the issues and add them to the board proactively.
 10. Status rollups are your standing responsibility — produce one at the start of every wave and whenever asked. Ray should never have to wonder what's in flight.
+11. Wave-close reports are mandatory — when all tickets in a wave reach Done, produce a wave-close report, verify ACs, update kickoff doc checkboxes, and issue a GO/NO-GO before the next wave starts. Engineering does not start Wave N+1 without your green light.
