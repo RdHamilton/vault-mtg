@@ -40,6 +40,7 @@ permissions:
 
 # ---------------------------------------------------------------------------
 # Tier 3 — E2E smoke gate before release (release workflow only)
+# Tier 2 — Integration gate after E2E smoke, before release artifact
 # ---------------------------------------------------------------------------
 
 jobs:
@@ -50,10 +51,19 @@ jobs:
     uses: ./.github/workflows/e2e-smoke.yml
     if: inputs.skip_e2e != 'true'
 
-  release:
+  # Run BFF integration tests after E2E smoke passes.
+  # Blocks the release if any integration test fails.
+  integration-gate:
+    name: Integration Gate
     needs: [e2e-smoke-gate]
-    # Run if smoke passed OR if smoke was skipped
     if: always() && (needs.e2e-smoke-gate.result == 'success' || needs.e2e-smoke-gate.result == 'skipped')
+    uses: ./.github/workflows/integration.yml
+    secrets: inherit
+
+  release:
+    needs: [e2e-smoke-gate, integration-gate]
+    # Run if smoke passed (or skipped) AND integration tests passed
+    if: always() && (needs.e2e-smoke-gate.result == 'success' || needs.e2e-smoke-gate.result == 'skipped') && needs.integration-gate.result == 'success'
     name: Create Release
     runs-on: ubuntu-latest
 
