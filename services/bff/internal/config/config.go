@@ -51,16 +51,6 @@ type Config struct {
 	// local development requires no environment configuration.
 	AllowedOrigins []string
 
-	// DaemonJWTSecret is the HMAC signing key used to validate daemon-issued
-	// JWTs on POST /v1/ingest/events and POST /api/keys.
-	//
-	// Sourced from DAEMON_JWT_SECRET.  When MTGA_ENV=production this value
-	// must be non-empty or Load returns an error — without it the daemon
-	// registration and ingest endpoints are silently disabled, which is
-	// indistinguishable in production from a working stack and allowed
-	// issue #1169 to ship undetected.
-	DaemonJWTSecret string
-
 	// DaemonLatestVersion is the semver of the most recently published daemon
 	// binary.  Sourced from BFF_DAEMON_LATEST_VERSION.
 	// Defaults to "0.1.0" when unset so the endpoint always returns a non-empty
@@ -104,12 +94,6 @@ func Load() (*Config, error) {
 		return nil, fmt.Errorf("DATABASE_URL must be set when MTGA_ENV=production")
 	}
 
-	daemonJWTSecret := strings.TrimSpace(os.Getenv("DAEMON_JWT_SECRET"))
-
-	if env == "production" && daemonJWTSecret == "" {
-		return nil, fmt.Errorf("DAEMON_JWT_SECRET must be set when MTGA_ENV=production")
-	}
-
 	clerkSecretKey := strings.TrimSpace(os.Getenv("CLERK_SECRET_KEY"))
 
 	if env == "production" && clerkSecretKey == "" {
@@ -141,7 +125,6 @@ func Load() (*Config, error) {
 		DraftRatingsStalenessThresholdHours: DefaultStalenessThresholdHours,
 		DraftRatingsBypassFreshnessCheck:    false,
 		AllowedOrigins:                      allowedOrigins,
-		DaemonJWTSecret:                     daemonJWTSecret,
 		DaemonLatestVersion:                 daemonLatestVersion,
 		DaemonReleasedAt:                    os.Getenv("BFF_DAEMON_RELEASED_AT"),
 		ClerkSecretKey:                      clerkSecretKey,

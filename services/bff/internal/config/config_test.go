@@ -56,7 +56,6 @@ func TestLoad_Env_Development_NoDatabaseURL_OK(t *testing.T) {
 func TestLoad_Env_Production_NoDatabaseURL_Error(t *testing.T) {
 	t.Setenv("MTGA_ENV", "production")
 	t.Setenv("DATABASE_URL", "")
-	t.Setenv("DAEMON_JWT_SECRET", "test-secret")
 	t.Setenv("CLERK_SECRET_KEY", "sk_test_dummy")
 
 	_, err := config.Load()
@@ -66,11 +65,10 @@ func TestLoad_Env_Production_NoDatabaseURL_Error(t *testing.T) {
 }
 
 // TestLoad_Env_Production_WithDatabaseURL_OK verifies that production mode
-// succeeds when DATABASE_URL, DAEMON_JWT_SECRET, and CLERK_SECRET_KEY are present.
+// succeeds when DATABASE_URL and CLERK_SECRET_KEY are present.
 func TestLoad_Env_Production_WithDatabaseURL_OK(t *testing.T) {
 	t.Setenv("MTGA_ENV", "production")
 	t.Setenv("DATABASE_URL", "postgres://localhost/test")
-	t.Setenv("DAEMON_JWT_SECRET", "test-secret")
 	t.Setenv("CLERK_SECRET_KEY", "sk_test_dummy")
 
 	cfg, err := config.Load()
@@ -83,35 +81,6 @@ func TestLoad_Env_Production_WithDatabaseURL_OK(t *testing.T) {
 	}
 }
 
-// TestLoad_Env_Production_NoDaemonJWTSecret_Error verifies that starting in
-// production mode without DAEMON_JWT_SECRET returns an error.  See #1169 —
-// before this guard a missing secret silently disabled daemon ingest in prod.
-func TestLoad_Env_Production_NoDaemonJWTSecret_Error(t *testing.T) {
-	t.Setenv("MTGA_ENV", "production")
-	t.Setenv("DATABASE_URL", "postgres://localhost/test")
-	t.Setenv("DAEMON_JWT_SECRET", "")
-	t.Setenv("CLERK_SECRET_KEY", "sk_test_dummy")
-
-	_, err := config.Load()
-	if err == nil {
-		t.Fatal("expected error when MTGA_ENV=production and DAEMON_JWT_SECRET is unset")
-	}
-}
-
-// TestLoad_Env_Production_WhitespaceDaemonJWTSecret_Error verifies a
-// whitespace-only DAEMON_JWT_SECRET is rejected in production (treated as empty).
-func TestLoad_Env_Production_WhitespaceDaemonJWTSecret_Error(t *testing.T) {
-	t.Setenv("MTGA_ENV", "production")
-	t.Setenv("DATABASE_URL", "postgres://localhost/test")
-	t.Setenv("DAEMON_JWT_SECRET", "   ")
-	t.Setenv("CLERK_SECRET_KEY", "sk_test_dummy")
-
-	_, err := config.Load()
-	if err == nil {
-		t.Fatal("expected error when DAEMON_JWT_SECRET is only whitespace in production")
-	}
-}
-
 // TestLoad_Env_Production_NoClerkSecretKey_Error verifies that starting in
 // production mode without CLERK_SECRET_KEY returns an error.  Without it the
 // BFF cannot construct the Clerk auth middleware and protected routes would be
@@ -119,7 +88,6 @@ func TestLoad_Env_Production_WhitespaceDaemonJWTSecret_Error(t *testing.T) {
 func TestLoad_Env_Production_NoClerkSecretKey_Error(t *testing.T) {
 	t.Setenv("MTGA_ENV", "production")
 	t.Setenv("DATABASE_URL", "postgres://localhost/test")
-	t.Setenv("DAEMON_JWT_SECRET", "test-secret")
 	t.Setenv("CLERK_SECRET_KEY", "")
 
 	_, err := config.Load()
@@ -133,7 +101,6 @@ func TestLoad_Env_Production_NoClerkSecretKey_Error(t *testing.T) {
 func TestLoad_Env_Production_WhitespaceClerkSecretKey_Error(t *testing.T) {
 	t.Setenv("MTGA_ENV", "production")
 	t.Setenv("DATABASE_URL", "postgres://localhost/test")
-	t.Setenv("DAEMON_JWT_SECRET", "test-secret")
 	t.Setenv("CLERK_SECRET_KEY", "   ")
 
 	_, err := config.Load()
@@ -173,41 +140,6 @@ func TestLoad_ClerkSecretKey_EmptyInDevelopment(t *testing.T) {
 
 	if cfg.ClerkSecretKey != "" {
 		t.Errorf("expected empty ClerkSecretKey, got %q", cfg.ClerkSecretKey)
-	}
-}
-
-// TestLoad_DaemonJWTSecret_StoredInConfig verifies the DAEMON_JWT_SECRET env
-// var is surfaced as Config.DaemonJWTSecret for callers (with whitespace
-// trimmed).
-func TestLoad_DaemonJWTSecret_StoredInConfig(t *testing.T) {
-	t.Setenv("MTGA_ENV", "development")
-	t.Setenv("DATABASE_URL", "")
-	t.Setenv("DAEMON_JWT_SECRET", "  super-secret-jwt-key  ")
-
-	cfg, err := config.Load()
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-
-	if cfg.DaemonJWTSecret != "super-secret-jwt-key" {
-		t.Errorf("expected trimmed DaemonJWTSecret 'super-secret-jwt-key', got %q", cfg.DaemonJWTSecret)
-	}
-}
-
-// TestLoad_Env_Development_NoDaemonJWTSecret_OK verifies development mode
-// does not require DAEMON_JWT_SECRET (preserves local-dev ergonomics).
-func TestLoad_Env_Development_NoDaemonJWTSecret_OK(t *testing.T) {
-	t.Setenv("MTGA_ENV", "development")
-	t.Setenv("DATABASE_URL", "")
-	t.Setenv("DAEMON_JWT_SECRET", "")
-
-	cfg, err := config.Load()
-	if err != nil {
-		t.Fatalf("development mode without DAEMON_JWT_SECRET should not error: %v", err)
-	}
-
-	if cfg.DaemonJWTSecret != "" {
-		t.Errorf("expected empty DaemonJWTSecret in development, got %q", cfg.DaemonJWTSecret)
 	}
 }
 

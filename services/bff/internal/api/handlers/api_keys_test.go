@@ -44,12 +44,12 @@ func (e *errAPIKeyCreator) Create(_ context.Context, _ int64, _ string) (*reposi
 }
 
 // newAPIKeysRequest builds a POST /api/keys request. When userID > 0 the
-// DaemonJWTAuth context value is populated to simulate middleware having
-// validated a daemon JWT.
+// APIKeyAuth context value is populated to simulate middleware having
+// validated an API key.
 func newAPIKeysRequest(userID int64) *http.Request {
 	req := httptest.NewRequest(http.MethodPost, "/api/keys", nil)
 	if userID > 0 {
-		req = req.WithContext(middleware.WithDaemonUserID(req.Context(), userID))
+		req = req.WithContext(middleware.WithUserID(req.Context(), userID))
 	}
 
 	return req
@@ -81,10 +81,10 @@ func TestCreateAPIKey_Success(t *testing.T) {
 	}
 }
 
-func TestCreateAPIKey_MissingDaemonUserID(t *testing.T) {
+func TestCreateAPIKey_MissingUserID(t *testing.T) {
 	h := handlers.NewAPIKeysHandler(&stubAPIKeyCreator{})
 
-	// No daemon user ID in context (middleware not applied or JWT missing).
+	// No user ID in context (APIKeyAuth middleware not applied).
 	req := httptest.NewRequest(http.MethodPost, "/api/keys", nil)
 	rr := httptest.NewRecorder()
 	h.CreateAPIKey(rr, req)
@@ -96,12 +96,12 @@ func TestCreateAPIKey_MissingDaemonUserID(t *testing.T) {
 	assertJSONError(t, rr, "unauthorized")
 }
 
-func TestCreateAPIKey_ZeroDaemonUserID(t *testing.T) {
+func TestCreateAPIKey_ZeroUserID(t *testing.T) {
 	h := handlers.NewAPIKeysHandler(&stubAPIKeyCreator{})
 
 	// A zero user_id must also be rejected (invalid).
 	req := httptest.NewRequest(http.MethodPost, "/api/keys", nil)
-	req = req.WithContext(middleware.WithDaemonUserID(req.Context(), 0))
+	req = req.WithContext(middleware.WithUserID(req.Context(), 0))
 	rr := httptest.NewRecorder()
 	h.CreateAPIKey(rr, req)
 

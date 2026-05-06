@@ -73,16 +73,6 @@ func main() {
 	sseBroadcaster := &sseBroadcast{broker: broker}
 	ingestHandler := handlers.NewIngestHandler(sseBroadcaster)
 
-	// Wire daemon register handler when DAEMON_JWT_SECRET is set.
-	// Production startup is guarded in config.Load() which fails fast when
-	// the secret is missing — only development reaches the empty branch.
-	var daemonRegisterHandler *handlers.DaemonRegisterHandler
-	if cfg.DaemonJWTSecret != "" {
-		daemonRegisterHandler = handlers.NewDaemonRegisterHandler(cfg.DaemonJWTSecret)
-	} else {
-		log.Println("DAEMON_JWT_SECRET not set — daemon registration endpoint disabled (development only).")
-	}
-
 	// Wire Clerk auth middleware when CLERK_SECRET_KEY is configured.
 	// This middleware protects browser-facing routes by verifying Clerk session
 	// JWTs.  When the key is absent (e.g. development without a Clerk account)
@@ -129,7 +119,6 @@ func main() {
 	r := BuildRouter(cfg, RouterDeps{
 		Broker:              broker,
 		IngestHandler:       ingestHandler,
-		DaemonRegisterHndlr: daemonRegisterHandler,
 		APIKeysHandler:      apiKeysHandler,
 		DraftRatingsHandler: draftRatingsHandler,
 		ClerkAuthMiddl:      clerkAuthMiddl,
@@ -172,7 +161,6 @@ func main() {
 type RouterDeps struct {
 	Broker              *sse.Broker
 	IngestHandler       *handlers.IngestHandler
-	DaemonRegisterHndlr *handlers.DaemonRegisterHandler
 	APIKeysHandler      *handlers.APIKeysHandler
 	DraftRatingsHandler *handlers.DraftRatingsHandler
 	ClerkAuthMiddl      func(http.Handler) http.Handler
@@ -210,43 +198,28 @@ func BuildRouter(cfg *config.Config, deps RouterDeps) http.Handler {
 	daemonVersionHandler := handlers.NewDaemonVersionHandler(cfg)
 	r.Get("/api/v1/daemon/version", daemonVersionHandler.GetDaemonVersion)
 
-	// ── Daemon-facing routes (DaemonJWT or APIKey auth) ──────────────────────
+	// ── Daemon-facing routes (APIKey auth) ───────────────────────────────────
 	// These routes are called by the local daemon binary, not the browser.
+	// All daemon M2M routes are protected by APIKeyAuth — the legacy HMAC
+	// DAEMON_JWT_SECRET path has been removed (see ADR-009 / issue #1315).
 
 	// POST /api/keys — create a new API key for a user.
-	// Requires a valid daemon JWT so user_id is derived from the verified token,
+	// Protected by APIKeyAuth so user_id is derived from the verified key,
 	// never from a caller-supplied header.
 	if deps.APIKeysHandler != nil {
-		if cfg.DaemonJWTSecret != "" {
-			r.With(bffmiddleware.DaemonJWTAuth(cfg.DaemonJWTSecret)).Post("/api/keys", deps.APIKeysHandler.CreateAPIKey)
-		} else {
-			// No JWT secret configured — omit the route entirely rather than
-			// serving it without authentication.
-			log.Println("WARN: POST /api/keys disabled — DAEMON_JWT_SECRET not set")
-		}
-	}
-
-	// POST /api/daemon/register — issue a daemon JWT; requires DAEMON_JWT_SECRET and
-	// a valid API key so the user_id is derived from context, never from the body.
-	if deps.DaemonRegisterHndlr != nil {
 		if deps.APIKeyAuthMiddl != nil {
-			r.With(deps.APIKeyAuthMiddl).Post("/api/daemon/register", deps.DaemonRegisterHndlr.Register)
+			r.With(deps.APIKeyAuthMiddl).Post("/api/keys", deps.APIKeysHandler.CreateAPIKey)
 		} else {
-			// No DB available — registration is impossible without user identity.
-			// Log a warning; the route is omitted rather than serving unauthenticated.
-			log.Println("WARN: daemon register endpoint disabled — no database for API key auth")
+			// No DB available — route omitted rather than serving unauthenticated.
+			log.Println("WARN: POST /api/keys disabled — no database for API key auth")
 		}
 	}
 
-	// POST /v1/ingest/events — JWT auth takes priority when secret is configured;
-	// falls back to API-key auth, then unguarded (dev mode).
+	// POST /v1/ingest/events — API-key auth; falls back to unguarded in dev mode.
 	if deps.IngestHandler != nil {
-		switch {
-		case cfg.DaemonJWTSecret != "":
-			r.With(bffmiddleware.DaemonJWTAuth(cfg.DaemonJWTSecret)).Post("/v1/ingest/events", deps.IngestHandler.IngestEvent)
-		case deps.APIKeyAuthMiddl != nil:
+		if deps.APIKeyAuthMiddl != nil {
 			r.With(deps.APIKeyAuthMiddl).Post("/v1/ingest/events", deps.IngestHandler.IngestEvent)
-		default:
+		} else {
 			r.Post("/v1/ingest/events", deps.IngestHandler.IngestEvent)
 		}
 	}

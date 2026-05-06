@@ -41,15 +41,15 @@ type createAPIKeyResponse struct {
 
 // CreateAPIKey handles POST /api/keys.
 //
-// The route must be protected by DaemonJWTAuth middleware, which validates the
-// daemon's Bearer JWT and stores the user_id in the request context.  The
+// The route must be protected by APIKeyAuth middleware, which validates the
+// daemon's API key and stores the user_id in the request context.  The
 // handler reads the user identity exclusively from context — the X-User-ID
 // header placeholder has been removed.
 //
 // On success it returns 201 with the plaintext key in the response body.
 // The key is shown only once; it is not recoverable from the server.
 func (h *APIKeysHandler) CreateAPIKey(w http.ResponseWriter, r *http.Request) {
-	userID, ok := middleware.DaemonUserIDFromContext(r.Context())
+	userID, ok := middleware.UserIDFromContext(r.Context())
 	if !ok || userID <= 0 {
 		writeJSONError(w, "unauthorized", http.StatusUnauthorized)
 		return
