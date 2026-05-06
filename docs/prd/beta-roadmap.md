@@ -322,13 +322,87 @@ These must ship in v0.2.0 or early v0.3.0 or the product does not meet CS beta g
 
 These need a decision before engineering starts the relevant phase. No ticket should be opened for a blocked area until the question is resolved.
 
-| # | Question | Blocks | Deadline |
+| # | Question | Blocks | Deadline | Status |
+|---|---|---|---|---|
+| 1 | **Free tier limits**: What exactly is gated behind Pro on day 1 of beta? The Finance report proposes limits (30-day history, 10 deck slots, weekly meta snapshot) but these need engineering sign-off on feasibility of enforcement at the BFF level before #980 and #983 are scoped. | v0.4.0 Stripe, #980, #983 | Before v0.3.0 starts | ✅ Resolved |
+| 2 | **Desktop-to-cloud data migration**: Do early beta users who ran the desktop app expect their historical data to appear in the cloud product? | v0.2.0 onboarding flow | Before v0.2.0 starts | ✅ Resolved |
+| 3 | **Draft overlay architecture**: Does the live draft overlay run as a browser extension, an Electron shell, or a desktop overlay injected by the daemon? This decision affects SSE-to-overlay path complexity and Arena performance risk. | v0.3.0 H1, SSE work | Before v0.3.0 starts | ✅ Resolved |
+| 4 | **Beta access model**: Invite-only, open waitlist drain, or fully open? CS recommends gating on onboarding success rate rather than feature count. | v0.4.0 launch sequence | Before v0.4.0 starts | ✅ Resolved |
+| 5 | **Email provider confirmation**: Growth Marketing recommends Resend (3K emails/mo free) after SendGrid killed their free tier in May 2025. | v0.4.0 email capture | Before v0.4.0 starts | ✅ Resolved |
+
+### Resolved Answers
+
+**Q1 — Free tier limits** *(resolved 2026-05-06 by architect)*
+
+All three proposed limits are **feasible at the BFF layer**. Engineering sign-off granted with the following verdicts:
+
+| Limit | Verdict | Effort | Mechanism |
 |---|---|---|---|
-| 1 | **Free tier limits**: What exactly is gated behind Pro on day 1 of beta? The Finance report proposes limits (30-day history, 10 deck slots, weekly meta snapshot) but these need engineering sign-off on feasibility of enforcement at the BFF level before #980 and #983 are scoped. | v0.4.0 Stripe, #980, #983 | Before v0.3.0 starts |
-| 2 | **Desktop-to-cloud data migration**: Do early beta users who ran the desktop app expect their historical data to appear in the cloud product? If yes, this is a migration feature that has no ticket and could be significant scope. If no, we need a clear message in onboarding. | v0.2.0 onboarding flow | Before v0.2.0 starts |
-| 3 | **Draft overlay architecture**: Does the live draft overlay run as a browser extension, an Electron shell, or a desktop overlay injected by the daemon? The Architect report does not specify. This decision affects the complexity of the SSE-to-overlay path and the Arena performance risk. | v0.3.0 H1, SSE work | Before v0.3.0 starts |
-| 4 | **Beta access model**: Invite-only, open waitlist drain, or fully open? CS recommends gating on onboarding success rate rather than feature count. The answer determines whether a waitlist invite system is needed (new scope) or if it's an open Clerk sign-up from day 1. | v0.4.0 launch sequence | Before v0.4.0 starts |
-| 5 | **Email provider confirmation**: Growth Marketing recommends Resend (3K emails/mo free) after SendGrid killed their free tier in May 2025. Is Resend the chosen provider, or is an alternative in use? Confirmation needed before the waitlist/transactional email ticket is scoped. | v0.4.0 email capture | Before v0.4.0 starts |
+| 30-day match history | **CONDITIONAL YES** | S | Query-layer `WHERE played_at > NOW() - 30 days`; `tier.IsPro(ctx)` injects nil window for Pro |
+| 10 deck slot cap | **CONDITIONAL YES** | S | Pre-insert `COUNT` check in handler; wrap in `SERIALIZABLE` tx to prevent TOCTOU race |
+| Weekly meta snapshot | **YES** | XS | Two cache rows per snapshot (`tier='free'` weekly, `tier='pro'` daily); handler picks by caller tier |
+
+The "conditional" on limits 1 and 2 means both depend on `#980` establishing the tier source. **Recommendation: `users.tier TEXT DEFAULT 'free'`** column populated by a Clerk webhook — not Clerk metadata on every request (adds a roundtrip per read).
+
+**Foundational work required before `#983` can ship:**
+1. Add `users.tier` column + Clerk webhook at `POST /api/v1/clerk/webhook` that updates tier on subscription events (part of `#980`)
+2. Extend `ClerkUserResolver` to load tier in the same upsert query → `TierFromContext(ctx)` helper
+3. `#983` ships two primitives: `RequireTier("pro")` middleware (whole-endpoint gate) + `tier.IsPro(ctx)` in-handler helper (response-shaping gate) — **not** the per-feature enforcement
+4. Per-feature enforcement is 3 separate S-sized follow-on tickets after `#983` lands
+
+**Key gotchas:**
+- Match aggregates (win rate, streak stats) must use the same 30-day window as the list — or free users see a 60% win rate "over 200 matches" with only 30 visible
+- Daemon ingest is **never gated** — free users accumulate all matches, they just can't see >30d ones (preserves the "upgrade to unlock 247 hidden matches" upsell)
+- Deck cap: use HTTP 402 with stable `error_code: "deck_limit_reached"` so the frontend shows an upgrade modal, not a generic error
+- Pro→Free downgrade: never auto-delete data; block new inserts only and show a "N decks hidden" banner
+
+**Revised ticket breakdown for `#980` + `#983` + 4 follow-ons:**
+- `#980`: users.tier column, Clerk webhook handler, ClerkUserResolver tier load, `GET /api/v1/me` returning tier + limits object
+- `#983`: tier package (`IsPro`, `Limits`, `RequireTier`), 402 error envelope with `upgrade_url`
+- Follow-on 1: Enforce 30-day match history window (backend-engineer, S)
+- Follow-on 2: Enforce 10-deck cap with SERIALIZABLE guard (backend-engineer, S)
+- Follow-on 3: Per-tier meta snapshot generation (backend-engineer, S — touches sync + BFF)
+- Follow-on 4: Frontend tier-aware upgrade prompts on matches/decks/meta (front-engineer, M)
+
+**Q2 — Desktop-to-cloud data migration** *(resolved 2026-05-06)*
+The desktop app had only one user (Ray Hamilton). No user data migration is needed. The v0.2.0 onboarding flow must include a clear "fresh start" message so any future early tester understands VaultMTG is a new account with data going forward from installation. No migration ticket required.
+
+**Q5 — Email provider** *(resolved 2026-05-06)*
+**Resend** is confirmed as the transactional email provider. 3,000 emails/month free tier, modern API with React Email support, SPF/DKIM setup required on `vaultmtg.app`. SendGrid is explicitly ruled out (killed free tier May 2025). Scope the waitlist/transactional email ticket against Resend.
+
+**Q3 — Draft overlay architecture** *(resolved 2026-05-06 by architect)*
+**Decision: Option C — Daemon + SPA in a browser window. No overlay injection.**
+
+Reasoning: Option A (browser extension) is dead — Arena has no web client. Option B (Electron overlay) is disqualifying for a solo dev: always-on-top transparent windows over fullscreen DirectX/Metal cause FPS drops, focus-stealing, anti-cheat false positives, and Mac Metal compositor crashes — exactly the CS failure mode. It also requires code-signing certs ($300+/yr Apple Developer + Windows EV), a second installer, and a second auto-updater. Option C reuses 100% of the existing stack with zero Arena performance risk.
+
+The "draft overlay" gate in the CS report becomes "live draft view" at `app.vaultmtg.app/draft/live`. This is the same UX pattern 17Lands LiveTracker uses (browser tab alongside Arena). Data accuracy and grade-correctness remain fully testable.
+
+**v0.3.0 implementation tickets required (to be created by project-manager):**
+- F1: `useDraftEventStream` SSE consumer hook with reconnect/backoff
+- F2: `/draft/live` page rendering current pack with card grades and pick recommendation
+- F3: EventSource auth spike — cookie-based Clerk session on `/api/v1/events` (EventSource cannot send `Authorization` header)
+- F4: Draft session state machine (pack/pick number, picked cards, reset on `draft.started`/`draft.ended`)
+- B1: Verify `IngestHandler` publishes `draft.pack`/`draft.pick` to SSE broker per-user
+- OPS1: Verify `proxy_read_timeout >= 60s` on nginx for `/api/v1/events`
+- DOC1: User docs — "Open /draft/live in a second window while drafting"
+
+ADR-010 to be written by architect agent.
+
+**Q4 — Beta access model** *(resolved 2026-05-06 by CS + Growth Marketing)*
+**Decision: Option B — Open waitlist drain, paced by onboarding success rate.**
+
+CS says invite-only (25 first batch, 80% gate). Growth says waitlist drain (50/batch, 65% gate). Synthesis: **waitlist drain with CS's tighter gate**.
+
+- Waitlist form live on `vaultmtg.app` from v0.4.0 launch day — email capture before Clerk sign-up opens
+- Visible position counter ("X people ahead of you") to generate demand signal
+- Target 500 waitlist signups before draining begins
+- First batch: 25–50 users, weighted toward draft players and competitive ladder players
+- Drain gate: 80% of prior batch must have a confirmed daemon connection + at least 1 match logged before next batch is released
+- Critical prerequisite: **daemon telemetry must emit a "first successful connection" ping** — without it the 80% gate cannot be measured
+- Pause drain and diagnose if success rate drops below 80%
+- Do **not** build a custom invite system — manual Clerk invitations + a "you're in" Resend email is sufficient until this process is fully automated
+
+Invite-only is rejected: MTG Arena community expects free/immediately-available tools; invite friction generates negative Reddit posts. Fully open is rejected: solo founder + broken daemon onboarding + Reddit memory = reputation risk that is hard to recover from.
 
 ---
 
