@@ -1,0 +1,296 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: >
+  S3 buckets, ACM certificate, CloudFront OAC distributions for
+  vaultmtg.app (marketing site) and app.vaultmtg.app (React SPA).
+  Deploy in us-east-1 -- ACM certificates used by CloudFront must
+  be in us-east-1.
+
+# ---------------------------------------------------------------------------
+# Parameters
+# ---------------------------------------------------------------------------
+Parameters:
+  Environment:
+    Type: String
+    Default: production
+    AllowedValues: [production, staging]
+    Description: Deployment environment tag value.
+
+# ---------------------------------------------------------------------------
+# Resources
+# ---------------------------------------------------------------------------
+Resources:
+
+  # -------------------------------------------------------------------------
+  # S3 -- Marketing site bucket
+  # -------------------------------------------------------------------------
+  MarketingBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: vaultmtg-app-marketing
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      VersioningConfiguration:
+        Status: Enabled
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: AES256
+      Tags:
+        - Key: Project
+          Value: vaultmtg
+        - Key: Environment
+          Value: !Ref Environment
+
+  # -------------------------------------------------------------------------
+  # S3 -- React SPA bucket
+  # -------------------------------------------------------------------------
+  SPABucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: vaultmtg-app-spa
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      VersioningConfiguration:
+        Status: Enabled
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: AES256
+      Tags:
+        - Key: Project
+          Value: vaultmtg
+        - Key: Environment
+          Value: !Ref Environment
+
+  # -------------------------------------------------------------------------
+  # ACM Certificate -- covers vaultmtg.app, www.vaultmtg.app, app.vaultmtg.app
+  # Must be created in us-east-1 for CloudFront.
+  # -------------------------------------------------------------------------
+  VaultMTGCertificate:
+    Type: AWS::CertificateManager::Certificate
+    Properties:
+      DomainName: vaultmtg.app
+      SubjectAlternativeNames:
+        - www.vaultmtg.app
+        - app.vaultmtg.app
+      ValidationMethod: DNS
+      Tags:
+        - Key: Project
+          Value: vaultmtg
+        - Key: Environment
+          Value: !Ref Environment
+
+  # -------------------------------------------------------------------------
+  # CloudFront OAC -- Marketing site
+  # -------------------------------------------------------------------------
+  MarketingOAC:
+    Type: AWS::CloudFront::OriginAccessControl
+    Properties:
+      OriginAccessControlConfig:
+        Name: vaultmtg-marketing-oac
+        Description: OAC for vaultmtg.app marketing site S3 bucket
+        OriginAccessControlOriginType: s3
+        SigningBehavior: always
+        SigningProtocol: sigv4
+
+  # -------------------------------------------------------------------------
+  # CloudFront OAC -- React SPA
+  # -------------------------------------------------------------------------
+  SPAOAC:
+    Type: AWS::CloudFront::OriginAccessControl
+    Properties:
+      OriginAccessControlConfig:
+        Name: vaultmtg-spa-oac
+        Description: OAC for app.vaultmtg.app React SPA S3 bucket
+        OriginAccessControlOriginType: s3
+        SigningBehavior: always
+        SigningProtocol: sigv4
+
+  # -------------------------------------------------------------------------
+  # CloudFront Distribution -- Marketing site (vaultmtg.app, www.vaultmtg.app)
+  # -------------------------------------------------------------------------
+  MarketingDistribution:
+    Type: AWS::CloudFront::Distribution
+    DependsOn: MarketingBucket
+    Properties:
+      DistributionConfig:
+        Comment: vaultmtg.app marketing site
+        Enabled: true
+        HttpVersion: http2
+        PriceClass: PriceClass_100
+        Aliases:
+          - vaultmtg.app
+          - www.vaultmtg.app
+        DefaultRootObject: index.html
+        Origins:
+          - Id: MarketingS3Origin
+            DomainName: !GetAtt MarketingBucket.RegionalDomainName
+            S3OriginConfig:
+              OriginAccessIdentity: ""
+            OriginAccessControlId: !GetAtt MarketingOAC.Id
+        DefaultCacheBehavior:
+          TargetOriginId: MarketingS3Origin
+          ViewerProtocolPolicy: redirect-to-https
+          CachePolicyId: 658327ea-f89d-4fab-a63d-7e88639e58f6
+          # 658327ea-f89d-4fab-a63d-7e88639e58f6 = CachingOptimized (AWS managed)
+          AllowedMethods: [GET, HEAD]
+          CachedMethods: [GET, HEAD]
+          Compress: true
+        CustomErrorResponses:
+          - ErrorCode: 404
+            ResponseCode: 200
+            ResponsePagePath: /index.html
+        ViewerCertificate:
+          AcmCertificateArn: !Ref VaultMTGCertificate
+          SslSupportMethod: sni-only
+          MinimumProtocolVersion: TLSv1.2_2021
+      Tags:
+        - Key: Project
+          Value: vaultmtg
+        - Key: Environment
+          Value: !Ref Environment
+
+  # -------------------------------------------------------------------------
+  # CloudFront Distribution -- React SPA (app.vaultmtg.app)
+  # -------------------------------------------------------------------------
+  SPADistribution:
+    Type: AWS::CloudFront::Distribution
+    DependsOn: SPABucket
+    Properties:
+      DistributionConfig:
+        Comment: app.vaultmtg.app React SPA
+        Enabled: true
+        HttpVersion: http2
+        PriceClass: PriceClass_100
+        Aliases:
+          - app.vaultmtg.app
+        DefaultRootObject: index.html
+        Origins:
+          - Id: SPAS3Origin
+            DomainName: !GetAtt SPABucket.RegionalDomainName
+            S3OriginConfig:
+              OriginAccessIdentity: ""
+            OriginAccessControlId: !GetAtt SPAOAC.Id
+        DefaultCacheBehavior:
+          TargetOriginId: SPAS3Origin
+          ViewerProtocolPolicy: redirect-to-https
+          CachePolicyId: 658327ea-f89d-4fab-a63d-7e88639e58f6
+          # 658327ea-f89d-4fab-a63d-7e88639e58f6 = CachingOptimized (AWS managed)
+          AllowedMethods: [GET, HEAD]
+          CachedMethods: [GET, HEAD]
+          Compress: true
+        CustomErrorResponses:
+          - ErrorCode: 404
+            ResponseCode: 200
+            ResponsePagePath: /index.html
+        ViewerCertificate:
+          AcmCertificateArn: !Ref VaultMTGCertificate
+          SslSupportMethod: sni-only
+          MinimumProtocolVersion: TLSv1.2_2021
+      Tags:
+        - Key: Project
+          Value: vaultmtg
+        - Key: Environment
+          Value: !Ref Environment
+
+  # -------------------------------------------------------------------------
+  # S3 Bucket Policy -- Marketing site: grant CloudFront OAC read access
+  # -------------------------------------------------------------------------
+  MarketingBucketPolicy:
+    Type: AWS::S3::BucketPolicy
+    Properties:
+      Bucket: !Ref MarketingBucket
+      PolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Sid: AllowCloudFrontOACReadOnly
+            Effect: Allow
+            Principal:
+              Service: cloudfront.amazonaws.com
+            Action: s3:GetObject
+            Resource: !Sub "${MarketingBucket.Arn}/*"
+            Condition:
+              StringEquals:
+                AWS:SourceArn: !Sub "arn:aws:cloudfront::${AWS::AccountId}:distribution/${MarketingDistribution}"
+
+  # -------------------------------------------------------------------------
+  # S3 Bucket Policy -- React SPA: grant CloudFront OAC read access
+  # -------------------------------------------------------------------------
+  SPABucketPolicy:
+    Type: AWS::S3::BucketPolicy
+    Properties:
+      Bucket: !Ref SPABucket
+      PolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Sid: AllowCloudFrontOACReadOnly
+            Effect: Allow
+            Principal:
+              Service: cloudfront.amazonaws.com
+            Action: s3:GetObject
+            Resource: !Sub "${SPABucket.Arn}/*"
+            Condition:
+              StringEquals:
+                AWS:SourceArn: !Sub "arn:aws:cloudfront::${AWS::AccountId}:distribution/${SPADistribution}"
+
+# ---------------------------------------------------------------------------
+# Outputs
+# ---------------------------------------------------------------------------
+Outputs:
+
+  MarketingBucketName:
+    Description: S3 bucket name for the vaultmtg.app marketing site
+    Value: !Ref MarketingBucket
+    Export:
+      Name: !Sub "vaultmtg-${Environment}-MarketingBucketName"
+
+  SPABucketName:
+    Description: S3 bucket name for the app.vaultmtg.app React SPA
+    Value: !Ref SPABucket
+    Export:
+      Name: !Sub "vaultmtg-${Environment}-SPABucketName"
+
+  MarketingDistributionId:
+    Description: CloudFront distribution ID for vaultmtg.app marketing site
+    Value: !Ref MarketingDistribution
+    Export:
+      Name: !Sub "vaultmtg-${Environment}-MarketingDistributionId"
+
+  SPADistributionId:
+    Description: CloudFront distribution ID for app.vaultmtg.app React SPA
+    Value: !Ref SPADistribution
+    Export:
+      Name: !Sub "vaultmtg-${Environment}-SPADistributionId"
+
+  MarketingDistributionDomain:
+    Description: CloudFront domain name for vaultmtg.app (use as ALIAS target in Route 53)
+    Value: !GetAtt MarketingDistribution.DomainName
+    Export:
+      Name: !Sub "vaultmtg-${Environment}-MarketingDistributionDomain"
+
+  SPADistributionDomain:
+    Description: CloudFront domain name for app.vaultmtg.app (use as ALIAS target in Route 53)
+    Value: !GetAtt SPADistribution.DomainName
+    Export:
+      Name: !Sub "vaultmtg-${Environment}-SPADistributionDomain"
+
+  CertificateArn:
+    Description: ACM certificate ARN covering vaultmtg.app, www.vaultmtg.app, app.vaultmtg.app
+    Value: !Ref VaultMTGCertificate
+    Export:
+      Name: !Sub "vaultmtg-${Environment}-CertificateArn"
+
+  ACMValidationCNAMEs:
+    Description: >
+      After deploying this stack the ACM certificate will be in PENDING_VALIDATION state.
+      Go to AWS Console > Certificate Manager, find the certificate, and copy the CNAME
+      records for vaultmtg.app, www.vaultmtg.app, and app.vaultmtg.app.
+      Add those CNAME records to the Route 53 hosted zone for vaultmtg.app.
+      Validation completes automatically once DNS propagates (typically 5-30 minutes).
+    Value: "See AWS Certificate Manager console -- certificate is PENDING_VALIDATION until CNAME records are added to Route 53"
