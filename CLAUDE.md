@@ -22,6 +22,33 @@ Avoid in main context:
 - Long investigation chains
 - Raw test output dumps
 
+## Authentication (Clerk)
+
+Clerk is the authentication provider for VaultMTG (ADR-009). All user-facing auth flows through Clerk — both the React SPA (Clerk JS SDK) and the Go BFF (`clerk-sdk-go v2` for JWT verification). The legacy HMAC user-auth path is being removed in #1315.
+
+### Forbidden patterns — never do these
+
+- Do not roll custom JWT signing or verification logic. Use `clerk-sdk-go v2` only on the BFF; use the Clerk React SDK only on the frontend.
+- Do not read `DAEMON_JWT_SECRET` for user-facing auth. That secret is M2M (daemon → BFF ingest) only and will be removed after #1315.
+- Do not store Clerk session tokens in `localStorage`, `sessionStorage`, or hand-rolled cookies. The Clerk SDK manages session lifecycle — let it.
+- Do not bypass `ClerkAuthMiddleware` on protected BFF routes. No `// TODO: add auth later` placeholders, no commented-out middleware lines.
+- Do not expose `CLERK_SECRET_KEY` (or any `sk_*` value) in frontend bundles, browser-shipped env vars, logs, error messages, or PR descriptions. Only `VITE_CLERK_PUBLISHABLE_KEY` (`pk_*`) belongs in the frontend.
+- Do not use Clerk dev/test keys (`pk_test_*`, `sk_test_*`) in production. Production uses `pk_live_*` / `sk_live_*` only.
+- Do not duplicate Clerk session state in Redux, Context, Zustand, or component state. The Clerk hooks are the single source of truth for auth state.
+
+### Required patterns — always do these
+
+- Every protected BFF route MUST be mounted under the `ClerkAuthMiddleware`-wrapped router group. New routes serving user-specific data are protected by default.
+- Extract the authenticated user id from request context using the established helper (e.g., `auth.UserIDFromContext(ctx)`) — never parse raw JWT claims by hand in handlers.
+- Frontend auth state comes from Clerk hooks (`useAuth()`, `useUser()`, `useSession()`) only. If a component needs the user id, call `useUser()` — do not pass it through props from a custom store.
+- Wrap every authenticated page/route in the React router with `ProtectedRoute`. Public routes (marketing, sign-in, sign-up) are explicit exceptions.
+- Multi-tenancy: the Clerk user id resolves to an `account_id` server-side — every user-data query still scopes by `account_id`.
+
+### Agent-specific guidance
+
+- **backend-engineer**: When adding a new BFF route, ask first whether it serves user-specific data. If yes, mount it inside the Clerk-protected route group — never leave it open. If a route is intentionally public (health, public metadata), call that out explicitly in the PR description.
+- **front-engineer**: Do not introduce local auth state (Redux slice, Context, Zustand store) that mirrors Clerk session state. Use `useAuth()` / `useUser()` directly at the call site. Do not read or write Clerk session tokens manually.
+
 ## Test Coverage Guidelines
 - Always update UI/component tests when making UI changes
 - Add integration tests for backend changes (repository, handlers, services)

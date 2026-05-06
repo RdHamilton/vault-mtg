@@ -1,0 +1,351 @@
+package main
+
+import (
+	"context"
+	"crypto"
+	"crypto/rsa"
+	"encoding/base64"
+	"encoding/json"
+	"fmt"
+	"math/big"
+	"net/http"
+	"net/http/httptest"
+	"testing"
+	"time"
+
+	contract "github.com/RdHamilton/MTGA-Companion/services/contract"
+	"github.com/clerk/clerk-sdk-go/v2"
+	"github.com/clerk/clerk-sdk-go/v2/clerktest"
+	"github.com/ramonehamilton/mtga-bff/internal/api/handlers"
+	bffmiddleware "github.com/ramonehamilton/mtga-bff/internal/api/middleware"
+	"github.com/ramonehamilton/mtga-bff/internal/api/sse"
+	"github.com/ramonehamilton/mtga-bff/internal/config"
+	"github.com/ramonehamilton/mtga-bff/internal/storage/repository"
+)
+
+// ──────────────────────────────────────────────────────────────────────────────
+// Test helpers
+// ──────────────────────────────────────────────────────────────────────────────
+
+// jwksForKey builds a minimal JWKS document from an RSA public key.
+func jwksForKey(kid string, pub crypto.PublicKey) string {
+	rsaPub, ok := pub.(*rsa.PublicKey)
+	if !ok {
+		panic("jwksForKey: not *rsa.PublicKey")
+	}
+
+	n := base64.RawURLEncoding.EncodeToString(rsaPub.N.Bytes())
+	eBytes := big.NewInt(int64(rsaPub.E)).Bytes()
+	e := base64.RawURLEncoding.EncodeToString(eBytes)
+
+	return fmt.Sprintf(
+		`{"keys":[{"use":"sig","kty":"RSA","kid":"%s","alg":"RS256","n":"%s","e":"%s"}]}`,
+		kid, n, e,
+	)
+}
+
+// setupClerkBackend starts a mock JWKS server and points the Clerk SDK at it.
+// Returns a valid signed JWT string. The server is shut down via t.Cleanup.
+func setupClerkBackend(t *testing.T) string {
+	t.Helper()
+
+	// Unique kid per test prevents JWKS cache collisions between tests.
+	kid := "router-test-kid-" + t.Name()
+	now := time.Now()
+	claims := map[string]any{
+		"sub": "user_router_test",
+		"sid": "sess_router_test",
+		"iss": "https://clerk.test",
+		"iat": now.Add(-1 * time.Minute).Unix(),
+		"nbf": now.Add(-1 * time.Minute).Unix(),
+		"exp": now.Add(1 * time.Hour).Unix(),
+	}
+
+	jwt, pubKey := clerktest.GenerateJWT(t, claims, kid)
+	jwks := jwksForKey(kid, pubKey)
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/jwks" && r.Method == http.MethodGet {
+			_, _ = w.Write([]byte(jwks))
+			return
+		}
+		w.WriteHeader(http.StatusNotFound)
+	}))
+	t.Cleanup(srv.Close)
+
+	clerk.SetBackend(clerk.NewBackend(&clerk.BackendConfig{
+		HTTPClient: srv.Client(),
+		URL:        &srv.URL,
+	}))
+
+	return jwt
+}
+
+// minimalConfig returns a non-production Config with no DB or secrets required.
+func minimalConfig() *config.Config {
+	return &config.Config{
+		Env:                                 "development",
+		AllowedOrigins:                      []string{"*"},
+		DraftRatingsStalenessThresholdHours: 48,
+		DaemonLatestVersion:                 "0.1.0",
+	}
+}
+
+// noopBroadcaster satisfies handlers.EventBroadcaster without doing anything.
+type noopBroadcaster struct{}
+
+func (n *noopBroadcaster) BroadcastDaemonEvent(_ int64, _ contract.DaemonEvent) {}
+
+// stubDraftGetter is a DraftRatingsGetter that always returns (nil, nil).
+type stubDraftGetter struct{}
+
+func (s *stubDraftGetter) GetRatings(_ context.Context, _, _ string) (*repository.DraftRatingsResult, error) {
+	return nil, nil
+}
+
+// depsWithClerk builds minimal RouterDeps with ClerkAuthMiddl set.
+func depsWithClerk(t *testing.T) RouterDeps {
+	t.Helper()
+
+	broker := sse.NewWithHeartbeat(0)
+	ingest := handlers.NewIngestHandler(&noopBroadcaster{})
+
+	return RouterDeps{
+		Broker:         broker,
+		IngestHandler:  ingest,
+		ClerkAuthMiddl: bffmiddleware.RequireClerkAuth("sk_test_dummy"),
+	}
+}
+
+// depsNoAuth builds minimal RouterDeps with no auth middleware configured.
+func depsNoAuth(t *testing.T) RouterDeps {
+	t.Helper()
+
+	broker := sse.NewWithHeartbeat(0)
+	ingest := handlers.NewIngestHandler(&noopBroadcaster{})
+
+	return RouterDeps{
+		Broker:        broker,
+		IngestHandler: ingest,
+	}
+}
+
+// ──────────────────────────────────────────────────────────────────────────────
+// Public routes
+// ──────────────────────────────────────────────────────────────────────────────
+
+// TestRouter_Health_IsPublic verifies /health is accessible without any auth.
+func TestRouter_Health_IsPublic(t *testing.T) {
+	r := BuildRouter(minimalConfig(), depsNoAuth(t))
+
+	req := httptest.NewRequest(http.MethodGet, "/health", nil)
+	rr := httptest.NewRecorder()
+	r.ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusOK {
+		t.Fatalf("GET /health: want 200, got %d", rr.Code)
+	}
+
+	var body map[string]string
+	if err := json.NewDecoder(rr.Body).Decode(&body); err != nil {
+		t.Fatalf("decode /health body: %v", err)
+	}
+
+	if body["status"] != "ok" {
+		t.Errorf("/health status: want \"ok\", got %q", body["status"])
+	}
+}
+
+// TestRouter_DaemonVersion_IsPublic verifies daemon version endpoint requires no auth.
+func TestRouter_DaemonVersion_IsPublic(t *testing.T) {
+	r := BuildRouter(minimalConfig(), depsNoAuth(t))
+
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/daemon/version", nil)
+	rr := httptest.NewRecorder()
+	r.ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusOK {
+		t.Fatalf("GET /api/v1/daemon/version: want 200, got %d", rr.Code)
+	}
+}
+
+// ──────────────────────────────────────────────────────────────────────────────
+// SSE endpoint (GET /api/v1/events) — Clerk-protected
+// ──────────────────────────────────────────────────────────────────────────────
+
+func TestRouter_SSE_Returns401_WithoutToken(t *testing.T) {
+	r := BuildRouter(minimalConfig(), depsWithClerk(t))
+
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/events", nil)
+	rr := httptest.NewRecorder()
+	r.ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusUnauthorized {
+		t.Fatalf("GET /api/v1/events no token: want 401, got %d", rr.Code)
+	}
+}
+
+func TestRouter_SSE_Returns401_WithInvalidToken(t *testing.T) {
+	r := BuildRouter(minimalConfig(), depsWithClerk(t))
+
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/events", nil)
+	req.Header.Set("Authorization", "Bearer not.a.valid.jwt.at.all")
+	rr := httptest.NewRecorder()
+	r.ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusUnauthorized {
+		t.Fatalf("GET /api/v1/events bad token: want 401, got %d", rr.Code)
+	}
+}
+
+func TestRouter_SSE_401Body_IsJSON(t *testing.T) {
+	r := BuildRouter(minimalConfig(), depsWithClerk(t))
+
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/events", nil)
+	rr := httptest.NewRecorder()
+	r.ServeHTTP(rr, req)
+
+	if ct := rr.Header().Get("Content-Type"); ct != "application/json" {
+		t.Errorf("Content-Type: want application/json, got %q", ct)
+	}
+
+	var body map[string]string
+	if err := json.NewDecoder(rr.Body).Decode(&body); err != nil {
+		t.Fatalf("401 body not valid JSON: %v", err)
+	}
+
+	if body["error"] != "unauthorized" {
+		t.Errorf("body[\"error\"]: want \"unauthorized\", got %q", body["error"])
+	}
+}
+
+// TestRouter_SSE_ValidJWT_PassesClerkMiddleware verifies that a valid Clerk JWT
+// is accepted by RequireClerkAuth.  The SSE handler will still return 401
+// because UserIDFromContext cannot resolve an int64 from a Clerk string subject
+// (that mapping requires a DB lookup not yet wired in this PR), but the Clerk
+// middleware layer must not be the source of the 401.
+func TestRouter_SSE_ValidJWT_PassesClerkMiddleware(t *testing.T) {
+	jwt := setupClerkBackend(t)
+
+	r := BuildRouter(minimalConfig(), depsWithClerk(t))
+
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/events", nil)
+	req.Header.Set("Authorization", "Bearer "+jwt)
+	rr := httptest.NewRecorder()
+	r.ServeHTTP(rr, req)
+
+	// With a valid JWT the Clerk middleware must NOT emit {"error":"unauthorized"}.
+	// (The SSE handler may still 401 due to missing int64 user_id mapping.)
+	if rr.Code == http.StatusUnauthorized {
+		var body map[string]string
+		if err := json.NewDecoder(rr.Body).Decode(&body); err == nil {
+			if body["error"] == "unauthorized" {
+				t.Fatal("valid JWT: Clerk middleware rejected the token — it should have passed through")
+			}
+		}
+	}
+}
+
+// ──────────────────────────────────────────────────────────────────────────────
+// Draft ratings endpoint — Clerk-protected
+// ──────────────────────────────────────────────────────────────────────────────
+
+func TestRouter_DraftRatings_Returns401_WithoutToken(t *testing.T) {
+	cfg := minimalConfig()
+	deps := depsWithClerk(t)
+	deps.DraftRatingsHandler = handlers.NewDraftRatingsHandler(&stubDraftGetter{}, cfg)
+
+	r := BuildRouter(cfg, deps)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/draft-ratings/DSK/PremierDraft", nil)
+	rr := httptest.NewRecorder()
+	r.ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusUnauthorized {
+		t.Fatalf("GET /api/v1/draft-ratings no token: want 401, got %d", rr.Code)
+	}
+}
+
+func TestRouter_DraftRatings_Returns401_WithInvalidToken(t *testing.T) {
+	cfg := minimalConfig()
+	deps := depsWithClerk(t)
+	deps.DraftRatingsHandler = handlers.NewDraftRatingsHandler(&stubDraftGetter{}, cfg)
+
+	r := BuildRouter(cfg, deps)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/draft-ratings/DSK/PremierDraft", nil)
+	req.Header.Set("Authorization", "Bearer tampered.token.value")
+	rr := httptest.NewRecorder()
+	r.ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusUnauthorized {
+		t.Fatalf("GET /api/v1/draft-ratings bad token: want 401, got %d", rr.Code)
+	}
+}
+
+func TestRouter_DraftRatings_ValidJWT_PassesClerkMiddleware(t *testing.T) {
+	jwt := setupClerkBackend(t)
+
+	cfg := minimalConfig()
+	deps := depsWithClerk(t)
+	deps.DraftRatingsHandler = handlers.NewDraftRatingsHandler(&stubDraftGetter{}, cfg)
+
+	r := BuildRouter(cfg, deps)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/draft-ratings/DSK/PremierDraft", nil)
+	req.Header.Set("Authorization", "Bearer "+jwt)
+	rr := httptest.NewRecorder()
+	r.ServeHTTP(rr, req)
+
+	// Clerk middleware passes → handler returns 404 (stub returns nil result).
+	// What must NOT happen: Clerk middleware rejects with {"error":"unauthorized"}.
+	if rr.Code == http.StatusUnauthorized {
+		var body map[string]string
+		if err := json.NewDecoder(rr.Body).Decode(&body); err == nil {
+			if body["error"] == "unauthorized" {
+				t.Fatal("valid JWT: Clerk middleware rejected the token — it should have passed through")
+			}
+		}
+	}
+
+	// Stub returns nil → handler returns 404.
+	if rr.Code != http.StatusNotFound {
+		t.Fatalf("valid JWT with nil stub: want 404 from handler, got %d", rr.Code)
+	}
+}
+
+// TestRouter_DraftRatings_RouteAbsent_WhenHandlerNil verifies that when no
+// DraftRatingsHandler is configured (no DB), chi returns 404 for that route —
+// no panic and no unexpected error.
+func TestRouter_DraftRatings_RouteAbsent_WhenHandlerNil(t *testing.T) {
+	deps := depsWithClerk(t)
+	// DraftRatingsHandler intentionally left nil.
+
+	r := BuildRouter(minimalConfig(), deps)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/draft-ratings/DSK/PremierDraft", nil)
+	rr := httptest.NewRecorder()
+	r.ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusNotFound {
+		t.Fatalf("unregistered route: want 404, got %d", rr.Code)
+	}
+}
+
+// ──────────────────────────────────────────────────────────────────────────────
+// No-auth degraded mode
+// ──────────────────────────────────────────────────────────────────────────────
+
+// TestRouter_SSE_Returns503_WhenNoAuthConfigured verifies the 503 fallback when
+// neither Clerk nor APIKey auth is configured.
+func TestRouter_SSE_Returns503_WhenNoAuthConfigured(t *testing.T) {
+	r := BuildRouter(minimalConfig(), depsNoAuth(t))
+
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/events", nil)
+	rr := httptest.NewRecorder()
+	r.ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusServiceUnavailable {
+		t.Fatalf("GET /api/v1/events no auth: want 503, got %d", rr.Code)
+	}
+}

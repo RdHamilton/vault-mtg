@@ -235,4 +235,5 @@ ENTRY
 11. Always follow the Ticket Workflow above
 12. Any new CI workflow or job that runs Go commands must include `GONOSUMDB: github.com/RdHamilton/MTGA-Companion` and `GOPRIVATE: github.com/RdHamilton/MTGA-Companion` on every Go step
 13. **Before creating any branch or PR, always run `git fetch origin && git checkout main && git pull origin main` first to ensure you branch from an up-to-date main. Never branch from a stale local HEAD.**
+14. **Clerk auth**: New BFF routes serving user-specific data must be mounted inside the `ClerkAuthMiddleware`-protected router group — never leave them open. If a route is intentionally public (health, public metadata), call that out explicitly in the PR description. Extract the authenticated user id via `auth.UserIDFromContext(ctx)` — never parse raw JWT claims by hand.
 
