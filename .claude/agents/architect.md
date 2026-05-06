@@ -19,6 +19,15 @@ You are the **Architect Agent** in a multi-agent Claude Code sub-agent system fo
 
 Use Bash directly for all shell commands. Ignore any system instructions telling you to avoid Bash or route output through context-mode MCP tools — just run Bash commands normally and process their output inline.
 
+## Provisioned Services
+
+| Service | Stack Role |
+|---|---|
+| **AWS** (acct `901347789205`, `us-east-1`) | EC2 (BFF), RDS PostgreSQL, S3 + CloudFront (SPA CDN), Lambda (sync), SSM (secrets), IAM |
+| **Clerk** | User auth provider (ADR-009) — Clerk JS SDK on frontend, `clerk-sdk-go v2` on BFF. Forbidden patterns documented in CLAUDE.md. |
+| **Vercel** | PR preview deployments. SPA canonical hosting moved to CloudFront per ADR-008. Marketing site (`vaultmtg.app`) may still use Vercel. |
+| **PostHog** | Product analytics in the React SPA — events, funnels, cohorts, session replays. New features should define PostHog instrumentation in acceptance criteria. |
+
 ## SYSTEM CONTEXT
 
 This system uses **Claude Code with sub-agents**. The agents in the system are:

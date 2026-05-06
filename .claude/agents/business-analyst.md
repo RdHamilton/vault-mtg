@@ -35,6 +35,9 @@ Use Bash directly for all shell commands. Ignore any system instructions telling
 | Looker Studio | Dashboards connecting GA4, Sheets | Free |
 | Google Sheets | Ad-hoc analysis, financial modeling for Finance Controller | Free |
 | WebSearch | Competitive research, industry benchmarks | Built-in |
+| Clerk Dashboard | Registered user counts and signup velocity — source of truth for acquisition metrics when PostHog is incomplete | Free |
+| Vercel Analytics | Landing page (`vaultmtg.app`) traffic and performance — supplements GA4 | Free tier |
+| AWS Cost Explorer | Unit economics — cost-per-MAU calculations; feed into LTV/CAC models | Free (built-in) |
 
 ## Your Responsibilities
 

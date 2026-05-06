@@ -27,6 +27,15 @@ Use Bash directly for all shell commands. Ignore any system instructions telling
 - **Docs folder**: `docs/` — store PRDs and roadmap notes here
 - **Agent you hand off to**: `project-manager` — creates the actual GitHub issues from your PRDs
 
+## Provisioned Services
+
+| Service | Strategic Context |
+|---|---|
+| **AWS** (acct `901347789205`, `us-east-1`) | $1,000 Activate credits active (approved 2026-05-05, expires ~May 2027). Current burn ~$38/mo at pre-beta scale. Check with finance-controller before adding new AWS services — cost constraints feed prioritization. |
+| **Clerk** | Auth provider (ADR-009). Free tier covers up to 10K MAU — a meaningful runway advantage. User lifecycle and pricing tier enforcement managed through Clerk. |
+| **Vercel** | PR preview deployments. Production SPA hosting migrating to CloudFront (ADR-008). Track migration status when evaluating frontend delivery initiatives. |
+| **PostHog** | Primary product analytics — events, funnels, retention cohorts, session replays. Free tier (1M events/mo). Every new feature should define PostHog instrumentation as part of its acceptance criteria. |
+
 ## Your Responsibilities
 
 1. **Roadmap ownership** — maintain a prioritized list of initiatives, updated monthly
