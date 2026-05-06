@@ -3,7 +3,7 @@ import { useAuth } from '@clerk/react';
 import { getDaemonHealth } from '@/services/api/bffHealth';
 import './DaemonHealthIndicator.css';
 
-type IndicatorState = 'connected' | 'disconnected' | 'loading' | 'error';
+type IndicatorState = 'connected' | 'disconnected' | 'reconnecting' | 'loading' | 'error';
 
 const POLL_INTERVAL_MS = 30_000;
 
@@ -12,7 +12,9 @@ function tooltipText(state: IndicatorState): string {
     case 'connected':
       return 'Daemon connected';
     case 'disconnected':
-      return 'Daemon disconnected';
+      return 'Daemon not connected — data may be stale';
+    case 'reconnecting':
+      return 'Daemon reconnecting...';
     case 'loading':
       return 'Checking...';
     case 'error':
@@ -48,7 +50,13 @@ const DaemonHealthIndicator = () => {
         return;
       }
       const result = await getDaemonHealth(token);
-      setStatus(result.status === 'connected' ? 'connected' : 'disconnected');
+      if (result.status === 'connected') {
+        setStatus('connected');
+      } else if (result.status === 'reconnecting') {
+        setStatus('reconnecting');
+      } else {
+        setStatus('disconnected');
+      }
     } catch {
       setStatus('error');
     }

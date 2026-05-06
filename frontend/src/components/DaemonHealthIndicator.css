@@ -15,6 +15,10 @@
   background-color: #ef4444; /* red-500 */
 }
 
+.daemon-health-reconnecting {
+  background-color: #eab308; /* yellow-500 */
+}
+
 .daemon-health-loading,
 .daemon-health-error {
   background-color: #6b7280; /* gray-500 */
