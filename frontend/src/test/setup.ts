@@ -15,7 +15,8 @@ vi.mock('@clerk/react', () => ({
   SignInButton: ({ children }: { children: unknown }) => children,
   SignUpButton: ({ children }: { children: unknown }) => children,
   UserButton: () => null,
-  useAuth: () => ({ isLoaded: true, isSignedIn: true }),
+  useAuth: () => ({ isLoaded: true, isSignedIn: true, getToken: () => Promise.resolve('clerk-test-token-stub') }),
+  useUser: () => ({ isLoaded: true, isSignedIn: true, user: { id: 'user_test_123', emailAddresses: [{ emailAddress: 'test@example.com' }] } }),
 }));
 
 // Mock WebSocket client globally

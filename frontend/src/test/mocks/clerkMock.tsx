@@ -58,13 +58,16 @@ export const UserButton = ({ afterSignOutUrl: _afterSignOutUrl }: { afterSignOut
   );
 };
 
-// useAuth — returns auth state based on test state
+// useAuth — returns auth state based on test state.
+// getToken() returns a deterministic test JWT so components that call
+// useAuth().getToken() receive a non-null value in test mode.
 export const useAuth = () => {
   const { isSignedIn } = getTestState();
   return {
     isLoaded: true,
     isSignedIn: isSignedIn ?? false,
     userId: isSignedIn ? 'user_test_123' : null,
+    getToken: () => Promise.resolve(isSignedIn ? 'clerk-test-token-stub' : null),
   };
 };
 

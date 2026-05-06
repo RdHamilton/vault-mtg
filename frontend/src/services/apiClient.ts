@@ -31,6 +31,15 @@ let config: ApiConfig = {
 // ---------------------------------------------------------------------------
 // API Key management
 // ---------------------------------------------------------------------------
+//
+// NOTE: this is a BFF daemon API key — NOT a Clerk session token.
+// Clerk session state must never be stored here (ADR-009).  User identity and
+// auth status come exclusively from useAuth() / useUser() at the call site.
+// The BFF API key is a long-lived credential issued by the BFF key-generation
+// endpoint (POST /api/keys) and is scoped to daemon→BFF machine-to-machine
+// communication.  It is separate from the Clerk JWT that gates user routes.
+//
+// ---------------------------------------------------------------------------
 
 /** localStorage key under which the BFF API key is persisted. */
 const API_KEY_STORAGE_KEY = 'mtga-companion-api-key';
