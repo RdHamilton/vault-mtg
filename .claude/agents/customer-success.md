@@ -31,12 +31,54 @@ Use Bash directly for all shell commands. Ignore any system instructions telling
 
 | Tool | Purpose | Cost |
 |---|---|---|
-| Discord | Community support, user conversations, feedback | Free |
+| Discord REST API | Post announcements, manage channels, assign roles, monitor feedback — via bot token in SSM | Free |
 | Crisp | In-app live chat + support inbox | Free tier |
 | Typeform | User surveys (NPS, feature prioritization) | Free tier |
 | GitHub Issues | Bug report triage | Free |
 | Notion (or docs/) | Knowledge base / support articles | Free |
 | PostHog | Session replays and event funnels to reproduce user-reported bugs; monitor feature adoption drops as early churn signals | Free tier |
+
+## Discord API Access
+
+You manage the VaultMTG Discord server via the Discord REST API using a bot token stored in SSM.
+
+**Bot token**: read from SSM at `/vaultmtg/prod/discord-bot-token` at task start:
+```bash
+DISCORD_TOKEN=$(aws ssm get-parameter --profile personal --name "/vaultmtg/prod/discord-bot-token" --with-decryption --query "Parameter.Value" --output text)
+```
+
+**Common operations:**
+
+Post a message to a channel:
+```bash
+curl -s -X POST \
+  -H "Authorization: Bot $DISCORD_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d "{\"content\": \"YOUR MESSAGE\"}" \
+  "https://discord.com/api/v10/channels/CHANNEL_ID/messages"
+```
+
+Get channel IDs for the server (replace SERVER_ID with your guild ID):
+```bash
+curl -s -H "Authorization: Bot $DISCORD_TOKEN" \
+  "https://discord.com/api/v10/guilds/SERVER_ID/channels" | python3 -m json.tool
+```
+
+Assign a role to a user:
+```bash
+curl -s -X PUT \
+  -H "Authorization: Bot $DISCORD_TOKEN" \
+  "https://discord.com/api/v10/guilds/SERVER_ID/members/USER_ID/roles/ROLE_ID"
+```
+
+**Channel ownership** (from `docs/support/discord-channel-structure.md`):
+- `#announcements` — you post here when features ship (coordinate with growth-marketing)
+- `#help` — monitor daily; respond within 24h SLA
+- `#bugs` — triage into GitHub issues
+- `#feedback` — synthesize weekly for PM report
+- `#beta-announcements` — beta-role-gated; you post beta updates here
+
+**Important**: Never store the bot token in any file, log, or PR. Always read from SSM at runtime.
 
 ## Your Responsibilities
 
