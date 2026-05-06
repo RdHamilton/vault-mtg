@@ -172,6 +172,138 @@ func TestDaemonEventsRepository_ListByUserID_ScopedToUser(t *testing.T) {
 	}
 }
 
+func TestDaemonEventsRepository_HasRecentEvent_Connected(t *testing.T) {
+	db := openTestDB(t)
+	repo := repository.NewDaemonEventsRepository(db)
+
+	const userID int64 = 9994
+	const accountID = "test-account-health-connected"
+
+	payload := json.RawMessage(`{}`)
+	occurredAt := time.Now().UTC().Truncate(time.Second)
+
+	if err := repo.Insert(context.Background(), userID, accountID, "heartbeat", payload, occurredAt, ""); err != nil {
+		t.Fatalf("Insert: %v", err)
+	}
+
+	t.Cleanup(func() {
+		_, _ = db.ExecContext(
+			context.Background(),
+			`DELETE FROM daemon_events WHERE user_id = $1 AND account_id = $2`,
+			userID, accountID,
+		)
+	})
+
+	connected, err := repo.HasRecentEventByUserID(context.Background(), userID, 60*time.Second)
+	if err != nil {
+		t.Fatalf("HasRecentEventByUserID: %v", err)
+	}
+
+	if !connected {
+		t.Error("expected connected=true for a row inserted just now")
+	}
+}
+
+func TestDaemonEventsRepository_HasRecentEvent_Disconnected_NoRows(t *testing.T) {
+	db := openTestDB(t)
+	repo := repository.NewDaemonEventsRepository(db)
+
+	// Use a user ID that has no rows in the test database.
+	const userID int64 = 9995
+
+	connected, err := repo.HasRecentEventByUserID(context.Background(), userID, 60*time.Second)
+	if err != nil {
+		t.Fatalf("HasRecentEventByUserID: %v", err)
+	}
+
+	if connected {
+		t.Error("expected connected=false for a user with no daemon_events rows")
+	}
+}
+
+func TestDaemonEventsRepository_HasRecentEvent_Disconnected_OldRow(t *testing.T) {
+	db := openTestDB(t)
+	repo := repository.NewDaemonEventsRepository(db)
+
+	const userID int64 = 9996
+	const accountID = "test-account-health-old"
+
+	payload := json.RawMessage(`{}`)
+	// occurred_at is fine being in the past; we need received_at to be old.
+	// We insert directly with an explicit old received_at to simulate a stale row.
+	occurredAt := time.Now().UTC().Add(-5 * time.Minute).Truncate(time.Second)
+
+	_, err := db.ExecContext(
+		context.Background(),
+		`INSERT INTO daemon_events (user_id, account_id, event_type, payload, occurred_at, received_at)
+		 VALUES ($1, $2, $3, $4, $5, NOW() - INTERVAL '5 minutes')`,
+		userID, accountID, "heartbeat", payload, occurredAt,
+	)
+	if err != nil {
+		t.Fatalf("direct insert: %v", err)
+	}
+
+	t.Cleanup(func() {
+		_, _ = db.ExecContext(
+			context.Background(),
+			`DELETE FROM daemon_events WHERE user_id = $1 AND account_id = $2`,
+			userID, accountID,
+		)
+	})
+
+	connected, err := repo.HasRecentEventByUserID(context.Background(), userID, 60*time.Second)
+	if err != nil {
+		t.Fatalf("HasRecentEventByUserID: %v", err)
+	}
+
+	if connected {
+		t.Error("expected connected=false for a row older than the window")
+	}
+}
+
+func TestDaemonEventsRepository_HasRecentEvent_ScopedToUser(t *testing.T) {
+	db := openTestDB(t)
+	repo := repository.NewDaemonEventsRepository(db)
+
+	// User A has a recent row; user B must not see it as connected.
+	const userA int64 = 9997
+	const userB int64 = 9998
+	const accountA = "test-account-health-a"
+
+	payload := json.RawMessage(`{}`)
+	occurredAt := time.Now().UTC().Truncate(time.Second)
+
+	if err := repo.Insert(context.Background(), userA, accountA, "heartbeat", payload, occurredAt, ""); err != nil {
+		t.Fatalf("Insert userA: %v", err)
+	}
+
+	t.Cleanup(func() {
+		_, _ = db.ExecContext(
+			context.Background(),
+			`DELETE FROM daemon_events WHERE user_id IN ($1, $2)`,
+			userA, userB,
+		)
+	})
+
+	connectedA, err := repo.HasRecentEventByUserID(context.Background(), userA, 60*time.Second)
+	if err != nil {
+		t.Fatalf("HasRecentEventByUserID userA: %v", err)
+	}
+
+	if !connectedA {
+		t.Error("expected userA to be connected")
+	}
+
+	connectedB, err := repo.HasRecentEventByUserID(context.Background(), userB, 60*time.Second)
+	if err != nil {
+		t.Fatalf("HasRecentEventByUserID userB: %v", err)
+	}
+
+	if connectedB {
+		t.Error("expected userB to be disconnected — must not see userA's events")
+	}
+}
+
 func TestDaemonEventsRepository_Interface(t *testing.T) {
 	// Compile-time check: NewDaemonEventsRepository accepts a repository.DB.
 	var db repository.DB = &fakeDB{}
