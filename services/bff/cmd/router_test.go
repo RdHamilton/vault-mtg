@@ -129,7 +129,7 @@ func depsWithClerk(t *testing.T) RouterDeps {
 	return RouterDeps{
 		Broker:            broker,
 		IngestHandler:     ingest,
-		ClerkAuthMiddl:    bffmiddleware.RequireClerkAuth("sk_test_dummy"),
+		ClerkAuthMiddl:    bffmiddleware.RequireClerkAuth("test-secret-key"),
 		ClerkUserResolver: bffmiddleware.ClerkUserResolver(&stubUserRepo{}),
 	}
 }
@@ -420,7 +420,7 @@ func TestRouter_SSE_ValidJWT_ResolverDBError_Returns500(t *testing.T) {
 	deps := RouterDeps{
 		Broker:            broker,
 		IngestHandler:     ingest,
-		ClerkAuthMiddl:    bffmiddleware.RequireClerkAuth("sk_test_dummy"),
+		ClerkAuthMiddl:    bffmiddleware.RequireClerkAuth("test-secret-key"),
 		ClerkUserResolver: bffmiddleware.ClerkUserResolver(&stubUserRepo{failWith: context.DeadlineExceeded}),
 	}
 
