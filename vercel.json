@@ -1,5 +1,4 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
-  "_comment": "ADR-008: Vercel is PREVIEW-ONLY. S3+CloudFront is canonical production. Production tags (v*) skip Vercel via ignoreCommand below. Do NOT add alias or domains entries for vaultmtg.app or app.vaultmtg.app — those are owned by CloudFront.",
-  "ignoreCommand": "! git describe --exact-match --tags HEAD 2>/dev/null | grep -q '^v'"
+"ignoreCommand": "! git describe --exact-match --tags HEAD 2>/dev/null | grep -q '^v'"
 }
