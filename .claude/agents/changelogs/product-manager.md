@@ -8,13 +8,6 @@
 **RICE score**: [if applicable]
 -->
 
-## 2026-05-06 — v0.2.0 follow-on tickets from architect tech spec
-
-**Triggered by**: User request — architect's v0.2.0-event-projection.md flagged two untracked work items
-**Decision**: Created two tickets to cover gaps the architect identified: (1) SPA history page wiring (blocked on #1396, Wave 3, front-engineer), and (2) DaemonEvent contract type update to promote event_id to a top-level field (Wave 1, backend-engineer). Both added to v0.2.0 board #28 as Todo. Updated #1396 body with cross-reference to #1405.
-**Output**: GitHub issues #1404 (SPA wiring) and #1405 (contract type); both on board #28 status=Todo; #1396 updated
-**RICE score**: N/A — follow-on tickets mandated by approved tech spec, not discretionary prioritization
-
 ## 2026-05-06 — v0.2.0 Kickoff: P0 backlog review and user stories
 
 **Triggered by**: User request — v0.2.0 sprint start

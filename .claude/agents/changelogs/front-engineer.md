@@ -8,6 +8,23 @@
 **Summary**: One sentence summary of what was done and why.
 -->
 
+## 2026-05-06 — Issue #1397: feat(frontend): EmptyState component — heading/subtext/variant/CTA API
+**PR**: #1413
+**Files changed**:
+- `frontend/src/components/EmptyState.tsx` — rebuilt with new props: heading, subtext, ctaLabel?, ctaHref?, variant (no-data | coming-soon)
+- `frontend/src/components/EmptyState.css` — added heading/subtext/cta/variant CSS classes
+- `frontend/src/components/EmptyState.test.tsx` — 21 new tests covering all ticket ACs
+- `frontend/src/pages/MatchHistory.tsx` — migrated to new EmptyState API
+- `frontend/src/pages/Decks.tsx` — replaced inline empty-state div with EmptyState component
+- `frontend/src/pages/Draft.tsx` — replaced inline draft-empty div with EmptyState component
+- `frontend/src/pages/Quests.tsx` — migrated 4 EmptyState call sites to new API
+- `frontend/src/pages/WinRateTrend.tsx` — migrated EmptyState to new API
+- `frontend/src/pages/DeckPerformance.tsx` — migrated EmptyState to new API
+- `frontend/src/pages/FormatDistribution.tsx` — migrated EmptyState to new API
+- `frontend/src/pages/RankProgression.tsx` — migrated EmptyState to new API
+- `frontend/src/pages/ResultBreakdown.tsx` — migrated EmptyState to new API
+**Summary**: Rebuilt EmptyState with ticket-specified API (heading, subtext, variant, CTA) and migrated all 9 existing call sites; loading states still show spinner, not EmptyState; 2561 tests pass.
+
 ## 2026-05-04 — Issue #1136 #1142: fix(frontend): add BFF draft-ratings and API key adapters
 **PR**: #1177
 **Files changed**:
