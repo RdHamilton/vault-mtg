@@ -11,6 +11,13 @@ This is the system-wide record of all changes made across the project. Every age
 **Summary**: One sentence summary of what was done and why.
 -->
 
+## 2026-05-06 — [architect] Issue #1117: holistic gap analysis — Sync Lambda and BFF
+**PR**: (this PR)
+**ADR**: N/A — gap analysis doc; recommends three new ADRs (010, 011, 012)
+**Files changed**:
+- `docs/architecture/1117-sync-lambda-bff-gap-analysis.md` — new gap analysis covering data flow, auth, error handling, multi-tenancy, missing pieces, and six numbered recommendations
+**Summary**: Documented that Sync Lambda and BFF share only the Postgres schema (no HTTP / SQS link) and that the largest forward gap is the lack of a per-user sync surface for Phase 4+ Pro features; recommended ADR-010 (sync observability), ADR-011 (per-user sync service), and ADR-012 (internal service-to-service auth) with ADR-012 sequenced before ADR-011.
+
 ## 2026-05-06 — [architect] ADR-009: User Auth Provider = Clerk
 **PR**: N/A — ADR only
 **ADR**: docs/adr/ADR-009-user-auth-provider-clerk.md
