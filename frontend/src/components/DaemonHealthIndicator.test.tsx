@@ -98,7 +98,7 @@ describe('DaemonHealthIndicator', () => {
     expect(dot.getAttribute('title')).toBe('Daemon connected');
   });
 
-  it('shows tooltip "Daemon disconnected" when disconnected', async () => {
+  it('shows tooltip "Daemon not connected — data may be stale" when disconnected', async () => {
     mockGetDaemonHealth.mockResolvedValue({ status: 'disconnected' });
 
     await act(async () => {
@@ -106,7 +106,29 @@ describe('DaemonHealthIndicator', () => {
     });
 
     const dot = screen.getByTestId('daemon-health-indicator');
-    expect(dot.getAttribute('title')).toBe('Daemon disconnected');
+    expect(dot.getAttribute('title')).toBe('Daemon not connected — data may be stale');
+  });
+
+  it('shows yellow dot (reconnecting class) when API returns reconnecting', async () => {
+    mockGetDaemonHealth.mockResolvedValue({ status: 'reconnecting' });
+
+    await act(async () => {
+      render(<DaemonHealthIndicator />);
+    });
+
+    const dot = screen.getByTestId('daemon-health-indicator');
+    expect(dot.classList.contains('daemon-health-reconnecting')).toBe(true);
+  });
+
+  it('shows tooltip "Daemon reconnecting..." when reconnecting', async () => {
+    mockGetDaemonHealth.mockResolvedValue({ status: 'reconnecting' });
+
+    await act(async () => {
+      render(<DaemonHealthIndicator />);
+    });
+
+    const dot = screen.getByTestId('daemon-health-indicator');
+    expect(dot.getAttribute('title')).toBe('Daemon reconnecting...');
   });
 
   it('shows tooltip "Checking..." while loading', () => {
