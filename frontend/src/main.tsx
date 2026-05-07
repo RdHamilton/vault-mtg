@@ -1,6 +1,7 @@
 import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
 import { ClerkProvider } from '@clerk/react'
+import * as Sentry from '@sentry/react'
 import './index.css'
 import App from './App.tsx'
 import { AppProvider } from './context/AppContext'
@@ -13,20 +14,31 @@ import { initializeServices } from './services/adapter'
 // Dashboard: https://dashboard.clerk.com → Social connections
 // VITE_CLERK_PUBLISHABLE_KEY is read automatically by ClerkProvider from the environment.
 
+// Initialize Sentry only when VITE_SENTRY_DSN is provided (skip silently in dev/test).
+const sentryDsn = import.meta.env.VITE_SENTRY_DSN
+if (sentryDsn) {
+  Sentry.init({
+    dsn: sentryDsn,
+    environment: import.meta.env.MODE,
+  })
+}
+
 const rootElement = document.getElementById('root')!
 
 const renderApp = () => {
   createRoot(rootElement).render(
     <StrictMode>
-      <ClerkProvider publishableKey={import.meta.env.VITE_CLERK_PUBLISHABLE_KEY}>
-        <AppProvider>
-          <DownloadProvider>
-            <TaskProgressProvider>
-              <App />
-            </TaskProgressProvider>
-          </DownloadProvider>
-        </AppProvider>
-      </ClerkProvider>
+      <Sentry.ErrorBoundary fallback={<p>Something went wrong</p>}>
+        <ClerkProvider publishableKey={import.meta.env.VITE_CLERK_PUBLISHABLE_KEY}>
+          <AppProvider>
+            <DownloadProvider>
+              <TaskProgressProvider>
+                <App />
+              </TaskProgressProvider>
+            </DownloadProvider>
+          </AppProvider>
+        </ClerkProvider>
+      </Sentry.ErrorBoundary>
     </StrictMode>,
   )
 }

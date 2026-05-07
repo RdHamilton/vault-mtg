@@ -1,5 +1,7 @@
 import { BrowserRouter as Router, Routes, Route, Navigate, useNavigate } from 'react-router-dom';
 import { useEffect, useState } from 'react';
+import { useUser } from '@clerk/react';
+import * as Sentry from '@sentry/react';
 import Layout from './components/Layout';
 import ToastContainer from './components/ToastContainer';
 import MatchHistory from './pages/MatchHistory';
@@ -30,6 +32,22 @@ import './App.css';
 // eslint-disable-next-line react-refresh/only-export-components
 export { getReplayState, subscribeToReplayState } from './utils/replayState';
 export type { ReplayState } from './utils/replayState';
+
+// Syncs the authenticated Clerk user into Sentry context.
+// Sets user id when signed in; clears it on sign-out.
+function SentryUserSync() {
+  const { user, isSignedIn } = useUser();
+
+  useEffect(() => {
+    if (isSignedIn && user) {
+      Sentry.setUser({ id: user.id });
+    } else {
+      Sentry.setUser(null);
+    }
+  }, [isSignedIn, user]);
+
+  return null;
+}
 
 // Component that handles global replay events
 function ReplayEventHandler() {
@@ -126,6 +144,7 @@ function ReplayEventHandler() {
 function App() {
   return (
     <Router>
+      <SentryUserSync />
       <ReplayEventHandler />
       <KeyboardShortcutsHandler />
       <Layout>
