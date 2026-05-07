@@ -1,8 +1,9 @@
 # PRD: VaultMTG Beta Roadmap
 
-**Status**: Draft — Pending engineering approval
+**Status**: Active — v0.2.0 closed, v0.3.0 in progress
 **Author**: Product Manager
 **Date**: 2026-05-06
+**Last updated**: 2026-05-07
 **Scope**: v0.2.0 → v0.4.0 (Beta Launch)
 
 ---
@@ -25,11 +26,14 @@ The $1,000 AWS Activate credit approved 2026-05-05 provides runway. At pre-beta 
 
 ## 3. Milestones
 
-### Milestone 1 — v0.2.0 "Foundation"
+### Milestone 1 — v0.2.0 "Foundation" — CLOSED
+
+**Status**: CLOSED — 2026-05-07
+**Close notes**: All six exit gates satisfied. Match History and Draft History render real data. EmptyState UX live on all routes. Sentry capturing errors in BFF and SPA. Daemon health indicator live on every page. API key UX (#1314) and daemon onboarding flow (#1398) deferred to v0.4.0 pending Clerk Pro decision (2026-05-09); onboarding flow replaced by manual instructions for alpha testers.
 
 **Theme**: Make the app useful for one user who installs the daemon today.
 
-**Duration**: 5–6 weeks
+**Duration**: 5–6 weeks (actual)
 
 **What it accomplishes**: A user can sign up via Clerk, receive an API key through the UI, install the daemon, and see their real match history and draft history populated from daemon events. Every other page shows a proper EmptyState rather than an error. Error monitoring is live. Auth and API key UX are complete.
 
@@ -67,11 +71,18 @@ The $1,000 AWS Activate credit approved 2026-05-05 provides runway. At pre-beta 
 
 ---
 
-### Milestone 2 — v0.3.0 "Telemetry Parity"
+### Milestone 2 — v0.3.0 "Telemetry Parity" — ACTIVE
+
+**Status**: ACTIVE — started 2026-05-07
+**Board**: #29 — 31 tickets, all Todo
+**Kickoff doc**: `docs/prd/v0.3.0-kickoff.md`
+**Required reading**: ADR-012 (gameplay event correlation), ADR-013 (daemon event ordering), ADR-014 (legacy parser extraction) — all in `docs/adr/`
+
+**Spike finding (2026-05-07)**: The daemon log parsers already exist in `internal/mtga/logreader/`. The log parsing work is a refactor + extension, not a rewrite. Revised estimate: **3–4 weeks**, not the >5 weeks originally flagged as a risk in the beta roadmap. The spike (#1501) will confirm no format drift before classifiers begin.
 
 **Theme**: Match the desktop app's data depth in the cloud.
 
-**Duration**: 4–5 weeks
+**Duration**: 4 weeks estimated (3–4 with spike confirmation)
 
 **What it accomplishes**: The daemon captures all event types the desktop parser handled — gameplay, deck deltas, collection deltas, quest events. The full domain schema (all tables that require account_id scoping) is migrated. Live draft overlay works with SSE. Win rate views, deck performance, and format stats are live.
 
@@ -97,13 +108,26 @@ The $1,000 AWS Activate credit approved 2026-05-05 provides runway. At pre-beta 
 - [ ] All 6 CS beta gates pass in internal testing
 - [ ] Win rate by deck and format renders correctly for a user with 20+ matches
 - [ ] Live draft overlay shows correct card grades for current set without crashing Arena (measured by CS testers)
-- [ ] No daemon event drops observed over a 48-hour soak test
+- [ ] No daemon event drops observed over a 48-hour soak test (gap detection PostHog event count = 0 under normal conditions)
 - [ ] All BFF endpoints listed above return data for a connected account
+- [ ] CSP headers live on CloudFront production domain
+
+#### v0.3.0-lite Bailout Scope
+
+If game-play projector (#1512), collection delta projector (#1511), and quest projector (#1510 quest branch) are not green by end of Week 2 (approximately 2026-05-21), v0.3.0 scopes down to **v0.3.0-lite**:
+
+- **In scope**: match history, win rates (deck + format), draft analytics, live draft overlay, Settings page, CSP headers
+- **Deferred to v0.3.1**: game-play life total history, collection delta projection, quest tracking, RankProgression and ResultBreakdown endpoints
+
+v0.3.0-lite still satisfies the alpha invite gate — testers can validate match accuracy, win rates, and live draft view. Full parity deferred to v0.3.1.
+
+**Decision deadline**: End of Week 2. Ray makes the call.
 
 #### Dependencies and Blockers
 
-- v0.2.0 must be complete — specifically auth middleware and projection layer v1
-- Desktop log parser code must be reviewed to identify which parsing logic can be extracted vs. rewritten (#1160–#1164 scope)
+- v0.2.0 is CLOSED — all required auth middleware and projection layer v1 are live
+- Parser extraction (ADR-014): parsers exist in `internal/mtga/logreader/` — extraction to `pkg/logparse` is 3–4 days of refactor, not a rewrite
+- Three ADRs (012, 013, 014) written and accepted — required reading before implementation
 - Edge of Eternities set data must be available before draft overlay can be tested against live drafts
 
 ---
@@ -321,7 +345,7 @@ These must ship in v0.2.0 or early v0.3.0 or the product does not meet CS beta g
 
 | # | Risk | Likelihood | Impact | Mitigation | Owner |
 |---|---|---|---|---|---|
-| 1 | **Event projection complexity underestimated** — porting the desktop log parser is the largest unknown in the entire roadmap. If the desktop parser is tightly coupled to local DB schemas or file paths, a clean extraction may take 2–3x longer than expected. | High | High | Timebox a 1-week spike on #1160–#1164 before committing v0.3.0 scope. If spike reveals >3 weeks of work, cut full telemetry parity and ship match history only at v0.3.0. | Ray (eng) |
+| 1 | **Event projection complexity** — **RISK REDUCED (2026-05-07)**. Spike finding: parsers already exist in `internal/mtga/logreader/`. Work is refactor + extension, estimate 3–4 weeks not >5. v0.3.0-lite bailout defined: if game-play/collection/quest projectors not green by end of Week 2 (~2026-05-21), scope down to match history + win rates + draft analytics only; defer remainder to v0.3.1. | ~~High~~ Low | Medium | Bailout trigger and scope documented in `docs/prd/v0.3.0-kickoff.md`. | Ray (eng) |
 | 2 | **Single engineer burnout / velocity collapse** — 14–15 weeks of sustained solo work with no slack will degrade quality and increase bug density. | Medium | High | v0.2.0 scope is the most critical to protect. If v0.2.0 slips, cut P1 items before adding scope. Build in 1 week of buffer at the end of each milestone. Do not start v0.4.0 growth work until v0.3.0 exit gates are met. | Ray (PM + eng) |
 | 3 | **Draft overlay causes Arena performance issues** — CS flagged this as a beta failure mode. If the daemon or SPA overlay introduces FPS drops, draft users (the highest-value segment) will uninstall immediately. | Medium | High | Add an explicit performance gate to v0.3.0 exit criteria. Run a 48-hour soak test with Arena + daemon before inviting any external testers. Disable overlay at first sign of FPS impact. | Ray (eng) |
 | 4 | **Competitor pre-empts beta positioning** — Untapped.gg or a new entrant launches an "all-in-one" MTGA companion during the build window. | Low | Medium | Do not delay beta to add features that compete with existing Untapped functionality. Ship with the draft-grinder niche (narrower than Untapped's full suite) and iterate. Our differentiation is integrated lifecycle, not data volume. | PM |
