@@ -22,9 +22,10 @@ var defaultAllowedOrigins = []string{"http://localhost:*", "http://127.0.0.1:*"}
 
 // Config holds typed runtime configuration for the BFF service.
 type Config struct {
-	// Env is the runtime environment.  Sourced from MTGA_ENV (default "development").
-	// Recognised values: "production", "development".
-	// When Env is "production", DATABASE_URL must be set or Load returns an error.
+	// Env is the runtime environment.  Sourced from MTGA_ENV (default "production").
+	// Recognised values: "production", "staging", "development".
+	// When Env is "production" or "staging", DATABASE_URL and CLERK_SECRET_KEY
+	// must be set or Load returns an error.
 	Env string
 
 	// DatabaseURL is the PostgreSQL connection string.
@@ -90,26 +91,27 @@ type Config struct {
 // Load reads configuration from environment variables, applies defaults, and
 // returns a validated Config.  An error is returned if any value is invalid.
 //
-// Production mode (MTGA_ENV=production) requires DATABASE_URL to be set.
-// Omitting DATABASE_URL in production is a fatal misconfiguration because the
-// API key auth middleware cannot be constructed without a database, which would
-// leave the SSE endpoint and any other guarded route unprotected.
+// Production and staging modes (MTGA_ENV=production or MTGA_ENV=staging) require
+// DATABASE_URL and CLERK_SECRET_KEY to be set.  Omitting DATABASE_URL is a fatal
+// misconfiguration because the API key auth middleware cannot be constructed
+// without a database, which would leave the SSE endpoint and any other guarded
+// route unprotected.
 func Load() (*Config, error) {
 	env := os.Getenv("MTGA_ENV")
 	if env == "" {
-		env = "development"
+		env = "production"
 	}
 
 	dbURL := os.Getenv("DATABASE_URL")
 
-	if env == "production" && dbURL == "" {
-		return nil, fmt.Errorf("DATABASE_URL must be set when MTGA_ENV=production")
+	if (env == "production" || env == "staging") && dbURL == "" {
+		return nil, fmt.Errorf("DATABASE_URL must be set when MTGA_ENV=%s", env)
 	}
 
 	clerkSecretKey := strings.TrimSpace(os.Getenv("CLERK_SECRET_KEY"))
 
-	if env == "production" && clerkSecretKey == "" {
-		return nil, fmt.Errorf("CLERK_SECRET_KEY must be set when MTGA_ENV=production")
+	if (env == "production" || env == "staging") && clerkSecretKey == "" {
+		return nil, fmt.Errorf("CLERK_SECRET_KEY must be set when MTGA_ENV=%s", env)
 	}
 
 	allowedOrigins := defaultAllowedOrigins

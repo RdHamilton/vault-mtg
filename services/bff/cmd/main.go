@@ -158,6 +158,8 @@ func main() {
 		log.Printf("WARN: no DATABASE_URL — API key auth unavailable (env=%s); guarded endpoints return 503", cfg.Env)
 	}
 
+	healthzHandler := handlers.NewHealthzHandler(cfg.Env, cfg.DatabaseURL, storage.MigrationStatus)
+
 	r := BuildRouter(cfg, RouterDeps{
 		Broker:              broker,
 		IngestHandler:       ingestHandler,
@@ -165,6 +167,7 @@ func main() {
 		DraftRatingsHandler: draftRatingsHandler,
 		HistoryHandler:      historyHandler,
 		DaemonHealthHandler: daemonHealthHandler,
+		HealthzHandler:      healthzHandler,
 		ClerkAuthMiddl:      clerkAuthMiddl,
 		ClerkUserResolver:   clerkUserResolver,
 		APIKeyAuthMiddl:     apiKeyAuthMiddl,
@@ -212,9 +215,11 @@ type RouterDeps struct {
 	DraftRatingsHandler *handlers.DraftRatingsHandler
 	HistoryHandler      *handlers.HistoryHandler
 	DaemonHealthHandler *handlers.DaemonHealthHandler
-	ClerkAuthMiddl      func(http.Handler) http.Handler
-	ClerkUserResolver   func(http.Handler) http.Handler
-	APIKeyAuthMiddl     func(http.Handler) http.Handler
+	// HealthzHandler serves GET /healthz — intentionally public (no auth).
+	HealthzHandler    *handlers.HealthzHandler
+	ClerkAuthMiddl    func(http.Handler) http.Handler
+	ClerkUserResolver func(http.Handler) http.Handler
+	APIKeyAuthMiddl   func(http.Handler) http.Handler
 	// SentryMiddl is the Sentry panic/error capture middleware.  When non-nil
 	// it is installed as the outermost middleware so it captures panics from
 	// all downstream handlers.  Safe to omit in tests and development.
@@ -252,6 +257,12 @@ func BuildRouter(cfg *config.Config, deps RouterDeps) http.Handler {
 		w.WriteHeader(http.StatusOK)
 		_, _ = w.Write([]byte(`{"status":"ok","service":"bff"}`))
 	})
+
+	// GET /healthz — public health check used by staging deploy checks and uptime
+	// monitors.  Returns env and migration status.  Intentionally unauthenticated.
+	if deps.HealthzHandler != nil {
+		r.Get("/healthz", deps.HealthzHandler.ServeHTTP)
+	}
 
 	// GET /api/v1/daemon/version — latest daemon version (no auth required).
 	daemonVersionHandler := handlers.NewDaemonVersionHandler(cfg)

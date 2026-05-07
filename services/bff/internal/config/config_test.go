@@ -7,8 +7,10 @@ import (
 )
 
 func TestLoad_Defaults(t *testing.T) {
+	// Provide required production vars; all other flags at defaults.
 	t.Setenv("MTGA_ENV", "")
-	t.Setenv("DATABASE_URL", "")
+	t.Setenv("DATABASE_URL", "postgres://localhost/test")
+	t.Setenv("CLERK_SECRET_KEY", "sk_test_dummy")
 	t.Setenv("DRAFT_RATINGS_STALENESS_THRESHOLD_HOURS", "")
 	t.Setenv("DRAFT_RATINGS_BYPASS_FRESHNESS_CHECK", "")
 
@@ -17,12 +19,12 @@ func TestLoad_Defaults(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	if cfg.Env != "development" {
-		t.Errorf("expected default env 'development', got %q", cfg.Env)
+	if cfg.Env != "production" {
+		t.Errorf("expected default env 'production', got %q", cfg.Env)
 	}
 
-	if cfg.DatabaseURL != "" {
-		t.Errorf("expected empty DatabaseURL, got %q", cfg.DatabaseURL)
+	if cfg.DatabaseURL != "postgres://localhost/test" {
+		t.Errorf("expected DatabaseURL 'postgres://localhost/test', got %q", cfg.DatabaseURL)
 	}
 
 	if cfg.DraftRatingsStalenessThresholdHours != config.DefaultStalenessThresholdHours {
@@ -160,7 +162,7 @@ func TestLoad_DatabaseURL_StoredInConfig(t *testing.T) {
 }
 
 func TestLoad_StalenessThreshold_ValidPositive(t *testing.T) {
-	t.Setenv("MTGA_ENV", "")
+	t.Setenv("MTGA_ENV", "development")
 	t.Setenv("DATABASE_URL", "")
 	t.Setenv("DRAFT_RATINGS_STALENESS_THRESHOLD_HOURS", "72")
 	t.Setenv("DRAFT_RATINGS_BYPASS_FRESHNESS_CHECK", "")
@@ -176,7 +178,7 @@ func TestLoad_StalenessThreshold_ValidPositive(t *testing.T) {
 }
 
 func TestLoad_StalenessThreshold_ZeroIsInvalid(t *testing.T) {
-	t.Setenv("MTGA_ENV", "")
+	t.Setenv("MTGA_ENV", "development")
 	t.Setenv("DATABASE_URL", "")
 	t.Setenv("DRAFT_RATINGS_STALENESS_THRESHOLD_HOURS", "0")
 	t.Setenv("DRAFT_RATINGS_BYPASS_FRESHNESS_CHECK", "")
@@ -188,7 +190,7 @@ func TestLoad_StalenessThreshold_ZeroIsInvalid(t *testing.T) {
 }
 
 func TestLoad_StalenessThreshold_NegativeIsInvalid(t *testing.T) {
-	t.Setenv("MTGA_ENV", "")
+	t.Setenv("MTGA_ENV", "development")
 	t.Setenv("DATABASE_URL", "")
 	t.Setenv("DRAFT_RATINGS_STALENESS_THRESHOLD_HOURS", "-1")
 	t.Setenv("DRAFT_RATINGS_BYPASS_FRESHNESS_CHECK", "")
@@ -200,7 +202,7 @@ func TestLoad_StalenessThreshold_NegativeIsInvalid(t *testing.T) {
 }
 
 func TestLoad_StalenessThreshold_NonIntegerIsInvalid(t *testing.T) {
-	t.Setenv("MTGA_ENV", "")
+	t.Setenv("MTGA_ENV", "development")
 	t.Setenv("DATABASE_URL", "")
 	t.Setenv("DRAFT_RATINGS_STALENESS_THRESHOLD_HOURS", "abc")
 	t.Setenv("DRAFT_RATINGS_BYPASS_FRESHNESS_CHECK", "")
@@ -212,7 +214,7 @@ func TestLoad_StalenessThreshold_NonIntegerIsInvalid(t *testing.T) {
 }
 
 func TestLoad_BypassFreshnessCheck_True(t *testing.T) {
-	t.Setenv("MTGA_ENV", "")
+	t.Setenv("MTGA_ENV", "development")
 	t.Setenv("DATABASE_URL", "")
 	t.Setenv("DRAFT_RATINGS_STALENESS_THRESHOLD_HOURS", "")
 	t.Setenv("DRAFT_RATINGS_BYPASS_FRESHNESS_CHECK", "true")
@@ -228,7 +230,7 @@ func TestLoad_BypassFreshnessCheck_True(t *testing.T) {
 }
 
 func TestLoad_BypassFreshnessCheck_False(t *testing.T) {
-	t.Setenv("MTGA_ENV", "")
+	t.Setenv("MTGA_ENV", "development")
 	t.Setenv("DATABASE_URL", "")
 	t.Setenv("DRAFT_RATINGS_STALENESS_THRESHOLD_HOURS", "")
 	t.Setenv("DRAFT_RATINGS_BYPASS_FRESHNESS_CHECK", "false")
@@ -244,7 +246,7 @@ func TestLoad_BypassFreshnessCheck_False(t *testing.T) {
 }
 
 func TestLoad_BypassFreshnessCheck_InvalidIsError(t *testing.T) {
-	t.Setenv("MTGA_ENV", "")
+	t.Setenv("MTGA_ENV", "development")
 	t.Setenv("DATABASE_URL", "")
 	t.Setenv("DRAFT_RATINGS_STALENESS_THRESHOLD_HOURS", "")
 	t.Setenv("DRAFT_RATINGS_BYPASS_FRESHNESS_CHECK", "yes")
@@ -258,7 +260,7 @@ func TestLoad_BypassFreshnessCheck_InvalidIsError(t *testing.T) {
 // TestLoad_AllowedOrigins_DefaultWhenUnset verifies that when ALLOWED_ORIGINS is
 // not set the config falls back to the localhost-only default values (ADR-006).
 func TestLoad_AllowedOrigins_DefaultWhenUnset(t *testing.T) {
-	t.Setenv("MTGA_ENV", "")
+	t.Setenv("MTGA_ENV", "development")
 	t.Setenv("DATABASE_URL", "")
 	t.Setenv("ALLOWED_ORIGINS", "")
 
@@ -288,7 +290,7 @@ func TestLoad_AllowedOrigins_DefaultWhenUnset(t *testing.T) {
 // TestLoad_AllowedOrigins_ParsesCommaSeparated verifies that a comma-separated
 // ALLOWED_ORIGINS value is split into individual origins (ADR-006).
 func TestLoad_AllowedOrigins_ParsesCommaSeparated(t *testing.T) {
-	t.Setenv("MTGA_ENV", "")
+	t.Setenv("MTGA_ENV", "development")
 	t.Setenv("DATABASE_URL", "")
 	t.Setenv("ALLOWED_ORIGINS", "https://mtga-companion.vercel.app,https://*.vercel.app")
 
@@ -314,7 +316,7 @@ func TestLoad_AllowedOrigins_ParsesCommaSeparated(t *testing.T) {
 // BFF_DAEMON_LATEST_VERSION is not set the config defaults to "0.1.0" so that
 // GET /api/v1/daemon/version always returns a non-empty response in development.
 func TestLoad_DaemonLatestVersion_DefaultWhenUnset(t *testing.T) {
-	t.Setenv("MTGA_ENV", "")
+	t.Setenv("MTGA_ENV", "development")
 	t.Setenv("DATABASE_URL", "")
 	t.Setenv("BFF_DAEMON_LATEST_VERSION", "")
 
@@ -331,7 +333,7 @@ func TestLoad_DaemonLatestVersion_DefaultWhenUnset(t *testing.T) {
 // TestLoad_DaemonLatestVersion_FromEnv verifies that BFF_DAEMON_LATEST_VERSION
 // is surfaced as Config.DaemonLatestVersion.
 func TestLoad_DaemonLatestVersion_FromEnv(t *testing.T) {
-	t.Setenv("MTGA_ENV", "")
+	t.Setenv("MTGA_ENV", "development")
 	t.Setenv("DATABASE_URL", "")
 	t.Setenv("BFF_DAEMON_LATEST_VERSION", "0.5.2")
 
@@ -348,7 +350,7 @@ func TestLoad_DaemonLatestVersion_FromEnv(t *testing.T) {
 // TestLoad_DaemonReleasedAt_EmptyWhenUnset verifies that when
 // BFF_DAEMON_RELEASED_AT is not set Config.DaemonReleasedAt is empty string.
 func TestLoad_DaemonReleasedAt_EmptyWhenUnset(t *testing.T) {
-	t.Setenv("MTGA_ENV", "")
+	t.Setenv("MTGA_ENV", "development")
 	t.Setenv("DATABASE_URL", "")
 	t.Setenv("BFF_DAEMON_RELEASED_AT", "")
 
@@ -365,7 +367,7 @@ func TestLoad_DaemonReleasedAt_EmptyWhenUnset(t *testing.T) {
 // TestLoad_DaemonReleasedAt_FromEnv verifies that BFF_DAEMON_RELEASED_AT is
 // surfaced as Config.DaemonReleasedAt.
 func TestLoad_DaemonReleasedAt_FromEnv(t *testing.T) {
-	t.Setenv("MTGA_ENV", "")
+	t.Setenv("MTGA_ENV", "development")
 	t.Setenv("DATABASE_URL", "")
 	t.Setenv("BFF_DAEMON_RELEASED_AT", "2026-05-01T12:00:00Z")
 
@@ -416,7 +418,7 @@ func TestLoad_SentryDSN_FromEnv(t *testing.T) {
 // TestLoad_AllowedOrigins_TrimsWhitespace verifies that leading/trailing
 // whitespace around comma-separated values is stripped.
 func TestLoad_AllowedOrigins_TrimsWhitespace(t *testing.T) {
-	t.Setenv("MTGA_ENV", "")
+	t.Setenv("MTGA_ENV", "development")
 	t.Setenv("DATABASE_URL", "")
 	t.Setenv("ALLOWED_ORIGINS", " https://mtga-companion.vercel.app , https://*.vercel.app ")
 
@@ -436,5 +438,65 @@ func TestLoad_AllowedOrigins_TrimsWhitespace(t *testing.T) {
 		if len(o) > 0 && (o[0] == ' ' || o[len(o)-1] == ' ') {
 			t.Errorf("origin has leading/trailing whitespace: %q", o)
 		}
+	}
+}
+
+// TestLoad_Env_DefaultIsProduction verifies that when MTGA_ENV is not set the
+// default environment is "production" (fail-fast: requires DATABASE_URL and
+// CLERK_SECRET_KEY).
+func TestLoad_Env_DefaultIsProduction(t *testing.T) {
+	t.Setenv("MTGA_ENV", "")
+	t.Setenv("DATABASE_URL", "postgres://localhost/test")
+	t.Setenv("CLERK_SECRET_KEY", "sk_test_dummy")
+
+	cfg, err := config.Load()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if cfg.Env != "production" {
+		t.Errorf("expected default env 'production', got %q", cfg.Env)
+	}
+}
+
+// TestLoad_Env_Staging verifies that MTGA_ENV=staging is returned as-is.
+func TestLoad_Env_Staging(t *testing.T) {
+	t.Setenv("MTGA_ENV", "staging")
+	t.Setenv("DATABASE_URL", "postgres://localhost/test")
+	t.Setenv("CLERK_SECRET_KEY", "sk_test_dummy")
+
+	cfg, err := config.Load()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if cfg.Env != "staging" {
+		t.Errorf("expected env 'staging', got %q", cfg.Env)
+	}
+}
+
+// TestLoad_Env_Staging_NoDatabaseURL_Error verifies staging mode requires
+// DATABASE_URL (same fail-fast rule as production).
+func TestLoad_Env_Staging_NoDatabaseURL_Error(t *testing.T) {
+	t.Setenv("MTGA_ENV", "staging")
+	t.Setenv("DATABASE_URL", "")
+	t.Setenv("CLERK_SECRET_KEY", "sk_test_dummy")
+
+	_, err := config.Load()
+	if err == nil {
+		t.Fatal("expected error when MTGA_ENV=staging and DATABASE_URL is unset")
+	}
+}
+
+// TestLoad_Env_Staging_NoClerkSecretKey_Error verifies staging mode requires
+// CLERK_SECRET_KEY (same fail-fast rule as production).
+func TestLoad_Env_Staging_NoClerkSecretKey_Error(t *testing.T) {
+	t.Setenv("MTGA_ENV", "staging")
+	t.Setenv("DATABASE_URL", "postgres://localhost/test")
+	t.Setenv("CLERK_SECRET_KEY", "")
+
+	_, err := config.Load()
+	if err == nil {
+		t.Fatal("expected error when MTGA_ENV=staging and CLERK_SECRET_KEY is unset")
 	}
 }
