@@ -16,6 +16,10 @@ import * as Sentry from '@sentry/react';
 // ---------------------------------------------------------------------------
 // Mock @sentry/react
 // ---------------------------------------------------------------------------
+const { mockBrowserTracingIntegration } = vi.hoisted(() => ({
+  mockBrowserTracingIntegration: vi.fn(() => ({ name: 'BrowserTracing' })),
+}));
+
 vi.mock('@sentry/react', () => {
   const ErrorBoundary = ({
     children,
@@ -28,6 +32,7 @@ vi.mock('@sentry/react', () => {
   return {
     init: vi.fn(),
     setUser: vi.fn(),
+    browserTracingIntegration: mockBrowserTracingIntegration,
     ErrorBoundary,
   };
 });
@@ -102,7 +107,7 @@ function Bomb() {
 // ---------------------------------------------------------------------------
 function runSentryInit(dsn: string | undefined) {
   if (dsn) {
-    Sentry.init({ dsn, environment: 'test' });
+    Sentry.init({ dsn, environment: 'test', integrations: [Sentry.browserTracingIntegration()] });
   }
 }
 
@@ -140,6 +145,17 @@ describe('Sentry integration', () => {
       runSentryInit(dsn);
       expect(Sentry.init).toHaveBeenCalledOnce();
       expect(Sentry.init).toHaveBeenCalledWith(expect.objectContaining({ dsn }));
+    });
+
+    it('includes browserTracingIntegration when DSN is provided', () => {
+      const dsn = 'https://examplePublicKey@o0.ingest.sentry.io/0';
+      runSentryInit(dsn);
+      expect(mockBrowserTracingIntegration).toHaveBeenCalled();
+      expect(Sentry.init).toHaveBeenCalledWith(
+        expect.objectContaining({
+          integrations: expect.arrayContaining([{ name: 'BrowserTracing' }]),
+        }),
+      );
     });
   });
 

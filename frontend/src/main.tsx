@@ -20,6 +20,7 @@ if (sentryDsn) {
   Sentry.init({
     dsn: sentryDsn,
     environment: import.meta.env.MODE,
+    integrations: [Sentry.browserTracingIntegration()],
   })
 }
 
