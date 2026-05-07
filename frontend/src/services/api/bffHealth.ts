@@ -4,7 +4,7 @@
  * Targets GET /api/v1/health/daemon on the BFF.
  * The endpoint is Clerk-protected and returns a simple status object.
  *
- * Response shape: { "status": "connected" | "disconnected" }
+ * Response shape: { "status": "connected" | "disconnected" | "reconnecting" }
  */
 
 import { getApiConfig, ApiRequestError } from '../apiClient';
@@ -13,7 +13,7 @@ import { getApiConfig, ApiRequestError } from '../apiClient';
 // Types
 // ---------------------------------------------------------------------------
 
-export type DaemonHealthStatus = 'connected' | 'disconnected';
+export type DaemonHealthStatus = 'connected' | 'disconnected' | 'reconnecting';
 
 export interface DaemonHealthResponse {
   status: DaemonHealthStatus;
