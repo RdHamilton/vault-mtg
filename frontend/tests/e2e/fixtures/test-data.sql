@@ -111,8 +111,8 @@ ON CONFLICT (deck_id, card_id, board) DO NOTHING;
 -- DSK Draft Deck (deck-004)
 INSERT INTO deck_cards (deck_id, card_id, quantity, board, from_draft_pick)
 VALUES
-    ('deck-004', 90002, 2, 'main', TRUE), ('deck-004', 90003, 1, 'main', TRUE), ('deck-004', 90006, 3, 'main', TRUE),
-    ('deck-004', 90005, 2, 'main', TRUE), ('deck-004', 90009, 2, 'main', TRUE)
+    ('deck-004', 90002, 2, 'main', 1), ('deck-004', 90003, 1, 'main', 1), ('deck-004', 90006, 3, 'main', 1),
+    ('deck-004', 90005, 2, 'main', 1), ('deck-004', 90009, 2, 'main', 1)
 ON CONFLICT (deck_id, card_id, board) DO NOTHING;
 
 -- ============================================================================
