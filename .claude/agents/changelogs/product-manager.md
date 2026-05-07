@@ -8,6 +8,30 @@
 **RICE score**: [if applicable]
 -->
 
+## 2026-05-07 — v0.3.0 ADR gap analysis, kickoff doc, and PRD update
+**Triggered by**: User request — three-task v0.3.0 launch sequence
+**Decision**: (1) Read ADRs 012/013/014 and existing tickets #1501-#1517. Found 6 uncovered ADR requirements: GRE flush threshold config, game_plays partial column, daemon_events sequence column, BFF gap detection, desktop import path update, CI pipeline update. Created tickets #1519-#1524 and added to board #29. (2) Wrote v0.3.0 kickoff doc covering all 31 tickets in 4 waves with user stories, ACs, exit gates, Week 2 bailout trigger, and v0.3.0-lite scope. (3) Updated beta-roadmap.md: v0.2.0 closed 2026-05-07, v0.3.0 active with 31 tickets, spike estimate revised to 3-4 weeks, ADR references added, v0.3.0-lite bailout scope added, Stripe deferral confirmed.
+**Output**: docs/prd/v0.3.0-kickoff.md, docs/prd/beta-roadmap.md (updated). GitHub issues #1519-#1524 on board #29. PR #1526.
+**RICE score**: N/A — planning/documentation work
+
+## 2026-05-07 — v0.3.0 Telemetry Parity full backlog creation
+**Triggered by**: User request — create ~15 missing tickets from spike report and add to board #29
+**Decision**: Created 17 tickets covering the full v0.3.0 scope: log sample spike, parser extraction (ADR-014), account_id schema retrofit (5 tables), 5 daemon classifiers (inventory/quest/collection/deck/match), sequence contract field (ADR-013), 4 BFF projection layer v2 tickets, 2 analytics endpoint groups, Settings page frontend, pagination standard, and CloudFront security headers.
+**Output**: GitHub issues #1501–#1517, all added to board #29 as Todo with milestone v0.3.0 (#69)
+**RICE score**: N/A — full milestone backlog build
+
+## 2026-05-07 — v0.2.0 Close and v0.3.0 Kickoff
+**Triggered by**: User request — sequence of three tasks: deferred onboarding tickets, close v0.2.0, launch v0.3.0
+**Decision**: Moved #1398 (daemon onboarding flow) and #1314 (API key UX) from v0.2.0 to v0.4.0 milestone — both require Clerk Pro ($25/mo) decision deferred to 2026-05-09. With these two deferred, gates 2-6 of v0.2.0 are all satisfied. Declared v0.2.0 DONE. Closed v0.2.0 milestone #67. Created v0.3.0 milestone #69 (Telemetry Parity). Board #29 already existed with 7 SSE/live-draft tickets; assigned v0.3.0 milestone to all 7. Also moved #1495 (staging EnvBadge test) from v0.2.0 to v0.3.0.
+**Output**: #1398 and #1314 moved to v0.4.0 milestone and added to board #30. Milestone #67 (v0.2.0) closed. Milestone #69 (v0.3.0) created. Board #29 (v0.3.0) confirmed with 7 tickets assigned v0.3.0 milestone.
+**RICE score**: N/A — wave management
+
+## 2026-05-07 — v0.2.0 Board #28 Cleanup
+**Triggered by**: User request — board had 19 no-status items creating noise
+**Decision**: Classified all 19 no-status items by milestone and state. Closed issues from old Phase 3/4 milestones moved to Done (they were complete work). Open issues from wrong milestones (Pre-Phase, Phase 2, Phase 5, v2.0, no milestone) removed from board entirely. Also moved 7 closed-issue PR Review items to Done, plus #1459 which was missed by a prior pipeline run.
+**Output**: 14 items removed, 13 items moved to Done (5 no-status closed + 7 PR Review closed + 1 from prior pipeline). Board reduced from 69 to 55 items. Final composition: Done 46, Todo 5, In Progress 2, PR Review 2. Zero no-status items remain.
+**RICE score**: N/A — board hygiene
+
 ## 2026-05-07 — v0.2.0 Board Re-verification
 **Triggered by**: User request — previous status check was stale (65% with Clerk Pro blocker)
 **Decision**: Re-queried board #28 directly. Confirmed #1314 and #1398 are NOT on the board (moved to v0.4.0 as user stated). Real completion is 54% excluding No Status noise (27/50), or 66-70% once 6 merged-but-stuck PR Review tickets are moved to Done. All remaining work is unblocked: 6 staging tail tickets + 4 testing debt tickets + 2 open PRs (#1354, #1410). No decision gates remain.

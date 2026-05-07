@@ -8,6 +8,36 @@
 **Discoveries**: architectural notes, missing test coverage, scope concerns, or context for future reviews (or "None")
 -->
 
+## 2026-05-07 — PR #1526: docs(prd): v0.3.0 kickoff doc and beta roadmap update
+**Ticket(s)**: #1387–#1393 (live draft), #1501–#1524 (telemetry), #1525 (superseded)
+**Verdict**: APPROVED ✓
+**Checks**: CLAUDE.md ✓ (docs-only — all code checks skipped)
+**Discoveries**: Exceptionally clear v0.3.0 kickoff with 31 tickets sequenced across 4 waves. Wave dependencies explicit and validated. Week 2 bailout scope (v0.3.0-lite) shows product-minded risk mitigation. ADR grounding (012/013/014) ensures architecture-first implementation. Spike tickets frontload assumption validation before full wave. Supersedes #1525 which conflicted after ADRs landed in #1518.
+
+## 2026-05-07 — PR #1525: docs(v0.3.0): ADRs 012-014, kickoff doc, and beta-roadmap update
+**Ticket(s)**: #1519, #1520, #1521, #1522, #1523, #1524 (referenced)
+**Verdict**: BLOCKED ✗
+**Checks**: CLAUDE.md ✓ (docs-only — code checks skipped)
+**Discoveries**: Duplicate effort. PR #1518 already landed the same three ADRs plus kickoff and roadmap docs. PR #1525 predates that merge, creating three-way conflicts. Content superseded. Closed in favour of #1526.
+
+## 2026-05-07 — PR #1518: docs(adr): ADR-012/013/014 — v0.3.0 telemetry arch
+**Ticket(s)**: #29
+**Verdict**: APPROVED ✓
+**Checks**: CLAUDE.md ✓ · frontend TypeScript ✓ · Playwright tests ✓
+**Discoveries**: 3 ADRs (game-play correlation, event ordering, parser extraction) + 18 e2e tests for history pages (auth flows, error states, pagination).
+
+## 2026-05-07 — PR #1500: test(e2e): add authenticated smoke tests for /history/matches and /history/drafts
+**Ticket(s)**: #1461
+**Verdict**: APPROVED ✓
+**Checks**: tsc ✓ | vitest ✓ (2702 tests) | CLAUDE.md ✓
+**Discoveries**: Comprehensive auth-gated E2E coverage for history routes. Replaces minimal smoke tests with full functional coverage: unauthenticated access assertions, signed-in table/empty-state validation, error state handling, pagination controls. Uses established Clerk test pattern (window.__CLERK_TEST_STATE__ injection). All ACs verified.
+
+## 2026-05-07 — PR #1499: fix(e2e): unblock collection page smoke tests (#1459)
+**Ticket(s)**: #1459
+**Verdict**: APPROVED ✓
+**Checks**: CLAUDE.md ✓ (frontend-only — Go checks skipped) | vitest ✓ | tsc ✓ | playwright ✓
+**Discoveries**: ProtectedRoute was redirecting to RedirectToSignIn because window.__CLERK_TEST_STATE__ was not injected. Fix injects signed-in state in beforeEach, removes test.describe.skip, and aligns locators to data-testid attributes. All 14 collection tests now run without skips.
+
 ## 2026-05-07 — PR #1486: docs(prd): update beta roadmap — defer Stripe to GA
 **Type**: Documentation
 **Verdict**: APPROVED ✓
@@ -136,6 +166,12 @@
 **Verdict**: APPROVED ✓
 **Checks**: go vet ✓ | go test ✓ | gofumpt ✓ (skipped) | CLAUDE.md ✓
 **Discoveries**: Documentation-only correction. Fixed stale import path (`github.com/ramonehamilton/mtga-contract` → `github.com/RdHamilton/MTGA-Companion/services/contract`) and updated project refs (#27 → #28). Low-risk maintenance.
+
+## 2026-05-06 — PR #1345: docs(arch): Clerk auth forbidden/required patterns (retroactive review)
+**Ticket(s)**: #1317
+**Verdict**: BLOCKED ✗ (retroactive — PR already merged)
+**Checks**: go vet: not run | go test: only partial suite | gofumpt: not verified | CLAUDE.md: violations found
+**Discoveries**: PR labeled `docs:` but contained behavioral Go code changes (security posture change on `/api/v1/draft-ratings` moved behind ClerkAuthMiddleware — correct but unlabeled). `go test -race ./...` not run. PR merged with unchecked test plan item (BFF integration smoke). `sk_test_dummy` literal matches `sk_*` scanner pattern — rename to `test-secret-key` to avoid false positives.
 
 ## 2026-05-05 — PR #1277: docs: add manual regression test plan and pre-release checklist
 **Ticket(s)**: N/A (ad-hoc)
