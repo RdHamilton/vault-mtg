@@ -70,9 +70,7 @@ describe('usePostHogIdentity', () => {
     const { usePostHogIdentity } = await import('./usePostHogIdentity');
     renderHook(() => usePostHogIdentity());
 
-    expect(mockCaptureEvent).toHaveBeenCalledWith('funnel_sign_up_completed', {
-      user_id: 'user_abc',
-    });
+    expect(mockCaptureEvent).toHaveBeenCalledWith('funnel_sign_up_completed', {});
     expect(sessionStorage.getItem(SESSION_KEY)).toBe('1');
   });
 

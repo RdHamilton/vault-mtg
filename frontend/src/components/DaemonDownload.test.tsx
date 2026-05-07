@@ -1,11 +1,64 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { render, screen, fireEvent } from '@testing-library/react';
 import DaemonDownload from './DaemonDownload';
+
+// ---------------------------------------------------------------------------
+// Mock analytics
+// ---------------------------------------------------------------------------
+vi.mock('@/services/analytics', () => ({
+  captureEvent: vi.fn(),
+  identifyUser: vi.fn(),
+  Events: {
+    FUNNEL_DAEMON_DOWNLOAD_STARTED: 'funnel_daemon_download_started',
+  },
+}));
+import { captureEvent } from '@/services/analytics';
 
 const RELEASES_BASE =
   'https://github.com/RdHamilton/MTGA-Companion/releases/latest/download';
 
 describe('DaemonDownload', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  describe('Analytics', () => {
+    it('calls captureEvent with funnel_daemon_download_started when Windows link is clicked', () => {
+      render(<DaemonDownload />);
+      const link = screen.getByTestId('download-link-windows-amd64');
+      fireEvent.click(link);
+      expect(captureEvent).toHaveBeenCalledWith(
+        'funnel_daemon_download_started',
+        expect.objectContaining({ os: 'windows-amd64', download_source: 'download_page' })
+      );
+    });
+
+    it('calls captureEvent with funnel_daemon_download_started when macOS arm64 link is clicked', () => {
+      render(<DaemonDownload />);
+      const link = screen.getByTestId('download-link-darwin-arm64');
+      fireEvent.click(link);
+      expect(captureEvent).toHaveBeenCalledWith(
+        'funnel_daemon_download_started',
+        expect.objectContaining({ os: 'darwin-arm64', download_source: 'download_page' })
+      );
+    });
+
+    it('calls captureEvent with funnel_daemon_download_started when macOS Intel link is clicked', () => {
+      render(<DaemonDownload />);
+      const link = screen.getByTestId('download-link-darwin-amd64');
+      fireEvent.click(link);
+      expect(captureEvent).toHaveBeenCalledWith(
+        'funnel_daemon_download_started',
+        expect.objectContaining({ os: 'darwin-amd64', download_source: 'download_page' })
+      );
+    });
+
+    it('does not fire captureEvent before any link is clicked', () => {
+      render(<DaemonDownload />);
+      expect(captureEvent).not.toHaveBeenCalled();
+    });
+  });
+
   describe('Section Structure', () => {
     it('should render the download section container', () => {
       render(<DaemonDownload />);

@@ -22,6 +22,18 @@ vi.mock('@/services/api/bffHealth', () => ({
   getDaemonHealth: (...args: unknown[]) => mockGetDaemonHealth(...args),
 }));
 
+// ---------------------------------------------------------------------------
+// Mock analytics
+// ---------------------------------------------------------------------------
+vi.mock('@/services/analytics', () => ({
+  captureEvent: vi.fn(),
+  identifyUser: vi.fn(),
+  Events: {
+    FUNNEL_DAEMON_CONNECTED: 'funnel_daemon_connected',
+  },
+}));
+import { captureEvent } from '@/services/analytics';
+
 describe('DaemonHealthIndicator', () => {
   beforeEach(() => {
     vi.useFakeTimers({ shouldAdvanceTime: false });
@@ -202,5 +214,52 @@ describe('DaemonHealthIndicator', () => {
 
     // Adapter should NOT be called when there's no token
     expect(mockGetDaemonHealth).not.toHaveBeenCalled();
+  });
+
+  describe('Analytics', () => {
+    it('fires funnel_daemon_connected on first transition to connected state', async () => {
+      mockGetDaemonHealth.mockResolvedValue({ status: 'connected' });
+
+      await act(async () => {
+        render(<DaemonHealthIndicator />);
+      });
+
+      expect(captureEvent).toHaveBeenCalledWith('funnel_daemon_connected', {});
+    });
+
+    it('fires funnel_daemon_connected only once even if polled again', async () => {
+      mockGetDaemonHealth.mockResolvedValue({ status: 'connected' });
+
+      await act(async () => {
+        render(<DaemonHealthIndicator />);
+      });
+
+      // Advance timer to trigger second poll
+      await act(async () => {
+        vi.advanceTimersByTime(30_000);
+      });
+
+      expect(captureEvent).toHaveBeenCalledTimes(1);
+    });
+
+    it('does NOT fire funnel_daemon_connected when status is disconnected', async () => {
+      mockGetDaemonHealth.mockResolvedValue({ status: 'disconnected' });
+
+      await act(async () => {
+        render(<DaemonHealthIndicator />);
+      });
+
+      expect(captureEvent).not.toHaveBeenCalled();
+    });
+
+    it('does NOT fire funnel_daemon_connected when fetch fails', async () => {
+      mockGetDaemonHealth.mockRejectedValue(new Error('Network error'));
+
+      await act(async () => {
+        render(<DaemonHealthIndicator />);
+      });
+
+      expect(captureEvent).not.toHaveBeenCalled();
+    });
   });
 });

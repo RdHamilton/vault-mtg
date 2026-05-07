@@ -16,6 +16,14 @@ vi.mock('@/context/DownloadContext', () => ({
   DownloadProvider: ({ children }: { children: React.ReactNode }) => children,
 }));
 
+// ---------------------------------------------------------------------------
+// Mock usePostHogIdentity so we can assert it is called during Layout mount
+// ---------------------------------------------------------------------------
+const mockUsePostHogIdentity = vi.fn();
+vi.mock('@/hooks/usePostHogIdentity', () => ({
+  usePostHogIdentity: () => mockUsePostHogIdentity(),
+}));
+
 describe('Layout Component', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -23,6 +31,17 @@ describe('Layout Component', () => {
     mockSystem.getStatus.mockResolvedValue({
       status: 'standalone',
       connected: false,
+    });
+  });
+
+  describe('PostHog Identity', () => {
+    it('mounts usePostHogIdentity hook on render', () => {
+      render(
+        <Layout>
+          <div>Test Content</div>
+        </Layout>
+      );
+      expect(mockUsePostHogIdentity).toHaveBeenCalled();
     });
   });
 

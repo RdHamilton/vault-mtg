@@ -12,6 +12,18 @@ vi.mock('@/services/api/bffMatchHistory', () => ({
 import { getMatchHistory } from '@/services/api/bffMatchHistory';
 const mockGetMatchHistory = vi.mocked(getMatchHistory);
 
+// ---------------------------------------------------------------------------
+// Mock analytics
+// ---------------------------------------------------------------------------
+vi.mock('@/services/analytics', () => ({
+  captureEvent: vi.fn(),
+  identifyUser: vi.fn(),
+  Events: {
+    FUNNEL_FIRST_DATA_LOADED: 'funnel_first_data_loaded',
+  },
+}));
+import { captureEvent } from '@/services/analytics';
+
 function makeResponse(overrides: Partial<MatchHistoryResponse> = {}): MatchHistoryResponse {
   return {
     matches: [],
@@ -22,9 +34,12 @@ function makeResponse(overrides: Partial<MatchHistoryResponse> = {}): MatchHisto
   };
 }
 
+const FIRST_DATA_FLAG = 'vaultmtg_ph_funnel_first_data_loaded_fired';
+
 describe('BffMatchHistory', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    localStorage.clear();
   });
 
   describe('Loading state', () => {
@@ -302,6 +317,83 @@ describe('BffMatchHistory', () => {
 
       await waitFor(() => {
         expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent('Match History');
+      });
+    });
+  });
+
+  describe('Analytics', () => {
+    it('fires funnel_first_data_loaded when match data loads for the first time', async () => {
+      mockGetMatchHistory.mockResolvedValue(makeResponse({
+        total: 5,
+        matches: Array.from({ length: 5 }, (_, i) => ({
+          id: i + 1,
+          opponent_deck: `Deck ${i}`,
+          result: 'win',
+          format: 'Standard',
+          played_at: '2026-05-01T14:30:00Z',
+        })),
+      }));
+
+      render(<BffMatchHistory />);
+
+      await waitFor(() => {
+        expect(captureEvent).toHaveBeenCalledWith(
+          'funnel_first_data_loaded',
+          expect.objectContaining({ match_count: 5 })
+        );
+      });
+    });
+
+    it('does NOT fire funnel_first_data_loaded when localStorage guard is already set', async () => {
+      localStorage.setItem(FIRST_DATA_FLAG, '1');
+      mockGetMatchHistory.mockResolvedValue(makeResponse({
+        total: 5,
+        matches: Array.from({ length: 5 }, (_, i) => ({
+          id: i + 1,
+          opponent_deck: `Deck ${i}`,
+          result: 'win',
+          format: 'Standard',
+          played_at: '2026-05-01T14:30:00Z',
+        })),
+      }));
+
+      render(<BffMatchHistory />);
+
+      await waitFor(() => {
+        expect(screen.getByTestId('match-history-table')).toBeInTheDocument();
+      });
+
+      expect(captureEvent).not.toHaveBeenCalled();
+    });
+
+    it('does NOT fire funnel_first_data_loaded when total is 0', async () => {
+      mockGetMatchHistory.mockResolvedValue(makeResponse({ total: 0, matches: [] }));
+
+      render(<BffMatchHistory />);
+
+      await waitFor(() => {
+        expect(screen.getByTestId('match-history-empty')).toBeInTheDocument();
+      });
+
+      expect(captureEvent).not.toHaveBeenCalled();
+    });
+
+    it('sets localStorage guard after firing funnel_first_data_loaded', async () => {
+      mockGetMatchHistory.mockResolvedValue(makeResponse({
+        total: 3,
+        matches: Array.from({ length: 3 }, (_, i) => ({
+          id: i + 1,
+          opponent_deck: `Deck ${i}`,
+          result: 'win',
+          format: 'Standard',
+          played_at: '2026-05-01T14:30:00Z',
+        })),
+      }));
+
+      render(<BffMatchHistory />);
+
+      await waitFor(() => {
+        expect(localStorage.getItem(FIRST_DATA_FLAG)).toBe('1');
       });
     });
   });

@@ -33,9 +33,7 @@ export function usePostHogIdentity(): void {
 
         // Fire funnel_sign_up_completed once per session.
         if (!sessionStorage.getItem(SESSION_KEY)) {
-          captureEvent(Events.FUNNEL_SIGN_UP_COMPLETED, {
-            user_id: user.id,
-          });
+          captureEvent(Events.FUNNEL_SIGN_UP_COMPLETED, {});
           sessionStorage.setItem(SESSION_KEY, '1');
         }
       }
