@@ -1,0 +1,235 @@
+name: Staging Deploy
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'services/bff/**'
+      - 'services/bff/internal/storage/migrations/postgres/**'
+
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: 'Git ref to deploy to staging (branch, tag, or SHA)'
+        required: false
+        default: 'main'
+        type: string
+
+permissions:
+  contents: read
+  id-token: write  # required for OIDC-based AWS auth
+
+env:
+  STAGING_BUCKET: mtga-companion-deploy-artifacts-staging
+  DEPLOY_SHA: ${{ github.sha }}
+
+jobs:
+  deploy-staging:
+    name: Deploy BFF to Staging
+    runs-on: ubuntu-latest
+    environment: staging
+    concurrency:
+      group: bff-staging-deploy
+      cancel-in-progress: false
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v6
+      with:
+        ref: ${{ inputs.ref || github.sha }}
+
+    - name: Set up Go
+      uses: actions/setup-go@v5
+      with:
+        go-version: '1.25'
+
+    - name: Build BFF for linux/amd64 (staging)
+      env:
+        GONOSUMDB: github.com/RdHamilton/MTGA-Companion
+        GOPRIVATE: github.com/RdHamilton/MTGA-Companion
+      run: |
+        cd services/bff
+        GOOS=linux GOARCH=amd64 go build -o mtga-bff-staging ./cmd/main.go
+
+    - name: Configure AWS credentials (OIDC)
+      uses: aws-actions/configure-aws-credentials@v6
+      with:
+        role-to-assume: ${{ secrets.AWS_DEPLOY_ROLE_ARN }}
+        aws-region: us-east-1
+
+    # Create the staging artifacts bucket if it does not already exist.
+    # aws s3api create-bucket is idempotent when called with --region us-east-1
+    # (no LocationConstraint needed for us-east-1).
+    - name: Ensure staging S3 bucket exists
+      run: |
+        aws s3api create-bucket \
+          --bucket "$STAGING_BUCKET" \
+          --region us-east-1 2>/dev/null || true
+        aws s3api put-bucket-versioning \
+          --bucket "$STAGING_BUCKET" \
+          --versioning-configuration Status=Enabled || true
+
+    - name: Upload binary to S3 (staging)
+      run: |
+        aws s3 cp services/bff/mtga-bff-staging \
+          s3://$STAGING_BUCKET/staging/${{ github.sha }}/mtga-bff-staging
+
+    - name: Upload deploy scripts to S3 (staging)
+      run: |
+        # Fetch scripts from the infra repo via the deployed scripts path.
+        # Scripts for staging are stored alongside prod scripts in the same deploy bucket
+        # under a staging/ prefix.
+        aws s3 sync scripts/deploy/ \
+          s3://$STAGING_BUCKET/scripts/ \
+          --exclude "*" --include "*.sh"
+
+    # Renders /etc/mtga-companion-staging/env from SSM parameter hierarchy
+    # /vaultmtg/staging/* and /mtga-companion/staging/*.
+    # Secrets are read ON the EC2 instance by the instance IAM role -- never
+    # touch the GitHub Actions runner.
+    - name: Provision staging env on EC2
+      run: |
+        COMMAND_ID=$(aws ssm send-command \
+          --instance-ids "${{ secrets.EC2_INSTANCE_ID }}" \
+          --document-name "AWS-RunShellScript" \
+          --parameters 'commands=["aws s3 cp s3://${{ env.STAGING_BUCKET }}/scripts/provision-staging-env.sh /tmp/provision-staging-env.sh && chmod +x /tmp/provision-staging-env.sh && /tmp/provision-staging-env.sh"]' \
+          --region us-east-1 \
+          --query "Command.CommandId" \
+          --output text)
+
+        echo "Provision env SSM Command ID: $COMMAND_ID"
+
+        for i in $(seq 1 24); do
+          STATUS=$(aws ssm get-command-invocation \
+            --command-id "$COMMAND_ID" \
+            --instance-id "${{ secrets.EC2_INSTANCE_ID }}" \
+            --region us-east-1 \
+            --query "Status" \
+            --output text 2>/dev/null || echo "Pending")
+          echo "[$i/24] Status: $STATUS"
+          if [ "$STATUS" = "Success" ]; then
+            echo "Staging env provisioned."
+            break
+          elif [ "$STATUS" = "Failed" ] || [ "$STATUS" = "Cancelled" ] || [ "$STATUS" = "TimedOut" ]; then
+            echo "Provision failed: $STATUS"
+            aws ssm get-command-invocation \
+              --command-id "$COMMAND_ID" \
+              --instance-id "${{ secrets.EC2_INSTANCE_ID }}" \
+              --region us-east-1 \
+              --query "StandardErrorContent" \
+              --output text
+            exit 1
+          fi
+          sleep 10
+        done
+
+    - name: Stage binary on EC2 via SSM
+      run: |
+        COMMAND_ID=$(aws ssm send-command \
+          --instance-ids "${{ secrets.EC2_INSTANCE_ID }}" \
+          --document-name "AWS-RunShellScript" \
+          --parameters 'commands=["aws s3 cp s3://${{ env.STAGING_BUCKET }}/scripts/stage-binary-staging.sh /tmp/stage-binary-staging.sh && chmod +x /tmp/stage-binary-staging.sh && /tmp/stage-binary-staging.sh"]' \
+          --region us-east-1 \
+          --query "Command.CommandId" \
+          --output text \
+          --environment-variables "DEPLOY_BUCKET=${{ env.STAGING_BUCKET }},DEPLOY_SHA=${{ github.sha }}")
+
+        echo "Stage binary SSM Command ID: $COMMAND_ID"
+
+        for i in $(seq 1 60); do
+          STATUS=$(aws ssm get-command-invocation \
+            --command-id "$COMMAND_ID" \
+            --instance-id "${{ secrets.EC2_INSTANCE_ID }}" \
+            --region us-east-1 \
+            --query "Status" \
+            --output text 2>/dev/null || echo "Pending")
+          echo "[$i/60] Status: $STATUS"
+          if [ "$STATUS" = "Success" ]; then
+            echo "Staging binary staged."
+            break
+          elif [ "$STATUS" = "Failed" ] || [ "$STATUS" = "Cancelled" ] || [ "$STATUS" = "TimedOut" ]; then
+            echo "Stage failed: $STATUS"
+            aws ssm get-command-invocation \
+              --command-id "$COMMAND_ID" \
+              --instance-id "${{ secrets.EC2_INSTANCE_ID }}" \
+              --region us-east-1 \
+              --query "StandardErrorContent" \
+              --output text
+            exit 1
+          fi
+          sleep 10
+        done
+
+    - name: Restart staging BFF service via SSM
+      run: |
+        COMMAND_ID=$(aws ssm send-command \
+          --instance-ids "${{ secrets.EC2_INSTANCE_ID }}" \
+          --document-name "AWS-RunShellScript" \
+          --parameters 'commands=["aws s3 cp s3://${{ env.STAGING_BUCKET }}/scripts/restart-bff-staging.sh /tmp/restart-bff-staging.sh && chmod +x /tmp/restart-bff-staging.sh && /tmp/restart-bff-staging.sh"]' \
+          --region us-east-1 \
+          --query "Command.CommandId" \
+          --output text)
+
+        echo "Restart SSM Command ID: $COMMAND_ID"
+
+        for i in $(seq 1 12); do
+          STATUS=$(aws ssm get-command-invocation \
+            --command-id "$COMMAND_ID" \
+            --instance-id "${{ secrets.EC2_INSTANCE_ID }}" \
+            --region us-east-1 \
+            --query "Status" \
+            --output text 2>/dev/null || echo "Pending")
+          echo "[$i/12] Status: $STATUS"
+          if [ "$STATUS" = "Success" ]; then
+            echo "Staging service restarted."
+            break
+          elif [ "$STATUS" = "Failed" ] || [ "$STATUS" = "Cancelled" ] || [ "$STATUS" = "TimedOut" ]; then
+            echo "Restart failed: $STATUS"
+            aws ssm get-command-invocation \
+              --command-id "$COMMAND_ID" \
+              --instance-id "${{ secrets.EC2_INSTANCE_ID }}" \
+              --region us-east-1 \
+              --query "StandardErrorContent" \
+              --output text
+            exit 1
+          fi
+          sleep 10
+        done
+
+    - name: Post-deploy health check (staging)
+      run: |
+        COMMAND_ID=$(aws ssm send-command \
+          --instance-ids "${{ secrets.EC2_INSTANCE_ID }}" \
+          --document-name "AWS-RunShellScript" \
+          --parameters 'commands=["aws s3 cp s3://${{ env.STAGING_BUCKET }}/scripts/healthcheck-bff-staging.sh /tmp/healthcheck-bff-staging.sh && chmod +x /tmp/healthcheck-bff-staging.sh && /tmp/healthcheck-bff-staging.sh"]' \
+          --region us-east-1 \
+          --query "Command.CommandId" \
+          --output text)
+
+        echo "Health check SSM Command ID: $COMMAND_ID"
+
+        for i in $(seq 1 15); do
+          STATUS=$(aws ssm get-command-invocation \
+            --command-id "$COMMAND_ID" \
+            --instance-id "${{ secrets.EC2_INSTANCE_ID }}" \
+            --region us-east-1 \
+            --query "Status" \
+            --output text 2>/dev/null || echo "Pending")
+          echo "[$i/15] Status: $STATUS"
+          if [ "$STATUS" = "Success" ]; then
+            echo "Staging health check passed."
+            exit 0
+          elif [ "$STATUS" = "Failed" ] || [ "$STATUS" = "Cancelled" ] || [ "$STATUS" = "TimedOut" ]; then
+            echo "Health check failed: $STATUS"
+            aws ssm get-command-invocation \
+              --command-id "$COMMAND_ID" \
+              --instance-id "${{ secrets.EC2_INSTANCE_ID }}" \
+              --region us-east-1 \
+              --query "StandardErrorContent" \
+              --output text
+            exit 1
+          fi
+          sleep 10
+        done
+        echo "Timed out waiting for staging health check" >&2
+        exit 1
