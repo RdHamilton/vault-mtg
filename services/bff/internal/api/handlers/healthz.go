@@ -36,22 +36,22 @@ func NewHealthzHandler(env, databaseURL string, checker MigrationChecker) *Healt
 
 // healthzResponse is the JSON body returned by GET /healthz.
 type healthzResponse struct {
-	Status     string `json:"status"`
-	Env        string `json:"env"`
-	Migrations string `json:"migrations"`
+	Status           string `json:"status"`
+	Env              string `json:"env"`
+	MigrationVersion string `json:"migration_version"`
 }
 
 // ServeHTTP handles GET /healthz.
 //
-// Always returns 200.  The migrations field is "up-to-date" when the DB is
-// reachable and at the latest schema version; "unknown" otherwise.
+// Always returns 200.  The migration_version field is "up-to-date" when the
+// DB is reachable and at the latest schema version; "unknown" otherwise.
 func (h *HealthzHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	migrations := h.checkMigration(h.databaseURL)
 
 	resp := healthzResponse{
-		Status:     "ok",
-		Env:        h.env,
-		Migrations: migrations,
+		Status:           "ok",
+		Env:              h.env,
+		MigrationVersion: migrations,
 	}
 
 	w.Header().Set("Content-Type", "application/json")

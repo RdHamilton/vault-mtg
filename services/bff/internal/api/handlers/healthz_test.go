@@ -24,9 +24,9 @@ func TestHealthzHandler_Returns200WithCorrectEnv(t *testing.T) {
 	}
 
 	var body struct {
-		Status     string `json:"status"`
-		Env        string `json:"env"`
-		Migrations string `json:"migrations"`
+		Status           string `json:"status"`
+		Env              string `json:"env"`
+		MigrationVersion string `json:"migration_version"`
 	}
 	if err := json.NewDecoder(w.Body).Decode(&body); err != nil {
 		t.Fatalf("decode body: %v", err)
@@ -40,8 +40,8 @@ func TestHealthzHandler_Returns200WithCorrectEnv(t *testing.T) {
 		t.Errorf("expected env 'staging', got %q", body.Env)
 	}
 
-	if body.Migrations != storage.MigrationStatusUpToDate {
-		t.Errorf("expected migrations %q, got %q", storage.MigrationStatusUpToDate, body.Migrations)
+	if body.MigrationVersion != storage.MigrationStatusUpToDate {
+		t.Errorf("expected migration_version %q, got %q", storage.MigrationStatusUpToDate, body.MigrationVersion)
 	}
 }
 
@@ -60,14 +60,14 @@ func TestHealthzHandler_Returns200WithUnknownMigrationsWhenDBUnreachable(t *test
 	}
 
 	var body struct {
-		Migrations string `json:"migrations"`
+		MigrationVersion string `json:"migration_version"`
 	}
 	if err := json.NewDecoder(w.Body).Decode(&body); err != nil {
 		t.Fatalf("decode body: %v", err)
 	}
 
-	if body.Migrations != storage.MigrationStatusUnknown {
-		t.Errorf("expected migrations %q, got %q", storage.MigrationStatusUnknown, body.Migrations)
+	if body.MigrationVersion != storage.MigrationStatusUnknown {
+		t.Errorf("expected migration_version %q, got %q", storage.MigrationStatusUnknown, body.MigrationVersion)
 	}
 }
 
@@ -110,4 +110,77 @@ func TestHealthzHandler_ProductionEnvInResponse(t *testing.T) {
 	if body.Env != "production" {
 		t.Errorf("expected env 'production', got %q", body.Env)
 	}
+}
+
+// TestHealthzHandler_ResponseContainsMigrationVersionField is an integration-
+// style test that exercises the full handler and asserts the response JSON
+// contains a "migration_version" key (not the old "migrations" key).
+func TestHealthzHandler_ResponseContainsMigrationVersionField(t *testing.T) {
+	const wantVersion = "up-to-date"
+
+	checker := func(_ string) string { return wantVersion }
+	h := handlers.NewHealthzHandler("staging", "postgres://localhost/test", checker)
+
+	req := httptest.NewRequest(http.MethodGet, "/healthz", nil)
+	w := httptest.NewRecorder()
+
+	h.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", w.Code)
+	}
+
+	// Decode into a generic map so we can assert key presence explicitly.
+	var raw map[string]interface{}
+	if err := json.NewDecoder(w.Body).Decode(&raw); err != nil {
+		t.Fatalf("decode body: %v", err)
+	}
+
+	// "migration_version" must be present.
+	val, ok := raw["migration_version"]
+	if !ok {
+		t.Fatalf("response JSON missing 'migration_version' key; got keys: %v", keysOf(raw))
+	}
+	if val != wantVersion {
+		t.Errorf("migration_version: want %q, got %q", wantVersion, val)
+	}
+
+	// "migrations" must NOT be present (old field name removed).
+	if _, found := raw["migrations"]; found {
+		t.Errorf("response JSON still contains old 'migrations' key — must be removed")
+	}
+
+	// Verify remaining shape.
+	if raw["status"] != "ok" {
+		t.Errorf("status: want 'ok', got %q", raw["status"])
+	}
+	if raw["env"] != "staging" {
+		t.Errorf("env: want 'staging', got %q", raw["env"])
+	}
+}
+
+// TestHealthzHandler_ContentTypeIsJSON asserts the handler sets the correct
+// Content-Type header.
+func TestHealthzHandler_ContentTypeIsJSON(t *testing.T) {
+	checker := func(_ string) string { return storage.MigrationStatusUpToDate }
+	h := handlers.NewHealthzHandler("staging", "", checker)
+
+	req := httptest.NewRequest(http.MethodGet, "/healthz", nil)
+	w := httptest.NewRecorder()
+
+	h.ServeHTTP(w, req)
+
+	ct := w.Header().Get("Content-Type")
+	if ct != "application/json" {
+		t.Errorf("Content-Type: want 'application/json', got %q", ct)
+	}
+}
+
+// keysOf returns the keys of a map as a slice, for use in error messages.
+func keysOf(m map[string]interface{}) []string {
+	keys := make([]string, 0, len(m))
+	for k := range m {
+		keys = append(keys, k)
+	}
+	return keys
 }
