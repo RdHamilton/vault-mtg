@@ -19,7 +19,8 @@
     "test:e2e:ui": "playwright test --ui",
     "test:e2e:debug": "playwright test --debug",
     "test:e2e:pipeline": "USE_LOG_FIXTURES=true playwright test --project=pipeline",
-    "screenshots": "playwright test --project=screenshots"
+    "screenshots": "playwright test --project=screenshots",
+    "test:staging": "playwright test --config=playwright.staging.config.ts"
   },
   "dependencies": {
     "@clerk/react": "^6.6.0",
