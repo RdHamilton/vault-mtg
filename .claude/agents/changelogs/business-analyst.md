@@ -7,6 +7,11 @@
 **Key finding**: [the one insight that changes how PM should think about something]
 -->
 
+## 2026-05-06 — PostHog event taxonomy finalization
+**Type**: ad-hoc
+**Output**: /Users/ramonehamilton/Documents/Personal Projects/MTGA-Companion/docs/analytics/event-taxonomy.md
+**Key finding**: Zero PostHog instrumentation exists in main — PR #1463 is on a branch not checked out here; all 31 events defined in the taxonomy are net-new work. The activation funnel has 7 events, all unimplemented, meaning beta will launch with no funnel visibility unless the frontend ticket is prioritized immediately.
+
 ## 2026-05-06 — Beta success metrics and funnel to 50K MAU
 **Type**: ad-hoc
 **Output**: returned inline to product-manager planning session

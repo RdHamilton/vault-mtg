@@ -7,6 +7,11 @@
 **Key decisions**: [palette rationale, font choices, notable tradeoffs]
 -->
 
+## 2026-05-06 — VaultMTG comprehensive design system spec
+**Type**: design system / component spec
+**Output**: docs/design/vaultmtg-design-system.md
+**Key decisions**: Built on top of the existing vaultmtg-brand.md palette (Vault Amber #F5A623, cool-slate surfaces, Sora/Inter/JetBrains Mono stack). Audited all 30+ component CSS files in frontend/src/components/ — found the existing app uses entirely ad-hoc hex values (#4a9eff blue, #1e1e1e/#2d2d2d gray surfaces, no variables) which confirm there is no competing design system to reconcile. Added surface-sunken (#0A0E16) for inputs and code blocks — a fourth surface tier not in the brand doc, necessary for dark inputs on dark cards. Added secondary accent (Indigo #6366F1) to provide an alternative interactive color for non-primary elements. Full component specs for Button (4 variants + icon), Card (3 variants), Badge/Tag (tier, format, pip, win-rate), Table, Nav/Sidebar, Input/Select, Toast (4 variants), Empty State, Loading Skeleton, and Draft Pick Card. CSS custom properties block ready to drop into index.css. Tailwind config extension includes overridden font sizes (11/13/15/17/20/26/34/48 instead of Tailwind defaults), all color tokens, shadow tokens, z-index scale, and shimmer/toast/fade keyframes. Migration notes prioritize the high-frequency replacements (#4a9eff → primary, #aaaaaa → text-secondary) to guide front-engineer through the token swap.
+
 ## 2026-05-05 — rhamiltoneng.com brand design document
 **Type**: brand doc
 **Output**: docs/design/rhamiltoneng-brand.md

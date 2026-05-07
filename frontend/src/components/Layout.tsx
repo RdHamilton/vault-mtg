@@ -6,6 +6,7 @@ import DaemonHealthIndicator from './DaemonHealthIndicator';
 import { system } from '@/services/api';
 import { EventsOn, EventsOff } from '@/services/websocketClient';
 import { gui } from '@/types/models';
+import { usePostHogIdentity } from '@/hooks/usePostHogIdentity';
 import './Layout.css';
 
 interface LayoutProps {
@@ -14,6 +15,8 @@ interface LayoutProps {
 
 const Layout = ({ children }: LayoutProps) => {
   const location = useLocation();
+  // Identify signed-in user with PostHog and fire funnel_sign_up_completed once per session.
+  usePostHogIdentity();
   const [connectionStatus, setConnectionStatus] = useState<gui.ConnectionStatus>(
     new gui.ConnectionStatus({
       status: 'standalone',

@@ -1,4 +1,5 @@
 import { useMemo } from 'react';
+import { captureEvent, Events } from '@/services/analytics';
 import './DaemonDownload.css';
 
 const RELEASES_BASE =
@@ -109,6 +110,12 @@ const DaemonDownload = () => {
               className={`daemon-download-button ${isDetected ? 'daemon-download-button--primary' : 'daemon-download-button--secondary'}`}
               data-testid={`download-link-${option.platform}`}
               download
+              onClick={() => {
+                captureEvent(Events.FUNNEL_DAEMON_DOWNLOAD_STARTED, {
+                  os: option.platform,
+                  download_source: 'download_page',
+                });
+              }}
             >
               <span className="daemon-download-button-label">{option.label}</span>
               {isDetected && (

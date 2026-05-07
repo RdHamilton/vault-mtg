@@ -4,7 +4,10 @@ import { getMatchHistory } from '@/services/api/bffMatchHistory';
 import type { MatchHistoryItem } from '@/services/api/bffMatchHistory';
 import LoadingSpinner from '../components/LoadingSpinner';
 import EmptyState from '../components/EmptyState';
+import { captureEvent, Events } from '@/services/analytics';
 import './BffMatchHistory.css';
+
+const FIRST_DATA_FLAG = 'vaultmtg_ph_funnel_first_data_loaded_fired';
 
 const PAGE_SIZE = 20;
 
@@ -32,6 +35,11 @@ const BffMatchHistory = () => {
         setMatches(data.matches);
         setTotal(data.total);
         setOffset(nextOffset);
+        // Fire funnel_first_data_loaded once per user (localStorage guard).
+        if (data.total > 0 && !localStorage.getItem(FIRST_DATA_FLAG)) {
+          captureEvent(Events.FUNNEL_FIRST_DATA_LOADED, { match_count: data.total });
+          localStorage.setItem(FIRST_DATA_FLAG, '1');
+        }
       } catch (err) {
         setError(err instanceof Error ? err.message : 'Failed to load match history');
       } finally {

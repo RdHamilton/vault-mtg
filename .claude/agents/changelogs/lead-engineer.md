@@ -8,6 +8,81 @@
 **Discoveries**: architectural notes, missing test coverage, scope concerns, or context for future reviews (or "None")
 -->
 
+## 2026-05-07 — PR #1486: docs(prd): update beta roadmap — defer Stripe to GA
+**Type**: Documentation
+**Verdict**: APPROVED ✓
+**Checks**: CLAUDE.md ✓ (code checks N/A — docs only)
+**Discoveries**: Beta scope clarified as free/invite-only; Stripe billing, Stripe Tax, PostHog revenue events, and free/paid tier enforcement deferred to post-beta GA. Tickets #982, #980, #985 moved to Post-Beta board. Exit gates updated; financially ready gate simplified to AWS runway only.
+
+## 2026-05-07 — PR #1485: docs(design) add VaultMTG design system reference
+**Ticket(s)**: #1465
+**Verdict**: APPROVED ✓
+**Checks**: CLAUDE.md ✓ (Go/frontend checks skipped — documentation-only)
+**Discoveries**: 
+- Comprehensive, implementation-ready design system spec (color tokens, typography, spacing, 10 component specs)
+- WCAG AA/AAA contrast ratios verified
+- CSS custom properties + Tailwind config extension included
+- Clear migration path for existing codebase
+- No code violations or over-engineering detected
+
+## 2026-05-07 — PR #1484: docs(marketing): add beta launch copy and UTM naming convention
+**Tickets**: N/A
+**Verdict**: APPROVED ✓
+**Checks**: CLAUDE.md ✓ (docs-only)
+**Discoveries**: Launch copy well-segmented by audience with proper UTM tracking. UTM naming convention guide provides clear taxonomy and lookup table. No scope creep or compliance violations.
+
+## 2026-05-07 — PR #1483: docs(support): add daemon installation, troubleshooting, and uninstall KB articles
+
+**Ticket(s)**: None
+
+**Verdict**: APPROVED ✓
+
+**Checks**: go vet: skipped (no code) | go test: skipped (no code) | gofumpt: skipped (no code) | CLAUDE.md: n/a (documentation only)
+
+**Discoveries**: Documentation-only PR with 3 new support KB articles and FAQ improvements. Content is well-structured with platform-specific instructions and cross-references. No code review or tests required.
+
+## 2026-05-07 — PR #1463: feat(analytics): instrument activation funnel in PostHog
+
+**Ticket(s)**: #1410
+
+**Verdict**: BLOCKED ✗
+
+**Checks**: 
+- TypeScript: ✓ pass
+- vitest (analytics tests): ✓ 8 tests pass
+- CLAUDE.md compliance: ✗ FAIL
+
+**Discoveries**: 
+1. **Missing hook test coverage** — `usePostHogIdentity.ts` is new React hook with zero tests. CLAUDE.md requires tests for all UI/component changes.
+2. **Hook never integrated** — Hook exported but never imported/called. Hook should be mounted in Layout per PR body but is not. Result: `funnel_sign_up_completed` events will never fire.
+3. **Scope mismatch** — PR claims "instrument activation funnel (5 events)" but only provides service layer + unused hook. Firing points (DaemonDownload, DaemonHealthIndicator, BffMatchHistory) not instrumented in this PR.
+
+**Action**: Request changes — add usePostHogIdentity test file, integrate hook in Layout, clarify scope.
+
+## 2026-05-07 — PR #1464: test: fix E2E config binary path, Clerk auth for history spec, add 6 component tests
+**Ticket(s)**: N/A (test infrastructure)
+**Verdict**: BLOCKED ✗
+**Checks**: go vet: skip | go test: skip | gofumpt: skip | CLAUDE.md: ✓ | vitest: 2681 passed ✓ | tsc: clean ✓ | playwright smoke: FAILED ✗
+**Discoveries**: playwright.config.ts CI and local dev binary paths use ../../ (two levels up from frontend/) but correct path is ../ (one level up). Fix: change ../../bin/mtga-bff to ../bin/mtga-bff and ../../services/bff/cmd/main.go to ../services/bff/cmd/main.go. All other changes approved pending path fix.
+
+## 2026-05-06 — PR #1466: fix(frontend): add browserTracingIntegration to Sentry.init
+**Ticket(s)**: #1424
+**Verdict**: APPROVED ✓
+**Checks**: go vet: skip | go test: skip | gofumpt: skip | CLAUDE.md: ✓ | vitest: 2681 passed | tsc: clean
+**Discoveries**: Frontend-only change. browserTracingIntegration added to Sentry.init in main.tsx. Corresponding vitest assertion added in sentry.test.tsx. No auth files touched — route audit not required. No forbidden Clerk patterns. No PII in Sentry config. PR was already merged (5c69b9b) before pipeline ran; post-merge docs written retroactively.
+
+## 2026-05-06 — PR #1464: test: fix E2E config and add component tests
+**Ticket(s)**: #1464
+**Verdict**: APPROVED ✓
+**Checks**: tsc ✓ · vitest ✓ · CLAUDE.md ✓
+**Discoveries**: Frontend-only PR with 6 new component test files covering CardHoverPreview, CardsToLookFor, DeckSuggestionCard, KeyboardShortcutsHandler, MissingCards, PerformanceMetrics. E2E config corrected to use new BFF binary path and local dev command. All 2681 vitest tests passed.
+
+## 2026-05-06 — PR #1457: fix(bff): rename /healthz migration field to migration_version
+**Ticket(s)**: #1451
+**Verdict**: APPROVED ✓
+**Checks**: gofumpt: clean | go vet: pass | go test -race: pass (6/6 healthz tests) | CLAUDE.md: pass
+**Discoveries**: AC gap — ticket requires numeric migration version value (e.g. 67) not string "up-to-date"; value shape unchanged. Live-BFF integration test not added (httptest used instead). Both gaps pre-existing from original impl. Follow-up ticket recommended.
+
 ## 2026-05-06 — PR #1413: feat(frontend): EmptyState component — heading/subtext/variant/CTA API (#1397)
 **Ticket(s)**: #1397
 **Verdict**: BLOCKED ✗
@@ -62,30 +137,11 @@
 **Checks**: go vet ✓ | go test ✓ | gofumpt ✓ (skipped) | CLAUDE.md ✓
 **Discoveries**: Documentation-only correction. Fixed stale import path (`github.com/ramonehamilton/mtga-contract` → `github.com/RdHamilton/MTGA-Companion/services/contract`) and updated project refs (#27 → #28). Low-risk maintenance.
 
-## 2026-05-06 — PR #1375: fix(agents): correct stale module path and project #27 refs
-
-**Tickets**: N/A (documentation fix)
-
-**Verdict**: APPROVED ✓
-
-**Checks**: CLAUDE.md ✓ · (Go/frontend skipped — doc-only)
-
-**Discoveries**: Documentation-only correction of stale references flagged by CodeRabbit on PR #1374. Fixes incorrect import path (`github.com/ramonehamilton/mtga-contract` → `github.com/RdHamilton/MTGA-Companion/services/contract`) in backend-engineer.md and updates project board references (#27 → #28) in both backend-engineer.md and project-manager.md. Scope correctly limited to CodeRabbit findings. Already merged.
-
 ## 2026-05-05 — PR #1277: docs: add manual regression test plan and pre-release checklist
 **Ticket(s)**: N/A (ad-hoc)
 **Verdict**: APPROVED
 **Checks**: go vet: skip | go test: skip | gofumpt: skip | CLAUDE.md: pass
 **Discoveries**: None
-
-## 2026-05-05 — PR #1277: docs: add manual regression test plan and pre-release checklist
-**Ticket(s)**: None (documentation)
-**Verdict**: APPROVED ✓
-**Checks**: CLAUDE.md ✓ (Go checks skipped — documentation-only)
-**Discoveries**: Two comprehensive guides added:
-- REGRESSION.md: P0/P1/P2 manual test flows with prerequisites, steps, and failure modes
-- RELEASE_CHECKLIST.md: Pre-release runbook covering gates, deploy, smoke checks, rollback, and sign-off
-Both docs align with existing automated smoke tests and engineering practices.
 
 ## 2026-05-05 — PR #1276: chore(agents): fix changelog concurrent write race via pending-file pattern
 **Ticket(s)**: none (infrastructure refactor)

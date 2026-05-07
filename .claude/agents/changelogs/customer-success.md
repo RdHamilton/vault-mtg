@@ -7,6 +7,11 @@
 **Key insight**: [the one thing PM most needs to know]
 -->
 
+## 2026-05-06 — Pre-beta daemon support knowledge base
+**Type**: support doc
+**Output**: docs/support/daemon-installation.md, docs/support/daemon-troubleshooting.md, docs/support/daemon-uninstall.md, docs/support/faq.md (replaced)
+**Key insight**: The top predicted support volume during beta is the Gatekeeper/SmartScreen unsigned-installer friction — both install and troubleshooting articles lead with that flow; having these docs live before invites go out should deflect the majority of first-session support tickets
+
 ## 2026-05-06 — Beta access model recommendation (PRD Open Question #4)
 **Type**: feedback synthesis
 **Output**: Inline recommendation delivered to multi-agent PRD planning session

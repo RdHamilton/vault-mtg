@@ -1,6 +1,7 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { useAuth } from '@clerk/react';
 import { getDaemonHealth } from '@/services/api/bffHealth';
+import { captureEvent, Events } from '@/services/analytics';
 import './DaemonHealthIndicator.css';
 
 type IndicatorState = 'connected' | 'disconnected' | 'reconnecting' | 'loading' | 'error';
@@ -36,6 +37,9 @@ function tooltipText(state: IndicatorState): string {
 const DaemonHealthIndicator = () => {
   const { getToken, isSignedIn } = useAuth();
   const [status, setStatus] = useState<IndicatorState>('loading');
+  // Track previous status to detect first transition TO connected.
+  const prevStatusRef = useRef<IndicatorState>('loading');
+  const connectedFiredRef = useRef(false);
 
   const fetchHealth = useCallback(async () => {
     if (!isSignedIn) {
@@ -51,10 +55,18 @@ const DaemonHealthIndicator = () => {
       }
       const result = await getDaemonHealth(token);
       if (result.status === 'connected') {
+        // Fire funnel_daemon_connected on first transition TO connected.
+        if (!connectedFiredRef.current && prevStatusRef.current !== 'connected') {
+          captureEvent(Events.FUNNEL_DAEMON_CONNECTED, {});
+          connectedFiredRef.current = true;
+        }
+        prevStatusRef.current = 'connected';
         setStatus('connected');
       } else if (result.status === 'reconnecting') {
+        prevStatusRef.current = 'reconnecting';
         setStatus('reconnecting');
       } else {
+        prevStatusRef.current = 'disconnected';
         setStatus('disconnected');
       }
     } catch {

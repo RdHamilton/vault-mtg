@@ -8,6 +8,18 @@
 **Summary**: One sentence summary of what was done and why.
 -->
 
+## 2026-05-07 — Fix PR #1464 playwright path + PR #1463 analytics module
+
+**PR**: #1464 (path fix pushed), #1463 (analytics pushed)
+**Files changed**:
+- `frontend/playwright.config.ts` — fixed `../../` → `../` for bin and go run paths in webServer config
+- `frontend/src/services/analytics.ts` — new PostHog analytics module with guarded init, event taxonomy constants, captureEvent/identifyUser/resetIdentity/registerSuperProperties
+- `frontend/src/hooks/usePostHogIdentity.ts` — hook identifying Clerk user with PostHog, fires funnel_sign_up_completed once per session
+- `frontend/src/services/__tests__/analytics.test.ts` — 8 tests covering init guard, captureEvent, identifyUser, resetIdentity, registerSuperProperties, Events constants
+- `frontend/.env.example` — added VITE_POSTHOG_KEY and VITE_POSTHOG_HOST vars
+- `frontend/package.json` — added posthog-js dependency
+**Summary**: Fixed playwright webServer path bug that would cause CI to fail, and implemented the missing PostHog analytics module (posthog-js) and identity hook that were never pushed to the #1463 branch.
+
 ## 2026-05-06 — Issue #1397: feat(frontend): EmptyState component — heading/subtext/variant/CTA API
 **PR**: #1413
 **Files changed**:

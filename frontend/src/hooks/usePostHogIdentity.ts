@@ -9,7 +9,7 @@
  * - Identity is reset on sign-out via `resetIdentity()`.
  */
 import { useEffect, useRef } from 'react';
-import { useUser } from '@clerk/clerk-react';
+import { useUser } from '@clerk/react';
 import {
   Events,
   captureEvent,
