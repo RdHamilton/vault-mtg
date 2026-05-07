@@ -102,9 +102,9 @@ export default defineConfig({
     {
       command: process.env.CI
         ? process.env.USE_LOG_FIXTURES === 'true'
-          ? '../../bin/mtga-bff --daemon=true --log-path=tests/e2e/fixtures/logs/sample-session.log'
-          : '../../bin/mtga-bff --load-fixtures=tests/e2e/fixtures/test-data.sql --daemon=false'
-        : 'go run ./services/bff/cmd/main.go',
+          ? '../bin/mtga-bff --daemon=true --log-path=tests/e2e/fixtures/logs/sample-session.log'
+          : '../bin/mtga-bff --load-fixtures=tests/e2e/fixtures/test-data.sql --daemon=false'
+        : 'cd .. && go run ./services/bff/cmd/main.go',
       url: 'http://localhost:8080/health',
       timeout: 120 * 1000,
       reuseExistingServer: !process.env.CI,
