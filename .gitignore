@@ -48,6 +48,9 @@ Icon.png
 # Root-level node_modules (tooling deps not tied to frontend/)
 node_modules/
 
+# MTG Arena log file (dropped at repo root for local spike analysis — never commit)
+Player.log
+
 # macOS metadata
 .DS_Store
 
