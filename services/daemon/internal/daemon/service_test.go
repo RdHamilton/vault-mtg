@@ -509,6 +509,66 @@ func TestRunSkipsUpdateCheckWhenDisabled(t *testing.T) {
 		"version endpoint must not be called when DisableUpdateCheck is true")
 }
 
+// TestClassifyEntry_CollectionUpdated verifies that a flat card-ID map entry
+// is classified as "collection.updated".
+func TestClassifyEntry_CollectionUpdated(t *testing.T) {
+	entry := &logreader.LogEntry{
+		IsJSON: true,
+		JSON: map[string]interface{}{
+			"12345": float64(4),
+			"67890": float64(2),
+		},
+	}
+	assert.Equal(t, "collection.updated", classifyEntry(entry))
+}
+
+// TestHandleEntry_CollectionUpdatedDispatchesTypedPayload verifies that
+// handleEntry parses a collection.updated entry into a
+// contract.CollectionUpdatedPayload and sends it to the BFF with the correct
+// event type and JSON field names.
+func TestHandleEntry_CollectionUpdatedDispatchesTypedPayload(t *testing.T) {
+	var received contract.DaemonEvent
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		body, err := io.ReadAll(r.Body)
+		require.NoError(t, err)
+		require.NoError(t, json.Unmarshal(body, &received))
+		w.WriteHeader(http.StatusAccepted)
+	}))
+	defer srv.Close()
+
+	cfg := &config.Config{
+		CloudAPIURL: srv.URL,
+		IngestPath:  "/v1/ingest/events",
+		APIKey:      "test-key",
+		AccountID:   "acc-coll",
+	}
+	svc := New(cfg)
+
+	entry := &logreader.LogEntry{
+		IsJSON: true,
+		JSON: map[string]interface{}{
+			"12345": float64(4),
+			"67890": float64(2),
+		},
+	}
+
+	require.NoError(t, svc.handleEntry(context.Background(), entry))
+	assert.Equal(t, "collection.updated", received.Type)
+	assert.Equal(t, "acc-coll", received.AccountID)
+
+	var payload contract.CollectionUpdatedPayload
+	require.NoError(t, json.Unmarshal(received.Payload, &payload))
+	assert.False(t, payload.IsDelta)
+	require.Len(t, payload.Cards, 2)
+	// Verify both arena IDs appear in the result.
+	ids := make(map[int]int, len(payload.Cards))
+	for _, c := range payload.Cards {
+		ids[c.ArenaID] = c.Count
+	}
+	assert.Equal(t, 4, ids[12345])
+	assert.Equal(t, 2, ids[67890])
+}
+
 // TestWithVersion sets version and verifies it is stored correctly.
 func TestWithVersion(t *testing.T) {
 	cfg := &config.Config{

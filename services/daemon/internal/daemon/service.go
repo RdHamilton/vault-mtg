@@ -251,6 +251,14 @@ func (s *Service) handleEntry(ctx context.Context, entry *logreader.LogEntry) er
 		} else {
 			payload = p
 		}
+	case "collection.updated":
+		p, err := logreader.ParseCollectionEntry(entry)
+		if err != nil {
+			log.Printf("[daemon] warn: parse collection: %v", err)
+			payload = entry.JSON
+		} else {
+			payload = p
+		}
 	default:
 		payload = entry.JSON
 	}
@@ -318,6 +326,11 @@ func classifyEntry(entry *logreader.LogEntry) string {
 	}
 	if logreader.IsQuestProgressEntry(entry) {
 		return "quest.progress"
+	}
+
+	// Collection snapshot (PlayerInventoryGetPlayerCardsV3).
+	if logreader.IsCollectionEntry(entry) {
+		return "collection.updated"
 	}
 
 	return ""

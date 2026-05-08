@@ -92,3 +92,21 @@ type QuestEntry struct {
 	Goal      int    `json:"goal"`
 	CanSwap   bool   `json:"can_swap"`
 }
+
+// CollectionCard represents a single card entry in a collection snapshot.
+// ArenaID is the MTGA numeric card identifier; Count is the number of copies
+// the player owns.
+type CollectionCard struct {
+	ArenaID int `json:"arena_id"`
+	Count   int `json:"count"`
+}
+
+// CollectionUpdatedPayload is embedded in a DaemonEvent with Type
+// "collection.updated". It carries a full snapshot of the player's collection
+// as returned by PlayerInventoryGetPlayerCardsV3. The daemon may compute a
+// delta before dispatch; when a delta is sent, Cards contains only the changed
+// entries and IsDelta is true.
+type CollectionUpdatedPayload struct {
+	Cards   []CollectionCard `json:"cards"`
+	IsDelta bool             `json:"is_delta"`
+}
