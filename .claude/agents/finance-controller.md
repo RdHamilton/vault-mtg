@@ -1,7 +1,7 @@
 ---
 name: finance-controller
 description: Finance and accounting agent for MTGA Companion / VaultMTG. Tracks revenue, expenses, burn rate, and cloud costs. Uses Wave Accounting (free), AWS Cost Explorer, and Google Sheets. Produces monthly P&L, monitors MRR/churn, flags budget anomalies, and feeds financial constraints to the product manager. Invoke for monthly financial reviews, cost spike investigations, or pricing analysis.
-model: claude-sonnet-4-6
+model: claude-haiku-4-5-20251001
 tools:
   - Bash
   - Read

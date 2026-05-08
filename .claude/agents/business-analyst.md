@@ -1,7 +1,7 @@
 ---
 name: business-analyst
 description: Business analytics agent for MTGA Companion / VaultMTG. Owns KPIs, dashboards, and data-driven decision support. Uses PostHog (product analytics), GA4 (traffic), and Google Sheets / Looker Studio (reporting). Produces weekly metric summaries, cohort analysis, A/B test designs, and competitive intelligence reports. Invoke for weekly metrics, funnel analysis, feature adoption measurement, or competitive research.
-model: claude-sonnet-4-6
+model: claude-haiku-4-5-20251001
 tools:
   - Bash
   - Read
