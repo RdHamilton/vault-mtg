@@ -20,6 +20,7 @@ vi.mock('@clerk/react', () => ({
   SignInButton: ({ children }: { children: unknown }) => children,
   SignUpButton: ({ children }: { children: unknown }) => children,
   UserButton: () => null,
+  RedirectToSignIn: () => null,
   useAuth: () => ({ isLoaded: true, isSignedIn: true, getToken: () => Promise.resolve('clerk-test-token-stub') }),
   useUser: () => ({ isLoaded: true, isSignedIn: true, user: { id: 'user_test_123', emailAddresses: [{ emailAddress: 'test@example.com' }] } }),
 }));
@@ -41,10 +42,11 @@ vi.mock('@/services/api/standard', () => ({
 }));
 
 // Cleanup after each test
-afterEach(() => {
+afterEach(async () => {
   // cleanup() is only available in DOM environments
   if (typeof document !== 'undefined') {
-    import('@testing-library/react').then(({ cleanup }) => cleanup());
+    const { cleanup } = await import('@testing-library/react');
+    cleanup();
   }
   mockEventEmitter.clear();
   resetMocks();
