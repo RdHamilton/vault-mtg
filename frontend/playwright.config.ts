@@ -101,9 +101,7 @@ export default defineConfig({
     // For pipeline tests (USE_LOG_FIXTURES=true), use daemon with log file
     {
       command: process.env.CI
-        ? process.env.USE_LOG_FIXTURES === 'true'
-          ? '../bin/mtga-bff --daemon=true --log-path=tests/e2e/fixtures/logs/sample-session.log'
-          : '../bin/mtga-bff --load-fixtures=tests/e2e/fixtures/test-data.sql --daemon=false'
+        ? '../bin/mtga-bff'
         : 'cd .. && go run ./services/bff/cmd/main.go',
       url: 'http://localhost:8080/health',
       timeout: 120 * 1000,

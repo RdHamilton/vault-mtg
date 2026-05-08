@@ -123,7 +123,7 @@ async function request<T>(
 ): Promise<T> {
   const url = `${config.baseUrl}${path}`;
 
-  const controller = new AbortController();
+  const controller = new globalThis.AbortController();
   const timeoutId = setTimeout(() => controller.abort(), config.timeout);
 
   try {
@@ -233,7 +233,7 @@ export interface RawGetResult<T> {
 export async function getRaw<T>(path: string, options: RequestInit = {}): Promise<RawGetResult<T>> {
   const url = `${config.baseUrl}${path}`;
 
-  const controller = new AbortController();
+  const controller = new globalThis.AbortController();
   const timeoutId = setTimeout(() => controller.abort(), config.timeout);
 
   try {
