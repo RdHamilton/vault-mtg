@@ -235,6 +235,22 @@ func (s *Service) handleEntry(ctx context.Context, entry *logreader.LogEntry) er
 		} else {
 			payload = p
 		}
+	case "quest.progress":
+		p, err := logreader.ParseQuestProgressEntry(entry)
+		if err != nil {
+			log.Printf("[daemon] warn: parse quest progress: %v", err)
+			payload = entry.JSON
+		} else {
+			payload = p
+		}
+	case "quest.completed":
+		p, err := logreader.ParseQuestCompletedEntry(entry)
+		if err != nil {
+			log.Printf("[daemon] warn: parse quest completed: %v", err)
+			payload = entry.JSON
+		} else {
+			payload = p
+		}
 	default:
 		payload = entry.JSON
 	}
@@ -294,6 +310,14 @@ func classifyEntry(entry *logreader.LogEntry) string {
 	// Inventory update (Arena 2026.58+: wrapped under "InventoryInfo" key)
 	if logreader.IsInventoryEntry(entry) {
 		return "inventory.updated"
+	}
+
+	// Quest events — check completed before progress (more specific).
+	if logreader.IsQuestCompletedEntry(entry) {
+		return "quest.completed"
+	}
+	if logreader.IsQuestProgressEntry(entry) {
+		return "quest.progress"
 	}
 
 	return ""

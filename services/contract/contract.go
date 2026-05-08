@@ -65,3 +65,30 @@ type InventoryUpdatedPayload struct {
 	WildCardMythics    int                `json:"wild_card_mythics"`
 	Boosters           []InventoryBooster `json:"boosters"`
 }
+
+// QuestProgressPayload is embedded in a DaemonEvent with Type "quest.progress".
+// It carries the state of all active quests from a QuestGetQuests response.
+type QuestProgressPayload struct {
+	Quests []QuestEntry `json:"quests"`
+}
+
+// QuestCompletedPayload is embedded in a DaemonEvent with Type "quest.completed".
+// It is emitted when at least one quest in a QuestGetQuests response has
+// endingProgress >= goal (i.e. the player has met the quest's completion target).
+type QuestCompletedPayload struct {
+	QuestID          string `json:"quest_id"`
+	QuestName        string `json:"quest_name"`
+	Progress         int    `json:"progress"`
+	Goal             int    `json:"goal"`
+	XPReward         int    `json:"xp_reward"`
+	CompletionSource string `json:"completion_source"`
+}
+
+// QuestEntry represents a single quest within a QuestProgressPayload.
+type QuestEntry struct {
+	QuestID   string `json:"quest_id"`
+	QuestName string `json:"quest_name"`
+	Progress  int    `json:"progress"`
+	Goal      int    `json:"goal"`
+	CanSwap   bool   `json:"can_swap"`
+}
