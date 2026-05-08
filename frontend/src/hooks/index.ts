@@ -41,3 +41,15 @@ export type {
   DraftEventStreamStatus,
   UseDraftEventStreamReturn,
 } from './useDraftEventStream';
+
+export { useDraftSession } from './useDraftSession';
+export type {
+  DraftEvent,
+  DraftStartedPayload,
+  DraftEndedPayload,
+  DraftPackPayload,
+  DraftPickPayload,
+  SessionStatus,
+  DraftSessionState,
+  UseDraftSessionReturn,
+} from './useDraftSession';
