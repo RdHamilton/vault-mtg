@@ -176,6 +176,7 @@ func main() {
 			inventoryRepo := repository.NewInventoryRepository(sqlDB)
 			questRepo := repository.NewQuestRepository(sqlDB)
 			deckProjectorRepo := repository.NewDeckProjectorRepository(sqlDB)
+			gamePlayRepo := repository.NewGamePlayRepository(sqlDB)
 			worker := projection.NewWorker(
 				daemonEventsRepo,
 				accountRepo,
@@ -185,6 +186,7 @@ func main() {
 				inventoryRepo,
 				questRepo,
 				deckProjectorRepo,
+				gamePlayRepo,
 			)
 			go worker.Run(projCtx)
 		} else {
