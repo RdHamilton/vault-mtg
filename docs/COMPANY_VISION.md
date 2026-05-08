@@ -77,6 +77,18 @@ Build the best MTG Arena companion experience — helping players track matches,
 | **customer-success** | User feedback, support docs, bug triage, feedback loop. |
 | **growth-marketing** | SEO, content, social media, email campaigns. |
 
+## Key Milestones
+
+| Date | Milestone |
+|------|-----------|
+| 2026-05-05 | Cloud infrastructure live; AWS Activate credits activated |
+| 2026-05-07 | v0.2.0 "Foundation" closed |
+| 2026-06-02 | Waitlist opens (aligned with Marvel Super Heroes Arena set release) |
+| 2026-06-26 | Internal stretch target — all v0.4.0 exit gates green, first waitlist batch invited |
+| **2026-07-07** | **Closed beta launch — official public commitment** |
+
+These dates were set 2026-05-08 after input from all four business agents. July 7 is a firm public commitment. June 26 is an internal stretch goal only.
+
 ## Notes
 
 - The business unit is intentionally flat at this stage — all four agents feed directly into product-manager. Revisit when product-manager becomes a bottleneck, or at v1.0.0.

@@ -3,8 +3,18 @@
 **Status**: Active — v0.2.0 closed, v0.3.0 in progress
 **Author**: Product Manager
 **Date**: 2026-05-06
-**Last updated**: 2026-05-07
+**Last updated**: 2026-05-08
 **Scope**: v0.2.0 → v0.4.0 (Beta Launch)
+
+## Closed Beta Launch Date
+
+| Milestone | Date | Notes |
+|---|---|---|
+| Waitlist opens | **2026-06-02** | Aligned with Marvel Super Heroes Arena set release |
+| Internal stretch target | **2026-06-26** | Full v0.4.0 exit gates green; first batch invited if on track |
+| **Public closed beta launch** | **2026-07-07** | Official public commitment — all six CS gates + growth infrastructure required |
+
+These dates were decided 2026-05-08 after consulting BA, CS, Finance, and Growth Marketing. June 2 is a hard external anchor (set release). June 26 is an internal stretch goal that does not shift the July 7 commitment. July 7 is the public commitment and must not move without a full business review.
 
 ---
 
@@ -135,6 +145,10 @@ v0.3.0-lite still satisfies the alpha invite gate — testers can validate match
 ### Milestone 3 — v0.4.0 "Beta Launch"
 
 **Theme**: Acquire, convert, and retain the first 500 real users.
+
+**Target launch date**: **2026-07-07** (public closed beta — official commitment)
+**Waitlist opens**: 2026-06-02 (aligned with Marvel Super Heroes Arena set release)
+**Internal stretch target**: 2026-06-26 (all v0.4.0 exit gates green; first waitlist batch released if on track)
 
 **Duration**: 3–4 weeks
 
