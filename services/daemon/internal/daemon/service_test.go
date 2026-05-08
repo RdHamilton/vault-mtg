@@ -270,6 +270,148 @@ func TestHandleEntry_InventoryUpdatedDispatchesTypedPayload(t *testing.T) {
 	assert.Equal(t, 2, payload.Boosters[0].Count)
 }
 
+func TestClassifyEntry_QuestProgress(t *testing.T) {
+	// A QuestGetQuests response with quests where none have met their goal
+	// (endingProgress < goal) must classify as "quest.progress".
+	entry := &logreader.LogEntry{
+		IsJSON: true,
+		JSON: map[string]interface{}{
+			"quests": []interface{}{
+				map[string]interface{}{
+					"questId":        "quest-abc",
+					"goal":           float64(5),
+					"endingProgress": float64(2),
+					"canSwap":        true,
+				},
+			},
+			"canSwap": true,
+		},
+	}
+	assert.Equal(t, "quest.progress", classifyEntry(entry))
+}
+
+func TestClassifyEntry_QuestCompleted(t *testing.T) {
+	// A QuestGetQuests response where at least one quest has endingProgress >= goal
+	// must classify as "quest.completed".
+	entry := &logreader.LogEntry{
+		IsJSON: true,
+		JSON: map[string]interface{}{
+			"quests": []interface{}{
+				map[string]interface{}{
+					"questId":        "quest-xyz",
+					"goal":           float64(5),
+					"endingProgress": float64(5),
+					"canSwap":        false,
+				},
+			},
+			"canSwap": false,
+		},
+	}
+	assert.Equal(t, "quest.completed", classifyEntry(entry))
+}
+
+// TestHandleEntry_QuestProgressDispatchesTypedPayload verifies that handleEntry
+// parses a quest.progress entry into a *contract.QuestProgressPayload and sends
+// it to the BFF with the correct event type.
+func TestHandleEntry_QuestProgressDispatchesTypedPayload(t *testing.T) {
+	var received contract.DaemonEvent
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		body, err := io.ReadAll(r.Body)
+		require.NoError(t, err)
+		require.NoError(t, json.Unmarshal(body, &received))
+		w.WriteHeader(http.StatusAccepted)
+	}))
+	defer srv.Close()
+
+	cfg := &config.Config{
+		CloudAPIURL: srv.URL,
+		IngestPath:  "/v1/ingest/events",
+		APIKey:      "test-key",
+		AccountID:   "acc-quest-progress",
+	}
+	svc := New(cfg)
+
+	entry := &logreader.LogEntry{
+		IsJSON: true,
+		JSON: map[string]interface{}{
+			"quests": []interface{}{
+				map[string]interface{}{
+					"questId":        "quest-progress-1",
+					"goal":           float64(5),
+					"endingProgress": float64(3),
+					"canSwap":        true,
+					"locKey":         "Daily Win Quest",
+				},
+			},
+			"canSwap": true,
+		},
+	}
+
+	require.NoError(t, svc.handleEntry(context.Background(), entry))
+	assert.Equal(t, "quest.progress", received.Type)
+	assert.Equal(t, "acc-quest-progress", received.AccountID)
+
+	var payload contract.QuestProgressPayload
+	require.NoError(t, json.Unmarshal(received.Payload, &payload))
+	require.Len(t, payload.Quests, 1)
+	assert.Equal(t, "quest-progress-1", payload.Quests[0].QuestID)
+	assert.Equal(t, 3, payload.Quests[0].Progress)
+	assert.Equal(t, 5, payload.Quests[0].Goal)
+}
+
+// TestHandleEntry_QuestCompletedDispatchesTypedPayload verifies that handleEntry
+// parses a quest.completed entry into a *contract.QuestCompletedPayload and sends
+// it to the BFF with the correct event type.
+func TestHandleEntry_QuestCompletedDispatchesTypedPayload(t *testing.T) {
+	var received contract.DaemonEvent
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		body, err := io.ReadAll(r.Body)
+		require.NoError(t, err)
+		require.NoError(t, json.Unmarshal(body, &received))
+		w.WriteHeader(http.StatusAccepted)
+	}))
+	defer srv.Close()
+
+	cfg := &config.Config{
+		CloudAPIURL: srv.URL,
+		IngestPath:  "/v1/ingest/events",
+		APIKey:      "test-key",
+		AccountID:   "acc-quest-completed",
+	}
+	svc := New(cfg)
+
+	entry := &logreader.LogEntry{
+		IsJSON: true,
+		JSON: map[string]interface{}{
+			"quests": []interface{}{
+				map[string]interface{}{
+					"questId":        "quest-done-1",
+					"goal":           float64(5),
+					"endingProgress": float64(5),
+					"canSwap":        false,
+					"locKey":         "Win 5 Games",
+					"chestDescription": map[string]interface{}{
+						"quantity": float64(750),
+					},
+				},
+			},
+			"canSwap": false,
+		},
+	}
+
+	require.NoError(t, svc.handleEntry(context.Background(), entry))
+	assert.Equal(t, "quest.completed", received.Type)
+	assert.Equal(t, "acc-quest-completed", received.AccountID)
+
+	var payload contract.QuestCompletedPayload
+	require.NoError(t, json.Unmarshal(received.Payload, &payload))
+	assert.Equal(t, "quest-done-1", payload.QuestID)
+	assert.Equal(t, "Win 5 Games", payload.QuestName)
+	assert.Equal(t, 5, payload.Progress)
+	assert.Equal(t, 5, payload.Goal)
+	assert.Equal(t, 750, payload.XPReward)
+}
+
 // ---------------------------------------------------------------------------
 // Periodic JWT refresh tests
 //
