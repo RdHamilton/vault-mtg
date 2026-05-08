@@ -37,10 +37,14 @@ permissions:
 jobs:
   # Run E2E smoke tests before cutting the release artifact.
   # Skippable via input for emergency hotfix releases only.
+  # Note: env context is not available in job-level if conditions; skip
+  # logic is expressed directly using github and inputs contexts.
   e2e-smoke-gate:
     name: E2E Smoke Gate
     uses: ./.github/workflows/e2e-smoke.yml
-    if: env.SKIP_E2E != 'true'
+    if: >-
+      !(github.event_name == 'release' && contains(github.event.release.name, '[noe2e]')) &&
+      inputs.skip_e2e != 'true'
 
   # Run BFF integration tests after E2E smoke passes.
   # Blocks the release if any integration test fails.
