@@ -9,7 +9,7 @@ To keep the main conversation focused and avoid context bloat:
 
 - **Investigation/Exploration**: Use the `Explore` subagent to find code, trace implementations, or answer "where is X?" questions. Return only the summary to main context.
 - **Planning**: Use the `Plan` subagent for designing implementations before writing code. Get user approval on the plan before implementing.
-- **Parallel research**: When multiple things need investigation, spawn parallel agents to research simultaneously.
+- **Parallel research**: When multiple things need investigation, spawn parallel agents to research simultaneously. Cap at 2 concurrent agents.
 - **Self-contained tasks**: Use `general-purpose` subagent for tasks like "run tests and summarize failures" or "check all files importing X".
 
 The main conversation should focus on:
@@ -21,6 +21,16 @@ Avoid in main context:
 - Reading many files directly (use Explore agent)
 - Long investigation chains
 - Raw test output dumps
+
+## Memory Management
+
+To prevent laptop memory spikes when running agents:
+
+- **Max 2 concurrent agents** — never spawn more than 2 agents in a single message, regardless of how many tasks are queued. Serialize the rest.
+- **Use `haiku` model for simple agents** — pass `model: "haiku"` to the Agent tool for any task that is: moving a ticket, writing a changelog entry, reading files, or short research queries. Reserve default (sonnet) for implementation tasks.
+- **Sequential within type** — never run two instances of the same agent type at once (project-manager, frontend-engineer, etc.). Finish one before starting the next.
+- **Foreground over background for long tasks** — `run_in_background: true` keeps a full process alive until it completes. Only use background when you have genuinely independent parallel work to do immediately.
+- **Context compaction is automatic** — Claude Code compacts context automatically when the window fills. The `/compact` command triggers it early if needed.
 
 ## Authentication (Clerk)
 
