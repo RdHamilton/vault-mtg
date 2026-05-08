@@ -17,6 +17,7 @@ type DaemonEventRow struct {
 	ReceivedAt  time.Time
 	EventID     *string
 	ProjectedAt *time.Time
+	Sequence    uint64
 }
 
 // DaemonEventsRepository persists daemon events to the daemon_events table.
@@ -33,6 +34,7 @@ func NewDaemonEventsRepository(db DB) *DaemonEventsRepository {
 // occurred_at is stored as-is; received_at defaults to NOW() via the column default.
 // eventID is the daemon-issued idempotency key (may be empty string for legacy rows).
 // When eventID is non-empty the unique index (user_id, event_id) prevents duplicate inserts.
+// sequence is the monotonically-increasing counter from the daemon (ADR-013).
 func (r *DaemonEventsRepository) Insert(
 	ctx context.Context,
 	userID int64,
@@ -41,6 +43,7 @@ func (r *DaemonEventsRepository) Insert(
 	payload json.RawMessage,
 	occurredAt time.Time,
 	eventID string,
+	sequence uint64,
 ) error {
 	// Normalise empty eventID to NULL so the partial unique index
 	// (WHERE event_id IS NOT NULL) does not deduplicate rows without a key.
@@ -50,11 +53,11 @@ func (r *DaemonEventsRepository) Insert(
 	}
 
 	const q = `
-		INSERT INTO daemon_events (user_id, account_id, event_type, payload, occurred_at, event_id)
-		VALUES ($1, $2, $3, $4, $5, $6)
+		INSERT INTO daemon_events (user_id, account_id, event_type, payload, occurred_at, event_id, sequence)
+		VALUES ($1, $2, $3, $4, $5, $6, $7)
 		ON CONFLICT DO NOTHING`
 
-	_, err := r.db.ExecContext(ctx, q, userID, accountID, eventType, payload, occurredAt, nullableEventID)
+	_, err := r.db.ExecContext(ctx, q, userID, accountID, eventType, payload, occurredAt, nullableEventID, sequence)
 
 	return err
 }

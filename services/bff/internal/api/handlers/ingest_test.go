@@ -37,6 +37,7 @@ type insertCall struct {
 	payload    json.RawMessage
 	occurredAt time.Time
 	eventID    string
+	sequence   uint64
 }
 
 // mockDaemonEventsRepo is a test double for DaemonEventInserter.
@@ -53,6 +54,7 @@ func (m *mockDaemonEventsRepo) Insert(
 	payload json.RawMessage,
 	occurredAt time.Time,
 	eventID string,
+	sequence uint64,
 ) error {
 	m.calls = append(m.calls, insertCall{
 		userID:     userID,
@@ -61,6 +63,7 @@ func (m *mockDaemonEventsRepo) Insert(
 		payload:    payload,
 		occurredAt: occurredAt,
 		eventID:    eventID,
+		sequence:   sequence,
 	})
 
 	return m.err
@@ -452,6 +455,46 @@ func TestIngestEvent_SequenceFieldAccepted(t *testing.T) {
 
 	if got := broadcaster.calls[0].event.Sequence; got != wantSequence {
 		t.Errorf("broadcast event Sequence=%d, want %d", got, wantSequence)
+	}
+}
+
+// TestIngestEvent_SequencePropagatedToRepo verifies that the Sequence value from
+// the DaemonEvent contract is forwarded to the repository Insert call so it is
+// persisted in the daemon_events.sequence column (ADR-013, ticket #1521).
+func TestIngestEvent_SequencePropagatedToRepo(t *testing.T) {
+	const token = "seq-repo-token"
+	const wantSequence uint64 = 77
+
+	keyRepo := &mockKeyLister{keys: []repository.APIKey{
+		{ID: 15, KeyHash: mustHash(t, token), UserID: 60},
+	}}
+
+	eventsRepo := &mockDaemonEventsRepo{}
+	ih := handlers.NewIngestHandler(&mockBroadcaster{}).WithRepository(eventsRepo)
+	handler := middleware.APIKeyAuth(keyRepo)(http.HandlerFunc(ih.IngestEvent))
+
+	payload, _ := json.Marshal(map[string]string{"key": "value"})
+	event := contract.DaemonEvent{
+		Type:       "match.completed",
+		AccountID:  "acct_seq_repo",
+		EventID:    "evt_seq_01",
+		Sequence:   wantSequence,
+		OccurredAt: time.Now().UTC(),
+		Payload:    payload,
+	}
+	req, rr := ingestRequest(t, token, event)
+	handler.ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusAccepted {
+		t.Fatalf("expected 202, got %d", rr.Code)
+	}
+
+	if len(eventsRepo.calls) != 1 {
+		t.Fatalf("expected 1 Insert call, got %d", len(eventsRepo.calls))
+	}
+
+	if got := eventsRepo.calls[0].sequence; got != wantSequence {
+		t.Errorf("Insert sequence=%d, want %d", got, wantSequence)
 	}
 }
 

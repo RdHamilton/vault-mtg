@@ -16,7 +16,7 @@ func TestDaemonEventsRepository_Insert_NoError(t *testing.T) {
 	payload := json.RawMessage(`{"key":"value"}`)
 	occurredAt := time.Now().UTC().Truncate(time.Second)
 
-	err := repo.Insert(context.Background(), 1, "test-account-1", "match.game_started", payload, occurredAt, "")
+	err := repo.Insert(context.Background(), 1, "test-account-1", "match.game_started", payload, occurredAt, "", 0)
 	if err != nil {
 		t.Fatalf("Insert: %v", err)
 	}
@@ -38,7 +38,7 @@ func TestDaemonEventsRepository_Insert_WithEventID(t *testing.T) {
 	occurredAt := time.Now().UTC().Truncate(time.Second)
 	eventID := "evt_test_001"
 
-	err := repo.Insert(context.Background(), 1, "test-account-eventid", "match.completed", payload, occurredAt, eventID)
+	err := repo.Insert(context.Background(), 1, "test-account-eventid", "match.completed", payload, occurredAt, eventID, 0)
 	if err != nil {
 		t.Fatalf("Insert: %v", err)
 	}
@@ -51,7 +51,7 @@ func TestDaemonEventsRepository_Insert_WithEventID(t *testing.T) {
 	})
 
 	// Verify idempotency: second insert with same event_id must be a no-op.
-	err = repo.Insert(context.Background(), 1, "test-account-eventid", "match.completed", payload, occurredAt, eventID)
+	err = repo.Insert(context.Background(), 1, "test-account-eventid", "match.completed", payload, occurredAt, eventID, 0)
 	if err != nil {
 		t.Fatalf("idempotent Insert: %v", err)
 	}
@@ -84,13 +84,13 @@ func TestDaemonEventsRepository_ListByUserID_OrderedNewestFirst(t *testing.T) {
 
 	payload := json.RawMessage(`{"seq":1}`)
 
-	if err := repo.Insert(context.Background(), userID, accountID, "event.a", payload, older, ""); err != nil {
+	if err := repo.Insert(context.Background(), userID, accountID, "event.a", payload, older, "", 1); err != nil {
 		t.Fatalf("Insert older: %v", err)
 	}
 
 	payload2 := json.RawMessage(`{"seq":2}`)
 
-	if err := repo.Insert(context.Background(), userID, accountID, "event.b", payload2, newer, ""); err != nil {
+	if err := repo.Insert(context.Background(), userID, accountID, "event.b", payload2, newer, "", 2); err != nil {
 		t.Fatalf("Insert newer: %v", err)
 	}
 
@@ -133,11 +133,11 @@ func TestDaemonEventsRepository_ListByUserID_ScopedToUser(t *testing.T) {
 	occurredAt := time.Now().UTC().Truncate(time.Second)
 	payload := json.RawMessage(`{}`)
 
-	if err := repo.Insert(context.Background(), userA, accountA, "event.x", payload, occurredAt, ""); err != nil {
+	if err := repo.Insert(context.Background(), userA, accountA, "event.x", payload, occurredAt, "", 0); err != nil {
 		t.Fatalf("Insert userA: %v", err)
 	}
 
-	if err := repo.Insert(context.Background(), userB, accountB, "event.y", payload, occurredAt, ""); err != nil {
+	if err := repo.Insert(context.Background(), userB, accountB, "event.y", payload, occurredAt, "", 0); err != nil {
 		t.Fatalf("Insert userB: %v", err)
 	}
 
@@ -182,7 +182,7 @@ func TestDaemonEventsRepository_HasRecentEvent_Connected(t *testing.T) {
 	payload := json.RawMessage(`{}`)
 	occurredAt := time.Now().UTC().Truncate(time.Second)
 
-	if err := repo.Insert(context.Background(), userID, accountID, "heartbeat", payload, occurredAt, ""); err != nil {
+	if err := repo.Insert(context.Background(), userID, accountID, "heartbeat", payload, occurredAt, "", 0); err != nil {
 		t.Fatalf("Insert: %v", err)
 	}
 
@@ -273,7 +273,7 @@ func TestDaemonEventsRepository_HasRecentEvent_ScopedToUser(t *testing.T) {
 	payload := json.RawMessage(`{}`)
 	occurredAt := time.Now().UTC().Truncate(time.Second)
 
-	if err := repo.Insert(context.Background(), userA, accountA, "heartbeat", payload, occurredAt, ""); err != nil {
+	if err := repo.Insert(context.Background(), userA, accountA, "heartbeat", payload, occurredAt, "", 0); err != nil {
 		t.Fatalf("Insert userA: %v", err)
 	}
 
@@ -311,5 +311,48 @@ func TestDaemonEventsRepository_Interface(t *testing.T) {
 
 	if repo == nil {
 		t.Fatal("NewDaemonEventsRepository returned nil")
+	}
+}
+
+// TestDaemonEventsRepository_Insert_SequencePersisted verifies that the sequence
+// value is written to the daemon_events.sequence column (ADR-013, ticket #1521).
+func TestDaemonEventsRepository_Insert_SequencePersisted(t *testing.T) {
+	db := openTestDB(t)
+	repo := repository.NewDaemonEventsRepository(db)
+
+	const userID int64 = 9999
+	const accountID = "test-account-seq"
+	const wantSequence uint64 = 42
+
+	payload := json.RawMessage(`{"key":"value"}`)
+	occurredAt := time.Now().UTC().Truncate(time.Second)
+
+	err := repo.Insert(context.Background(), userID, accountID, "match.completed", payload, occurredAt, "evt_seq_repo_01", wantSequence)
+	if err != nil {
+		t.Fatalf("Insert: %v", err)
+	}
+
+	t.Cleanup(func() {
+		_, _ = db.ExecContext(
+			context.Background(),
+			`DELETE FROM daemon_events WHERE user_id = $1 AND account_id = $2`,
+			userID, accountID,
+		)
+	})
+
+	// Read back the raw sequence value to confirm it was persisted.
+	var gotSequence uint64
+
+	row := db.QueryRowContext(
+		context.Background(),
+		`SELECT sequence FROM daemon_events WHERE user_id = $1 AND account_id = $2`,
+		userID, accountID,
+	)
+	if err := row.Scan(&gotSequence); err != nil {
+		t.Fatalf("Scan sequence: %v", err)
+	}
+
+	if gotSequence != wantSequence {
+		t.Errorf("sequence=%d, want %d", gotSequence, wantSequence)
 	}
 }
