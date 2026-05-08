@@ -679,6 +679,76 @@ func TestIngestHandler_NoGap_NoCapture(t *testing.T) {
 	}
 }
 
+// TestIngestEvent_DraftPackBroadcastToSSE verifies that a draft.pack event
+// received by IngestHandler is forwarded to the EventBroadcaster (SSE broker).
+// This confirms the live draft viewer receives pack-state updates in real time.
+func TestIngestEvent_DraftPackBroadcastToSSE(t *testing.T) {
+	const token = "draft-pack-token"
+	const wantUserID int64 = 111
+
+	keyRepo := &mockKeyLister{keys: []repository.APIKey{
+		{ID: 30, KeyHash: mustHash(t, token), UserID: wantUserID},
+	}}
+
+	broadcaster := &mockBroadcaster{}
+	handler := buildHandler(broadcaster, keyRepo)
+
+	event := makeEvent("draft.pack")
+	req, rr := ingestRequest(t, token, event)
+	handler.ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusAccepted {
+		t.Fatalf("expected 202, got %d", rr.Code)
+	}
+
+	if len(broadcaster.calls) != 1 {
+		t.Fatalf("expected 1 broadcast call for draft.pack, got %d", len(broadcaster.calls))
+	}
+
+	if got := broadcaster.calls[0].event.Type; got != "draft.pack" {
+		t.Errorf("broadcast event type=%q, want %q", got, "draft.pack")
+	}
+
+	if got := broadcaster.calls[0].userID; got != wantUserID {
+		t.Errorf("broadcast userID=%d, want %d — wrong SSE subscriber targeted", got, wantUserID)
+	}
+}
+
+// TestIngestEvent_DraftPickBroadcastToSSE verifies that a draft.pick event
+// received by IngestHandler is forwarded to the EventBroadcaster (SSE broker).
+// This confirms the live draft viewer receives pick confirmations in real time.
+func TestIngestEvent_DraftPickBroadcastToSSE(t *testing.T) {
+	const token = "draft-pick-token"
+	const wantUserID int64 = 222
+
+	keyRepo := &mockKeyLister{keys: []repository.APIKey{
+		{ID: 31, KeyHash: mustHash(t, token), UserID: wantUserID},
+	}}
+
+	broadcaster := &mockBroadcaster{}
+	handler := buildHandler(broadcaster, keyRepo)
+
+	event := makeEvent("draft.pick")
+	req, rr := ingestRequest(t, token, event)
+	handler.ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusAccepted {
+		t.Fatalf("expected 202, got %d", rr.Code)
+	}
+
+	if len(broadcaster.calls) != 1 {
+		t.Fatalf("expected 1 broadcast call for draft.pick, got %d", len(broadcaster.calls))
+	}
+
+	if got := broadcaster.calls[0].event.Type; got != "draft.pick" {
+		t.Errorf("broadcast event type=%q, want %q", got, "draft.pick")
+	}
+
+	if got := broadcaster.calls[0].userID; got != wantUserID {
+		t.Errorf("broadcast userID=%d, want %d — wrong SSE subscriber targeted", got, wantUserID)
+	}
+}
+
 // TestIngestHandler_SequenceReset_NotAGap_NoCapture verifies that a sequence
 // reset (daemon restart) is not emitted as a gap to PostHog.
 func TestIngestHandler_SequenceReset_NotAGap_NoCapture(t *testing.T) {
