@@ -11,8 +11,7 @@
 import { useEffect, useRef } from 'react';
 import { useUser } from '@clerk/react';
 import {
-  Events,
-  captureEvent,
+  trackEvent,
   identifyUser,
   resetIdentity,
 } from '../services/analytics';
@@ -33,8 +32,12 @@ export function usePostHogIdentity(): void {
 
         // Fire funnel_sign_up_completed once per session.
         if (!sessionStorage.getItem(SESSION_KEY)) {
-          captureEvent(Events.FUNNEL_SIGN_UP_COMPLETED, {
-            user_id: user.id,
+          trackEvent({
+            name: 'funnel_sign_up_completed',
+            properties: {
+              auth_method: 'email',
+              user_id: user.id,
+            },
           });
           sessionStorage.setItem(SESSION_KEY, '1');
         }

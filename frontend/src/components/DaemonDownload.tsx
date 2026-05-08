@@ -1,5 +1,5 @@
 import { useMemo } from 'react';
-import { captureEvent, Events } from '@/services/analytics';
+import { trackEvent } from '@/services/analytics';
 import './DaemonDownload.css';
 
 const RELEASES_BASE =
@@ -111,9 +111,12 @@ const DaemonDownload = () => {
               data-testid={`download-link-${option.platform}`}
               download
               onClick={() => {
-                captureEvent(Events.FUNNEL_DAEMON_DOWNLOAD_STARTED, {
-                  os: option.platform,
-                  download_source: 'download_page',
+                trackEvent({
+                  name: 'funnel_daemon_download_started',
+                  properties: {
+                    os: option.platform,
+                    download_source: 'download_page',
+                  },
                 });
               }}
             >

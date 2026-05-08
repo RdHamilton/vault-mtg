@@ -14,7 +14,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { useAuth } from '@clerk/react';
 import { getDaemonHealth } from '@/services/api/bffHealth';
-import { captureEvent, Events } from '@/services/analytics';
+import { trackEvent } from '@/services/analytics';
 import './OnboardingModal.css';
 
 const DOWNLOAD_URL = 'https://vaultmtg.app/download';
@@ -170,9 +170,12 @@ function Step1Download({ onNext }: Step1Props) {
           className="onboarding-btn onboarding-btn--primary"
           data-testid="onboarding-download-link"
           onClick={() => {
-            captureEvent(Events.FUNNEL_DAEMON_DOWNLOAD_STARTED, {
-              os: navigator.platform || 'unknown',
-              download_source: 'onboarding_modal',
+            trackEvent({
+              name: 'funnel_daemon_download_started',
+              properties: {
+                os: navigator.platform || 'unknown',
+                download_source: 'onboarding_modal',
+              },
             });
           }}
         >
@@ -328,14 +331,14 @@ function Step3Confirm({ onBack, onDismiss, onComplete }: Step3Props) {
         if (result.status === 'connected') {
           stopPolling();
           setConfirmState('success');
-          captureEvent(Events.FUNNEL_DAEMON_CONNECTED, { source: 'onboarding_modal' });
+          trackEvent({ name: 'funnel_daemon_connected', properties: { source: 'onboarding_modal' } });
           setTimeout(() => {
             onCompleteRef.current();
           }, 2000);
         } else if (pollAttemptsRef.current >= MAX_POLL_ATTEMPTS) {
           stopPolling();
           setConfirmState('timeout');
-          captureEvent(Events.ERROR_DAEMON_NEVER_CONNECTED, { source: 'onboarding_modal' });
+          trackEvent({ name: 'error_daemon_never_connected', properties: { source: 'onboarding_modal' } });
         }
       } catch {
         if (isMountedRef.current && pollAttemptsRef.current >= MAX_POLL_ATTEMPTS) {
@@ -373,14 +376,14 @@ function Step3Confirm({ onBack, onDismiss, onComplete }: Step3Props) {
         if (result.status === 'connected') {
           stopPolling();
           setConfirmState('success');
-          captureEvent(Events.FUNNEL_DAEMON_CONNECTED, { source: 'onboarding_modal' });
+          trackEvent({ name: 'funnel_daemon_connected', properties: { source: 'onboarding_modal' } });
           setTimeout(() => {
             onCompleteRef.current();
           }, 2000);
         } else if (pollAttemptsRef.current >= MAX_POLL_ATTEMPTS) {
           stopPolling();
           setConfirmState('timeout');
-          captureEvent(Events.ERROR_DAEMON_NEVER_CONNECTED, { source: 'onboarding_modal' });
+          trackEvent({ name: 'error_daemon_never_connected', properties: { source: 'onboarding_modal' } });
         }
       } catch {
         if (isMountedRef.current && pollAttemptsRef.current >= MAX_POLL_ATTEMPTS) {

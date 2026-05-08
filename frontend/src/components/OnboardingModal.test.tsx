@@ -27,6 +27,7 @@ vi.mock('@/services/api/bffHealth', () => ({
 // ---------------------------------------------------------------------------
 vi.mock('@/services/analytics', () => ({
   captureEvent: vi.fn(),
+  trackEvent: vi.fn(),
   Events: {
     FUNNEL_DAEMON_CONNECTED: 'funnel_daemon_connected',
     FUNNEL_DAEMON_DOWNLOAD_STARTED: 'funnel_daemon_download_started',

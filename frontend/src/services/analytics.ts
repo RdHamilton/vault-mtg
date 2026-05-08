@@ -76,11 +76,205 @@ export const Events = {
 
 export type EventName = (typeof Events)[keyof typeof Events];
 
+// ── Typed property shapes per event ──────────────────────────────────────────
+//
+// Every entry in the discriminated union covers one event from the taxonomy.
+// Adding a new event requires adding a new branch here — the compiler will
+// enforce completeness at every trackEvent call site.
+
+export type AnalyticsEvent =
+  // Activation funnel
+  | {
+      name: 'funnel_landing_page_viewed';
+      properties: {
+        referrer: string;
+        utm_source: string;
+        utm_medium: string;
+        utm_campaign: string;
+      };
+    }
+  | {
+      name: 'funnel_sign_up_started';
+      properties: {
+        entry_point: 'landing_page' | 'auth_bar' | 'protected_route_redirect';
+      };
+    }
+  | {
+      name: 'funnel_sign_up_completed';
+      properties: {
+        auth_method: 'email' | 'google' | 'apple' | 'facebook';
+        user_id: string;
+      };
+    }
+  | {
+      name: 'funnel_daemon_download_started';
+      properties: {
+        os: string;
+        download_source: 'download_page' | 'prompt_modal' | 'onboarding_modal';
+      };
+    }
+  | {
+      name: 'funnel_daemon_connected';
+      properties?: {
+        time_since_signup_seconds?: number;
+        source?: string;
+      };
+    }
+  | {
+      name: 'funnel_first_data_loaded';
+      properties: { match_count: number };
+    }
+  | {
+      name: 'funnel_first_feature_used';
+      properties: {
+        feature:
+          | 'draft'
+          | 'draft_analytics'
+          | 'decks'
+          | 'collection'
+          | 'meta'
+          | 'charts'
+          | 'quests';
+      };
+    }
+  // Page views
+  | {
+      name: 'page_viewed';
+      properties: { page: string; previous_page: string | null };
+    }
+  // Feature usage
+  | {
+      name: 'feature_match_history_filtered';
+      properties: {
+        filter_type: 'format' | 'deck' | 'date_range' | 'result';
+        filter_value: string;
+      };
+    }
+  | {
+      name: 'feature_match_details_opened';
+      properties: {
+        match_result: 'win' | 'loss' | 'draw';
+        format: string;
+      };
+    }
+  | {
+      name: 'feature_draft_advisor_pick_viewed';
+      properties: {
+        set_code: string;
+        pack_number: number;
+        pick_number: number;
+      };
+    }
+  | {
+      name: 'feature_draft_analytics_viewed';
+      properties: { draft_count: number };
+    }
+  | {
+      name: 'feature_deck_builder_opened';
+      properties: {
+        entry_point: 'decks_list' | 'draft_build_around' | 'direct_link';
+      };
+    }
+  | {
+      name: 'feature_deck_build_around_started';
+      properties: { seed_type: 'card' | 'archetype' | 'color_pair' };
+    }
+  | {
+      name: 'feature_collection_viewed';
+      properties: { card_count: number };
+    }
+  | { name: 'feature_meta_viewed'; properties?: Record<string, never> }
+  | {
+      name: 'feature_ml_suggestions_viewed';
+      properties: {
+        suggestion_count: number;
+        context: 'deck_builder' | 'draft';
+      };
+    }
+  | {
+      name: 'feature_chart_interacted';
+      properties: {
+        chart: string;
+        interaction: 'filter_applied' | 'time_range_changed' | 'format_changed';
+      };
+    }
+  | {
+      name: 'feature_opponent_analysis_viewed';
+      properties: { opponent_match_count: number };
+    }
+  | {
+      name: 'feature_community_comparison_viewed';
+      properties?: Record<string, never>;
+    }
+  | {
+      name: 'feature_settings_changed';
+      properties: {
+        setting_section: 'daemon_connection' | 'preferences' | 'display';
+        setting_key: string;
+      };
+    }
+  | { name: 'feature_replay_started'; properties?: Record<string, never> }
+  | { name: 'feature_replay_completed'; properties?: Record<string, never> }
+  // Errors
+  | {
+      name: 'error_daemon_connection_failed';
+      properties: {
+        previous_status: 'connected' | 'reconnecting';
+        duration_connected_seconds: number;
+      };
+    }
+  | {
+      name: 'error_daemon_never_connected';
+      properties: {
+        time_since_signin_seconds?: number;
+        source?: string;
+      };
+    }
+  | {
+      name: 'error_data_load_failed';
+      properties: { page: string; endpoint: string; status_code: number };
+    }
+  | {
+      name: 'error_auth_failed';
+      properties: { context: string };
+    }
+  | {
+      name: 'error_empty_state_shown';
+      properties: { page: string };
+    }
+  // Engagement
+  | {
+      name: 'app_session_started';
+      properties: { services_init_ms: number };
+    }
+  | {
+      name: 'app_user_identified';
+      properties: {
+        user_id: string;
+        auth_method: 'email' | 'google' | 'apple' | 'facebook';
+      };
+    }
+  | { name: 'app_user_signed_out'; properties?: Record<string, never> };
+
+// ── Typed capture entry point ─────────────────────────────────────────────────
+
+/**
+ * Typed PostHog event capture. Property shapes are enforced per event name.
+ * No-op when PostHog is not initialized (key absent).
+ * Never include PII — use opaque Clerk user_id only.
+ */
+export function trackEvent(event: AnalyticsEvent): void {
+  if (!initialized) return;
+  posthog.capture(event.name, event.properties);
+}
+
 // ── Core helpers ──────────────────────────────────────────────────────────────
 
 /**
  * Capture a PostHog event. No-op when PostHog is not initialized.
  * Never include PII — use opaque Clerk user_id only.
+ *
+ * @deprecated Prefer `trackEvent` which enforces typed property shapes.
  */
 export function captureEvent(
   name: EventName,

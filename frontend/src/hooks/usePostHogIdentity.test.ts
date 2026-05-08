@@ -12,18 +12,15 @@ vi.mock('posthog-js', () => ({
   },
 }));
 
-// Mock analytics module so we can spy on identifyUser / captureEvent.
+// Mock analytics module so we can spy on identifyUser / trackEvent.
 const mockIdentifyUser = vi.fn();
-const mockCaptureEvent = vi.fn();
+const mockTrackEvent = vi.fn();
 const mockResetIdentity = vi.fn();
 
 vi.mock('@/services/analytics', () => ({
   identifyUser: (...args: unknown[]) => mockIdentifyUser(...args),
-  captureEvent: (...args: unknown[]) => mockCaptureEvent(...args),
+  trackEvent: (...args: unknown[]) => mockTrackEvent(...args),
   resetIdentity: () => mockResetIdentity(),
-  Events: {
-    FUNNEL_SIGN_UP_COMPLETED: 'funnel_sign_up_completed',
-  },
 }));
 
 // Clerk mock — controlled per test.
@@ -46,7 +43,7 @@ describe('usePostHogIdentity', () => {
     renderHook(() => usePostHogIdentity());
 
     expect(mockIdentifyUser).not.toHaveBeenCalled();
-    expect(mockCaptureEvent).not.toHaveBeenCalled();
+    expect(mockTrackEvent).not.toHaveBeenCalled();
   });
 
   it('calls identifyUser with clerk user id when signed in', async () => {
@@ -70,8 +67,12 @@ describe('usePostHogIdentity', () => {
     const { usePostHogIdentity } = await import('./usePostHogIdentity');
     renderHook(() => usePostHogIdentity());
 
-    expect(mockCaptureEvent).toHaveBeenCalledWith('funnel_sign_up_completed', {
-      user_id: 'user_abc',
+    expect(mockTrackEvent).toHaveBeenCalledWith({
+      name: 'funnel_sign_up_completed',
+      properties: {
+        auth_method: 'email',
+        user_id: 'user_abc',
+      },
     });
     expect(sessionStorage.getItem(SESSION_KEY)).toBe('1');
   });
@@ -86,7 +87,7 @@ describe('usePostHogIdentity', () => {
     const { usePostHogIdentity } = await import('./usePostHogIdentity');
     renderHook(() => usePostHogIdentity());
 
-    expect(mockCaptureEvent).not.toHaveBeenCalled();
+    expect(mockTrackEvent).not.toHaveBeenCalled();
   });
 
   it('calls resetIdentity when user is signed out after being signed in', async () => {

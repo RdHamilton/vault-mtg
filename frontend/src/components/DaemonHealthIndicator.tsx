@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { useAuth } from '@clerk/react';
 import { getDaemonHealth } from '@/services/api/bffHealth';
-import { captureEvent, Events } from '@/services/analytics';
+import { trackEvent } from '@/services/analytics';
 import './DaemonHealthIndicator.css';
 
 type IndicatorState = 'connected' | 'disconnected' | 'reconnecting' | 'loading' | 'error';
@@ -77,7 +77,7 @@ const DaemonHealthIndicator = ({ onOpenOnboarding, onStatusChange }: DaemonHealt
       if (result.status === 'connected') {
         // Fire funnel_daemon_connected on first transition TO connected.
         if (!connectedFiredRef.current && prevStatusRef.current !== 'connected') {
-          captureEvent(Events.FUNNEL_DAEMON_CONNECTED, {});
+          trackEvent({ name: 'funnel_daemon_connected' });
           connectedFiredRef.current = true;
         }
         prevStatusRef.current = 'connected';

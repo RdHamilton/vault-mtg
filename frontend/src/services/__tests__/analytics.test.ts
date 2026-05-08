@@ -129,4 +129,122 @@ describe('analytics', () => {
     expect(Events.ERROR_AUTH_FAILED).toBe('error_auth_failed');
     expect(Events.APP_USER_SIGNED_OUT).toBe('app_user_signed_out');
   });
+
+  // ── trackEvent typed API ──────────────────────────────────────────────────
+
+  it('trackEvent calls posthog.capture with correct event name and typed properties', async () => {
+    vi.stubEnv('VITE_POSTHOG_KEY', 'phc_testkey');
+    const posthog = (await import('posthog-js')).default;
+    const { initAnalytics, trackEvent } = await import('../analytics');
+
+    initAnalytics();
+    trackEvent({ name: 'page_viewed', properties: { page: 'match_history', previous_page: null } });
+
+    expect(posthog.capture).toHaveBeenCalledWith('page_viewed', {
+      page: 'match_history',
+      previous_page: null,
+    });
+    vi.unstubAllEnvs();
+  });
+
+  it('trackEvent is a no-op when PostHog was not initialized', async () => {
+    vi.stubEnv('VITE_POSTHOG_KEY', '');
+    const posthog = (await import('posthog-js')).default;
+    const { initAnalytics, trackEvent } = await import('../analytics');
+
+    initAnalytics();
+    trackEvent({ name: 'page_viewed', properties: { page: 'match_history', previous_page: null } });
+
+    expect(posthog.capture).not.toHaveBeenCalled();
+    vi.unstubAllEnvs();
+  });
+
+  it('trackEvent handles funnel_daemon_download_started with correct shape', async () => {
+    vi.stubEnv('VITE_POSTHOG_KEY', 'phc_testkey');
+    const posthog = (await import('posthog-js')).default;
+    const { initAnalytics, trackEvent } = await import('../analytics');
+
+    initAnalytics();
+    trackEvent({
+      name: 'funnel_daemon_download_started',
+      properties: { os: 'mac', download_source: 'download_page' },
+    });
+
+    expect(posthog.capture).toHaveBeenCalledWith('funnel_daemon_download_started', {
+      os: 'mac',
+      download_source: 'download_page',
+    });
+    vi.unstubAllEnvs();
+  });
+
+  it('trackEvent handles funnel_daemon_connected with optional properties', async () => {
+    vi.stubEnv('VITE_POSTHOG_KEY', 'phc_testkey');
+    const posthog = (await import('posthog-js')).default;
+    const { initAnalytics, trackEvent } = await import('../analytics');
+
+    initAnalytics();
+    trackEvent({ name: 'funnel_daemon_connected' });
+
+    expect(posthog.capture).toHaveBeenCalledWith('funnel_daemon_connected', undefined);
+    vi.unstubAllEnvs();
+  });
+
+  it('trackEvent handles funnel_first_data_loaded with match_count', async () => {
+    vi.stubEnv('VITE_POSTHOG_KEY', 'phc_testkey');
+    const posthog = (await import('posthog-js')).default;
+    const { initAnalytics, trackEvent } = await import('../analytics');
+
+    initAnalytics();
+    trackEvent({ name: 'funnel_first_data_loaded', properties: { match_count: 42 } });
+
+    expect(posthog.capture).toHaveBeenCalledWith('funnel_first_data_loaded', { match_count: 42 });
+    vi.unstubAllEnvs();
+  });
+
+  it('trackEvent handles error_daemon_never_connected with optional source', async () => {
+    vi.stubEnv('VITE_POSTHOG_KEY', 'phc_testkey');
+    const posthog = (await import('posthog-js')).default;
+    const { initAnalytics, trackEvent } = await import('../analytics');
+
+    initAnalytics();
+    trackEvent({
+      name: 'error_daemon_never_connected',
+      properties: { source: 'onboarding_modal' },
+    });
+
+    expect(posthog.capture).toHaveBeenCalledWith('error_daemon_never_connected', {
+      source: 'onboarding_modal',
+    });
+    vi.unstubAllEnvs();
+  });
+
+  it('trackEvent handles funnel_sign_up_completed with required properties', async () => {
+    vi.stubEnv('VITE_POSTHOG_KEY', 'phc_testkey');
+    const posthog = (await import('posthog-js')).default;
+    const { initAnalytics, trackEvent } = await import('../analytics');
+
+    initAnalytics();
+    trackEvent({
+      name: 'funnel_sign_up_completed',
+      properties: { auth_method: 'google', user_id: 'user_xyz' },
+    });
+
+    expect(posthog.capture).toHaveBeenCalledWith('funnel_sign_up_completed', {
+      auth_method: 'google',
+      user_id: 'user_xyz',
+    });
+    vi.unstubAllEnvs();
+  });
+
+  it('trackEvent handles app_user_signed_out with no properties', async () => {
+    vi.stubEnv('VITE_POSTHOG_KEY', 'phc_testkey');
+    const posthog = (await import('posthog-js')).default;
+    const { initAnalytics, trackEvent } = await import('../analytics');
+
+    initAnalytics();
+    trackEvent({ name: 'app_user_signed_out' });
+
+    expect(posthog.capture).toHaveBeenCalledWith('app_user_signed_out', undefined);
+    vi.unstubAllEnvs();
+  });
 });
