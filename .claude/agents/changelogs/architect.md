@@ -11,6 +11,15 @@ This is the system-wide record of all changes made across the project. Every age
 **Summary**: One sentence summary of what was done and why.
 -->
 
+## 2026-05-08 — [architect] prod fixes: nginx welcome page + IAM PutBucketVersioning gap
+**PR**: RdHamilton/mtga-companion-infra#29 (CFN); nginx hot-patch applied directly to EC2 i-065351fbb99da2d22 via SSM
+**Files changed**:
+- (infra) cloudformation/deploy-artifacts.yml — add s3:PutBucketVersioning + s3:GetBucketVersioning to StagingBucketAccess; add StagingArtifactsBucketName param; reference staging bucket by ARN; drop StagingDeployArtifactsBucket resource (bucket managed out-of-band)
+- (infra) nginx/api.vaultmtg.app.conf — add location = / 302 to app.vaultmtg.app; add catch-all JSON 404 (committed locally; pending PR for source-of-truth)
+- (ec2) /etc/nginx/conf.d/api.vaultmtg.app.conf — same content patched in-place via SSM, nginx reloaded; old version backed up as .bak.<ts>
+- (aws) stack mtga-companion-deploy-artifacts — UPDATE_COMPLETE with new IAM permissions
+**Summary**: Fixed two prod-blocking issues. (1) nginx returned the default welcome page on https://api.vaultmtg.app/ because the api.vaultmtg.app server block had no location / handler — added a 302 redirect to app.vaultmtg.app and a JSON 404 catch-all. (2) staging-deploy GitHub Actions workflow was failing AccessDenied on put-bucket-versioning — added s3:PutBucketVersioning and s3:GetBucketVersioning to the GitHubActionsDeployRole and deployed the stack. Discovered: BFF runs as bare process with no systemd unit — filed as follow-on for PM/infrastructure.
+
 ## 2026-05-06 — [architect] Issue #1117: holistic gap analysis — Sync Lambda and BFF
 **PR**: (this PR)
 **ADR**: N/A — gap analysis doc; recommends three new ADRs (010, 011, 012)

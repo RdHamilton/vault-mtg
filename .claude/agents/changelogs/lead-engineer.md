@@ -8,6 +8,30 @@
 **Discoveries**: architectural notes, missing test coverage, scope concerns, or context for future reviews (or "None")
 -->
 
+## 2026-05-08 — PR #29: fix(iam): grant deploy role PutBucketVersioning on staging bucket
+**Ticket(s)**: N/A (ops/infra fix)
+**Verdict**: APPROVED ✓
+**Checks**: CloudFormation review ✓ · IAM policy ✓ · Already live-validated ✓
+**Discoveries**: Targeted bug fix for AccessDenied during staging deploys. Converted staging bucket from CloudFormation resource to parameter-based ARN reference to eliminate conflict with workflow-managed bucket. No scope creep, clear documentation of follow-on work.
+
+## 2026-05-08 — PR #1586: docs(architect): changelog entry for wave 4 implications review
+**Ticket(s)**: #1585
+**Verdict**: APPROVED ✓
+**Checks**: CLAUDE.md ✓ (documentation-only)
+**Discoveries**: Documentation-only PR appending architect changelog entry for Wave 4 architectural implications review; no Go modules or frontend code changes; merged via squash.
+
+## 2026-05-08 — PR #1585: docs(arch): wave 4 architectural implications review
+**Ticket(s)**: #1516, #1513, #1514, #1517, #1573, #1519, #1520, #1515, #1512, #1503, #1524, #1488, #1495, #1393
+**Verdict**: APPROVED ✓
+**Checks**: CLAUDE.md ✓ · gofumpt ✓ (docs-only) · go vet ✓ (docs-only) · go test ✓ (docs-only)
+**Discoveries**: ADR-015 (pagination) prerequisite for #1513/#1514. ADR-016 optional for CSP. PostHog event taxonomy doc gap. #1517 must follow #1573 for Crisp origin in allowlist. Backend must treat #1519/#1520/#1513 partial-flag as single contract. #1488 (security audit) must be final ticket in wave. CI gate (#1524) is both exit and entry gate.
+
+## 2026-05-08 — PR #1583: fix(ci): set MTGA_ENV=development for E2E pipeline and smoke tests
+**Ticket(s)**: #1450
+**Verdict**: APPROVED ✓
+**Checks**: CLAUDE.md ✓ · vitest ✓ · tsc ✓
+**Discoveries**: Fix correctly addresses BFF initialization failure when MTGA_ENV defaults to production mode and DATABASE_URL/CLERK_SECRET_KEY are not provided in CI.
+
 ## 2026-05-07 — PR #1526: docs(prd): v0.3.0 kickoff doc and beta roadmap update
 **Ticket(s)**: #1387–#1393 (live draft), #1501–#1524 (telemetry), #1525 (superseded)
 **Verdict**: APPROVED ✓
