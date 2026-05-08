@@ -1,6 +1,6 @@
 // Package projection provides a background worker that fans daemon_events rows
 // into destination tables (matches, draft_sessions, card_inventory, inventory,
-// quests, quest_session_tracking, decks).
+// quests, quest_session_tracking, decks, game_plays).
 package projection
 
 import (
@@ -62,6 +62,12 @@ type deckStore interface {
 	UpsertDeck(ctx context.Context, u repository.DeckUpsert) error
 }
 
+// gamePlayStore writes individual game records and life-change rows.
+type gamePlayStore interface {
+	InsertGamePlay(ctx context.Context, ins repository.GamePlayInsert) (int64, error)
+	InsertLifeChanges(ctx context.Context, changes []repository.LifeChangeInsert) error
+}
+
 // Worker projects pending daemon_events rows into their destination tables.
 type Worker struct {
 	events     daemonEventStore
@@ -72,6 +78,7 @@ type Worker struct {
 	inventory  inventoryStore
 	quests     questStore
 	decks      deckStore
+	gamePlays  gamePlayStore
 }
 
 // NewWorker returns a Worker wired with the provided stores.
@@ -84,6 +91,7 @@ func NewWorker(
 	inventory inventoryStore,
 	quests questStore,
 	decks deckStore,
+	gamePlays gamePlayStore,
 ) *Worker {
 	return &Worker{
 		events:     events,
@@ -94,6 +102,7 @@ func NewWorker(
 		inventory:  inventory,
 		quests:     quests,
 		decks:      decks,
+		gamePlays:  gamePlays,
 	}
 }
 
@@ -239,6 +248,13 @@ func (w *Worker) projectRow(ctx context.Context, row *repository.DaemonEventRow)
 		writeErr = w.projectDeckUpdated(ctx, row)
 		if writeErr != nil {
 			log.Printf("[projection] projectDeckUpdated id=%d: %v", row.ID, writeErr)
+			outcome = outcomeSkippedMalformed
+		}
+
+	case "match.game_ended":
+		writeErr = w.projectGamePlayEvent(ctx, row)
+		if writeErr != nil {
+			log.Printf("[projection] projectGamePlayEvent id=%d: %v", row.ID, writeErr)
 			outcome = outcomeSkippedMalformed
 		}
 
@@ -617,6 +633,90 @@ func (w *Worker) projectDeckUpdated(ctx context.Context, row *repository.DaemonE
 		Cards:     cards,
 		UpdatedAt: row.OccurredAt,
 	})
+}
+
+// --- match.game_ended projector ---
+
+// gamePlayPayload mirrors contract.GamePlayPayload.
+// Redeclared here to avoid importing the contract module inside projection.
+type gamePlayPayload struct {
+	MatchID       string            `json:"match_id"`
+	GameNumber    int               `json:"game_number"`
+	WinningTeamID int               `json:"winning_team_id"`
+	TurnCount     int               `json:"turn_count"`
+	DurationSecs  int               `json:"duration_secs"`
+	LifeChanges   []lifeChangeEntry `json:"life_changes"`
+}
+
+type lifeChangeEntry struct {
+	TeamID     int `json:"team_id"`
+	LifeTotal  int `json:"life_total"`
+	Delta      int `json:"delta"`
+	TurnNumber int `json:"turn_number"`
+}
+
+// projectGamePlayEvent projects a match.game_ended event into game_plays and
+// life_change_tracking.
+//
+// Ordering guarantee: the Sequence field from the DaemonEvent envelope is
+// written to game_plays.sequence.  InsertGamePlay enforces a WHERE
+// game_plays.sequence < EXCLUDED.sequence guard on conflict, ensuring that
+// out-of-order retransmissions of the same (match_id, game_number) do not
+// regress the stored state.
+func (w *Worker) projectGamePlayEvent(ctx context.Context, row *repository.DaemonEventRow) error {
+	var p gamePlayPayload
+	if err := json.Unmarshal(row.Payload, &p); err != nil {
+		return fmt.Errorf("unmarshal match.game_ended payload: %w", err)
+	}
+
+	if p.MatchID == "" {
+		return fmt.Errorf("match.game_ended payload missing match_id")
+	}
+
+	if p.GameNumber < 1 {
+		return fmt.Errorf("match.game_ended payload invalid game_number %d", p.GameNumber)
+	}
+
+	accountID, err := w.accounts.GetOrCreateByClientID(ctx, row.AccountID, row.UserID)
+	if err != nil {
+		return fmt.Errorf("resolve account: %w", err)
+	}
+
+	gamePlayID, err := w.gamePlays.InsertGamePlay(ctx, repository.GamePlayInsert{
+		AccountID:     accountID,
+		MatchID:       p.MatchID,
+		GameNumber:    p.GameNumber,
+		WinningTeamID: p.WinningTeamID,
+		TurnCount:     p.TurnCount,
+		DurationSecs:  p.DurationSecs,
+		Sequence:      row.Sequence,
+		OccurredAt:    row.OccurredAt,
+	})
+	if err != nil {
+		return fmt.Errorf("InsertGamePlay: %w", err)
+	}
+
+	if len(p.LifeChanges) == 0 {
+		return nil
+	}
+
+	changes := make([]repository.LifeChangeInsert, 0, len(p.LifeChanges))
+	for _, lc := range p.LifeChanges {
+		changes = append(changes, repository.LifeChangeInsert{
+			AccountID:  accountID,
+			GamePlayID: gamePlayID,
+			TeamID:     lc.TeamID,
+			LifeTotal:  lc.LifeTotal,
+			Delta:      lc.Delta,
+			TurnNumber: lc.TurnNumber,
+		})
+	}
+
+	if err := w.gamePlays.InsertLifeChanges(ctx, changes); err != nil {
+		return fmt.Errorf("InsertLifeChanges: %w", err)
+	}
+
+	return nil
 }
 
 // normaliseResult maps win/loss variants to the canonical DB value.

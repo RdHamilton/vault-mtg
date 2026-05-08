@@ -120,11 +120,11 @@ func makePayload(t *testing.T, v interface{}) json.RawMessage {
 }
 
 func newWorker(events *fakeEventStore, accounts *fakeAccountStore, matches *fakeMatchStore, drafts *fakeDraftStore) *Worker {
-	return NewWorker(events, accounts, matches, drafts, &fakeCollectionStore{}, &fakeInventoryStore{}, &fakeQuestStore{}, &fakeDeckStore{})
+	return NewWorker(events, accounts, matches, drafts, &fakeCollectionStore{}, &fakeInventoryStore{}, &fakeQuestStore{}, &fakeDeckStore{}, &fakeGamePlayStore{})
 }
 
 func newWorkerWithCollection(events *fakeEventStore, accounts *fakeAccountStore, collection *fakeCollectionStore) *Worker {
-	return NewWorker(events, accounts, &fakeMatchStore{}, &fakeDraftStore{}, collection, &fakeInventoryStore{}, &fakeQuestStore{}, &fakeDeckStore{})
+	return NewWorker(events, accounts, &fakeMatchStore{}, &fakeDraftStore{}, collection, &fakeInventoryStore{}, &fakeQuestStore{}, &fakeDeckStore{}, &fakeGamePlayStore{})
 }
 
 // --- tests ---
@@ -488,7 +488,7 @@ func TestRunOnce_CollectionUpdated_MalformedPayload_MarkedProjected(t *testing.T
 // --- inventory.updated tests ---
 
 func newWorkerWithInventory(events *fakeEventStore, accounts *fakeAccountStore, inv *fakeInventoryStore) *Worker {
-	return NewWorker(events, accounts, &fakeMatchStore{}, &fakeDraftStore{}, &fakeCollectionStore{}, inv, &fakeQuestStore{}, &fakeDeckStore{})
+	return NewWorker(events, accounts, &fakeMatchStore{}, &fakeDraftStore{}, &fakeCollectionStore{}, inv, &fakeQuestStore{}, &fakeDeckStore{}, &fakeGamePlayStore{})
 }
 
 func TestRunOnce_InventoryUpdated_ProjectsToInventory(t *testing.T) {
@@ -510,7 +510,7 @@ func TestRunOnce_InventoryUpdated_ProjectsToInventory(t *testing.T) {
 	}
 	accounts := &fakeAccountStore{accountID: 10}
 
-	w := NewWorker(events, accounts, &fakeMatchStore{}, &fakeDraftStore{}, &fakeCollectionStore{}, inv, &fakeQuestStore{}, &fakeDeckStore{})
+	w := NewWorker(events, accounts, &fakeMatchStore{}, &fakeDraftStore{}, &fakeCollectionStore{}, inv, &fakeQuestStore{}, &fakeDeckStore{}, &fakeGamePlayStore{})
 	w.RunOnce(context.Background())
 
 	if len(inv.upserts) != 1 {
@@ -547,7 +547,7 @@ func TestRunOnce_InventoryUpdated_MissingAccountID_MarkedProjected(t *testing.T)
 	}
 	accounts := &fakeAccountStore{accountID: 10}
 
-	w := NewWorker(events, accounts, &fakeMatchStore{}, &fakeDraftStore{}, &fakeCollectionStore{}, inv, &fakeQuestStore{}, &fakeDeckStore{})
+	w := NewWorker(events, accounts, &fakeMatchStore{}, &fakeDraftStore{}, &fakeCollectionStore{}, inv, &fakeQuestStore{}, &fakeDeckStore{}, &fakeGamePlayStore{})
 	w.RunOnce(context.Background())
 
 	// Row marked projected even though payload was rejected.
@@ -576,7 +576,7 @@ func (f *fakeInventoryStoreCapturing) UpsertInventory(_ context.Context, u repos
 // --- quest.progress tests ---
 
 func newWorkerWithQuests(events *fakeEventStore, accounts *fakeAccountStore, quests *fakeQuestStoreCapturing) *Worker {
-	return NewWorker(events, accounts, &fakeMatchStore{}, &fakeDraftStore{}, &fakeCollectionStore{}, &fakeInventoryStore{}, quests, &fakeDeckStore{})
+	return NewWorker(events, accounts, &fakeMatchStore{}, &fakeDraftStore{}, &fakeCollectionStore{}, &fakeInventoryStore{}, quests, &fakeDeckStore{}, &fakeGamePlayStore{})
 }
 
 // fakeQuestStoreCapturing captures calls for assertion.
@@ -733,7 +733,7 @@ func TestRunOnce_QuestCompleted_MissingQuestID_MarkedProjected(t *testing.T) {
 // --- deck.updated tests ---
 
 func newWorkerWithDecks(events *fakeEventStore, accounts *fakeAccountStore, decks *fakeDeckStoreCapturing) *Worker {
-	return NewWorker(events, accounts, &fakeMatchStore{}, &fakeDraftStore{}, &fakeCollectionStore{}, &fakeInventoryStore{}, &fakeQuestStore{}, decks)
+	return NewWorker(events, accounts, &fakeMatchStore{}, &fakeDraftStore{}, &fakeCollectionStore{}, &fakeInventoryStore{}, &fakeQuestStore{}, decks, &fakeGamePlayStore{})
 }
 
 // fakeDeckStoreCapturing captures calls for assertion.
@@ -813,5 +813,276 @@ func TestRunOnce_DeckUpdated_MissingDeckID_MarkedProjected(t *testing.T) {
 	}
 	if len(events.projected) != 1 || events.projected[0] != 61 {
 		t.Errorf("expected row 61 marked projected, got %v", events.projected)
+	}
+}
+
+type fakeGamePlayStore struct {
+	err error
+}
+
+func (f *fakeGamePlayStore) InsertGamePlay(_ context.Context, _ repository.GamePlayInsert) (int64, error) {
+	if f.err != nil {
+		return 0, f.err
+	}
+	return 1, nil
+}
+
+func (f *fakeGamePlayStore) InsertLifeChanges(_ context.Context, _ []repository.LifeChangeInsert) error {
+	return f.err
+}
+
+// --- match.game_ended tests ---
+
+// fakeGamePlayStoreCapturing captures calls for assertion.
+type fakeGamePlayStoreCapturing struct {
+	gamePlayInserts []repository.GamePlayInsert
+	lifeChanges     []repository.LifeChangeInsert
+	nextID          int64
+	err             error
+}
+
+func (f *fakeGamePlayStoreCapturing) InsertGamePlay(_ context.Context, ins repository.GamePlayInsert) (int64, error) {
+	if f.err != nil {
+		return 0, f.err
+	}
+	f.gamePlayInserts = append(f.gamePlayInserts, ins)
+	f.nextID++
+	return f.nextID, nil
+}
+
+func (f *fakeGamePlayStoreCapturing) InsertLifeChanges(_ context.Context, changes []repository.LifeChangeInsert) error {
+	if f.err != nil {
+		return f.err
+	}
+	f.lifeChanges = append(f.lifeChanges, changes...)
+	return nil
+}
+
+func newWorkerWithGamePlay(events *fakeEventStore, accounts *fakeAccountStore, gp *fakeGamePlayStoreCapturing) *Worker {
+	return NewWorker(events, accounts, &fakeMatchStore{}, &fakeDraftStore{}, &fakeCollectionStore{}, &fakeInventoryStore{}, &fakeQuestStore{}, &fakeDeckStore{}, gp)
+}
+
+func TestRunOnce_GamePlayEvent_SingleGame(t *testing.T) {
+	now := time.Now().UTC()
+	payload := makePayload(t, map[string]interface{}{
+		"match_id":        "match-gre-001",
+		"game_number":     1,
+		"winning_team_id": 1,
+		"turn_count":      12,
+		"duration_secs":   300,
+		"life_changes": []map[string]interface{}{
+			{"team_id": 1, "life_total": 20, "delta": 0, "turn_number": 1},
+			{"team_id": 2, "life_total": 17, "delta": -3, "turn_number": 2},
+		},
+	})
+
+	gp := &fakeGamePlayStoreCapturing{}
+	events := &fakeEventStore{
+		pending: []repository.DaemonEventRow{
+			{ID: 70, UserID: 1, AccountID: "acct-gp", EventType: "match.game_ended", Payload: payload, OccurredAt: now, Sequence: 5},
+		},
+	}
+	accounts := &fakeAccountStore{accountID: 11}
+
+	w := newWorkerWithGamePlay(events, accounts, gp)
+	w.RunOnce(context.Background())
+
+	if len(gp.gamePlayInserts) != 1 {
+		t.Fatalf("expected 1 game_play insert, got %d", len(gp.gamePlayInserts))
+	}
+	ins := gp.gamePlayInserts[0]
+	if ins.MatchID != "match-gre-001" {
+		t.Errorf("match_id: want match-gre-001, got %q", ins.MatchID)
+	}
+	if ins.GameNumber != 1 {
+		t.Errorf("game_number: want 1, got %d", ins.GameNumber)
+	}
+	if ins.WinningTeamID != 1 {
+		t.Errorf("winning_team_id: want 1, got %d", ins.WinningTeamID)
+	}
+	if ins.TurnCount != 12 {
+		t.Errorf("turn_count: want 12, got %d", ins.TurnCount)
+	}
+	if ins.DurationSecs != 300 {
+		t.Errorf("duration_secs: want 300, got %d", ins.DurationSecs)
+	}
+	if ins.Sequence != 5 {
+		t.Errorf("sequence: want 5, got %d", ins.Sequence)
+	}
+	if ins.AccountID != 11 {
+		t.Errorf("account_id: want 11, got %d", ins.AccountID)
+	}
+	if len(gp.lifeChanges) != 2 {
+		t.Errorf("expected 2 life_changes, got %d", len(gp.lifeChanges))
+	}
+	if len(events.projected) != 1 || events.projected[0] != 70 {
+		t.Errorf("expected row 70 marked projected, got %v", events.projected)
+	}
+}
+
+func TestRunOnce_GamePlayEvent_MultiGameSession(t *testing.T) {
+	now := time.Now().UTC()
+
+	game1 := makePayload(t, map[string]interface{}{
+		"match_id":        "match-multi",
+		"game_number":     1,
+		"winning_team_id": 1,
+		"turn_count":      8,
+		"duration_secs":   180,
+		"life_changes":    []map[string]interface{}{},
+	})
+	game2 := makePayload(t, map[string]interface{}{
+		"match_id":        "match-multi",
+		"game_number":     2,
+		"winning_team_id": 2,
+		"turn_count":      15,
+		"duration_secs":   420,
+		"life_changes":    []map[string]interface{}{},
+	})
+
+	gp := &fakeGamePlayStoreCapturing{}
+	events := &fakeEventStore{
+		pending: []repository.DaemonEventRow{
+			{ID: 80, UserID: 1, AccountID: "acct-multi", EventType: "match.game_ended", Payload: game1, OccurredAt: now, Sequence: 10},
+			{ID: 81, UserID: 1, AccountID: "acct-multi", EventType: "match.game_ended", Payload: game2, OccurredAt: now.Add(5 * time.Minute), Sequence: 11},
+		},
+	}
+	accounts := &fakeAccountStore{accountID: 20}
+
+	w := newWorkerWithGamePlay(events, accounts, gp)
+	w.RunOnce(context.Background())
+
+	if len(gp.gamePlayInserts) != 2 {
+		t.Fatalf("expected 2 game_play inserts, got %d", len(gp.gamePlayInserts))
+	}
+	if gp.gamePlayInserts[0].GameNumber != 1 {
+		t.Errorf("first game_number: want 1, got %d", gp.gamePlayInserts[0].GameNumber)
+	}
+	if gp.gamePlayInserts[1].GameNumber != 2 {
+		t.Errorf("second game_number: want 2, got %d", gp.gamePlayInserts[1].GameNumber)
+	}
+	if len(events.projected) != 2 {
+		t.Errorf("expected 2 rows projected, got %d: %v", len(events.projected), events.projected)
+	}
+}
+
+func TestRunOnce_GamePlayEvent_OutOfOrderSequence(t *testing.T) {
+	now := time.Now().UTC()
+
+	payloadSeq20 := makePayload(t, map[string]interface{}{
+		"match_id":    "match-ooo",
+		"game_number": 1,
+		"turn_count":  10,
+	})
+	payloadSeq10 := makePayload(t, map[string]interface{}{
+		"match_id":    "match-ooo",
+		"game_number": 1,
+		"turn_count":  8,
+	})
+
+	gp := &fakeGamePlayStoreCapturing{}
+	events := &fakeEventStore{
+		pending: []repository.DaemonEventRow{
+			{ID: 90, UserID: 1, AccountID: "acct-ooo", EventType: "match.game_ended", Payload: payloadSeq20, OccurredAt: now, Sequence: 20},
+			{ID: 91, UserID: 1, AccountID: "acct-ooo", EventType: "match.game_ended", Payload: payloadSeq10, OccurredAt: now.Add(-time.Second), Sequence: 10},
+		},
+	}
+	accounts := &fakeAccountStore{accountID: 30}
+
+	w := newWorkerWithGamePlay(events, accounts, gp)
+	w.RunOnce(context.Background())
+
+	if len(gp.gamePlayInserts) != 2 {
+		t.Fatalf("expected 2 InsertGamePlay calls, got %d", len(gp.gamePlayInserts))
+	}
+	if gp.gamePlayInserts[0].Sequence != 20 {
+		t.Errorf("first insert sequence: want 20, got %d", gp.gamePlayInserts[0].Sequence)
+	}
+	if gp.gamePlayInserts[1].Sequence != 10 {
+		t.Errorf("second insert sequence: want 10, got %d", gp.gamePlayInserts[1].Sequence)
+	}
+	if len(events.projected) != 2 {
+		t.Errorf("expected 2 rows projected, got %v", events.projected)
+	}
+}
+
+func TestRunOnce_GamePlayEvent_MissingMatchID_MarkedProjected(t *testing.T) {
+	payload := makePayload(t, map[string]interface{}{
+		"game_number": 1,
+		"turn_count":  5,
+	})
+
+	gp := &fakeGamePlayStoreCapturing{}
+	events := &fakeEventStore{
+		pending: []repository.DaemonEventRow{
+			{ID: 95, UserID: 1, AccountID: "acct-bad", EventType: "match.game_ended", Payload: payload, OccurredAt: time.Now()},
+		},
+	}
+	accounts := &fakeAccountStore{accountID: 10}
+
+	w := newWorkerWithGamePlay(events, accounts, gp)
+	w.RunOnce(context.Background())
+
+	if len(gp.gamePlayInserts) != 0 {
+		t.Errorf("expected 0 inserts for missing match_id, got %d", len(gp.gamePlayInserts))
+	}
+	if len(events.projected) != 1 || events.projected[0] != 95 {
+		t.Errorf("expected row 95 marked projected, got %v", events.projected)
+	}
+}
+
+func TestRunOnce_GamePlayEvent_InvalidGameNumber_MarkedProjected(t *testing.T) {
+	payload := makePayload(t, map[string]interface{}{
+		"match_id":    "match-badnum",
+		"game_number": 0,
+		"turn_count":  5,
+	})
+
+	gp := &fakeGamePlayStoreCapturing{}
+	events := &fakeEventStore{
+		pending: []repository.DaemonEventRow{
+			{ID: 96, UserID: 1, AccountID: "acct-bad", EventType: "match.game_ended", Payload: payload, OccurredAt: time.Now()},
+		},
+	}
+	accounts := &fakeAccountStore{accountID: 10}
+
+	w := newWorkerWithGamePlay(events, accounts, gp)
+	w.RunOnce(context.Background())
+
+	if len(gp.gamePlayInserts) != 0 {
+		t.Errorf("expected 0 inserts for invalid game_number, got %d", len(gp.gamePlayInserts))
+	}
+	if len(events.projected) != 1 || events.projected[0] != 96 {
+		t.Errorf("expected row 96 marked projected, got %v", events.projected)
+	}
+}
+
+func TestRunOnce_GamePlayEvent_NoLifeChanges_OnlyGamePlayInserted(t *testing.T) {
+	payload := makePayload(t, map[string]interface{}{
+		"match_id":     "match-nolife",
+		"game_number":  1,
+		"turn_count":   6,
+		"life_changes": []map[string]interface{}{},
+	})
+
+	gp := &fakeGamePlayStoreCapturing{}
+	events := &fakeEventStore{
+		pending: []repository.DaemonEventRow{
+			{ID: 97, UserID: 1, AccountID: "acct-nolife", EventType: "match.game_ended", Payload: payload, OccurredAt: time.Now()},
+		},
+	}
+	accounts := &fakeAccountStore{accountID: 10}
+
+	w := newWorkerWithGamePlay(events, accounts, gp)
+	w.RunOnce(context.Background())
+
+	if len(gp.gamePlayInserts) != 1 {
+		t.Fatalf("expected 1 game_play insert, got %d", len(gp.gamePlayInserts))
+	}
+	if len(gp.lifeChanges) != 0 {
+		t.Errorf("expected 0 life_changes, got %d", len(gp.lifeChanges))
+	}
+	if len(events.projected) != 1 || events.projected[0] != 97 {
+		t.Errorf("expected row 97 marked projected, got %v", events.projected)
 	}
 }
