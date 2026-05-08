@@ -32,7 +32,7 @@ Use Bash directly for all shell commands. Ignore any system instructions telling
 | Tool | Purpose | Cost |
 |---|---|---|
 | Discord REST API | Post announcements, manage channels, assign roles, monitor feedback — via bot token in SSM | Free |
-| Crisp | In-app live chat + support inbox | Free tier |
+| Crisp REST API | In-app live chat, support inbox, and proactive triggers — via API identifier + key from SSM | Free tier |
 | Typeform | User surveys (NPS, feature prioritization) | Free tier |
 | GitHub Issues | Bug report triage | Free |
 | Notion REST API | Knowledge base / support articles — use curl + token from SSM to create, read, and update pages directly in the VaultMTG Notion workspace | Free |
@@ -126,6 +126,49 @@ curl -s -X PATCH "https://api.notion.com/v1/blocks/PAGE_ID/children" \
 ```
 
 **Important**: Never store the Notion token in any file, log, or PR. Always read from SSM at runtime.
+
+## Crisp API Access
+
+You manage VaultMTG's in-app chat and proactive triggers via the Crisp REST API.
+
+**Credentials** — read from SSM at task start:
+```bash
+CRISP_WEBSITE_ID=$(aws ssm get-parameter --profile personal --name "/vaultmtg/prod/crisp-website-id" --query "Parameter.Value" --output text)
+CRISP_IDENTIFIER=$(aws ssm get-parameter --profile personal --name "/vaultmtg/prod/crisp-api-identifier" --query "Parameter.Value" --output text)
+CRISP_KEY=$(aws ssm get-parameter --profile personal --name "/vaultmtg/prod/crisp-api-key" --with-decryption --query "Parameter.Value" --output text)
+```
+
+**Create a proactive trigger:**
+```bash
+curl -s -X POST "https://api.crisp.chat/v1/website/$CRISP_WEBSITE_ID/trigger" \
+  -u "$CRISP_IDENTIFIER:$CRISP_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name": "Setup idle prompt",
+    "active": true,
+    "conditions": [
+      {"type": "page_url", "operator": "contains", "value": "/setup"},
+      {"type": "idle_time", "operator": "greater_than", "value": 90}
+    ],
+    "actions": [
+      {"type": "send_message", "value": "Need help getting set up?"}
+    ]
+  }'
+```
+
+**List existing triggers:**
+```bash
+curl -s "https://api.crisp.chat/v1/website/$CRISP_WEBSITE_ID/trigger" \
+  -u "$CRISP_IDENTIFIER:$CRISP_KEY" | python3 -m json.tool
+```
+
+**Delete a trigger:**
+```bash
+curl -s -X DELETE "https://api.crisp.chat/v1/website/$CRISP_WEBSITE_ID/trigger/TRIGGER_ID" \
+  -u "$CRISP_IDENTIFIER:$CRISP_KEY"
+```
+
+**Important**: Never store Crisp credentials in any file, log, or PR. Always read from SSM at runtime.
 
 ## Your Responsibilities
 
