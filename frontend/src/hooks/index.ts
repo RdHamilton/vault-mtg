@@ -34,3 +34,10 @@ export type {
 
 export { useDeckValidation } from './useDeckValidation';
 export type { DeckValidationState, UseDeckValidationReturn } from './useDeckValidation';
+
+export { useDraftEventStream } from './useDraftEventStream';
+export type {
+  DaemonEvent,
+  DraftEventStreamStatus,
+  UseDraftEventStreamReturn,
+} from './useDraftEventStream';
