@@ -5,6 +5,35 @@
     <link rel="icon" type="image/svg+xml" href="/vite.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>VaultMTG</title>
+
+    <!-- Open Graph -->
+    <meta property="og:title" content="VaultMTG — MTG Arena Companion" />
+    <meta property="og:description" content="Track your drafts, deck win rates, and collection. Built for MTG Arena players." />
+    <meta property="og:image" content="/og-image.png" />
+    <meta property="og:url" content="https://app.vaultmtg.app" />
+    <meta property="og:type" content="website" />
+
+    <!-- Twitter Card -->
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="VaultMTG — MTG Arena Companion" />
+    <meta name="twitter:description" content="Track your drafts, deck win rates, and collection. Built for MTG Arena players." />
+    <meta name="twitter:image" content="/og-image.png" />
+
+    <!-- Google Analytics 4 (injected only when VITE_GA4_MEASUREMENT_ID is set) -->
+    <script>
+      (function () {
+        var measurementId = '%VITE_GA4_MEASUREMENT_ID%';
+        if (!measurementId || measurementId === '%VITE_GA4_MEASUREMENT_ID%') return;
+        var s = document.createElement('script');
+        s.async = true;
+        s.src = 'https://www.googletagmanager.com/gtag/js?id=' + measurementId;
+        document.head.appendChild(s);
+        window.dataLayer = window.dataLayer || [];
+        function gtag() { window.dataLayer.push(arguments); }
+        gtag('js', new Date());
+        gtag('config', measurementId);
+      })();
+    </script>
   </head>
   <body>
     <div id="root"></div>
