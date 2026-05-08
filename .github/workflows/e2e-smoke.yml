@@ -71,6 +71,10 @@ jobs:
       env:
         CI: true
         DATABASE_URL: postgres://mtga:mtga@localhost:5432/mtga_e2e?sslmode=disable
+        # BFF config.Load() defaults MTGA_ENV to "production" (since c540e1b) which
+        # requires CLERK_SECRET_KEY. Set to "development" so the BFF starts without
+        # a Clerk secret key — smoke tests validate UI connectivity, not auth.
+        MTGA_ENV: development
 
     - name: Upload test results
       if: always()
