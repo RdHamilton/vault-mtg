@@ -23,7 +23,7 @@ export default defineConfig({
 
   // Run tests sequentially for consistent state management
   fullyParallel: false,
-  workers: 1,
+  workers: process.env.CI ? 2 : undefined,
 
   // Fail the build on CI if you accidentally left test.only in the source code
   forbidOnly: !!process.env.CI,
