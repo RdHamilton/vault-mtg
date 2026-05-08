@@ -168,3 +168,8 @@ This is the system-wide record of all changes made across the project. Every age
 **Files changed**:
 - `frontend/src/adapters/` — added Authorization header injection to all BFF fetch calls via the REST API adapter layer
 **Summary**: Wired the auth token into every outbound BFF request so authenticated endpoints receive the Authorization header; implemented at the adapter layer to keep components free of auth concerns.
+
+## 2026-05-08 — [architect] Wave 4 Architectural Implications Review (v0.4.0 Closed Beta)
+**PR**: #1585
+**ADR**: N/A (review note; flags pending ADR-015 for #1516 pagination standard)
+**Summary**: One-pass architectural review of Wave 4 (12 tickets). PROCEED with four preconditions: (1) #1516 ADR merges before #1513/#1514 code, (2) #1517 CSP scheduled after #1573 Crisp so origin is in allowlist, (3) #1519/#1520/#1513 partial-flag field name agreed in shared contract before any codes, (4) #1488 security audit scheduled last. Flagged PostHog PII scan as new audit gate for #1573 and activation funnel events.
