@@ -228,3 +228,161 @@ func TestClerkUserIDFromContext_NoClaims(t *testing.T) {
 		t.Errorf("no claims: want (\"\", false), got (%q, %v)", uid, ok)
 	}
 }
+
+// ── RequireClerkAuthForSSE tests ─────────────────────────────────────────────
+//
+// RequireClerkAuthForSSE accepts the Clerk session cookie ("__session") as a
+// fallback token source in addition to the standard Authorization: Bearer
+// header.  These tests cover the SSE auth path required by ticket #1387.
+
+// TestRequireClerkAuthForSSE_UnauthenticatedReturns401 verifies that a request
+// with neither an Authorization header nor an __session cookie is rejected with
+// 401 Unauthorized.
+func TestRequireClerkAuthForSSE_UnauthenticatedReturns401(t *testing.T) {
+	withClerkBackend(t, "kid-sse-unauth", nil)
+
+	handler := middleware.RequireClerkAuthForSSE("sk_test_dummy")(clerkOKHandler)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/events", nil)
+	rr := httptest.NewRecorder()
+	handler.ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusUnauthorized {
+		t.Fatalf("unauthenticated SSE: want 401, got %d", rr.Code)
+	}
+
+	var body map[string]string
+	if err := json.NewDecoder(rr.Body).Decode(&body); err != nil {
+		t.Fatalf("401 body is not valid JSON: %v", err)
+	}
+
+	if body["error"] != "unauthorized" {
+		t.Errorf("body error field: want \"unauthorized\", got %q", body["error"])
+	}
+}
+
+// TestRequireClerkAuthForSSE_ValidBearerHeader verifies that the standard
+// Authorization: Bearer <token> path is unaffected — existing non-SSE callers
+// and the existing test suite continue to work unchanged.
+func TestRequireClerkAuthForSSE_ValidBearerHeader(t *testing.T) {
+	kid := "kid-sse-bearer"
+
+	now := time.Now()
+	claims := map[string]any{
+		"sub": "user_bearer",
+		"sid": "sess_bearer",
+		"iss": "https://clerk.test",
+		"iat": now.Add(-1 * time.Minute).Unix(),
+		"nbf": now.Add(-1 * time.Minute).Unix(),
+		"exp": now.Add(1 * time.Hour).Unix(),
+	}
+
+	token, pubKey := clerktest.GenerateJWT(t, claims, kid)
+	withClerkBackend(t, kid, pubKey)
+
+	handler := middleware.RequireClerkAuthForSSE("sk_test_dummy")(clerkOKHandler)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/events", nil)
+	req.Header.Set("Authorization", "Bearer "+token)
+	rr := httptest.NewRecorder()
+	handler.ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusOK {
+		t.Fatalf("SSE bearer: want 200, got %d — body: %s", rr.Code, rr.Body.String())
+	}
+
+	if rr.Body.String() != "user_bearer" {
+		t.Errorf("subject: want \"user_bearer\", got %q", rr.Body.String())
+	}
+}
+
+// TestRequireClerkAuthForSSE_ValidSessionCookie verifies that an EventSource
+// connection authenticated via the Clerk "__session" cookie (no Authorization
+// header) is accepted and the user ID is correctly extracted from the JWT.
+func TestRequireClerkAuthForSSE_ValidSessionCookie(t *testing.T) {
+	kid := "kid-sse-cookie"
+
+	now := time.Now()
+	claims := map[string]any{
+		"sub": "user_cookie",
+		"sid": "sess_cookie",
+		"iss": "https://clerk.test",
+		"iat": now.Add(-1 * time.Minute).Unix(),
+		"nbf": now.Add(-1 * time.Minute).Unix(),
+		"exp": now.Add(1 * time.Hour).Unix(),
+	}
+
+	token, pubKey := clerktest.GenerateJWT(t, claims, kid)
+	withClerkBackend(t, kid, pubKey)
+
+	handler := middleware.RequireClerkAuthForSSE("sk_test_dummy")(clerkOKHandler)
+
+	// No Authorization header — only the __session cookie is present.
+	// This mirrors how the browser EventSource API authenticates SSE connections.
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/events", nil)
+	req.AddCookie(&http.Cookie{Name: "__session", Value: token})
+	rr := httptest.NewRecorder()
+	handler.ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusOK {
+		t.Fatalf("SSE cookie: want 200, got %d — body: %s", rr.Code, rr.Body.String())
+	}
+
+	if rr.Body.String() != "user_cookie" {
+		t.Errorf("subject: want \"user_cookie\", got %q", rr.Body.String())
+	}
+}
+
+// TestRequireClerkAuthForSSE_InvalidCookieReturns401 verifies that a request
+// carrying a malformed or expired __session cookie value is rejected with 401.
+func TestRequireClerkAuthForSSE_InvalidCookieReturns401(t *testing.T) {
+	withClerkBackend(t, "kid-sse-bad-cookie", nil) // no valid key in JWKS
+
+	handler := middleware.RequireClerkAuthForSSE("sk_test_dummy")(clerkOKHandler)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/events", nil)
+	req.AddCookie(&http.Cookie{Name: "__session", Value: "not.a.valid.jwt"})
+	rr := httptest.NewRecorder()
+	handler.ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusUnauthorized {
+		t.Fatalf("invalid cookie: want 401, got %d", rr.Code)
+	}
+}
+
+// TestRequireClerkAuthForSSE_CookieIgnoredWhenBearerPresent verifies that when
+// both an Authorization header and an __session cookie are present, the Bearer
+// header takes precedence (header is checked first in the extractor).
+func TestRequireClerkAuthForSSE_CookieIgnoredWhenBearerPresent(t *testing.T) {
+	kid := "kid-sse-prefer-bearer"
+
+	now := time.Now()
+	claims := map[string]any{
+		"sub": "user_prefer_bearer",
+		"sid": "sess_prefer_bearer",
+		"iss": "https://clerk.test",
+		"iat": now.Add(-1 * time.Minute).Unix(),
+		"nbf": now.Add(-1 * time.Minute).Unix(),
+		"exp": now.Add(1 * time.Hour).Unix(),
+	}
+
+	token, pubKey := clerktest.GenerateJWT(t, claims, kid)
+	withClerkBackend(t, kid, pubKey)
+
+	handler := middleware.RequireClerkAuthForSSE("sk_test_dummy")(clerkOKHandler)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/events", nil)
+	req.Header.Set("Authorization", "Bearer "+token)
+	// Also attach a cookie with a bad token to confirm it is not used.
+	req.AddCookie(&http.Cookie{Name: "__session", Value: "stale.cookie.token"})
+	rr := httptest.NewRecorder()
+	handler.ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusOK {
+		t.Fatalf("prefer bearer: want 200, got %d — body: %s", rr.Code, rr.Body.String())
+	}
+
+	if rr.Body.String() != "user_prefer_bearer" {
+		t.Errorf("subject: want \"user_prefer_bearer\", got %q", rr.Body.String())
+	}
+}

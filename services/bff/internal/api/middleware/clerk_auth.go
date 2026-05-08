@@ -4,6 +4,7 @@ package middleware
 import (
 	"encoding/json"
 	"net/http"
+	"strings"
 
 	"github.com/clerk/clerk-sdk-go/v2"
 	clerkhttp "github.com/clerk/clerk-sdk-go/v2/http"
@@ -11,6 +12,11 @@ import (
 
 // ctxKeyClerkUserID is the context key used to store the Clerk user ID (sub claim).
 const ctxKeyClerkUserID ctxKey = "clerk_user_id"
+
+// clerkSessionCookieName is the name of the session cookie set by the Clerk
+// frontend SDK.  The browser sends this cookie automatically on same-origin
+// requests, including EventSource connections which cannot set custom headers.
+const clerkSessionCookieName = "__session"
 
 // RequireClerkAuth returns middleware that verifies a Clerk session JWT from
 // the "Authorization: Bearer <token>" header.
@@ -33,6 +39,75 @@ func RequireClerkAuth(secretKey string) func(http.Handler) http.Handler {
 		// correct code for missing/invalid credentials (403 means authenticated
 		// but forbidden).
 		inner := clerkhttp.RequireHeaderAuthorization()(next)
+
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			rw := &statusCapture{ResponseWriter: w}
+			inner.ServeHTTP(rw, r)
+
+			// Rewrite 403 → 401 for the "no valid token" case.
+			if rw.status == http.StatusForbidden {
+				w.Header().Set("Content-Type", "application/json")
+				w.WriteHeader(http.StatusUnauthorized)
+				body, _ := json.Marshal(map[string]string{"error": "unauthorized"})
+				_, _ = w.Write(body)
+			}
+		})
+	}
+}
+
+// RequireClerkAuthForSSE returns middleware that verifies a Clerk session JWT
+// using a token extractor that accepts EITHER:
+//
+//  1. "Authorization: Bearer <token>" header — the standard path used by all
+//     non-SSE browser requests and the existing test suite.
+//  2. "__session" cookie — the session cookie written by the Clerk frontend SDK.
+//     The browser EventSource API cannot set custom request headers, so it sends
+//     the Clerk session cookie automatically on same-origin connections instead.
+//
+// Auth approach: Clerk session cookie passthrough.
+//
+//   - The Clerk JS SDK stores the active session token in a cookie named
+//     "__session" (httpOnly, Secure in production).
+//   - On SSE connections the extractor reads the cookie value and treats it as
+//     the Bearer token for Clerk JWT verification.  No custom signing or secret
+//     sharing is required — it is the same Clerk-issued JWT, delivered via a
+//     different transport.
+//   - The Bearer header path is checked first; the cookie is only used when no
+//     header is present.  This means non-SSE routes behind this middleware
+//     continue to work identically to RequireClerkAuth.
+//
+// Security considerations:
+//   - The cookie must be same-site (Strict or Lax) and httpOnly to resist CSRF
+//     and XSS.  The Clerk frontend SDK sets these attributes automatically.
+//   - Use this middleware ONLY on GET endpoints that establish long-lived
+//     read-only streams.  Mutation endpoints must continue to use the Bearer
+//     header path (RequireClerkAuth) to avoid CSRF risk.
+//
+// The secretKey must be the Clerk backend API secret (CLERK_SECRET_KEY).
+func RequireClerkAuthForSSE(secretKey string) func(http.Handler) http.Handler {
+	clerk.SetKey(secretKey)
+
+	// jwtExtractor checks the Authorization header first, then falls back to
+	// the Clerk session cookie.  The Clerk SDK calls this function to obtain the
+	// raw JWT string before signature verification.
+	jwtExtractor := func(r *http.Request) string {
+		// 1. Bearer header (existing path — non-SSE callers and tests).
+		if authHeader := strings.TrimSpace(r.Header.Get("Authorization")); authHeader != "" {
+			return strings.TrimPrefix(authHeader, "Bearer ")
+		}
+
+		// 2. Clerk session cookie (EventSource / browser SSE path).
+		if cookie, err := r.Cookie(clerkSessionCookieName); err == nil {
+			return cookie.Value
+		}
+
+		return ""
+	}
+
+	return func(next http.Handler) http.Handler {
+		inner := clerkhttp.RequireHeaderAuthorization(
+			clerkhttp.AuthorizationJWTExtractor(jwtExtractor),
+		)(next)
 
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			rw := &statusCapture{ResponseWriter: w}

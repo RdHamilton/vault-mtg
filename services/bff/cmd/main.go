@@ -123,8 +123,13 @@ func main() {
 	// the middleware is nil and callers fall back to the API-key path or serve
 	// a 503.
 	var clerkAuthMiddl func(http.Handler) http.Handler
+	var clerkAuthSSEMiddl func(http.Handler) http.Handler
 	if cfg.ClerkSecretKey != "" {
 		clerkAuthMiddl = bffmiddleware.RequireClerkAuth(cfg.ClerkSecretKey)
+		// SSE middleware accepts the Clerk session cookie as a fallback token
+		// source, because the browser EventSource API cannot set Authorization
+		// headers.  See middleware.RequireClerkAuthForSSE for full design notes.
+		clerkAuthSSEMiddl = bffmiddleware.RequireClerkAuthForSSE(cfg.ClerkSecretKey)
 	} else {
 		log.Println("CLERK_SECRET_KEY not set — Clerk JWT auth disabled (development only).")
 	}
@@ -207,6 +212,7 @@ func main() {
 		DaemonHealthHandler: daemonHealthHandler,
 		HealthzHandler:      healthzHandler,
 		ClerkAuthMiddl:      clerkAuthMiddl,
+		ClerkAuthSSEMiddl:   clerkAuthSSEMiddl,
 		ClerkUserResolver:   clerkUserResolver,
 		APIKeyAuthMiddl:     apiKeyAuthMiddl,
 		SentryMiddl:         bffmiddleware.NewSentryMiddleware(),
@@ -254,8 +260,14 @@ type RouterDeps struct {
 	HistoryHandler      *handlers.HistoryHandler
 	DaemonHealthHandler *handlers.DaemonHealthHandler
 	// HealthzHandler serves GET /healthz — intentionally public (no auth).
-	HealthzHandler    *handlers.HealthzHandler
-	ClerkAuthMiddl    func(http.Handler) http.Handler
+	HealthzHandler *handlers.HealthzHandler
+	ClerkAuthMiddl func(http.Handler) http.Handler
+	// ClerkAuthSSEMiddl is used exclusively for GET /api/v1/events.  It accepts
+	// the Clerk session cookie as a fallback token source in addition to the
+	// standard Authorization: Bearer header.  This is required because the
+	// browser EventSource API cannot set custom request headers.
+	// See middleware.RequireClerkAuthForSSE for the full design rationale.
+	ClerkAuthSSEMiddl func(http.Handler) http.Handler
 	ClerkUserResolver func(http.Handler) http.Handler
 	APIKeyAuthMiddl   func(http.Handler) http.Handler
 	// SentryMiddl is the Sentry panic/error capture middleware.  When non-nil
@@ -344,9 +356,34 @@ func BuildRouter(cfg *config.Config, deps RouterDeps) http.Handler {
 
 	sseHandler := deps.Broker.Handler(bffmiddleware.UserIDFromContext)
 
+	// sseClerkMiddl resolves to the cookie-aware SSE middleware when available,
+	// falling back to the standard Bearer-only middleware.  Both verify the same
+	// Clerk JWT — only the token transport differs.
+	sseClerkMiddl := deps.ClerkAuthSSEMiddl
+	if sseClerkMiddl == nil {
+		sseClerkMiddl = deps.ClerkAuthMiddl
+	}
+
 	switch {
 	case deps.ClerkAuthMiddl != nil:
-		// Protected group — all routes inside require a valid Clerk JWT.
+		// GET /api/v1/events — SSE stream for browser clients.
+		//
+		// Mounted in its own group with the cookie-aware SSE middleware
+		// (ClerkAuthSSEMiddl) instead of the standard ClerkAuthMiddl.  The
+		// browser EventSource API cannot set custom Authorization headers, so
+		// the SSE middleware also accepts the Clerk session cookie ("__session")
+		// as a fallback token source.  All other Clerk-protected routes remain
+		// in the Bearer-only group below.
+		r.Group(func(r chi.Router) {
+			r.Use(sseClerkMiddl)
+			if deps.ClerkUserResolver != nil {
+				r.Use(deps.ClerkUserResolver)
+			}
+			r.Get("/api/v1/events", sseHandler)
+		})
+
+		// Protected group — all non-SSE routes require a valid Clerk JWT via
+		// the standard Authorization: Bearer header.
 		r.Group(func(r chi.Router) {
 			r.Use(deps.ClerkAuthMiddl)
 
@@ -356,9 +393,6 @@ func BuildRouter(cfg *config.Config, deps RouterDeps) http.Handler {
 			if deps.ClerkUserResolver != nil {
 				r.Use(deps.ClerkUserResolver)
 			}
-
-			// GET /api/v1/events — SSE stream for browser clients.
-			r.Get("/api/v1/events", sseHandler)
 
 			// GET /api/v1/draft-ratings/{setCode}/{format} — draft card and color ratings.
 			// Protected to prevent unauthenticated scraping and to scope future
