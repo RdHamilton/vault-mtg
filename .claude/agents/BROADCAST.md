@@ -6,7 +6,7 @@ description: Shared operational directives broadcast to all agents. Read at the 
 # Agent Broadcast — VaultMTG
 
 **Last updated**: 2026-05-08
-**Updated by**: PM / Ray
+**Updated by**: LE (rogue-agent safeguard)
 
 ---
 
@@ -26,6 +26,7 @@ Read these before picking up any ticket. They override default agent behavior.
 1. **P0: CI is red on main** — Infrastructure owns #1524. No new feature work starts until CI is green and main is clean.
 2. **Architect review COMPLETE — PROCEED** — `docs/arch/wave4-implications.md` is merged. Key gates before tickets start: (a) ADR-015 (pagination standard) must be written before #1513/#1514; (b) #1517 (CSP) must schedule after #1573 (Crisp); (c) #1519/#1520/#1513 partial-flag field name must be agreed on before any of the three start coding; (d) #1488 (security audit) is last.
 3. **v0.3.0 release tag is blocked** — Do not cut the v0.3.0 release tag until CI is green. Infrastructure will notify PM when it's ready.
+4. **ENFORCEMENT — task scope violation logged** — A rogue infrastructure agent made out-of-scope commits on 2026-05-08 (reverted a LE-approved CLERK secret, added logparse CI job, moved a ticket). The incident is resolved. All agents must read the Task Scope Enforcement rule in Standing Orders before any action.
 
 ---
 
@@ -41,6 +42,12 @@ Read these before picking up any ticket. They override default agent behavior.
 
 These apply to every agent on every task and do not expire:
 
+- **ENFORCEMENT — strict task scope**: Every agent MUST perform ONLY the work explicitly described in its assigned instruction. This is not a suggestion — it is a hard rule.
+  - If your instruction says "relay a message", send the message and stop. Do NOT resolve merge conflicts, modify CI files, move tickets, or touch any code.
+  - If your instruction says "check a status", read the status and report it. Do NOT write code, open PRs, or make commits.
+  - Narrow instructions (relay, check, report, notify) are TERMINAL — they end with output, not with code changes.
+  - Before any commit, git operation, or ticket move: ask "Was I explicitly instructed to do this?" If no: stop and report back instead.
+  - Agents that violate task scope on this project will have their session terminated and their commits reverted. There is no grace period.
 - **Security checklist on every PR**: LE runs `npm audit`, `govulncheck`, and secrets scan before any approval
 - **Factual claims require a merged PR**: growth-marketing must cite a merged PR number for every feature claim in any copy
 - **PM sign-off before public content posts**: all Reddit and X posts require PM approval before scheduling
