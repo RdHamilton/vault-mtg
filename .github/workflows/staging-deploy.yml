@@ -128,11 +128,10 @@ jobs:
         COMMAND_ID=$(aws ssm send-command \
           --instance-ids "${{ secrets.EC2_INSTANCE_ID }}" \
           --document-name "AWS-RunShellScript" \
-          --parameters 'commands=["aws s3 cp s3://${{ env.STAGING_BUCKET }}/scripts/stage-binary-staging.sh /tmp/stage-binary-staging.sh && chmod +x /tmp/stage-binary-staging.sh && /tmp/stage-binary-staging.sh"]' \
+          --parameters 'commands=["export DEPLOY_BUCKET=${{ env.STAGING_BUCKET }} && export DEPLOY_SHA=${{ github.sha }} && aws s3 cp s3://${{ env.STAGING_BUCKET }}/scripts/stage-binary-staging.sh /tmp/stage-binary-staging.sh && chmod +x /tmp/stage-binary-staging.sh && /tmp/stage-binary-staging.sh"]' \
           --region us-east-1 \
           --query "Command.CommandId" \
-          --output text \
-          --environment-variables "DEPLOY_BUCKET=${{ env.STAGING_BUCKET }},DEPLOY_SHA=${{ github.sha }}")
+          --output text)
 
         echo "Stage binary SSM Command ID: $COMMAND_ID"
 
