@@ -6,6 +6,8 @@ import './DaemonHealthIndicator.css';
 
 type IndicatorState = 'connected' | 'disconnected' | 'reconnecting' | 'loading' | 'error';
 
+export type DaemonHealthState = IndicatorState;
+
 const POLL_INTERVAL_MS = 30_000;
 
 function tooltipText(state: IndicatorState): string {
@@ -23,6 +25,19 @@ function tooltipText(state: IndicatorState): string {
   }
 }
 
+export interface DaemonHealthIndicatorProps {
+  /**
+   * Optional callback fired when the indicator dot is clicked while the
+   * daemon is disconnected. Used by Layout to open the onboarding modal.
+   */
+  onOpenOnboarding?: () => void;
+  /**
+   * Optional callback fired after every health poll with the latest status.
+   * Used by Layout to sync daemon status into the onboarding hook.
+   */
+  onStatusChange?: (status: DaemonHealthState) => void;
+}
+
 /**
  * DaemonHealthIndicator
  *
@@ -34,23 +49,28 @@ function tooltipText(state: IndicatorState): string {
  * Uses the REST API adapter (getDaemonHealth) — never calls fetch directly.
  * Clerk auth token is obtained via useAuth().getToken() at the call site.
  */
-const DaemonHealthIndicator = () => {
+const DaemonHealthIndicator = ({ onOpenOnboarding, onStatusChange }: DaemonHealthIndicatorProps = {}) => {
   const { getToken, isSignedIn } = useAuth();
   const [status, setStatus] = useState<IndicatorState>('loading');
   // Track previous status to detect first transition TO connected.
   const prevStatusRef = useRef<IndicatorState>('loading');
   const connectedFiredRef = useRef(false);
 
+  const updateStatus = useCallback((newStatus: IndicatorState) => {
+    setStatus(newStatus);
+    onStatusChange?.(newStatus);
+  }, [onStatusChange]);
+
   const fetchHealth = useCallback(async () => {
     if (!isSignedIn) {
-      setStatus('error');
+      updateStatus('error');
       return;
     }
 
     try {
       const token = await getToken();
       if (!token) {
-        setStatus('error');
+        updateStatus('error');
         return;
       }
       const result = await getDaemonHealth(token);
@@ -61,18 +81,18 @@ const DaemonHealthIndicator = () => {
           connectedFiredRef.current = true;
         }
         prevStatusRef.current = 'connected';
-        setStatus('connected');
+        updateStatus('connected');
       } else if (result.status === 'reconnecting') {
         prevStatusRef.current = 'reconnecting';
-        setStatus('reconnecting');
+        updateStatus('reconnecting');
       } else {
         prevStatusRef.current = 'disconnected';
-        setStatus('disconnected');
+        updateStatus('disconnected');
       }
     } catch {
-      setStatus('error');
+      updateStatus('error');
     }
-  }, [getToken, isSignedIn]);
+  }, [getToken, isSignedIn, updateStatus]);
 
   useEffect(() => {
     let cancelled = false;
@@ -91,12 +111,18 @@ const DaemonHealthIndicator = () => {
     };
   }, [fetchHealth]);
 
+  const isClickable = (status === 'disconnected' || status === 'reconnecting' || status === 'error') && !!onOpenOnboarding;
+
   return (
     <div
-      className={`daemon-health-indicator daemon-health-${status}`}
-      title={tooltipText(status)}
+      className={`daemon-health-indicator daemon-health-${status}${isClickable ? ' daemon-health-clickable' : ''}`}
+      title={isClickable ? `${tooltipText(status)} — click to open setup guide` : tooltipText(status)}
       data-testid="daemon-health-indicator"
-      aria-label={tooltipText(status)}
+      aria-label={isClickable ? `${tooltipText(status)} — click to open setup guide` : tooltipText(status)}
+      role={isClickable ? 'button' : undefined}
+      tabIndex={isClickable ? 0 : undefined}
+      onClick={isClickable ? onOpenOnboarding : undefined}
+      onKeyDown={isClickable ? (e) => { if (e.key === 'Enter' || e.key === ' ') onOpenOnboarding?.(); } : undefined}
     />
   );
 };
