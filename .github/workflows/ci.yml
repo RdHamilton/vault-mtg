@@ -289,6 +289,10 @@ jobs:
       run: cd frontend && npm run test:e2e:pipeline
       env:
         CI: true
+        # BFF config.Load() defaults MTGA_ENV to "production" which requires
+        # DATABASE_URL and CLERK_SECRET_KEY. Set to "development" so the BFF
+        # starts without a database for the pipeline log-fixture tests.
+        MTGA_ENV: development
 
     - name: Upload Playwright report
       if: always()
