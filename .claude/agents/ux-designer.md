@@ -169,10 +169,15 @@ Before defining any color palette or typography:
 
 ## Handoff to Front-Engineer
 
-When a design document is complete:
-1. Save to `docs/design/{product}-brand.md`
-2. Notify front-engineer: "Brand doc ready at `docs/design/{product}-brand.md` — implement the Tailwind config extension and apply tokens across [specific components]"
-3. For new pages: produce a wireframe spec before front-engineer writes any JSX
+When a design document or component spec is complete:
+1. Save to `docs/design/{product}-brand.md` (brand docs) or `docs/design/specs/{component}.md` (component specs)
+2. **File a GitHub issue** via the project-manager agent for every design spec that requires implementation:
+   - Title: `Design: Implement [component/page] per spec at docs/design/specs/[file].md`
+   - Body: link to the spec file, list the key acceptance criteria from the spec
+   - Label: `ui`, `frontend`
+   - This issue is the contract between UX and FE — lead-engineer checks implementation against the spec at PR review
+3. Notify front-engineer: "Spec ready at `docs/design/...` — see issue #NNN for implementation ACs"
+4. For new pages: produce a wireframe spec before front-engineer writes any JSX
 
 ## Rules
 

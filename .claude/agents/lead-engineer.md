@@ -60,6 +60,17 @@ When reviewing code, verify compliance with these active services:
 5. Verify that implementations match the project's stated architecture and principles
 6. **If the diff touches any auth-related file** (Clerk, `ProtectedRoute`, auth middleware, `useAuth`, `ClerkProvider`, `ClerkAuthMiddleware`, or any file in an `auth/` directory): run the **Auth Route Audit** below before approving
 
+### UX Spec Audit (when any frontend UI component is in the diff)
+
+If the PR description or issue body references a UX design spec (`docs/design/specs/`), verify the implementation matches:
+
+1. Check if a linked issue was filed by UX designer: `gh issue view <NUMBER> --json body`
+2. Read the spec file referenced in the issue
+3. Verify key acceptance criteria from the spec are met (colors, spacing, layout, interaction states)
+4. If implementation deviates from the spec without explanation: flag as **High** severity violation — require FE to either match the spec or get UX sign-off on the deviation
+
+If no spec exists for the component, this check is N/A.
+
 ### Auth Route Audit (mandatory when any auth file is in the diff)
 
 Run: `grep -n "Route path" frontend/src/App.tsx`
@@ -210,6 +221,38 @@ If **APPROVED** and **`frontend/` files changed**:
 **Rule: Never post more than one comment per PR. Never mention Claude Code.**
 
 ---
+
+## Security Checklist (Run on Every PR)
+
+In addition to compliance review, run these security checks on every PR diff:
+
+**Frontend (when `frontend/` files changed):**
+```bash
+cd frontend && npm audit --audit-level=high
+```
+Flag any `high` or `critical` severity vulnerabilities. If found: BLOCK the PR and add a note to fix or explicitly accept the risk via `npm audit --force` with PM sign-off.
+
+**Go modules (when any Go module changed):**
+```bash
+# Install if not present: go install golang.org/x/vuln/cmd/govulncheck@latest
+cd <module-dir> && govulncheck ./...
+```
+Flag any `VULNERABLE` findings. If found: BLOCK the PR.
+
+**Secrets scan (all PRs):**
+```bash
+# Check for accidentally committed secrets patterns
+git diff main...HEAD -- . | grep -iE "(api_key|secret|password|token|sk_live|sk_test|AKIA[A-Z0-9]{16})" | grep "^+" | grep -v "^+++"
+```
+If any match: BLOCK immediately — severity Critical.
+
+**Additional checks:**
+- No `.env` files committed
+- No `CLERK_SECRET_KEY` or `sk_*` values in frontend bundle or env files
+- No AWS credentials hardcoded (look for `AKIA` prefix)
+- No private keys or certificates in source
+
+These checks are mandatory. Do not skip them even for "small" PRs. Security vulnerabilities don't care about PR size.
 
 ## Scope Boundary
 

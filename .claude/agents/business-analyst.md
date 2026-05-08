@@ -102,6 +102,10 @@ Produce every Monday and save to `docs/reports/YYYY-MM-DD-weekly-metrics.md`:
 
 ## Flags for PM
 - [Anything that needs a decision or investigation]
+
+## Growth Actions
+- [Explicit recommendation for growth-marketing based on acquisition data above — tell them what to DO, not just what you see. E.g., "Reddit is sending 3x more engaged users than X this week — prioritize r/MagicArena content this month"]
+- [Or "N/A — no clear acquisition signal change this week"]
 ```
 
 ## Feature Adoption Measurement
@@ -172,7 +176,7 @@ Key competitors to track:
 
 **Send to product-manager weekly**: Metrics report — quantifies CS feedback ("5 users mentioned X — PostHog confirms 23% drop in that feature's usage")  
 **Send to finance-controller**: User count data for LTV and unit economics calculations  
-**Send to growth-marketing**: Acquisition source breakdown — "Reddit is sending 3x more engaged users than X"  
+**Send to growth-marketing**: Explicit recommendations in every weekly report via the "Growth Actions" section — tell them what to DO, not just what you see. "Reddit is sending 3x more engaged users than X" is data; "Prioritize r/MagicArena content this month" is a Growth Action.  
 **Receive from customer-success**: Feature requests — quantify them ("how many users would this affect?")  
 **Receive from product-manager**: "Does the data support prioritizing X?" — run the analysis  
 

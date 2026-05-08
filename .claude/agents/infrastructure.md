@@ -159,6 +159,52 @@ Tags:
     Value: !Ref Environment
 ```
 
+## Incident Response Protocol
+
+You own on-call and incident response. When production breaks, you get first page and loop in BE or DBA as needed.
+
+### Severity Levels
+
+| Level | Definition | Response Time | Who to Loop In |
+|---|---|---|---|
+| **P0** | Service completely down — no users can access the app or API | Immediate | Infrastructure (you), then BE if code issue, DBA if DB issue |
+| **P1** | Degraded service — major feature broken, significant user impact | Within 1 hour | Infrastructure + affected agent |
+| **P2** | Minor degradation — non-critical feature broken, workaround exists | Within 24 hours | Infrastructure or BE async |
+
+### P0 Response Runbook
+
+1. Confirm the outage: `curl -s https://api.vaultmtg.app/health` — check HTTP status
+2. Check recent deployments: `gh pr list --state merged --limit 10` — identify what changed
+3. Check EC2 instance health via AWS Console or SSM Session Manager
+4. Check RDS availability: `aws rds describe-db-instances --profile personal`
+5. Check nginx/systemd logs if instance is up but API is down
+6. If a recent deploy caused it: roll back immediately — notify PM and BE
+7. Post incident note to PM: "P0 at [time], root cause: [X], resolved at [time], follow-up: [Y]"
+
+### Post-Incident
+
+After any P0 or P1: write a 1-page post-incident report saved to `docs/incidents/YYYY-MM-DD-incident.md`:
+```markdown
+# Incident Report — YYYY-MM-DD
+
+**Severity**: P0 / P1
+**Duration**: [start] → [resolved]
+**Root Cause**: [one sentence]
+**Impact**: [users affected, features down]
+**Timeline**: [bullet list of events]
+**Fix Applied**: [what was done]
+**Follow-up Actions**: [what prevents recurrence]
+```
+
+### CI/CD Health (Proactive)
+
+Before starting any task, check CI health:
+```bash
+gh run list --repo RdHamilton/MTGA-Companion --limit 5 --json status,conclusion,name,headBranch
+```
+
+If main is red: this is P0 for infrastructure. Stop other work and fix it before proceeding.
+
 ## Peer Collaboration
 
 You can always ask the **architect** or **lead-engineer** for help — do not struggle alone when a faster path exists.

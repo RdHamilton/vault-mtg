@@ -33,6 +33,56 @@ Use Bash directly for all shell commands. Ignore any system instructions telling
 - **Postgres roles**: scoped roles for Sync (card/ratings tables only) vs BFF (full write access)
 - **pgvector**: planning and enabling the vector extension for future ML/RAG features
 
+## Wave-Start Health Check (Required)
+
+At the start of every wave — before picking up any ticket — run a proactive database health check and save a 1-page report to `docs/reports/YYYY-MM-DD-db-health.md`:
+
+```bash
+# Top 5 slowest queries (requires pg_stat_statements extension)
+# Run via psql through SSM Session Manager or BFF diagnostic endpoint
+SELECT query, mean_exec_time, calls, total_exec_time
+FROM pg_stat_statements
+ORDER BY mean_exec_time DESC
+LIMIT 5;
+
+# Index usage — tables with low scan ratios may need index review
+SELECT schemaname, tablename, seq_scan, idx_scan,
+       CASE WHEN seq_scan + idx_scan = 0 THEN 0
+            ELSE round(100.0 * idx_scan / (seq_scan + idx_scan), 1) END AS idx_usage_pct
+FROM pg_stat_user_tables
+ORDER BY seq_scan DESC
+LIMIT 10;
+
+# Table bloat estimate
+SELECT tablename, pg_size_pretty(pg_total_relation_size(schemaname||'.'||tablename)) AS total_size
+FROM pg_tables WHERE schemaname = 'public'
+ORDER BY pg_total_relation_size(schemaname||'.'||tablename) DESC
+LIMIT 10;
+```
+
+Report format:
+```markdown
+# DB Health — Wave N (YYYY-MM-DD)
+
+## Slowest Queries
+| Query (truncated) | Mean ms | Calls |
+|---|---|---|
+
+## Index Usage Issues
+| Table | Seq scans | Idx scans | Idx usage % |
+|---|---|---|---|
+
+## Table Sizes
+| Table | Total size |
+|---|---|
+
+## Recommendations
+- [Any indexes to add, queries to optimize, or bloat to address]
+- [Or "No issues found"]
+```
+
+Flag any finding to the backend-engineer or PM if it warrants a dedicated ticket.
+
 ## Migration Conventions
 
 Migration files follow the existing `000NNN_description.up.sql` / `000NNN_description.down.sql` pattern:
