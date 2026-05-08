@@ -1,9 +1,11 @@
 // Package projection provides a background worker that fans daemon_events rows
-// into destination tables (matches, draft_sessions).
+// into destination tables (matches, draft_sessions, card_inventory, inventory,
+// quests, quest_session_tracking, decks).
 package projection
 
 import (
 	"context"
+	"crypto/sha256"
 	"encoding/json"
 	"fmt"
 	"log"
@@ -38,12 +40,38 @@ type draftStore interface {
 	UpsertDraftSession(ctx context.Context, s repository.DraftSessionUpsert) error
 }
 
+// collectionStore writes card counts to the card_inventory table.
+type collectionStore interface {
+	UpsertDelta(ctx context.Context, u repository.CardInventoryUpsert) error
+}
+
+// inventoryStore writes player inventory snapshots to the inventory table.
+type inventoryStore interface {
+	UpsertInventory(ctx context.Context, u repository.InventoryUpsert) error
+}
+
+// questStore writes quest progress and completion records to the quests and
+// quest_session_tracking tables.
+type questStore interface {
+	UpsertQuestProgress(ctx context.Context, u repository.QuestProgressUpsert) error
+	InsertQuestCompleted(ctx context.Context, ins repository.QuestCompletedInsert) error
+}
+
+// deckStore writes deck snapshots to the decks and deck_cards tables.
+type deckStore interface {
+	UpsertDeck(ctx context.Context, u repository.DeckUpsert) error
+}
+
 // Worker projects pending daemon_events rows into their destination tables.
 type Worker struct {
-	events   daemonEventStore
-	accounts accountStore
-	matches  matchStore
-	drafts   draftStore
+	events     daemonEventStore
+	accounts   accountStore
+	matches    matchStore
+	drafts     draftStore
+	collection collectionStore
+	inventory  inventoryStore
+	quests     questStore
+	decks      deckStore
 }
 
 // NewWorker returns a Worker wired with the provided stores.
@@ -52,12 +80,20 @@ func NewWorker(
 	accounts accountStore,
 	matches matchStore,
 	drafts draftStore,
+	collection collectionStore,
+	inventory inventoryStore,
+	quests questStore,
+	decks deckStore,
 ) *Worker {
 	return &Worker{
-		events:   events,
-		accounts: accounts,
-		matches:  matches,
-		drafts:   drafts,
+		events:     events,
+		accounts:   accounts,
+		matches:    matches,
+		drafts:     drafts,
+		collection: collection,
+		inventory:  inventory,
+		quests:     quests,
+		decks:      decks,
 	}
 }
 
@@ -168,6 +204,41 @@ func (w *Worker) projectRow(ctx context.Context, row *repository.DaemonEventRow)
 		writeErr = w.projectDraftPick(ctx, row)
 		if writeErr != nil {
 			log.Printf("[projection] projectDraftPick id=%d: %v", row.ID, writeErr)
+			outcome = outcomeSkippedMalformed
+		}
+
+	case "collection.updated":
+		writeErr = w.projectCollectionUpdated(ctx, row)
+		if writeErr != nil {
+			log.Printf("[projection] projectCollectionUpdated id=%d: %v", row.ID, writeErr)
+			outcome = outcomeSkippedMalformed
+		}
+
+	case "inventory.updated":
+		writeErr = w.projectInventoryUpdated(ctx, row)
+		if writeErr != nil {
+			log.Printf("[projection] projectInventoryUpdated id=%d: %v", row.ID, writeErr)
+			outcome = outcomeSkippedMalformed
+		}
+
+	case "quest.progress":
+		writeErr = w.projectQuestProgress(ctx, row)
+		if writeErr != nil {
+			log.Printf("[projection] projectQuestProgress id=%d: %v", row.ID, writeErr)
+			outcome = outcomeSkippedMalformed
+		}
+
+	case "quest.completed":
+		writeErr = w.projectQuestCompleted(ctx, row)
+		if writeErr != nil {
+			log.Printf("[projection] projectQuestCompleted id=%d: %v", row.ID, writeErr)
+			outcome = outcomeSkippedMalformed
+		}
+
+	case "deck.updated":
+		writeErr = w.projectDeckUpdated(ctx, row)
+		if writeErr != nil {
+			log.Printf("[projection] projectDeckUpdated id=%d: %v", row.ID, writeErr)
 			outcome = outcomeSkippedMalformed
 		}
 
@@ -331,6 +402,220 @@ func (w *Worker) projectDraftPick(ctx context.Context, row *repository.DaemonEve
 		StartTime:  row.OccurredAt,
 		Status:     "in_progress",
 		TotalPicks: 1, // GREATEST(1, current) effectively increments when used in the ON CONFLICT clause
+	})
+}
+
+// collectionUpdatedPayload mirrors contract.CollectionUpdatedPayload.
+// Redeclared here to avoid a circular import between projection and contract.
+type collectionUpdatedPayload struct {
+	Cards   []collectionCard `json:"cards"`
+	IsDelta bool             `json:"is_delta"`
+}
+
+type collectionCard struct {
+	ArenaID int `json:"arena_id"`
+	Count   int `json:"count"`
+}
+
+// projectCollectionUpdated applies the delta from a collection.updated event
+// to card_inventory.  Each card entry is upserted independently so a partial
+// delta (IsDelta=true) only touches the cards that changed.
+//
+// Idempotency: the snapshot_hash is derived from the raw payload bytes so
+// replaying the exact same event produces no new writes.
+func (w *Worker) projectCollectionUpdated(ctx context.Context, row *repository.DaemonEventRow) error {
+	var p collectionUpdatedPayload
+	if err := json.Unmarshal(row.Payload, &p); err != nil {
+		return fmt.Errorf("unmarshal collection.updated payload: %w", err)
+	}
+
+	if len(p.Cards) == 0 {
+		// Empty delta is a no-op; not an error.
+		return nil
+	}
+
+	accountID, err := w.accounts.GetOrCreateByClientID(ctx, row.AccountID, row.UserID)
+	if err != nil {
+		return fmt.Errorf("resolve account: %w", err)
+	}
+
+	// Snapshot hash is computed from the raw payload bytes so it is stable
+	// across re-sends of the same event.
+	h := sha256.Sum256(row.Payload)
+	snapshotHash := fmt.Sprintf("%x", h)
+
+	for _, card := range p.Cards {
+		if err := w.collection.UpsertDelta(ctx, repository.CardInventoryUpsert{
+			AccountID:    accountID,
+			CardID:       card.ArenaID,
+			Count:        card.Count,
+			SnapshotHash: snapshotHash,
+		}); err != nil {
+			return fmt.Errorf("UpsertDelta card_id=%d: %w", card.ArenaID, err)
+		}
+	}
+
+	return nil
+}
+
+// --- inventory.updated projector ---
+
+// inventoryUpdatedPayload mirrors contract.InventoryUpdatedPayload.
+// Redeclared here to avoid importing the contract module inside projection.
+type inventoryUpdatedPayload struct {
+	Gems               int `json:"gems"`
+	Gold               int `json:"gold"`
+	TotalVaultProgress int `json:"total_vault_progress"`
+	WildCardCommons    int `json:"wild_card_commons"`
+	WildCardUncommons  int `json:"wild_card_uncommons"`
+	WildCardRares      int `json:"wild_card_rares"`
+	WildCardMythics    int `json:"wild_card_mythics"`
+}
+
+func (w *Worker) projectInventoryUpdated(ctx context.Context, row *repository.DaemonEventRow) error {
+	var p inventoryUpdatedPayload
+	if err := json.Unmarshal(row.Payload, &p); err != nil {
+		return fmt.Errorf("unmarshal inventory.updated payload: %w", err)
+	}
+
+	if row.AccountID == "" {
+		return fmt.Errorf("inventory.updated payload missing account_id")
+	}
+
+	return w.inventory.UpsertInventory(ctx, repository.InventoryUpsert{
+		AccountID:          row.AccountID,
+		Gems:               p.Gems,
+		Gold:               p.Gold,
+		TotalVaultProgress: p.TotalVaultProgress,
+		WildCardCommons:    p.WildCardCommons,
+		WildCardUncommons:  p.WildCardUncommons,
+		WildCardRares:      p.WildCardRares,
+		WildCardMythics:    p.WildCardMythics,
+		UpdatedAt:          row.OccurredAt,
+	})
+}
+
+// --- quest.progress projector ---
+
+// questProgressPayload mirrors contract.QuestProgressPayload.
+type questProgressPayload struct {
+	Quests []questEntry `json:"quests"`
+}
+
+type questEntry struct {
+	QuestID   string `json:"quest_id"`
+	QuestName string `json:"quest_name"`
+	Progress  int    `json:"progress"`
+	Goal      int    `json:"goal"`
+	CanSwap   bool   `json:"can_swap"`
+}
+
+func (w *Worker) projectQuestProgress(ctx context.Context, row *repository.DaemonEventRow) error {
+	var p questProgressPayload
+	if err := json.Unmarshal(row.Payload, &p); err != nil {
+		return fmt.Errorf("unmarshal quest.progress payload: %w", err)
+	}
+
+	for _, q := range p.Quests {
+		if q.QuestID == "" {
+			continue
+		}
+
+		if err := w.quests.UpsertQuestProgress(ctx, repository.QuestProgressUpsert{
+			AccountID: row.AccountID,
+			QuestID:   q.QuestID,
+			QuestName: q.QuestName,
+			Progress:  q.Progress,
+			Goal:      q.Goal,
+			CanSwap:   q.CanSwap,
+			SeenAt:    row.OccurredAt,
+		}); err != nil {
+			return fmt.Errorf("UpsertQuestProgress quest_id=%s: %w", q.QuestID, err)
+		}
+	}
+
+	return nil
+}
+
+// --- quest.completed projector ---
+
+// questCompletedPayload mirrors contract.QuestCompletedPayload.
+type questCompletedPayload struct {
+	QuestID          string `json:"quest_id"`
+	QuestName        string `json:"quest_name"`
+	Progress         int    `json:"progress"`
+	Goal             int    `json:"goal"`
+	XPReward         int    `json:"xp_reward"`
+	CompletionSource string `json:"completion_source"`
+}
+
+func (w *Worker) projectQuestCompleted(ctx context.Context, row *repository.DaemonEventRow) error {
+	var p questCompletedPayload
+	if err := json.Unmarshal(row.Payload, &p); err != nil {
+		return fmt.Errorf("unmarshal quest.completed payload: %w", err)
+	}
+
+	if p.QuestID == "" {
+		return fmt.Errorf("quest.completed payload missing quest_id")
+	}
+
+	return w.quests.InsertQuestCompleted(ctx, repository.QuestCompletedInsert{
+		AccountID:        row.AccountID,
+		QuestID:          p.QuestID,
+		QuestName:        p.QuestName,
+		Progress:         p.Progress,
+		Goal:             p.Goal,
+		XPReward:         p.XPReward,
+		CompletionSource: p.CompletionSource,
+		OccurredAt:       row.OccurredAt,
+	})
+}
+
+// --- deck.updated projector ---
+
+// deckUpdatedPayload mirrors contract.DeckUpdatedPayload.
+type deckUpdatedPayload struct {
+	DeckID string          `json:"deck_id"`
+	Name   string          `json:"name"`
+	Format string          `json:"format"`
+	Cards  []deckCardEntry `json:"cards"`
+}
+
+type deckCardEntry struct {
+	ArenaID  int `json:"arena_id"`
+	Quantity int `json:"quantity"`
+}
+
+func (w *Worker) projectDeckUpdated(ctx context.Context, row *repository.DaemonEventRow) error {
+	var p deckUpdatedPayload
+	if err := json.Unmarshal(row.Payload, &p); err != nil {
+		return fmt.Errorf("unmarshal deck.updated payload: %w", err)
+	}
+
+	if p.DeckID == "" {
+		return fmt.Errorf("deck.updated payload missing deck_id")
+	}
+
+	accountID, err := w.accounts.GetOrCreateByClientID(ctx, row.AccountID, row.UserID)
+	if err != nil {
+		return fmt.Errorf("resolve account: %w", err)
+	}
+
+	cards := make([]repository.DeckCard, 0, len(p.Cards))
+	for _, c := range p.Cards {
+		cards = append(cards, repository.DeckCard{
+			ArenaID:  c.ArenaID,
+			Quantity: c.Quantity,
+		})
+	}
+
+	return w.decks.UpsertDeck(ctx, repository.DeckUpsert{
+		DeckID:    p.DeckID,
+		AccountID: accountID,
+		Name:      p.Name,
+		Format:    p.Format,
+		Cards:     cards,
+		UpdatedAt: row.OccurredAt,
 	})
 }
 

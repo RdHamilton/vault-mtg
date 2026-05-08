@@ -172,7 +172,20 @@ func main() {
 
 		// Start projection worker unless disabled by env var.
 		if os.Getenv("BFF_PROJECTION_DISABLED") != "true" {
-			worker := projection.NewWorker(daemonEventsRepo, accountRepo, matchesRepo, draftSessionsRepo)
+			cardInventoryRepo := repository.NewCardInventoryRepository(sqlDB)
+			inventoryRepo := repository.NewInventoryRepository(sqlDB)
+			questRepo := repository.NewQuestRepository(sqlDB)
+			deckProjectorRepo := repository.NewDeckProjectorRepository(sqlDB)
+			worker := projection.NewWorker(
+				daemonEventsRepo,
+				accountRepo,
+				matchesRepo,
+				draftSessionsRepo,
+				cardInventoryRepo,
+				inventoryRepo,
+				questRepo,
+				deckProjectorRepo,
+			)
 			go worker.Run(projCtx)
 		} else {
 			log.Println("BFF_PROJECTION_DISABLED=true — projection worker not started.")
