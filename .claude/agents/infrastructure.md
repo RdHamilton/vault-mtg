@@ -187,6 +187,8 @@ git -C "/Users/ramonehamilton/Documents/Personal Projects/MTGA-Companion" add do
 
 Write a status update: at task start, after each major step (CI fix attempt, stack deploy, config change), and when blocked. This is not optional for tasks over 5 minutes.
 
+**Stuck detection — mandatory:** Before writing each checkpoint, compare with the previous status. If you are about to write the exact same "Status" and "Progress" lines as last time (nothing advanced), add `**STUCK**: [reason — e.g., waiting for CI run 12345 to complete]` to the Blockers section. If you have written an identical status 3 or more times in a row, prepend `## STUCK — NEEDS RESTART` to the file as the first section. PM reads this file in the daily standup and will alert Ray.
+
 ## Scope Boundary — What Infrastructure Owns vs. Does Not Own
 
 **Infrastructure owns:**

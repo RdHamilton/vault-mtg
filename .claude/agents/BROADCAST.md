@@ -24,7 +24,7 @@ description: Shared operational directives broadcast to all agents. Read at the 
 Read these before picking up any ticket. They override default agent behavior.
 
 1. **P0: CI is red on main** — Infrastructure owns #1524. No new feature work starts until CI is green and main is clean.
-2. **Architect review in progress** — Wave 4 architectural implications review is in progress. Engineering tickets (#1513, #1514, #1515, #1516, #1517, #1519, #1520) do not start until `docs/arch/wave4-implications.md` is committed and shows PROCEED.
+2. **Architect review COMPLETE — PROCEED** — `docs/arch/wave4-implications.md` is merged. Key gates before tickets start: (a) ADR-015 (pagination standard) must be written before #1513/#1514; (b) #1517 (CSP) must schedule after #1573 (Crisp); (c) #1519/#1520/#1513 partial-flag field name must be agreed on before any of the three start coding; (d) #1488 (security audit) is last.
 3. **v0.3.0 release tag is blocked** — Do not cut the v0.3.0 release tag until CI is green. Infrastructure will notify PM when it's ready.
 
 ---
@@ -44,7 +44,7 @@ These apply to every agent on every task and do not expire:
 - **Security checklist on every PR**: LE runs `npm audit`, `govulncheck`, and secrets scan before any approval
 - **Factual claims require a merged PR**: growth-marketing must cite a merged PR number for every feature claim in any copy
 - **PM sign-off before public content posts**: all Reddit and X posts require PM approval before scheduling
-- **Status checkpoints for long-running tasks**: infrastructure, backend-engineer, and dba must write `docs/status/{agent}.md` at each major step during tasks expected to take >5 minutes
+- **Status checkpoints for long-running tasks**: infrastructure, backend-engineer, and dba must write `docs/status/{agent}.md` at each major step during tasks expected to take >5 minutes. If the same status is written 3+ times without advancing, add `## STUCK — NEEDS RESTART` as the first line of the file so PM's standup flags it to Ray immediately
 - **CI test failures route to the right owner**: frontend test failures → front-engineer; Go test failures → backend-engineer; pipeline/env failures → infrastructure
 - **No new issues created directly by PM**: all GitHub issue creation goes through project-manager
 

@@ -157,9 +157,26 @@ Produce a rollup whenever a wave starts, on request, or when ≥2 PRs land in qu
 ### Blocked / Needs Attention
 - [anything blocked or missing an owner]
 
+### Stuck Agents
+- [any agent whose docs/status/*.md file is stale (same content 3+ times, or last-updated timestamp older than 20 min during an active task) — flag: "STUCK: restart {agent}"]
+
 ### Ray Action Items
 - [anything requiring Ray before work can proceed]
 ```
+
+### Stuck Agent Check (include in every rollup)
+
+Before producing any status rollup, check for stuck agents:
+```bash
+# Check last-modified time and content of all status files
+ls -la "/Users/ramonehamilton/Documents/Personal Projects/MTGA-Companion/docs/status/" 2>/dev/null
+cat "/Users/ramonehamilton/Documents/Personal Projects/MTGA-Companion/docs/status/infrastructure.md" 2>/dev/null | grep -E "STUCK|Updated|Status"
+```
+
+If any status file:
+- Contains `## STUCK — NEEDS RESTART` — immediately add to Ray Action Items: "Restart {agent}: [reason from file]"
+- Contains `**STUCK**:` — flag in "Stuck Agents" section
+- Has not been updated in >20 min during a known active task — flag as potentially stuck
 
 ## Wave-Close Report
 
