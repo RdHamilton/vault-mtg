@@ -23,3 +23,12 @@
 .daemon-health-error {
   background-color: #6b7280; /* gray-500 */
 }
+
+.daemon-health-clickable {
+  cursor: pointer;
+}
+
+.daemon-health-clickable:focus {
+  outline: 2px solid #8b5cf6;
+  outline-offset: 2px;
+}

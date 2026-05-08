@@ -1,12 +1,15 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { Link, useLocation } from 'react-router-dom';
+import { useAuth } from '@clerk/react';
 import Footer from './Footer';
 import AuthBar from './AuthBar';
-import DaemonHealthIndicator from './DaemonHealthIndicator';
+import DaemonHealthIndicator, { type DaemonHealthState } from './DaemonHealthIndicator';
+import { OnboardingModal } from './OnboardingModal';
 import { system } from '@/services/api';
 import { EventsOn, EventsOff } from '@/services/websocketClient';
 import { gui } from '@/types/models';
 import { usePostHogIdentity } from '@/hooks/usePostHogIdentity';
+import { useDaemonOnboarding } from '@/hooks/useDaemonOnboarding';
 import './Layout.css';
 
 interface LayoutProps {
@@ -15,8 +18,21 @@ interface LayoutProps {
 
 const Layout = ({ children }: LayoutProps) => {
   const location = useLocation();
+  const { isSignedIn } = useAuth();
   // Identify signed-in user with PostHog and fire funnel_sign_up_completed once per session.
   usePostHogIdentity();
+
+  // Track daemon health status from the indicator so the onboarding hook can use it.
+  const [daemonStatus, setDaemonStatus] = useState<DaemonHealthState>('loading');
+
+  // Onboarding modal logic: show when daemon disconnected on first login.
+  const { isOpen: onboardingOpen, open: openOnboarding, dismiss: dismissOnboarding, complete: completeOnboarding } =
+    useDaemonOnboarding(daemonStatus, isSignedIn ?? false);
+
+  const handleDaemonStatusChange = useCallback((status: DaemonHealthState) => {
+    setDaemonStatus(status);
+  }, []);
+
   const [connectionStatus, setConnectionStatus] = useState<gui.ConnectionStatus>(
     new gui.ConnectionStatus({
       status: 'standalone',
@@ -152,7 +168,10 @@ const Layout = ({ children }: LayoutProps) => {
         <div className="tab-bar-right">
           <AuthBar />
           <div className="connection-status-indicator">
-            <DaemonHealthIndicator />
+            <DaemonHealthIndicator
+              onOpenOnboarding={openOnboarding}
+              onStatusChange={handleDaemonStatusChange}
+            />
             <div className={`status-badge-compact status-${connectionStatus.status}`} title={connectionStatus.status} data-testid="connection-status-badge">
               <span className="status-dot-compact"></span>
             </div>
@@ -223,6 +242,13 @@ const Layout = ({ children }: LayoutProps) => {
 
       {/* Footer with Stats */}
       <Footer />
+
+      {/* Daemon onboarding modal — shown on first login if daemon not connected */}
+      <OnboardingModal
+        isOpen={onboardingOpen}
+        onDismiss={dismissOnboarding}
+        onComplete={completeOnboarding}
+      />
     </div>
   );
 };
