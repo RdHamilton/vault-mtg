@@ -1,0 +1,261 @@
+/**
+ * DraftLive E2E Tests — ticket #1390
+ *
+ * Tests the /draft/live page with mocked SSE events.
+ *
+ * The page is behind ProtectedRoute. Tests inject signed-in Clerk state via
+ * window.__CLERK_TEST_STATE__ (requires VITE_CLERK_TEST_MODE=true, which is set
+ * in the playwright.config.ts webServer command).
+ *
+ * SSE and ratings are intercepted via Playwright route interception so the
+ * tests run without a live BFF.
+ */
+
+import { test, expect } from '@playwright/test';
+
+// Helper to build a mock SSE payload line.
+function sseData(payload: object): string {
+  return `data: ${JSON.stringify(payload)}\n\n`;
+}
+
+test.describe('DraftLive', () => {
+  test.beforeEach(async ({ page }) => {
+    // Inject signed-in Clerk state so ProtectedRoute passes through.
+    await page.addInitScript(() => {
+      (window as unknown as Record<string, unknown>).__CLERK_TEST_STATE__ = {
+        isSignedIn: true,
+      };
+    });
+  });
+
+  // ── Empty state ────────────────────────────────────────────────────────────
+
+  test('@smoke shows empty state when no active draft', async ({ page }) => {
+    // Stub the SSE endpoint — return a stream that never sends events.
+    await page.route('**/api/v1/events*', async (route) => {
+      await route.fulfill({
+        status: 200,
+        headers: {
+          'Content-Type': 'text/event-stream',
+          'Cache-Control': 'no-cache',
+        },
+        body: '',
+      });
+    });
+
+    await page.goto('/draft/live');
+
+    // The page must render.
+    await expect(
+      page.locator('[data-testid="draft-live-container"]')
+    ).toBeVisible({ timeout: 10_000 });
+
+    // Empty state must be visible — no active draft.
+    await expect(page.locator('[data-testid="empty-state"]')).toBeVisible();
+    await expect(page.getByText('No active draft')).toBeVisible();
+    await expect(
+      page.getByText('Start a draft in Arena to see your live pick recommendations')
+    ).toBeVisible();
+  });
+
+  // ── Active draft — pack display ────────────────────────────────────────────
+
+  test('@smoke shows pack cards and highlights top pick', async ({ page }) => {
+    // Stub ratings endpoint.
+    await page.route('**/api/v1/draft-ratings/**', async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          set_code: 'ONE',
+          draft_format: 'PremierDraft',
+          cached_at: '2026-01-01T00:00:00Z',
+          card_ratings: [
+            { arena_id: 101, name: 'Elesh Norn', gihwr: 68 },
+            { arena_id: 102, name: 'Plains', gihwr: 50 },
+            { arena_id: 103, name: 'Swamp', gihwr: 48 },
+          ],
+          color_ratings: [],
+        }),
+      });
+    });
+
+    // Stub SSE — emit draft.started then draft.pack.
+    await page.route('**/api/v1/events*', async (route) => {
+      const startedEvent = {
+        type: 'draft.started',
+        account_id: 'acc1',
+        event_id: 'evt0',
+        session_id: 'sess1',
+        sequence: 0,
+        occurred_at: '2026-05-08T00:00:00Z',
+        payload: { set_code: 'ONE', draft_type: 'PremierDraft' },
+      };
+      const packEvent = {
+        type: 'draft.pack',
+        account_id: 'acc1',
+        event_id: 'evt1',
+        session_id: 'sess1',
+        sequence: 1,
+        occurred_at: '2026-05-08T00:00:01Z',
+        payload: {
+          card_ids: [101, 102, 103],
+          pack_number: 0,
+          pick_number: 0,
+        },
+      };
+
+      await route.fulfill({
+        status: 200,
+        headers: {
+          'Content-Type': 'text/event-stream',
+          'Cache-Control': 'no-cache',
+        },
+        body:
+          sseData(startedEvent) + sseData(packEvent),
+      });
+    });
+
+    await page.goto('/draft/live');
+    await expect(page.locator('[data-testid="draft-live-container"]')).toBeVisible({
+      timeout: 10_000,
+    });
+
+    // Pack section must appear.
+    await expect(page.locator('[data-testid="draft-live-pack"]')).toBeVisible();
+
+    // Pack cards appear.
+    await expect(page.locator('[data-testid="pack-card-101"]')).toBeVisible({ timeout: 8_000 });
+    await expect(page.locator('[data-testid="pack-card-102"]')).toBeVisible();
+    await expect(page.locator('[data-testid="pack-card-103"]')).toBeVisible();
+
+    // Top pick badge on highest-GIHWR card.
+    await expect(page.locator('[data-testid="top-pick-badge"]')).toBeVisible();
+    const topCard = page.locator('[data-testid="pack-card-101"]');
+    await expect(topCard).toHaveAttribute('data-top-pick', 'true');
+  });
+
+  // ── Pick history updates ─────────────────────────────────────────────────
+
+  test('pick history updates after a draft.pick event', async ({ page }) => {
+    // Stub ratings.
+    await page.route('**/api/v1/draft-ratings/**', async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          set_code: 'BLB',
+          draft_format: 'QuickDraft',
+          cached_at: '2026-01-01T00:00:00Z',
+          card_ratings: [
+            { arena_id: 201, name: 'Mosswood Dreadknight', gihwr: 63 },
+            { arena_id: 202, name: 'Forest', gihwr: 46 },
+          ],
+          color_ratings: [],
+        }),
+      });
+    });
+
+    // SSE: started → pack → pick
+    await page.route('**/api/v1/events*', async (route) => {
+      const events = [
+        {
+          type: 'draft.started',
+          account_id: 'acc1',
+          event_id: 'e0',
+          session_id: 's1',
+          sequence: 0,
+          occurred_at: '2026-05-08T00:00:00Z',
+          payload: { set_code: 'BLB', draft_type: 'QuickDraft' },
+        },
+        {
+          type: 'draft.pack',
+          account_id: 'acc1',
+          event_id: 'e1',
+          session_id: 's1',
+          sequence: 1,
+          occurred_at: '2026-05-08T00:00:01Z',
+          payload: { card_ids: [201, 202], pack_number: 0, pick_number: 0 },
+        },
+        {
+          type: 'draft.pick',
+          account_id: 'acc1',
+          event_id: 'e2',
+          session_id: 's1',
+          sequence: 2,
+          occurred_at: '2026-05-08T00:00:02Z',
+          payload: { card_id: 201, pack_number: 0, pick_number: 0 },
+        },
+      ];
+
+      await route.fulfill({
+        status: 200,
+        headers: {
+          'Content-Type': 'text/event-stream',
+          'Cache-Control': 'no-cache',
+        },
+        body: events.map(sseData).join(''),
+      });
+    });
+
+    await page.goto('/draft/live');
+    await expect(page.locator('[data-testid="draft-live-container"]')).toBeVisible({
+      timeout: 10_000,
+    });
+
+    // After the pick event, the picked card should appear in history.
+    await expect(page.locator('[data-testid="picked-card-201"]')).toBeVisible({
+      timeout: 8_000,
+    });
+
+    // History section is visible.
+    await expect(page.locator('[data-testid="draft-live-history"]')).toBeVisible();
+  });
+
+  // ── Set name and format display ───────────────────────────────────────────
+
+  test('displays set name and format from draft.started event', async ({ page }) => {
+    await page.route('**/api/v1/draft-ratings/**', async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          set_code: 'MKM',
+          draft_format: 'PremierDraft',
+          cached_at: '2026-01-01T00:00:00Z',
+          card_ratings: [],
+          color_ratings: [],
+        }),
+      });
+    });
+
+    await page.route('**/api/v1/events*', async (route) => {
+      const ev = {
+        type: 'draft.started',
+        account_id: 'acc1',
+        event_id: 'e0',
+        session_id: 's1',
+        sequence: 0,
+        occurred_at: '2026-05-08T00:00:00Z',
+        payload: { set_code: 'MKM', draft_type: 'PremierDraft' },
+      };
+      await route.fulfill({
+        status: 200,
+        headers: { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache' },
+        body: sseData(ev),
+      });
+    });
+
+    await page.goto('/draft/live');
+    await expect(page.locator('[data-testid="draft-live-container"]')).toBeVisible({
+      timeout: 10_000,
+    });
+
+    await expect(page.locator('[data-testid="draft-live-set"]')).toHaveText('MKM', {
+      timeout: 8_000,
+    });
+    await expect(page.locator('[data-testid="draft-live-format"]')).toHaveText('Premier Draft', {
+      timeout: 8_000,
+    });
+  });
+});

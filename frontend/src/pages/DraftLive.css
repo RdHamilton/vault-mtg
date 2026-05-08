@@ -1,0 +1,241 @@
+/* DraftLive page styles */
+
+.draft-live-container {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 1.5rem;
+}
+
+/* Header */
+.draft-live-header {
+  margin-bottom: 1.5rem;
+}
+
+.draft-live-title-row {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  margin-bottom: 0.5rem;
+}
+
+.draft-live-title-row h1 {
+  margin: 0;
+  font-size: 1.75rem;
+  font-weight: 700;
+}
+
+.draft-live-meta {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+  color: var(--color-text-secondary, #9ca3af);
+  font-size: 0.875rem;
+}
+
+.draft-live-set {
+  font-weight: 600;
+  color: var(--color-accent, #60a5fa);
+  background: var(--color-surface-elevated, #1f2937);
+  padding: 0.2rem 0.5rem;
+  border-radius: 4px;
+  font-size: 0.8rem;
+  letter-spacing: 0.05em;
+}
+
+.draft-live-format {
+  color: var(--color-text-muted, #6b7280);
+}
+
+.draft-live-progress {
+  color: var(--color-text-muted, #6b7280);
+}
+
+/* Stream status indicator */
+.stream-status {
+  font-size: 0.75rem;
+  font-weight: 500;
+  padding: 0.2rem 0.6rem;
+  border-radius: 999px;
+  text-transform: capitalize;
+}
+
+.stream-status--open {
+  background: #d1fae5;
+  color: #065f46;
+}
+
+.stream-status--connecting {
+  background: #fef3c7;
+  color: #92400e;
+}
+
+.stream-status--error {
+  background: #fee2e2;
+  color: #991b1b;
+}
+
+.stream-status--closed {
+  background: #f3f4f6;
+  color: #6b7280;
+}
+
+/* Body layout */
+.draft-live-body {
+  display: grid;
+  grid-template-columns: 1fr 320px;
+  gap: 1.5rem;
+  align-items: start;
+}
+
+@media (max-width: 768px) {
+  .draft-live-body {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* Pack section */
+.draft-live-pack-section h2,
+.draft-live-history-section h2 {
+  margin: 0 0 1rem;
+  font-size: 1.1rem;
+  font-weight: 600;
+}
+
+.draft-live-pack-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+  gap: 0.75rem;
+}
+
+.draft-live-waiting,
+.draft-live-ratings-error {
+  color: var(--color-text-muted, #6b7280);
+  font-size: 0.875rem;
+  padding: 1rem 0;
+}
+
+.draft-live-ratings-error {
+  color: #ef4444;
+}
+
+/* Card tiles */
+.draft-live-card {
+  position: relative;
+  background: var(--color-surface, #111827);
+  border: 1px solid var(--color-border, #374151);
+  border-radius: 8px;
+  padding: 0.75rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+
+.draft-live-card--top {
+  border-color: #f59e0b;
+  box-shadow: 0 0 0 2px rgba(245, 158, 11, 0.35);
+  background: var(--color-surface-elevated, #1f2937);
+}
+
+.draft-live-card-name {
+  font-size: 0.875rem;
+  font-weight: 500;
+  color: var(--color-text, #f9fafb);
+  line-height: 1.3;
+}
+
+.draft-live-gihwr {
+  font-size: 0.75rem;
+  color: var(--color-text-muted, #6b7280);
+}
+
+.draft-live-top-badge {
+  font-size: 0.7rem;
+  font-weight: 700;
+  color: #f59e0b;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+/* Grade badges */
+.draft-live-grade {
+  display: inline-block;
+  font-size: 0.8rem;
+  font-weight: 700;
+  padding: 0.1rem 0.4rem;
+  border-radius: 4px;
+  width: fit-content;
+}
+
+.grade-a {
+  background: #d1fae5;
+  color: #065f46;
+}
+
+.grade-b {
+  background: #dbeafe;
+  color: #1e40af;
+}
+
+.grade-c {
+  background: #fef3c7;
+  color: #92400e;
+}
+
+.grade-d {
+  background: #fee2e2;
+  color: #991b1b;
+}
+
+.grade-f {
+  background: #fee2e2;
+  color: #7f1d1d;
+}
+
+.grade-unknown {
+  background: #f3f4f6;
+  color: #6b7280;
+}
+
+/* Pick history */
+.draft-live-history-section {
+  background: var(--color-surface, #111827);
+  border: 1px solid var(--color-border, #374151);
+  border-radius: 8px;
+  padding: 1rem;
+}
+
+.draft-live-no-picks {
+  color: var(--color-text-muted, #6b7280);
+  font-size: 0.875rem;
+  margin: 0;
+}
+
+.draft-live-history-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  max-height: 500px;
+  overflow-y: auto;
+}
+
+.draft-live-history-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  padding: 0.4rem 0.5rem;
+  border-radius: 4px;
+  background: var(--color-surface-elevated, #1f2937);
+}
+
+.draft-live-history-name {
+  font-size: 0.8rem;
+  color: var(--color-text, #f9fafb);
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
