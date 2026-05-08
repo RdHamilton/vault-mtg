@@ -1,4 +1,8 @@
--- Reverse: remove account_id from telemetry tables
+-- Reverse: remove account_id from existing tables, drop new tables
+
+-- Drop new tables created in this migration
+DROP TABLE IF EXISTS life_change_tracking CASCADE;
+DROP TABLE IF EXISTS quest_session_tracking CASCADE;
 
 -- game_plays
 DROP INDEX IF EXISTS idx_game_plays_account_id;
