@@ -20,7 +20,13 @@ if (sentryDsn) {
   Sentry.init({
     dsn: sentryDsn,
     environment: import.meta.env.MODE,
-    integrations: [Sentry.browserTracingIntegration()],
+    integrations: [
+      Sentry.browserTracingIntegration(),
+      // feedbackIntegration: enables Sentry.getFeedback() in ReportBugButton.
+      // autoInject: false — we render our own trigger button in Layout instead of
+      // the default floating widget so the button only appears for signed-in users.
+      Sentry.feedbackIntegration({ autoInject: false }),
+    ],
   })
 }
 

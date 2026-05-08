@@ -6,6 +6,18 @@ import Layout from './Layout';
 import { mockSystem, mockMatches } from '@/test/mocks/apiMock';
 import { mockEventEmitter } from '@/test/mocks/websocketMock';
 
+// Mock Sentry so Layout tests don't need a real DSN
+vi.mock('@sentry/react', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@sentry/react')>();
+  return {
+    ...actual,
+    getFeedback: vi.fn().mockReturnValue({ openDialog: vi.fn() }),
+    feedbackIntegration: vi.fn(),
+    ErrorBoundary: ({ children }: { children: React.ReactNode }) => children,
+    init: vi.fn(),
+  };
+});
+
 // Mock useDownload since Layout renders Footer which includes DownloadProgressBar
 vi.mock('@/context/DownloadContext', () => ({
   useDownload: () => ({
@@ -185,6 +197,20 @@ describe('Layout Component', () => {
       // Footer should be present
       const footer = document.querySelector('.app-footer');
       expect(footer).toBeInTheDocument();
+    });
+  });
+
+  describe('ReportBugButton', () => {
+    it('shows report bug button when user is signed in', () => {
+      render(
+        <Layout>
+          <div>Test Content</div>
+        </Layout>,
+        { initialRoute: '/' }
+      );
+
+      // Default test setup has isSignedIn: true (see setup.ts)
+      expect(screen.getByTestId('report-bug-button')).toBeInTheDocument();
     });
   });
 

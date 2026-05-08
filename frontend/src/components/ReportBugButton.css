@@ -1,0 +1,26 @@
+.report-bug-btn {
+  display: inline-flex;
+  align-items: center;
+  padding: 5px 12px;
+  margin-right: 8px;
+  background: transparent;
+  border: 1px solid #3d3d3d;
+  border-radius: 4px;
+  color: #aaaaaa;
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: color 0.2s, border-color 0.2s, background 0.2s;
+  line-height: 1;
+}
+
+.report-bug-btn:hover {
+  color: #ffffff;
+  border-color: #4a9eff;
+  background: rgba(74, 158, 255, 0.08);
+}
+
+.report-bug-btn:active {
+  background: rgba(74, 158, 255, 0.16);
+}

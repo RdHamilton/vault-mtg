@@ -10,6 +10,7 @@ import { EventsOn, EventsOff } from '@/services/websocketClient';
 import { gui } from '@/types/models';
 import { usePostHogIdentity } from '@/hooks/usePostHogIdentity';
 import { useDaemonOnboarding } from '@/hooks/useDaemonOnboarding';
+import ReportBugButton from './ReportBugButton';
 import './Layout.css';
 
 interface LayoutProps {
@@ -166,6 +167,7 @@ const Layout = ({ children }: LayoutProps) => {
           </Link>
         </div>
         <div className="tab-bar-right">
+          {isSignedIn && <ReportBugButton />}
           <AuthBar />
           <div className="connection-status-indicator">
             <DaemonHealthIndicator
