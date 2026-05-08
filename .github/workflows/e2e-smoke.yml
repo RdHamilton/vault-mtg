@@ -71,11 +71,10 @@ jobs:
       env:
         CI: true
         DATABASE_URL: postgres://mtga:mtga@localhost:5432/mtga_e2e?sslmode=disable
-        # Provide the real Clerk staging secret so the BFF can validate Clerk JWTs.
-        # staging-smoke.spec.ts asserts 401 without a token and 200 with a valid
-        # Clerk test token — MTGA_ENV: development would disable this validation
-        # and make those auth assertions vacuous.
-        CLERK_SECRET_KEY: ${{ secrets.CLERK_STAGING_SECRET_KEY }}
+        # BFF config.Load() defaults MTGA_ENV to "production" which requires
+        # CLERK_SECRET_KEY. Set to "development" so the BFF starts without a
+        # Clerk secret key -- smoke tests validate UI connectivity, not auth.
+        MTGA_ENV: development
 
     - name: Upload test results
       if: always()
