@@ -21,6 +21,7 @@ import Settings from './pages/Settings';
 import Download from './pages/Download';
 import BffMatchHistory from './pages/BffMatchHistory';
 import BffDraftHistory from './pages/BffDraftHistory';
+import ApiKeysPage from './pages/ApiKeys';
 import KeyboardShortcutsHandler from './components/KeyboardShortcutsHandler';
 import ProtectedRoute from './components/ProtectedRoute';
 import { EventsOn } from './services/adapter';
@@ -172,6 +173,7 @@ function App() {
             <Route path="/settings" element={<Settings />} />
             <Route path="/history/matches" element={<BffMatchHistory />} />
             <Route path="/history/drafts" element={<BffDraftHistory />} />
+            <Route path="/api-keys" element={<ApiKeysPage />} />
           </Route>
         </Routes>
       </Layout>

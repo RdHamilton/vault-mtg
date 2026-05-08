@@ -95,5 +95,23 @@ export const useClerk = () => ({
   openSignUp: () => {},
 });
 
+// APIKeys — renders a test stub that represents the Clerk API Keys UI.
+// In E2E tests, Playwright can interact with these data-testid elements.
+export const APIKeys = (_props?: Record<string, unknown>) => {
+  return React.createElement(
+    'div',
+    { 'data-testid': 'clerk-api-keys-component', className: 'cl-apiKeys' },
+    React.createElement(
+      'button',
+      { 'data-testid': 'clerk-create-api-key-btn', className: 'cl-button' },
+      'Create API key'
+    ),
+    React.createElement(
+      'ul',
+      { 'data-testid': 'clerk-api-key-list', className: 'cl-apiKeysList' }
+    )
+  );
+};
+
 // withAuth HOC stub
 export const withAuth = (Component: React.ComponentType) => Component;

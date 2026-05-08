@@ -1,0 +1,21 @@
+.api-keys-header {
+  flex-shrink: 0;
+  margin-bottom: 1.5rem;
+}
+
+.api-keys-description {
+  color: var(--color-text-secondary, #aaa);
+  font-size: 14px;
+  margin-top: 0.5rem;
+  max-width: 600px;
+}
+
+.api-keys-content {
+  flex: 1;
+  min-height: 0;
+}
+
+/* Let the Clerk component fill available width */
+.api-keys-content .cl-apiKeys {
+  width: 100%;
+}
