@@ -157,6 +157,51 @@ func TestDaemonEventRoundTripDraftPayload(t *testing.T) {
 	}
 }
 
+// TestInventoryUpdatedPayloadRoundTrip validates InventoryUpdatedPayload round-trip JSON.
+func TestInventoryUpdatedPayloadRoundTrip(t *testing.T) {
+	payload := contract.InventoryUpdatedPayload{
+		Gems:               1200,
+		Gold:               5000,
+		TotalVaultProgress: 75,
+		WildCardCommons:    10,
+		WildCardUncommons:  5,
+		WildCardRares:      3,
+		WildCardMythics:    1,
+		Boosters: []contract.InventoryBooster{
+			{CollationID: 100078, SetCode: "BLB", Count: 2},
+		},
+	}
+
+	data, err := json.Marshal(payload)
+	if err != nil {
+		t.Fatalf("marshal: %v", err)
+	}
+
+	var decoded contract.InventoryUpdatedPayload
+	if err := json.Unmarshal(data, &decoded); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+
+	if decoded.Gems != payload.Gems {
+		t.Errorf("Gems: got %d, want %d", decoded.Gems, payload.Gems)
+	}
+	if decoded.Gold != payload.Gold {
+		t.Errorf("Gold: got %d, want %d", decoded.Gold, payload.Gold)
+	}
+	if decoded.WildCardCommons != payload.WildCardCommons {
+		t.Errorf("WildCardCommons: got %d, want %d", decoded.WildCardCommons, payload.WildCardCommons)
+	}
+	if decoded.WildCardMythics != payload.WildCardMythics {
+		t.Errorf("WildCardMythics: got %d, want %d", decoded.WildCardMythics, payload.WildCardMythics)
+	}
+	if len(decoded.Boosters) != 1 {
+		t.Fatalf("Boosters: got %d, want 1", len(decoded.Boosters))
+	}
+	if decoded.Boosters[0].SetCode != "BLB" {
+		t.Errorf("Boosters[0].SetCode: got %q, want %q", decoded.Boosters[0].SetCode, "BLB")
+	}
+}
+
 // TestMatchEventPayloadRoundTrip validates MatchEventPayload.
 func TestMatchEventPayloadRoundTrip(t *testing.T) {
 	payload := contract.MatchEventPayload{

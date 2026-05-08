@@ -44,3 +44,24 @@ type MatchEventPayload struct {
 	Format       string `json:"format"`
 	OpponentName string `json:"opponent_name"`
 }
+
+// InventoryBooster represents a single booster pack in the player's inventory.
+// Arena 2026.58+: on-wire field names are PascalCase (CollationId, SetCode, Count).
+type InventoryBooster struct {
+	CollationID int    `json:"collation_id"`
+	SetCode     string `json:"set_code"`
+	Count       int    `json:"count"`
+}
+
+// InventoryUpdatedPayload is embedded in a DaemonEvent with Type "inventory.updated".
+// It carries the player's current gem/gold/wildcard counts and booster holdings.
+type InventoryUpdatedPayload struct {
+	Gems               int                `json:"gems"`
+	Gold               int                `json:"gold"`
+	TotalVaultProgress int                `json:"total_vault_progress"`
+	WildCardCommons    int                `json:"wild_card_commons"`
+	WildCardUncommons  int                `json:"wild_card_uncommons"`
+	WildCardRares      int                `json:"wild_card_rares"`
+	WildCardMythics    int                `json:"wild_card_mythics"`
+	Boosters           []InventoryBooster `json:"boosters"`
+}

@@ -207,7 +207,7 @@ func (s *Service) handleEntry(ctx context.Context, entry *logreader.LogEntry) er
 		return nil
 	}
 
-	// For draft events use typed payloads so the BFF receives validated,
+	// For known event types, use typed payloads so the BFF receives validated,
 	// well-typed JSON rather than the raw map[string]interface{} from the log.
 	var payload interface{}
 	switch eventType {
@@ -223,6 +223,14 @@ func (s *Service) handleEntry(ctx context.Context, entry *logreader.LogEntry) er
 		p, err := logreader.ParseDraftPick(entry)
 		if err != nil {
 			log.Printf("[daemon] warn: parse draft pick: %v", err)
+			payload = entry.JSON
+		} else {
+			payload = p
+		}
+	case "inventory.updated":
+		p, err := logreader.ParseInventoryEntry(entry)
+		if err != nil {
+			log.Printf("[daemon] warn: parse inventory: %v", err)
 			payload = entry.JSON
 		} else {
 			payload = p
@@ -281,6 +289,11 @@ func classifyEntry(entry *logreader.LogEntry) string {
 	// Rank update
 	if _, ok := entry.JSON["rankClass"]; ok {
 		return "player.rank_updated"
+	}
+
+	// Inventory update (Arena 2026.58+: wrapped under "InventoryInfo" key)
+	if logreader.IsInventoryEntry(entry) {
+		return "inventory.updated"
 	}
 
 	return ""

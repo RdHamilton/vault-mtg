@@ -94,6 +94,19 @@ func TestClassifyEntry_DraftEnded(t *testing.T) {
 	assert.Equal(t, "draft.ended", classifyEntry(entry))
 }
 
+func TestClassifyEntry_InventoryUpdated(t *testing.T) {
+	entry := &logreader.LogEntry{
+		IsJSON: true,
+		JSON: map[string]interface{}{
+			"InventoryInfo": map[string]interface{}{
+				"Gems": float64(1200),
+				"Gold": float64(5000),
+			},
+		},
+	}
+	assert.Equal(t, "inventory.updated", classifyEntry(entry))
+}
+
 func TestClassifyEntry_Unknown(t *testing.T) {
 	entry := &logreader.LogEntry{
 		IsJSON: true,
@@ -196,6 +209,65 @@ func TestHandleEntry_DraftPickDispatchesTypedPayload(t *testing.T) {
 	assert.Equal(t, []int{12345}, payload.PickedCards)
 	assert.Equal(t, 0, payload.PackNumber)
 	assert.Equal(t, 3, payload.PickNumber)
+}
+
+// TestHandleEntry_InventoryUpdatedDispatchesTypedPayload verifies that handleEntry
+// parses an inventory.updated entry into a contract.InventoryUpdatedPayload and
+// sends it to the BFF with the correct event type and JSON field names.
+func TestHandleEntry_InventoryUpdatedDispatchesTypedPayload(t *testing.T) {
+	var received contract.DaemonEvent
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		body, err := io.ReadAll(r.Body)
+		require.NoError(t, err)
+		require.NoError(t, json.Unmarshal(body, &received))
+		w.WriteHeader(http.StatusAccepted)
+	}))
+	defer srv.Close()
+
+	cfg := &config.Config{
+		CloudAPIURL: srv.URL,
+		IngestPath:  "/v1/ingest/events",
+		APIKey:      "test-key",
+		AccountID:   "acc-inv",
+	}
+	svc := New(cfg)
+
+	entry := &logreader.LogEntry{
+		IsJSON: true,
+		JSON: map[string]interface{}{
+			"InventoryInfo": map[string]interface{}{
+				"Gems":              float64(1200),
+				"Gold":              float64(5000),
+				"WildCardCommons":   float64(10),
+				"WildCardUnCommons": float64(5),
+				"WildCardRares":     float64(3),
+				"WildCardMythics":   float64(1),
+				"Boosters": []interface{}{
+					map[string]interface{}{
+						"CollationId": float64(100078),
+						"SetCode":     "BLB",
+						"Count":       float64(2),
+					},
+				},
+			},
+		},
+	}
+
+	require.NoError(t, svc.handleEntry(context.Background(), entry))
+	assert.Equal(t, "inventory.updated", received.Type)
+	assert.Equal(t, "acc-inv", received.AccountID)
+
+	var payload contract.InventoryUpdatedPayload
+	require.NoError(t, json.Unmarshal(received.Payload, &payload))
+	assert.Equal(t, 1200, payload.Gems)
+	assert.Equal(t, 5000, payload.Gold)
+	assert.Equal(t, 10, payload.WildCardCommons)
+	assert.Equal(t, 5, payload.WildCardUncommons)
+	assert.Equal(t, 3, payload.WildCardRares)
+	assert.Equal(t, 1, payload.WildCardMythics)
+	require.Len(t, payload.Boosters, 1)
+	assert.Equal(t, "BLB", payload.Boosters[0].SetCode)
+	assert.Equal(t, 2, payload.Boosters[0].Count)
 }
 
 // ---------------------------------------------------------------------------
