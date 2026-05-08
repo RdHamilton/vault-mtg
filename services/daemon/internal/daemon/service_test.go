@@ -569,6 +569,60 @@ func TestHandleEntry_CollectionUpdatedDispatchesTypedPayload(t *testing.T) {
 	assert.Equal(t, 2, ids[67890])
 }
 
+// TestClassifyEntry_DeckUpdated verifies that an entry containing a deck upsert
+// request JSON string is classified as "deck.updated".
+func TestClassifyEntry_DeckUpdated(t *testing.T) {
+	req := `{"Summary":{"DeckId":"deck-123","Name":"Test Deck","Attributes":[{"name":"Format","value":"Standard"}]},"Deck":{"MainDeck":[{"cardId":11111,"quantity":4}],"Sideboard":[]}}`
+	entry := &logreader.LogEntry{
+		IsJSON: true,
+		JSON:   map[string]interface{}{"request": req},
+	}
+	assert.Equal(t, "deck.updated", classifyEntry(entry))
+}
+
+// TestHandleEntry_DeckUpdatedDispatchesTypedPayload verifies that handleEntry
+// parses a deck.updated entry into a contract.DeckUpdatedPayload and sends it
+// to the BFF with the correct event type and JSON field names.
+func TestHandleEntry_DeckUpdatedDispatchesTypedPayload(t *testing.T) {
+	var received contract.DaemonEvent
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		body, err := io.ReadAll(r.Body)
+		require.NoError(t, err)
+		require.NoError(t, json.Unmarshal(body, &received))
+		w.WriteHeader(http.StatusAccepted)
+	}))
+	defer srv.Close()
+
+	cfg := &config.Config{
+		CloudAPIURL: srv.URL,
+		IngestPath:  "/v1/ingest/events",
+		APIKey:      "test-key",
+		AccountID:   "acc-deck",
+	}
+	svc := New(cfg)
+
+	req := `{"Summary":{"DeckId":"deck-abc","Name":"Mono Red","Attributes":[{"name":"Format","value":"Standard"}]},"Deck":{"MainDeck":[{"cardId":55555,"quantity":4},{"cardId":66666,"quantity":2}],"Sideboard":[]}}`
+	entry := &logreader.LogEntry{
+		IsJSON: true,
+		JSON:   map[string]interface{}{"request": req},
+	}
+
+	require.NoError(t, svc.handleEntry(context.Background(), entry))
+	assert.Equal(t, "deck.updated", received.Type)
+	assert.Equal(t, "acc-deck", received.AccountID)
+
+	var payload contract.DeckUpdatedPayload
+	require.NoError(t, json.Unmarshal(received.Payload, &payload))
+	assert.Equal(t, "deck-abc", payload.DeckID)
+	assert.Equal(t, "Mono Red", payload.Name)
+	assert.Equal(t, "Standard", payload.Format)
+	require.Len(t, payload.Cards, 2)
+	assert.Equal(t, 55555, payload.Cards[0].ArenaID)
+	assert.Equal(t, 4, payload.Cards[0].Quantity)
+	assert.Equal(t, 66666, payload.Cards[1].ArenaID)
+	assert.Equal(t, 2, payload.Cards[1].Quantity)
+}
+
 // TestWithVersion sets version and verifies it is stored correctly.
 func TestWithVersion(t *testing.T) {
 	cfg := &config.Config{

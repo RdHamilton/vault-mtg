@@ -259,6 +259,14 @@ func (s *Service) handleEntry(ctx context.Context, entry *logreader.LogEntry) er
 		} else {
 			payload = p
 		}
+	case "deck.updated":
+		p, err := logreader.ParseDeckEntry(entry)
+		if err != nil {
+			log.Printf("[daemon] warn: parse deck: %v", err)
+			payload = entry.JSON
+		} else {
+			payload = p
+		}
 	default:
 		payload = entry.JSON
 	}
@@ -331,6 +339,11 @@ func classifyEntry(entry *logreader.LogEntry) string {
 	// Collection snapshot (PlayerInventoryGetPlayerCardsV3).
 	if logreader.IsCollectionEntry(entry) {
 		return "collection.updated"
+	}
+
+	// Deck update (DeckUpsertDeckV2).
+	if logreader.IsDeckEntry(entry) {
+		return "deck.updated"
 	}
 
 	return ""

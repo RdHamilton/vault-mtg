@@ -93,6 +93,22 @@ type QuestEntry struct {
 	CanSwap   bool   `json:"can_swap"`
 }
 
+// DeckCard represents a single card slot in a deck — arena grpId plus quantity.
+type DeckCard struct {
+	ArenaID  int `json:"arena_id"`
+	Quantity int `json:"quantity"`
+}
+
+// DeckUpdatedPayload is embedded in a DaemonEvent with Type "deck.updated".
+// It carries the identity and card list for a single player deck as reported
+// by a DeckUpsertDeckV2 log entry.
+type DeckUpdatedPayload struct {
+	DeckID string     `json:"deck_id"`
+	Name   string     `json:"name"`
+	Format string     `json:"format"`
+	Cards  []DeckCard `json:"cards"`
+}
+
 // CollectionCard represents a single card entry in a collection snapshot.
 // ArenaID is the MTGA numeric card identifier; Count is the number of copies
 // the player owns.
