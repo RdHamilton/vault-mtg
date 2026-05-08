@@ -125,7 +125,7 @@ func (h *IngestHandler) IngestEvent(w http.ResponseWriter, r *http.Request) {
 				"[IngestHandler] ERROR persisting event",
 				"type", event.Type,
 				"userID", userID,
-				"account_id_hash", hashAccountID(event.AccountID),
+				"account", event.AccountID,
 				"err", err,
 			)
 		}
@@ -137,7 +137,7 @@ func (h *IngestHandler) IngestEvent(w http.ResponseWriter, r *http.Request) {
 		if isGap, expected := h.gapDetector.Check(event.AccountID, event.SessionID, event.Sequence); isGap {
 			slog.Warn(
 				"[IngestHandler] sequence gap detected",
-				"account_id_hash", hashAccountID(event.AccountID),
+				"account_id", event.AccountID,
 				"session_id", event.SessionID,
 				"expected_sequence", expected,
 				"received_sequence", event.Sequence,
@@ -164,7 +164,7 @@ func (h *IngestHandler) IngestEvent(w http.ResponseWriter, r *http.Request) {
 		"[IngestHandler] Received event",
 		"type", event.Type,
 		"seq", event.Sequence,
-		"account_id_hash", hashAccountID(event.AccountID),
+		"account", event.AccountID,
 		"userID", userID,
 	)
 
