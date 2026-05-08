@@ -37,6 +37,8 @@ jobs:
         env:
           VITE_BFF_URL: ${{ vars.VITE_BFF_URL }}
           VITE_CLERK_PUBLISHABLE_KEY: ${{ vars.VITE_CLERK_PUBLISHABLE_KEY }}
+          VITE_POSTHOG_KEY: ${{ vars.VITE_POSTHOG_KEY }}
+          VITE_SENTRY_DSN: ${{ vars.VITE_SENTRY_DSN }}
 
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v4
