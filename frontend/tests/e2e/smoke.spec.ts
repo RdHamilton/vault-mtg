@@ -100,3 +100,43 @@ test.describe('@smoke Vercel BFF Connectivity', () => {
     expect(corsErrors, `CORS errors on /api/v1/decks: ${corsErrors.join(', ')}`).toHaveLength(0);
   });
 });
+
+// ---------------------------------------------------------------------------
+// EnvBadge smoke assertions (#1495)
+//
+// The EnvBadge component is gated by import.meta.env.MODE !== 'production'.
+// In development / preview / staging the badge renders with data-testid="env-badge".
+// In production builds it returns null — the element must NOT be present.
+//
+// The dev server (playwright.config.ts webServer) starts Vite in development
+// mode, so MODE is always 'development' during local Playwright runs and in CI
+// preview deployments — the badge WILL be visible.
+//
+// Against the production CloudFront URL (PLAYWRIGHT_BASE_URL=https://app.vaultmtg.app)
+// the badge must be absent. The test is skipped when no production URL is provided
+// rather than failing, so CI stays green on preview runs.
+// ---------------------------------------------------------------------------
+
+const IS_PRODUCTION_URL =
+  BASE_URL.includes('app.vaultmtg.app') ||
+  process.env.PLAYWRIGHT_ENV === 'production';
+
+test.describe('@smoke EnvBadge visibility', () => {
+  test('EnvBadge is visible in development / preview build', async ({ page }) => {
+    test.skip(IS_PRODUCTION_URL, 'Skipped: targeting a production URL where EnvBadge is hidden');
+
+    await page.goto(BASE_URL);
+    await expect(page.locator('[data-testid="app-container"]')).toBeVisible({ timeout: 15_000 });
+
+    await expect(page.locator('[data-testid="env-badge"]')).toBeVisible();
+  });
+
+  test('EnvBadge is NOT present in production build', async ({ page }) => {
+    test.skip(!IS_PRODUCTION_URL, 'Skipped: not targeting a production URL');
+
+    await page.goto(BASE_URL);
+    await expect(page.locator('[data-testid="app-container"]')).toBeVisible({ timeout: 15_000 });
+
+    await expect(page.locator('[data-testid="env-badge"]')).not.toBeAttached();
+  });
+});

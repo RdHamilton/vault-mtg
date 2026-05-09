@@ -5,13 +5,16 @@ package daemon
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"log"
 	"time"
 
+	"github.com/RdHamilton/MTGA-Companion/services/contract"
 	"github.com/google/uuid"
 	"github.com/ramonehamilton/mtga-daemon/internal/config"
 	"github.com/ramonehamilton/mtga-daemon/internal/dispatch"
+	"github.com/ramonehamilton/mtga-daemon/internal/gre"
 	"github.com/ramonehamilton/mtga-daemon/internal/logreader"
 	"github.com/ramonehamilton/mtga-daemon/internal/registrar"
 	"github.com/ramonehamilton/mtga-daemon/internal/updatecheck"
@@ -33,6 +36,7 @@ type Service struct {
 	sessionID  string
 	regClient  *registrar.Client
 	version    string // build-time version; "dev" skips update checks
+	greManager *gre.Manager
 }
 
 // New creates a Service from cfg.
@@ -43,16 +47,55 @@ func New(cfg *config.Config) *Service {
 		token = cfg.APIKey
 	}
 	d := dispatch.New(cfg.CloudAPIURL, cfg.IngestPath, token)
+	sessionID := fmt.Sprintf("live-%s", uuid.New().String())
+
 	svc := &Service{
 		cfg:        cfg,
 		dispatcher: d,
-		sessionID:  fmt.Sprintf("live-%s", uuid.New().String()),
+		sessionID:  sessionID,
 		regClient:  registrar.NewClient(cfg.CloudAPIURL),
 		version:    "dev",
 	}
 	// Wire the dispatcher's 401 refresher to the service.
 	d.WithRefresher(svc)
+
+	// Build the GRE session manager.  The flush func emits a match.game_ended
+	// DaemonEvent carrying the accumulated GRE entries as the raw payload.
+	svc.greManager = gre.NewManager(gre.ManagerConfig{
+		FlushThreshold: cfg.GRESessionFlushThreshold,
+		StaleMinutes:   cfg.GRESessionStaleMinutes,
+		Flush:          svc.flushGREBuffer,
+	})
+
 	return svc
+}
+
+// flushGREBuffer is the FlushFunc wired into the GRE session manager.
+// It builds a GamePlayPayload from the accumulated entries and dispatches it
+// to the BFF as a "match.game_ended" DaemonEvent with partial=true.
+func (s *Service) flushGREBuffer(ctx context.Context, sessionID string, entries []json.RawMessage, partial bool) error {
+	payload := contract.GamePlayPayload{
+		Partial:     partial,
+		LifeChanges: []contract.LifeChangeEntry{},
+	}
+
+	raw, err := json.Marshal(payload)
+	if err != nil {
+		return fmt.Errorf("flushGREBuffer: marshal payload: %w", err)
+	}
+
+	evt := contract.DaemonEvent{
+		Type:       "match.game_ended",
+		AccountID:  s.cfg.AccountID,
+		SessionID:  s.sessionID,
+		OccurredAt: time.Now().UTC(),
+		Payload:    json.RawMessage(raw),
+	}
+
+	dispatchCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
+
+	return s.dispatcher.Send(dispatchCtx, evt)
 }
 
 // WithVersion sets the build-time version string used for update checks.
@@ -149,6 +192,9 @@ func (s *Service) Run(ctx context.Context) error {
 
 	log.Printf("[daemon] started (session=%s cloud_api=%s)", s.sessionID, s.cfg.CloudAPIURL)
 
+	// Start the GRE stale-buffer sweep goroutine.
+	go s.greManager.RunSweep(ctx)
+
 	// Periodic JWT refresh: check every jwtRefreshInterval whether the stored
 	// token is within the refresh window and re-register if so. This ensures
 	// mid-session expiry is handled without requiring a daemon restart.
@@ -163,6 +209,10 @@ func (s *Service) Run(ctx context.Context) error {
 		select {
 		case <-ctx.Done():
 			poller.Stop()
+			// Flush all non-empty GRE session buffers before exit.
+			flushCtx, flushCancel := context.WithTimeout(context.Background(), 10*time.Second)
+			s.greManager.FlushAll(flushCtx)
+			flushCancel()
 			log.Printf("[daemon] stopped")
 			return nil
 

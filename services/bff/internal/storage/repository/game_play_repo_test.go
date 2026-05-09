@@ -340,3 +340,72 @@ func TestGamePlayRepository_GetGamePlay_NotFound(t *testing.T) {
 		t.Errorf("expected sql.ErrNoRows, got %v", err)
 	}
 }
+
+// --- partial flag integration tests ---
+
+// TestGamePlayRepository_PartialTrue verifies that InsertGamePlay stores
+// partial=true when the insert carries Partial:true, and GetGamePlay reads
+// it back correctly.
+func TestGamePlayRepository_PartialTrue(t *testing.T) {
+	db := openTestDB(t)
+	repo := repository.NewGamePlayRepository(db)
+	ctx := context.Background()
+
+	accountID := insertTestAccountForGamePlay(t, db, "partial-true")
+	cleanupGamePlays(t, db, accountID)
+
+	now := time.Now().UTC().Truncate(time.Microsecond)
+
+	_, err := repo.InsertGamePlay(ctx, repository.GamePlayInsert{
+		AccountID:  accountID,
+		MatchID:    "match-partial-001",
+		GameNumber: 1,
+		Sequence:   1,
+		OccurredAt: now,
+		Partial:    true,
+	})
+	if err != nil {
+		t.Fatalf("InsertGamePlay: %v", err)
+	}
+
+	row, err := repo.GetGamePlay(ctx, accountID, "match-partial-001", 1)
+	if err != nil {
+		t.Fatalf("GetGamePlay: %v", err)
+	}
+	if !row.Partial {
+		t.Errorf("Partial: want true, got false")
+	}
+}
+
+// TestGamePlayRepository_PartialFalse verifies that InsertGamePlay stores
+// partial=false (the default) when Partial is not set.
+func TestGamePlayRepository_PartialFalse(t *testing.T) {
+	db := openTestDB(t)
+	repo := repository.NewGamePlayRepository(db)
+	ctx := context.Background()
+
+	accountID := insertTestAccountForGamePlay(t, db, "partial-false")
+	cleanupGamePlays(t, db, accountID)
+
+	now := time.Now().UTC().Truncate(time.Microsecond)
+
+	_, err := repo.InsertGamePlay(ctx, repository.GamePlayInsert{
+		AccountID:  accountID,
+		MatchID:    "match-nopartial-001",
+		GameNumber: 1,
+		Sequence:   1,
+		OccurredAt: now,
+		Partial:    false,
+	})
+	if err != nil {
+		t.Fatalf("InsertGamePlay: %v", err)
+	}
+
+	row, err := repo.GetGamePlay(ctx, accountID, "match-nopartial-001", 1)
+	if err != nil {
+		t.Fatalf("GetGamePlay: %v", err)
+	}
+	if row.Partial {
+		t.Errorf("Partial: want false, got true")
+	}
+}

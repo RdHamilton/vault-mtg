@@ -445,3 +445,89 @@ func TestDisableUpdateCheckEnvVarZeroDoesNotDisable(t *testing.T) {
 	require.NoError(t, err)
 	assert.False(t, cfg.DisableUpdateCheck)
 }
+
+// ---- GRE session buffer config ----
+
+// TestGRESessionFlushThresholdDefault verifies the default is 500.
+func TestGRESessionFlushThresholdDefault(t *testing.T) {
+	t.Setenv("MTGA_DAEMON_CLOUD_API_URL", "http://localhost:9000")
+
+	cfg, err := config.Load("")
+	require.NoError(t, err)
+	assert.Equal(t, 500, cfg.GRESessionFlushThreshold)
+}
+
+// TestGRESessionStaleMinutesDefault verifies the default is 15.
+func TestGRESessionStaleMinutesDefault(t *testing.T) {
+	t.Setenv("MTGA_DAEMON_CLOUD_API_URL", "http://localhost:9000")
+
+	cfg, err := config.Load("")
+	require.NoError(t, err)
+	assert.Equal(t, 15, cfg.GRESessionStaleMinutes)
+}
+
+// TestGRESessionFlushThresholdEnvVar verifies the env var is respected.
+func TestGRESessionFlushThresholdEnvVar(t *testing.T) {
+	t.Setenv("MTGA_DAEMON_CLOUD_API_URL", "http://localhost:9000")
+	t.Setenv("GRE_SESSION_FLUSH_THRESHOLD", "800")
+
+	cfg, err := config.Load("")
+	require.NoError(t, err)
+	assert.Equal(t, 800, cfg.GRESessionFlushThreshold)
+}
+
+// TestGRESessionStaleMinutesEnvVar verifies the env var is respected.
+func TestGRESessionStaleMinutesEnvVar(t *testing.T) {
+	t.Setenv("MTGA_DAEMON_CLOUD_API_URL", "http://localhost:9000")
+	t.Setenv("GRE_SESSION_STALE_MINUTES", "30")
+
+	cfg, err := config.Load("")
+	require.NoError(t, err)
+	assert.Equal(t, 30, cfg.GRESessionStaleMinutes)
+}
+
+// TestGRESessionFlushThresholdOutOfRangeLow verifies values below 50 revert to
+// default with a warning (no error returned).
+func TestGRESessionFlushThresholdOutOfRangeLow(t *testing.T) {
+	t.Setenv("MTGA_DAEMON_CLOUD_API_URL", "http://localhost:9000")
+	t.Setenv("GRE_SESSION_FLUSH_THRESHOLD", "10")
+
+	cfg, err := config.Load("")
+	require.NoError(t, err)
+	assert.Equal(t, 500, cfg.GRESessionFlushThreshold,
+		"out-of-range low value must revert to default 500")
+}
+
+// TestGRESessionFlushThresholdOutOfRangeHigh verifies values above 2000 revert
+// to default with a warning.
+func TestGRESessionFlushThresholdOutOfRangeHigh(t *testing.T) {
+	t.Setenv("MTGA_DAEMON_CLOUD_API_URL", "http://localhost:9000")
+	t.Setenv("GRE_SESSION_FLUSH_THRESHOLD", "9999")
+
+	cfg, err := config.Load("")
+	require.NoError(t, err)
+	assert.Equal(t, 500, cfg.GRESessionFlushThreshold,
+		"out-of-range high value must revert to default 500")
+}
+
+// TestGRESessionFlushThresholdBoundaryMin verifies the minimum boundary value
+// (50) is accepted.
+func TestGRESessionFlushThresholdBoundaryMin(t *testing.T) {
+	t.Setenv("MTGA_DAEMON_CLOUD_API_URL", "http://localhost:9000")
+	t.Setenv("GRE_SESSION_FLUSH_THRESHOLD", "50")
+
+	cfg, err := config.Load("")
+	require.NoError(t, err)
+	assert.Equal(t, 50, cfg.GRESessionFlushThreshold)
+}
+
+// TestGRESessionFlushThresholdBoundaryMax verifies the maximum boundary value
+// (2000) is accepted.
+func TestGRESessionFlushThresholdBoundaryMax(t *testing.T) {
+	t.Setenv("MTGA_DAEMON_CLOUD_API_URL", "http://localhost:9000")
+	t.Setenv("GRE_SESSION_FLUSH_THRESHOLD", "2000")
+
+	cfg, err := config.Load("")
+	require.NoError(t, err)
+	assert.Equal(t, 2000, cfg.GRESessionFlushThreshold)
+}

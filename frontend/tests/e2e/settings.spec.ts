@@ -1,4 +1,4 @@
-import { test, expect } from '@playwright/test';
+import { test, expect, type Page } from '@playwright/test';
 
 /**
  * Settings Page E2E Tests
@@ -6,6 +6,30 @@ import { test, expect } from '@playwright/test';
  * Tests the Settings page functionality including sections and buttons.
  * Uses REST API backend for testing.
  */
+
+// ---------------------------------------------------------------------------
+// Clerk test-state helpers (same pattern as auth.spec.ts)
+// ---------------------------------------------------------------------------
+
+type ClerkTestState = {
+  isSignedIn: boolean;
+  firstName?: string;
+  lastName?: string;
+  email?: string;
+};
+
+async function setClerkSignedIn(page: Page, user?: Partial<ClerkTestState>): Promise<void> {
+  const state: ClerkTestState = {
+    isSignedIn: true,
+    firstName: user?.firstName ?? 'Test',
+    lastName: user?.lastName ?? 'User',
+    email: user?.email ?? 'test@example.com',
+  };
+  await page.addInitScript((s) => {
+    (window as unknown as Record<string, unknown>).__CLERK_TEST_STATE__ = s;
+  }, state);
+}
+
 test.describe('Settings', () => {
   test.beforeEach(async ({ page }) => {
     await page.goto('/');
@@ -158,5 +182,42 @@ test.describe('Settings', () => {
       const errorState = page.locator('.settings-error, .error-state');
       await expect(errorState).not.toBeVisible();
     });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// User Profile section smoke tests (#1515)
+// ---------------------------------------------------------------------------
+
+test.describe('@smoke Settings — User Profile section', () => {
+  test('authenticated user navigates to /settings and sees their email address', async ({ page }) => {
+    // Inject Clerk signed-in state with a known email before the page loads.
+    await setClerkSignedIn(page, { email: 'smoke@example.com', firstName: 'Smoke', lastName: 'Tester' });
+
+    await page.goto('/settings');
+    await expect(page.locator('[data-testid="app-container"]')).toBeVisible({ timeout: 15_000 });
+    await page.waitForURL('**/settings');
+
+    // Expand the User Profile accordion section
+    const userProfileButton = page.locator('button').filter({ hasText: /user profile/i });
+    await expect(userProfileButton).toBeVisible({ timeout: 5000 });
+    await userProfileButton.click();
+
+    // The email address must be visible in the profile section
+    await expect(page.locator('[data-testid="user-profile-email"]')).toBeVisible({ timeout: 5000 });
+    await expect(page.locator('[data-testid="user-profile-email"]')).toHaveText('smoke@example.com');
+  });
+
+  test('authenticated user sees their display name on /settings', async ({ page }) => {
+    await setClerkSignedIn(page, { firstName: 'Smoke', lastName: 'Tester', email: 'smoke@example.com' });
+
+    await page.goto('/settings');
+    await expect(page.locator('[data-testid="app-container"]')).toBeVisible({ timeout: 15_000 });
+
+    const userProfileButton = page.locator('button').filter({ hasText: /user profile/i });
+    await expect(userProfileButton).toBeVisible({ timeout: 5000 });
+    await userProfileButton.click();
+
+    await expect(page.locator('[data-testid="user-profile-name"]')).toHaveText('Smoke Tester');
   });
 });

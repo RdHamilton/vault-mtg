@@ -61,7 +61,7 @@ jobs:
     # -----------------------------------------------------------------------
     - name: Set up Go (source build only)
       if: inputs.bff_artifact_name == ''
-      uses: actions/setup-go@v6
+      uses: actions/setup-go@v5
       with:
         go-version: '1.25'
         cache-dependency-path: services/bff/go.sum
@@ -104,10 +104,6 @@ jobs:
       run: |
         cd frontend
         npx playwright install chromium --with-deps
-
-    - name: Install Playwright system deps (cache hit path)
-      if: steps.playwright-cache.outputs.cache-hit == 'true'
-      run: cd frontend && npx playwright install-deps chromium
 
     - name: Run E2E smoke tests
       run: |
