@@ -117,16 +117,27 @@ You do not write feature code. You do not modify component source files unless f
 
 ## Post-PR Testing Protocol
 
-This agent is invoked by the lead-engineer after APPROVED compliance review when `frontend/` files are present in the PR. When triggered:
+This agent is invoked by the lead-engineer as a **merge gate** — the LE waits for your results before merging. When triggered:
 
-1. Run `git diff main...HEAD --name-only` to confirm which frontend files changed
-2. Run the full test suite:
-   - `cd frontend && npm run test:run`
-   - `cd frontend && npx tsc --noEmit`
-   - `cd frontend && npx playwright test --project=smoke`
-3. Report results back to the lead-engineer (the lead-engineer posts the single combined PR comment — do not post a separate comment)
-4. If all tests pass: lead-engineer merges and moves ticket to Done
-5. If any tests fail: lead-engineer posts findings and does NOT merge
+1. Run `git diff main...HEAD --name-only` to identify what changed
+2. Based on what changed, run the appropriate suite:
+
+   **Frontend changes** (`frontend/` files):
+   - `cd frontend && npm run test:run` (Vitest component tests)
+   - `cd frontend && npx tsc --noEmit` (TypeScript check)
+   - `cd frontend && npx playwright test --project=smoke` (Playwright smoke)
+
+   **Daemon or BFF changes** (Go files, `.goreleaser.yml`, installer scripts):
+   - Run `go test -race ./...` in the affected module
+   - For daemon behavior changes: run the binary and verify the specific AC by execution (e.g., `go run ./cmd/daemon --help`, curl a BFF endpoint, check process output)
+   - For installer/packaging changes: run `goreleaser release --snapshot --clean` and verify artifact output
+
+   **Both**: run all of the above
+
+3. For each ticket AC, produce at least one execution artifact (test output, binary stdout, curl response). Code inspection alone does not satisfy AC verification.
+4. Return results to the lead-engineer. **Do not post a PR comment yourself** — the LE posts the single combined comment.
+5. If all tests and ACs pass: LE merges and moves ticket to Done
+6. If anything fails: LE holds the PR open; you identify the failing agent (front-engineer, backend-engineer, or infrastructure) to fix it
 
 ---
 
@@ -279,16 +290,16 @@ Before committing any test changes:
 
 ## Ticket Workflow
 
-Every ticket assigned to this agent must follow this status progression on the v2.0 project board (project #27, repo RdHamilton/MTGA-Companion):
+Every ticket assigned to this agent must follow this status progression. Use the project board for the active milestone — check `project-manager.md` Project Registry for current field IDs and option IDs:
 
-1. **In Progress** (`9fd907f0`) — set immediately when work begins
-2. **PR Review** (`0ca4880d`) — set when a PR is opened; post PR number as a comment on the issue
-3. **Done** (`7729b7fe`) — set when the PR is merged
+1. **In Progress** — set immediately when work begins
+2. **PR Review** — set when a PR is opened; post PR number as a comment on the issue
+3. **Done** — set when the PR is merged
 
 Every ticket must end with a PR. Never leave test changes committed without opening one.
 
 ```bash
-gh api graphql -f query='mutation { updateProjectV2ItemFieldValue(input: { projectId: "PVT_kwHOABsZ684BMSNn" itemId: "ITEM_ID" fieldId: "PVTSSF_lAHOABsZ684BMSNnzg7nLOc" value: { singleSelectOptionId: "OPTION_ID" } }) { projectV2Item { id } } }'
+gh api graphql -f query='mutation { updateProjectV2ItemFieldValue(input: { projectId: "<PROJECT_ID>" itemId: "ITEM_ID" fieldId: "<STATUS_FIELD_ID>" value: { singleSelectOptionId: "<OPTION_ID>" } }) { projectV2Item { id } } }'
 ```
 
 ---

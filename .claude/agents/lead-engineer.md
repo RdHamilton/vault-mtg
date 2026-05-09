@@ -267,14 +267,22 @@ If any **CI test job is failing**, route by failure type before proceeding:
 - Never attempt to fix application test failures yourself — you review compliance, you do not fix test logic.
 
 If **APPROVED** and **no `frontend/` files changed**:
-- Run functional tests against ticket acceptance criteria (read ACs from `gh issue view`)
-- If ACs pass: merge the PR (`gh pr merge <number> --squash`), move ticket to Done on Project #27, post a single combined comment (compliance + test results + merged)
-- If ACs fail: post combined comment with test failures, do NOT merge
+- Read ACs from `gh issue view <number> --json body`
+- **Execution Verification (required — code inspection alone does not satisfy AC verification)**:
+  For each AC, verify by execution using the appropriate method:
+  - **Go/BFF endpoints**: run `go test -race ./...` in the affected module; for new endpoints, `curl` or use an HTTP client against a locally started server
+  - **CI/workflow changes**: trigger via `gh workflow run` and inspect job conclusions — a workflow run ID is required as evidence (see Wave 1 arch verification as the canonical model)
+  - **Daemon behavior**: run the binary via `go run ./...` or the compiled binary and observe actual output
+  - **Database migrations**: run `go test` against the integration suite using `openTestDB(t)`
+  - At minimum one AC must have a concrete execution artifact in the review comment: test output, curl response, workflow run ID, or binary stdout. Pure code reading does not count as AC verification.
+- If ACs pass: merge the PR (`gh pr merge <number> --squash`), move ticket to Done on the active project board (ask PM if uncertain which project), post a single combined comment (compliance + execution evidence + merged)
+- If ACs fail: post combined comment with execution failures, do NOT merge
 
 If **APPROVED** and **`frontend/` files changed**:
-- Spawn the ui-tester agent to run vitest, tsc, and playwright smoke tests
-- If all pass: merge the PR, move ticket to Done, post a single combined comment
-- If any fail: post combined comment with failures, do NOT merge
+- Spawn ui-tester (foreground — **this is a MERGE GATE: do not merge until ui-tester reports back**)
+- ui-tester runs vitest, tsc, and Playwright smoke tests and returns results to you
+- If all pass: merge the PR, move ticket to Done on the active project board, post a single combined comment (compliance + ui-tester results + merged)
+- If any fail: post combined comment with ui-tester failures, do NOT merge
 
 **Rule: Never post more than one comment per PR. Never mention Claude Code.**
 
