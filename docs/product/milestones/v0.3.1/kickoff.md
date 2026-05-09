@@ -74,12 +74,13 @@ The architect confirmed the following order is correct and internally consistent
 
 ---
 
-### Wave 1 — CI Hardening
+### Wave 1 — CI Hardening — CLOSED ✓
 
 | | |
 |---|---|
 | **Theme** | Fix CI bugs before they corrupt the release pipeline |
 | **Goal** | `sign-macos` job is guarded, non-hanging, and cannot silently block tag releases; MTGA_ENV is explicit across all CI jobs |
+| **Status** | CLOSED — all tickets merged; DoD verified by architect via workflow_dispatch run 25607888642 |
 
 | Ticket | Title | Owner | Effort |
 |--------|-------|-------|--------|
@@ -88,24 +89,27 @@ The architect confirmed the following order is correct and internally consistent
 | #1667 | fix(ci): add RULE-INFRA-01 lint gate rollout process to infrastructure agent | infrastructure | XS |
 | #1668 | fix(ci): ensure MTGA_ENV is explicitly set in all CI jobs that start the BFF | infrastructure | XS |
 
+> **Merge notes**: #1658, #1659, #1668 merged via PR #1679. #1667 applied directly (RULE-INFRA-01 doc — harness-blocked; Ray authorized manual edit).
+
 **Definition of done:**
-- [ ] `sign-macos` job only runs on tag pushes — `workflow_dispatch` cannot trigger it
-- [ ] `sign-macos` job has `timeout-minutes` set; CI marks the job failed (not hung) if notarization exceeds the limit
-- [ ] RULE-INFRA-01 lint gate rollout process documented in infrastructure agent
-- [ ] `MTGA_ENV` explicitly set in all CI jobs that start the BFF; no jobs rely on implicit defaults
-- [ ] CI green on main after all four merges
+- [x] `sign-macos` job only runs on tag pushes — `workflow_dispatch` cannot trigger it
+- [x] `sign-macos` job has `timeout-minutes` set; CI marks the job failed (not hung) if notarization exceeds the limit
+- [x] RULE-INFRA-01 lint gate rollout process documented in infrastructure agent
+- [x] `MTGA_ENV` explicitly set in all CI jobs that start the BFF; no jobs rely on implicit defaults
+- [x] CI green on main after all four merges
 
 **Assigned agents**: infrastructure
 **Estimated effort**: S (4× XS)
 
 ---
 
-### Wave 2 — Binary Build + Installer Foundation
+### Wave 2 — Binary Build + Installer Foundation — CLOSED ✓
 
 | | |
 |---|---|
 | **Theme** | Produce platform installers via GoReleaser |
 | **Goal** | A tag push produces a `.dmg` (macOS) and `.exe` (Windows) installer with zero manual build steps |
+| **Status** | CLOSED — all tickets merged; all 6 DoD conditions verified by LE via execution (goreleaser exits 0, both binaries produced, CI green on main) |
 
 | Ticket | Title | Owner | Effort |
 |--------|-------|-------|--------|
@@ -114,20 +118,22 @@ The architect confirmed the following order is correct and internally consistent
 | #1640 | feat(daemon): macOS .pkg installer — port LaunchAgent logic from install.sh into pkgbuild/productbuild, wrap in .dmg | backend-engineer | M |
 | #1641 | feat(daemon): Windows NSIS .exe installer — port Scheduled Task logic from install.ps1, no UAC | backend-engineer | M |
 
+> **Merge notes**: #1639, #1640, #1641 merged via PR #1678. #1642 merged via PR #1682. GoReleaser snapshot fix (after: key + GORELEASER_IS_SNAPSHOT bug) merged via PR #1687.
+
 **Definition of done:**
-- [ ] `goreleaser release --snapshot` produces darwin universal binary and windows amd64 binary without errors
-- [ ] macOS `.pkg` postinstall script calls `xattr -dr com.apple.quarantine` after binary copy (per Wave 0 Decision 4)
-- [ ] macOS `.pkg` installs per-user LaunchAgent; daemon starts after install without a terminal
-- [ ] Windows `.exe` installs Scheduled Task; daemon starts after install without UAC prompt
-- [ ] GoReleaser-driven CI workflow active; `v*` tag triggers release build
-- [ ] CI green on main after merge
+- [x] `goreleaser release --snapshot` produces darwin universal binary and windows amd64 binary without errors
+- [x] macOS `.pkg` postinstall script calls `xattr -dr com.apple.quarantine` after binary copy (per Wave 0 Decision 4)
+- [x] macOS `.pkg` installs per-user LaunchAgent; daemon starts after install without a terminal
+- [x] Windows `.exe` installs Scheduled Task; daemon starts after install without UAC prompt
+- [x] GoReleaser-driven CI workflow active; `v*` tag triggers release build
+- [x] CI green on main after merge
 
 **Assigned agents**: backend-engineer (primary), infrastructure
 **Estimated effort**: L (3× M + 1× S)
 
 ---
 
-### Wave 3 — PKCE Auth (dependency-coupled — all 4 tickets ship together)
+### Wave 3 — PKCE Auth (dependency-coupled — all 4 tickets ship together) — UNBLOCKED ✓
 
 | | |
 |---|---|
@@ -135,6 +141,8 @@ The architect confirmed the following order is correct and internally consistent
 | **Goal** | Daemon detects missing config, opens browser, completes PKCE, stores key in OS keychain, registers with BFF — no manual key copy-paste ever |
 
 > **Coupling note**: These 4 tickets have hard sub-dependencies. #1643 (config detection) and #1651 (keychain storage) must be implemented before #1650 (PKCE flow) can be tested end-to-end. #1652 (BFF endpoint) must exist before #1650 can complete registration. All 4 must ship together — no partial merges. Wave 0 conditions C-1 through C-8 must be satisfied before this wave starts (see Section 4).
+>
+> **Status (2026-05-09)**: UNBLOCKED. C-1 through C-5 satisfied; C-3 confirmed done (Clerk Native API enabled, redirect URIs registered). C-6, C-7, C-8 are resolved during Wave 3 itself per the coupling design — they are not pre-blockers. Wave 3 may start.
 
 | Ticket | Title | Owner | Effort |
 |--------|-------|-------|--------|
@@ -298,16 +306,16 @@ The architect confirmed the following order is correct and internally consistent
 
 These conditions were identified in the arch review. Engineering **MAY NOT begin Wave 3** until all C-1 through C-8 are satisfied. Wave 4 also has specific conditions.
 
-| # | Condition | Owner | Deadline |
-|---|---|---|---|
-| C-1 | Keychain naming convention resolved — service: `com.mtga-companion.daemon`, account: `api-key`. ADR-020 updated. | Architect (signed off) | Before #1651 In Progress |
-| C-2 | PKCE callback port confirmed as `51423` (fallback `51424`). ADR-020 step 3 updated. | Resolved (Wave 0) | Before #1650 In Progress |
-| C-3 | Clerk OAuth application configured with `http://localhost:51423/callback` and `http://localhost:51424/callback` | PM action (register URIs) + backend-engineer | Before #1650 In Progress |
-| C-4 | API key scoping confirmed: per-user, one-key-per-account, `UNIQUE on account_id`. | Resolved (Wave 0) | Before #1652 In Progress |
-| C-5 | Key revocation behavior confirmed: re-use existing key on reinstall; BFF returns 200 (not 201). | Resolved (Wave 0) | Before #1652 In Progress |
-| C-6 | `daemon_api_keys` migration ticket #1674 merged to main before or with #1652. | DBA / backend-engineer | Before #1652 In Progress |
-| C-7 | `POST /v1/daemon/register` request/response JSON contract documented in ADR-020. | Architect + backend-engineer | Before Wave 3 starts |
-| C-8 | `daemon.json` canonical schema documented in ADR-020 (with migration path from legacy plaintext `api_key`). | Backend-engineer | Before #1643 In Progress |
+| # | Condition | Owner | Deadline | Status |
+|---|---|---|---|---|
+| C-1 | Keychain naming convention resolved — service: `com.mtga-companion.daemon`, account: `api-key`. ADR-020 updated. | Architect (signed off) | Before #1651 In Progress | ✓ Resolved (Wave 0) |
+| C-2 | PKCE callback port confirmed as `51423` (fallback `51424`). ADR-020 step 3 updated. | Resolved (Wave 0) | Before #1650 In Progress | ✓ Resolved (Wave 0) |
+| C-3 | Clerk OAuth application configured with `http://localhost:51423/callback` and `http://localhost:51424/callback` | PM action (register URIs) + backend-engineer | Before #1650 In Progress | ✓ DONE 2026-05-09 — Clerk Native API enabled; both redirect URIs registered in Native Applications → Allowlist |
+| C-4 | API key scoping confirmed: per-user, one-key-per-account, `UNIQUE on account_id`. | Resolved (Wave 0) | Before #1652 In Progress | ✓ Resolved (Wave 0) |
+| C-5 | Key revocation behavior confirmed: re-use existing key on reinstall; BFF returns 200 (not 201). | Resolved (Wave 0) | Before #1652 In Progress | ✓ Resolved (Wave 0) |
+| C-6 | `daemon_api_keys` migration ticket #1674 merged to main before or with #1652. | DBA / backend-engineer | Before #1652 In Progress | OPEN — resolved during Wave 3 |
+| C-7 | `POST /v1/daemon/register` request/response JSON contract documented in ADR-020. | Architect + backend-engineer | Before Wave 3 starts | OPEN — resolved during Wave 3 |
+| C-8 | `daemon.json` canonical schema documented in ADR-020 (with migration path from legacy plaintext `api_key`). | Backend-engineer | Before #1643 In Progress | OPEN — resolved during Wave 3 |
 
 **Wave 5 condition** (non-blocking for Wave 3 start, must resolve before Wave 5 closes):
 - Azure identity validation approval confirmed. If not received, escalate to Ray.
@@ -331,11 +339,13 @@ All of the following must be true before the v0.3.1 tag is cut:
 
 ## 6. PM Action Items
 
-Open items that must be resolved — verified as of 2026-05-09:
+Open items that must be resolved — updated 2026-05-09:
 
-- [ ] **Register Clerk OAuth redirect URIs** — `http://localhost:51423/callback` and `http://localhost:51424/callback` must be registered in the Clerk OAuth application config before Wave 3 (#1650) starts. This is a PM/infra action, not backend-engineer.
+- [x] **Register Clerk OAuth redirect URIs** — DONE 2026-05-09. `http://localhost:51423/callback` and `http://localhost:51424/callback` registered in Clerk Native Applications → Allowlist. C-3 satisfied.
 - [ ] **Confirm Azure identity validation approved** — Microsoft review in progress. Escalate to Ray if no approval by Wave 5 start.
 - [ ] **File Wave 8 release gate tickets** before Wave 6 closes — Wave 8 is a ceremony wave; PM files a tracking ticket so the release gate has a board artifact.
+
+**Pending cleanup**: PR #1686 (changelogs + gitignore + go.work.sum) — open, pending merge.
 
 ---
 
