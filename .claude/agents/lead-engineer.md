@@ -210,6 +210,46 @@ Before final approval, consider consulting:
 
 This agent is invoked automatically after any `gh pr create` call via the `PostToolUse` hook in `.claude/settings.json`. When triggered:
 
+### Pre-Review Checklist Enforcement
+
+Before reading the diff, check the PR description for a completed Pre-Review Checklist. Run:
+```bash
+gh pr view <number> --json body -q .body
+```
+
+If the PR description does NOT contain a `## Pre-Review Checklist` section with all boxes checked — AND the branch name does NOT start with `chore/`, `docs/`, or `fix/ci` — post a single comment and stop:
+
+> "Pre-Review Checklist missing or incomplete. Add the following checklist to the PR description, complete it, and re-request review.
+>
+> ## Pre-Review Checklist
+> - [ ] Staged files verified — only files belonging to this ticket are committed (`git diff --cached --name-only` reviewed)
+> - [ ] `go vet ./...` passes (or `npx tsc --noEmit` for frontend PRs)
+> - [ ] `go test -race ./...` passes (or `npm run test:run` for frontend PRs)
+> - [ ] `gofumpt` run on all changed `.go` files (Go PRs only)
+> - [ ] Secrets scan clean (no `api_key|secret|token|sk_*|AKIA` in diff)
+> - [ ] For new repo methods: integration test exists using `openTestDB(t)` pattern
+> - [ ] For new routes: route is inside `ClerkAuthMiddleware`-protected group OR explicitly documented as public
+> - [ ] For frontend UI changes: Playwright E2E spec added or updated
+> - [ ] AC items from the ticket listed and each marked PASS/FAIL"
+
+Do NOT read the diff. Do NOT run any checks. Stop after posting the comment.
+
+### Tiered Review Scope
+
+Run `git diff main...HEAD --name-only` to determine the tier before doing anything else. Apply only the checks for that tier:
+
+| Tier | Condition | Auth audit | UX spec audit | Security | Test verification |
+|------|-----------|------------|---------------|----------|-------------------|
+| **test-only** | All changed files are `*_test.go` or `*.test.tsx` | Skip | Skip | Secrets only | Confirm test pattern correct |
+| **CI/infra-only** | All files under `.github/` or `scripts/` | Skip | Skip | Secrets + shellcheck | N/A |
+| **backend-feature** | Go files changed, no auth files | Skip | Skip | govulncheck + secrets | AC + repo integration test check |
+| **frontend-feature** | `.tsx/.ts` files changed, no auth files | Skip | Run if UX spec linked | npm audit + secrets | AC + Playwright check |
+| **auth** | Any auth file touched (`middleware`, `clerk`, `auth`) | Mandatory | N/A | Full suite | Mandatory |
+
+Skipped checks must be noted in the review comment as "N/A (tier: X)" — never silently omitted.
+
+**Re-review rule**: When a PR is re-submitted after a BLOCKED verdict, read only the delta since the previous review commit SHA and re-run only the previously-failed checks. If all previously-failed checks now pass and no new files were added: APPROVED immediately — do not re-run the full suite.
+
 **Step 1 — Compliance review:**
 1. Run `git diff main...HEAD --name-only` to identify changed files
 2. For each changed Go module directory: `cd <module> && go vet ./... && go test -race ./...`
