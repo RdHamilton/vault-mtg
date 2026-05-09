@@ -435,3 +435,29 @@ func TestRouter_SSE_ValidJWT_ResolverDBError_Returns500(t *testing.T) {
 		t.Fatalf("resolver DB error: want 500, got %d", rr.Code)
 	}
 }
+
+// ──────────────────────────────────────────────────────────────────────────────
+// E2EUnguardedSSE — pipeline E2E bypass
+// ──────────────────────────────────────────────────────────────────────────────
+
+// TestRouter_SSE_E2EUnguardedSSE_AllowsUnauthenticated verifies that when
+// E2EUnguardedSSE=true, GET /api/v1/events is reachable without any auth token.
+// The sentinel middleware injects user ID=1 into context so the SSE broker
+// does not return 401. The context is cancelled immediately so the SSE handler
+// exits without blocking.
+func TestRouter_SSE_E2EUnguardedSSE_AllowsUnauthenticated(t *testing.T) {
+	deps := depsNoAuth(t)
+	deps.E2EUnguardedSSE = true
+	r := BuildRouter(minimalConfig(), deps)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel() // cancel immediately so SSE handler exits after setup
+
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/events", nil).WithContext(ctx)
+	rr := httptest.NewRecorder()
+	r.ServeHTTP(rr, req)
+
+	if rr.Code == http.StatusServiceUnavailable {
+		t.Fatalf("GET /api/v1/events E2EUnguardedSSE=true: got 503 (auth blocking); want SSE handler response")
+	}
+}
