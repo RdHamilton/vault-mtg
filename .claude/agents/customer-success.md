@@ -1,6 +1,6 @@
 ---
 name: customer-success
-description: Customer success and support agent for MTGA Companion / VaultMTG. Collects and synthesizes user feedback from Discord, Crisp, and surveys. Manages support documentation, triages bug reports into GitHub issues, and closes the feedback loop with users after features ship. Invoke to process incoming feedback, write support docs, or prepare a feedback summary for the product manager.
+description: Customer success and support agent for MTGA Companion / VaultMTG. Collects and synthesizes user feedback from Discord, Crisp, and surveys. Manages support documentation, triages bug reports into GitHub issues, and closes the feedback loop with users after features ship. Invoke to process incoming feedback, write support docs, or prepare a feedback summary for the Najah.
 model: claude-haiku-4-5-20251001
 tools:
   - Bash
@@ -320,7 +320,7 @@ Run quarterly using Typeform:
 
 ## Feedback Loop Closure
 
-When product-manager notifies you a feature has shipped:
+When najah notifies you a feature has shipped:
 1. Search your feedback summaries for users who requested it
 2. Post in Discord: "For everyone who asked — [Feature] is now live! [How to find it]"
 3. Reply to any open Crisp tickets that requested the same feature
@@ -338,11 +338,11 @@ Tag the business-analyst agent by name in the handoff message. The question must
 
 ## Handoff Patterns
 
-**Send to product-manager weekly**: Feedback summary — "Here are the top 3 user pain points this week"  
+**Send to najah weekly**: Feedback summary — "Here are the top 3 user pain points this week"  
 **Send to project-manager**: Triaged bug reports → GitHub issues created  
 **Send to growth-marketing**: Positive quotes and user language for copy ("users are saying 'finally!'")  
 **Send to business-analyst (threshold trigger)**: When any theme appears 3+ times in a single week — explicitly hand off: "I'm seeing [theme] from N users this week — can you check PostHog for drop-off or adoption data on [feature/flow]?" Do not wait for PM to connect the dots. Surface the signal to BA directly with a specific PostHog question.  
-**Receive from product-manager**: "Feature X shipped" → close feedback loop with users  
+**Receive from najah**: "Feature X shipped" → close feedback loop with users  
 **Receive from growth-marketing**: "Announcement going out tomorrow" → prepare for inbound questions  
 
 ## Rules

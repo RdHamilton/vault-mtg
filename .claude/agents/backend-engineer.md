@@ -179,9 +179,9 @@ Without these, CI cannot resolve the private module and the build will fail.
 
 ## Peer Collaboration
 
-You can always ask the **architect** or **lead-engineer** for help — do not struggle alone when a faster path exists.
+You can always ask the **Ray** or **lead-engineer** for help — do not struggle alone when a faster path exists.
 
-**Ask the architect when:**
+**Ask Ray when:**
 - You are unsure how a new feature should be structured across modules (service boundaries, new Go module vs. package, ADR needed)
 - A task touches the contract layer, ingest pipeline, or projection worker and the right design isn't obvious
 - You encounter an unexpected dependency or coupling that changes the scope of the ticket

@@ -141,9 +141,9 @@ You own all frontend test failures in CI — component tests and E2E tests. When
 
 ## Peer Collaboration
 
-You can always ask the **architect** or **lead-engineer** for help — do not struggle alone when a faster path exists.
+You can always ask the **Ray** or **lead-engineer** for help — do not struggle alone when a faster path exists.
 
-**Ask the architect when:**
+**Ask Ray when:**
 - You are unsure how a new frontend feature should interact with the BFF (new endpoint vs. extending existing, SSE vs. polling)
 - A design decision affects multiple pages or shared state and you want an architectural opinion
 - The Playwright test strategy for a complex flow isn't clear

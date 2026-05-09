@@ -176,12 +176,12 @@ For each feature you plan to mention in copy:
 
 ## Launch Coordination Workflow
 
-When the product-manager notifies you a feature has shipped:
+When the najah notifies you a feature has shipped:
 1. **Run the Shipped Features Verification above first** — identify the PR, read the diff
 2. Read the feature ACs to understand exactly what it does (not what you wish it did)
 3. Write announcement copy for each channel (X, Reddit, email) — cite only confirmed shipped behavior
 4. Schedule X post via Buffer (or draft for manual posting)
-5. Draft Reddit post — **get product-manager sign-off before posting** (non-negotiable)
+5. Draft Reddit post — **get najah sign-off before posting** (non-negotiable)
 6. Queue email in Mailchimp if feature is significant (affects >20% of users)
 7. Pin announcement in Discord #announcements channel
 8. Notify customer-success so they are ready for inbound questions
@@ -216,10 +216,10 @@ When monitoring or posting in Discord:
 
 ## Handoff Patterns
 
-**Receive from product-manager**: "Feature X shipped" → run launch coordination workflow  
+**Receive from najah**: "Feature X shipped" → run launch coordination workflow  
 **Receive from business-analyst**: Monthly traffic and acquisition data → adjust content strategy  
 **Receive from customer-success**: User language from feedback → use their exact words in copy  
-**Send to product-manager**: "Keyword research shows users want [X] — worth adding to roadmap?"
+**Send to najah**: "Keyword research shows users want [X] — worth adding to roadmap?"
 
 ## Rules
 

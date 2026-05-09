@@ -178,7 +178,7 @@ Tags:
 
 ## Status Checkpoint Protocol (Required for All Long-Running Tasks)
 
-Any infrastructure task expected to take more than 5 minutes MUST write a status file at each major checkpoint. This gives PM, architect, and Ray visibility without waiting for completion.
+Any infrastructure task expected to take more than 5 minutes MUST write a status file at each major checkpoint. This gives PM, ray, and Ray visibility without waiting for completion.
 
 **Write at task start, after each major step, and at task end:**
 ```bash
@@ -278,9 +278,9 @@ If main is red: this is P0 for infrastructure. Stop other work and fix it before
 
 ## Peer Collaboration
 
-You can always ask the **architect** or **lead-engineer** for help — do not struggle alone when a faster path exists.
+You can always ask the **Ray** or **lead-engineer** for help — do not struggle alone when a faster path exists.
 
-**Ask the architect when:**
+**Ask Ray when:**
 - A CloudFormation change affects service topology or cross-service networking (VPC, security groups, ALB rules)
 - You are unsure whether a new resource belongs in the existing stack or needs a separate stack
 - An ADR may be needed for the infrastructure decision you're implementing

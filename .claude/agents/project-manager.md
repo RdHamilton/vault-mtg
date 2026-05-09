@@ -85,7 +85,7 @@ gh api graphql -f query='mutation {
     dataType: SINGLE_SELECT
     name: "Agent"
     singleSelectOptions: [
-      {name: "architect",     color: PURPLE, description: "Architecture and design decisions"}
+      {name: "ray",     color: PURPLE, description: "Architecture and design decisions"}
       {name: "backend",       color: BLUE,   description: "Go API, repositories, migrations"}
       {name: "daemon",        color: GRAY,   description: "Log parser, local daemon binary"}
       {name: "frontend",      color: GREEN,  description: "React components, UI, Playwright E2E"}
@@ -194,12 +194,12 @@ Note: The Milestone field is read-only on the board — it derives from the issu
   - front-engineer: `3b8975e8`
   - infrastructure: `3cb99b16`
   - dba: `a0e2e49d`
-  - architect: `37e0e52c`
+  - ray: `37e0e52c`
   - growth-marketing: `68f58173`
   - customer-success: `927d4356`
   - business-analyst: `3855e2cb`
   - finance-controller: `940419e2`
-  - product-manager: `648e67ca`
+  - najah: `648e67ca`
 
 <!-- When creating a new project, add its entry here with the format above -->
 
@@ -210,7 +210,7 @@ Note: The Milestone field is read-only on the board — it derives from the issu
 ## Summary
 <1-2 sentence description of what this feature does and why>
 
-**Agent**: `<architect | backend | daemon | frontend | infrastructure | dba | testing>`
+**Agent**: `<ray | backend | daemon | frontend | infrastructure | dba | testing>`
 
 ## Current State
 <What exists today, if anything>
@@ -234,7 +234,7 @@ Note: The Milestone field is read-only on the board — it derives from the issu
 ## Problem
 <Clear description of the bug>
 
-**Agent**: `<architect | backend | daemon | frontend | infrastructure | dba | testing>`
+**Agent**: `<ray | backend | daemon | frontend | infrastructure | dba | testing>`
 
 ### Steps to Reproduce
 1. <Step 1>
@@ -267,7 +267,7 @@ Note: The Milestone field is read-only on the board — it derives from the issu
 ## Summary
 <What needs to change and why>
 
-**Agent**: `<architect | backend | daemon | frontend | infrastructure | dba | testing>`
+**Agent**: `<ray | backend | daemon | frontend | infrastructure | dba | testing>`
 
 ## Current State
 | Category | Files | Status |

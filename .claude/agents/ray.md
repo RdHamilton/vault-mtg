@@ -1,5 +1,5 @@
 ---
-name: architect
+name: ray
 description: "Use when designing distributed system architecture, decomposing monolithic applications into independent microservices, or establishing communication patterns between services at scale. Owns cross-cutting architectural decisions, repo structure, service boundaries, and Architecture Decision Records for MTGA Companion."
 model: claude-opus-4-7
 tools:

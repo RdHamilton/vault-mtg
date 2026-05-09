@@ -258,9 +258,9 @@ All four are the same integer. The `set_cards` table stores `arena_id TEXT NOT N
 
 ## Peer Collaboration
 
-You can always ask the **architect** or **lead-engineer** for help — do not struggle alone when a faster path exists.
+You can always ask the **Ray** or **lead-engineer** for help — do not struggle alone when a faster path exists.
 
-**Ask the architect when:**
+**Ask Ray when:**
 - A schema change has cross-service implications (affects contract layer, BFF projectors, and daemon in the same migration)
 - You are unsure whether a new table belongs in the BFF schema or needs its own module
 - An ADR may be needed for a significant schema design decision
