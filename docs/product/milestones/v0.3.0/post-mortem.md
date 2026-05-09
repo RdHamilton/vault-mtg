@@ -1,0 +1,401 @@
+# v0.3.0 Post-Mortem — "Telemetry Parity"
+
+**Date**: 2026-05-09
+**Author**: Product Manager
+**Milestone**: v0.3.0 — Board #29
+**Release status at time of writing**: Tag cut. CI green. All 31 tickets shipped.
+
+> **How to read this document**: Several process changes below have already been codified in
+> `.claude/agents/BROADCAST.md` (Active Directives 1–8, Standing Orders) and
+> `docs/RELEASE_CHECKLIST.md` (Sections 0–1). Where that is the case, the item says
+> "see BROADCAST.md" or "see RELEASE_CHECKLIST.md §N" rather than restating the rule.
+> This post-mortem records the *why* behind those directives — do not re-implement them here.
+
+---
+
+## Executive Summary
+
+v0.3.0 shipped but not cleanly. The feature work itself — five daemon classifiers, three BFF
+projectors, seven analytics endpoints, the /draft/live overlay, the Settings page, and the
+pagination standard — was solid. What failed was everything around it: CI was broken at release
+time, agent permissions broke mid-release, a branch contamination event forced a cherry-pick, a
+ticket with missing tests required a full rework cycle, and process artifacts (board IDs, kickoff
+doc items, soak gates) were stale throughout.
+
+The net result: a release that should have taken one focused session took several, consumed
+significant rework time, and required six separate CI/CD fixes before the tag could be cut. Every
+one of the eleven incidents below was preventable. This document captures root causes and the
+specific process changes that will prevent recurrence in v0.4.0.
+
+---
+
+## What Went Well
+
+**Core telemetry pipeline was delivered completely.** All five daemon classifiers, all three BFF
+projectors, the GRE game-play projector (complex out-of-order event handling), and the SSE
+infrastructure shipped without regressions. The work is correct and production-ready.
+
+**ADR process held.** ADR-012, ADR-013, ADR-014, and ADR-018 were written before implementation
+began. Engineers followed them. No agent invented an alternative approach mid-flight.
+
+**Scope discipline held.** 31 tickets shipped in a single milestone with zero mid-milestone scope
+additions. The live draft and telemetry tracks stayed distinct.
+
+**Rogue agent incident was contained the same session.** The out-of-scope commits were identified,
+the revert was reverted, and the strict enforcement directive landed in BROADCAST.md within hours
+of the incident.
+
+**The pkg/logparse extraction was clean.** The spike (#1501) validated parser compatibility before
+extraction began. No parser regressions were introduced despite a significant internal refactor.
+
+**LE reviews caught real gaps.** #1514's missing integration tests were caught before merge, not
+after. The rework cycle was painful but the alternative — shipping untested endpoints — was worse.
+
+---
+
+## What Went Wrong
+
+### Issue 1 — CI was broken at release time (actionlint + E2E shard failures)
+
+**What happened**: At release time, CI was red on main. Multiple independent failures had
+accumulated: `actionlint` found invalid workflow syntax (`env` context in a job-level `if`
+condition in `release.yml`; `actions/upload-artifact@v7` referencing a non-existent version), and
+E2E shards were timing out with too many parallel Playwright workers.
+
+**Root cause**: CI was not a formal gate for merging feature PRs. Failures accumulated invisibly
+because (a) `release.yml` only runs on release tags — so its syntax was never exercised, (b) the
+artifact action version was never caught because the upload step was not exercised in normal runs,
+and (c) there was no actionlint job to catch workflow syntax errors before they reached CI.
+
+**What changed**: `actionlint` is now a required CI job (shipped in #1524, PR #1600). See
+BROADCAST.md Active Directive 5: CI must be green before any wave closes.
+
+---
+
+### Issue 2 — Agent global permissions had Bash removed
+
+**What happened**: Mid-release, agents began failing on shell commands. The `bash` permission had
+been removed from the global agent settings at some point, leaving agents unable to run any shell
+commands. This blocked infrastructure work during the most critical part of the release.
+
+**Root cause**: Agent permission configuration is a shared global resource with no audit trail or
+change notification. No agent or process monitors permission state before a release. The removal
+went unnoticed until it caused a live failure.
+
+**What changes**:
+- Add a permission health check to the release pre-flight (see Process Changes below).
+- Agent permissions (especially `bash`) must not be modified without an explicit entry in
+  BROADCAST.md and PM sign-off.
+- See RELEASE_CHECKLIST.md §0 (Pre-Release Staging Gate) for the pre-flight gate.
+
+---
+
+### Issue 3 — Infrastructure agent leaked StatsHandler code from #1513 into CI fix PR (#1607)
+
+**What happened**: While working on the CI fix (a scoped task touching only workflow YAML), the
+infrastructure agent included `StatsHandler` code from feature ticket #1513. The contaminated PR
+#1607 had to be identified, the out-of-scope code stripped, and the PR rebuilt. This is a branch
+contamination event caused by an agent working from a dirty branch.
+
+**Root cause**: Agents do not always verify branch cleanliness before starting work. An agent that
+picked up work while a prior branch was checked out, or that pulled from a stale remote state,
+will incorporate unrelated changes. No pre-work branch audit was required.
+
+**What changes**:
+- Agents must verify branch state (`git status`, `git log --oneline -5`) before starting any PR.
+  A dirty working tree or unexpected commits are a STOP condition — report back rather than proceeding.
+- CI fix tickets and feature tickets must never share a branch. Infrastructure owns keeping its
+  working branches clean.
+- See also Issue 4 (task scope enforcement) and BROADCAST.md Standing Orders.
+
+---
+
+### Issue 4 — #1514 was missing required repo integration tests
+
+**What happened**: #1514 (DraftAnalytics, RankProgression, ResultBreakdown, Collection endpoints)
+was submitted for LE review without the repository-layer integration tests required by the project's
+test coverage guidelines. LE blocked the PR. The work had to be reworked to add the missing tests
+before LE would approve.
+
+**Root cause**: The engineer did not read — or did not apply — the test coverage requirements in
+`CLAUDE.md` (Test Coverage Guidelines section). Integration tests are explicitly required for
+backend repository and handler changes. This is not a new rule; it was in place before v0.3.0
+began.
+
+**What changes**:
+- LE must explicitly check for the required test types (unit, component, integration, E2E per
+  `CLAUDE.md`) during every PR review. Missing tests are a hard BLOCK, not a suggestion.
+- PM will add a required-tests checklist item to the wave kickoff template so engineers see it
+  before starting, not at review time.
+- See also CLAUDE.md Test Coverage Guidelines — that document is the authoritative source.
+
+---
+
+### Issue 5 — Project board IDs were stale in agent files (#27 referenced instead of active #29)
+
+**What happened**: Several agent instruction files referenced board #27 (the PM agent's own
+`product-manager.md` still shows `Project #27`). The active v0.3.0 board is #29. Agents working
+from stale board IDs either failed on API calls or moved tickets to the wrong board.
+
+**Root cause**: Board IDs are hardcoded in agent instruction files and are not updated when a new
+milestone board is created. The project-manager agent creates new boards per milestone but does not
+propagate the new ID to all agent files that reference it.
+
+**What changes**:
+- Board IDs must be stored in exactly one place: BROADCAST.md (`## Current Wave`). All agent
+  instruction files must reference BROADCAST.md for the active board ID, not hardcode their own.
+- When a new milestone board is created, PM updates BROADCAST.md — this is the single propagation
+  point.
+- PM agent instruction file `product-manager.md` board ID updated to #29 as a v0.3.0 close item.
+  v0.4.0 board ID will be set at kickoff.
+
+---
+
+### Issue 6 — PR #1609 had to be closed due to merge conflict; cherry-picked into #1610
+
+**What happened**: PR #1609 accumulated a merge conflict that could not be resolved cleanly (likely
+due to Issue 3's branch contamination). The PR was closed and the work cherry-picked into a fresh
+PR #1610.
+
+**Root cause**: Long-lived PRs accumulate drift from main. The longer a PR sits open — especially
+during a high-velocity period when the CI fix, feature PRs, and rework cycles are all landing
+simultaneously — the higher the merge conflict risk. There was no process requiring authors to
+keep PRs rebased against main.
+
+**What changes**:
+- PRs open longer than 24 hours must be rebased against main at least once per day during active
+  release periods.
+- If a PR cannot be cleanly rebased, the author must flag it to LE before the conflict reaches a
+  state requiring close-and-cherry-pick.
+
+---
+
+### Issue 7 — Multiple LE BLOCKED reviews requiring rework cycles
+
+**What happened**: LE issued BLOCKED reviews on multiple PRs during Wave 4, requiring full rework
+cycles (missing tests on #1514, scope violations on the CI fix PRs). Each BLOCKED review added
+hours to the release timeline as engineers had to context-switch back, make changes, and re-queue.
+
+**Root cause**: Engineers were submitting PRs without self-checking against the review criteria LE
+applies (test coverage, scope cleanliness, ADR compliance). The review criteria exist in `CLAUDE.md`
+and `docs/product/milestones/v0.3.0/kickoff.md` but were not being used as a pre-submission checklist.
+
+**What changes**:
+- PR authors must self-review against the following before marking a PR ready for LE:
+  1. All required test types present per CLAUDE.md Test Coverage Guidelines
+  2. Branch is clean (`git status` is clean; no unexpected commits from other work)
+  3. PR scope matches the assigned ticket — nothing more, nothing less
+  4. No TODO stubs or placeholder implementations
+- LE will add a standard PR template that surfaces these as checkboxes. PRs without the template
+  filled in will be returned immediately.
+
+---
+
+### Issue 8 — Confusion over how to invoke custom project agents (background queue vs subprocess)
+
+**What happened**: During the release, there was ambiguity among agents about whether to use
+`run_in_background: true` or synchronous subprocess for agent invocations. This caused some
+long-running agent work to block the orchestrator unnecessarily and other tasks to lose their
+results when the background process completed with no consumer.
+
+**Root cause**: The CLAUDE.md memory rule ("fire-and-forget agent work must use
+`run_in_background: true`") and the CLAUDE.md context management rules ("use subagents for
+investigation/exploration") are not consistently taught to agents. Project agents don't always
+know whether they are being invoked in a context where background mode is expected.
+
+**What changes**:
+- Global CLAUDE.md rule: any agent task that produces output consumed by the invoking context
+  (search results, status checks, gate verifications) must run synchronously. Any task that updates
+  state (ticket moves, status file writes, changelog entries) and whose result does not change the
+  caller's next action can run with `run_in_background: true`.
+- PM will add this rule to the agent invocation guidance section of BROADCAST.md (Standing Orders).
+
+---
+
+### Issue 9 — Exit gate pre-flight was not done until mid-release — gaps discovered late
+
+**What happened**: The 14 exit gates defined in `docs/product/milestones/v0.3.0/kickoff.md` Section 5 were not
+formally verified until after all feature PRs had merged. By then, several gaps were discovered
+(e.g., Sentry not confirmed active, daemon health indicator not formally verified, CSP deferred
+without a formal gate-removal decision). These late discoveries extended the release by hours and
+forced out-of-band decisions.
+
+**Root cause**: There was no process requiring exit gate verification at a specific point in the
+release flow. The pre-flight check was implicitly assumed to happen at wave close, but the wave-close
+report template did not enforce it. The PM wrote the close report based on merged PR counts, not on
+verified exit gates.
+
+**What changes**:
+- RELEASE_CHECKLIST.md §0 (Pre-Release Staging Gate) now formalizes this. Read it.
+- PM must produce a formal exit gate verification table (matching the format in the kickoff doc)
+  before writing any wave-close report. If a gate cannot be verified, the close report must say
+  NO-GO and name the gate.
+- See BROADCAST.md Active Directives 5 and 6.
+
+---
+
+### Issue 10 — Soak gates were in the kickoff doc but were never feasible for a first release
+
+**What happened**: Exit gates 8 and 9 in the kickoff doc required a 48-hour soak period (no FPS
+degradation, no daemon event drops). These gates were written into the kickoff doc without
+evaluating whether a 48-hour soak was feasible given the release timeline. At release time, Ray
+had to make an explicit decision to move them to beta monitoring rather than block the release for
+two days.
+
+**Root cause**: Soak gates were copied from best-practice templates without being calibrated to the
+project's actual release cadence. For an internal beta release with a small tester pool, a 48-hour
+pre-release soak is not actionable — it would block every release indefinitely.
+
+**What changes**:
+- Soak gates belong in the beta monitoring period, not in the release exit criteria. For v0.4.0
+  and beyond, performance and event-drop soak measurements are continuous telemetry items (PostHog
+  + Sentry), not release blockers.
+- Any gate in the kickoff doc that requires >4 hours of manual observation must include a note
+  explaining when and how it will be measured. If "48-hour soak" appears in a gate, the kickoff
+  doc must also say who runs it and when — or it must be moved to beta monitoring explicitly at
+  kickoff time, not at release time.
+- PM must audit all exit gates for feasibility as part of the kickoff checklist, before engineering
+  starts Wave 1.
+
+---
+
+### Issue 11 — EOE set data action item in kickoff doc was stale
+
+**What happened**: The kickoff doc (`docs/product/milestones/v0.3.0/kickoff.md` Section 6) listed "Ray to
+confirm: Edge of Eternities set data is registered in the BFF for card grade lookups" as an open
+action item. EOE had been live for months — the action item was stale from the moment it was
+written because EOE data was already in the system.
+
+**Root cause**: PM action items in kickoff docs are not re-verified against current system state
+before the kickoff is published. The kickoff doc was written from memory of a past concern, not
+from a live check of the BFF's set registry.
+
+**What changes**:
+- Every PM action item in a kickoff doc must be verified as "actually open" before the kickoff
+  is shared with engineering. Stale action items must be pre-marked `[x]` (resolved) or removed.
+- The architect review (now mandatory at kickoff per BROADCAST.md Active Directive 2) should
+  include a pass on PM action items — the architect can flag any items that are already resolved.
+
+---
+
+## Process Changes
+
+The following are the concrete, actionable changes implemented or to be implemented as a result
+of this post-mortem. Each maps to one or more issues above.
+
+### PC-1: Exit gate pre-flight at start of final wave (not at release time)
+**Addresses**: Issues 9, 10
+**Owner**: PM
+**Rule**: At the start of the final delivery wave, PM runs the exit gate table and marks each gate
+as DONE / PENDING / DEFERRED with a rationale. Any gate not achievable in the release window is
+formally deferred with an explicit decision (not silently dropped). This table is the first section
+of every wave-close report.
+
+### PC-2: CI is a hard gate for wave close and PR merge
+**Addresses**: Issue 1
+**Owner**: PM (gate enforcement) + Infrastructure (resolution)
+**Rule**: Already in BROADCAST.md Active Directive 5. No wave closes with CI red. No release tag
+is cut with CI red. "Unrelated" CI failures still block — a broken pipeline means the codebase is
+not shippable.
+
+### PC-3: Agent permission audit in release pre-flight
+**Addresses**: Issue 2
+**Owner**: PM (before every release)
+**Rule**: Add to RELEASE_CHECKLIST.md §0 — before starting the final release session, verify that
+all agents have `bash` permission in their active configuration. If any permission has been removed,
+restore it and record the change in BROADCAST.md.
+
+### PC-4: Branch cleanliness required before any PR or agent task
+**Addresses**: Issues 3, 6
+**Owner**: All agents
+**Rule**: Every agent must run `git status` and `git log --oneline -5` before starting any work.
+A dirty working tree or unexpected commits are a STOP condition. This is especially critical for
+infrastructure agents handling cross-cutting work (CI, nginx, systemd).
+
+### PC-5: Required test types are a hard block in LE review
+**Addresses**: Issue 4
+**Owner**: LE (enforcement) + PM (kickoff template)
+**Rule**: Already in CLAUDE.md Test Coverage Guidelines. LE treats missing required test types as
+a hard BLOCK equivalent to a security violation. PR authors must self-check against CLAUDE.md
+before opening a PR for LE review.
+
+### PC-6: Board ID is owned by BROADCAST.md — never hardcoded in agent files
+**Addresses**: Issue 5
+**Owner**: PM (BROADCAST.md update at every kickoff)
+**Rule**: BROADCAST.md `## Current Wave` is the single source of truth for the active board ID.
+Agent instruction files must not hardcode board IDs. When a new milestone board is created,
+BROADCAST.md is updated and that is the only change needed.
+
+### PC-7: PR rebase SLA during active release periods
+**Addresses**: Issue 6
+**Owner**: All engineers
+**Rule**: During a release week, any PR open for >24 hours must be rebased against main at least
+once per day. Authors who cannot resolve a rebase conflict must flag it to LE before it reaches
+a state requiring close-and-cherry-pick.
+
+### PC-8: PR self-review checklist before LE submission
+**Addresses**: Issues 7, 3, 4
+**Owner**: LE (PR template) + all engineers
+**Rule**: LE owns a standard PR template with required checkboxes. PRs submitted without the
+template filled in are returned immediately. Checklist: (1) required tests present, (2) branch
+clean, (3) scope matches ticket, (4) no TODO stubs.
+
+### PC-9: Agent invocation mode clarity
+**Addresses**: Issue 8
+**Owner**: PM (BROADCAST.md Standing Orders update)
+**Rule**: Synchronous invocation for tasks that produce output consumed by the caller. Background
+(`run_in_background: true`) for tasks that update state and whose result does not change the
+caller's next action. PM adds this rule to BROADCAST.md Standing Orders.
+
+### PC-10: Soak gates belong in beta monitoring, not exit criteria
+**Addresses**: Issue 10
+**Owner**: PM (kickoff doc authorship)
+**Rule**: Any gate requiring >4 hours of manual observation must be assigned an owner and
+measurement window at kickoff, or explicitly moved to beta monitoring. "48-hour soak" without a
+testing plan is not a valid exit gate. PM audits all exit gates for feasibility before publishing
+any kickoff doc.
+
+### PC-11: PM action items must be live-verified before kickoff is published
+**Addresses**: Issue 11
+**Owner**: PM
+**Rule**: Every action item in a kickoff doc Section 6 (PM actions) must be verified as actually
+open before the doc is shared with engineering. Stale items are pre-marked `[x]` or removed. The
+architect review pass includes a sanity-check on PM action items.
+
+---
+
+## Action Items
+
+| # | Action | Owner | Target |
+|---|---|---|---|
+| A1 | Update PM agent instruction board ID from #27 to #29; document PC-6 rule | PM | v0.4.0 kickoff |
+| A2 | Add agent permission audit step to RELEASE_CHECKLIST.md §0 | PM | Before v0.4.0 kickoff |
+| A3 | Add PC-4 (branch cleanliness) to agent Standing Orders in BROADCAST.md | PM | Before v0.4.0 Wave 1 |
+| A4 | Add PC-9 (agent invocation mode) to BROADCAST.md Standing Orders | PM | Before v0.4.0 Wave 1 |
+| A5 | Add PR template with required-tests checklist to repo | LE | v0.4.0 Wave 1 |
+| A6 | Audit v0.4.0 kickoff exit gates for feasibility before Wave 1 starts | PM | v0.4.0 kickoff |
+| A7 | Verify all PM action items in v0.4.0 kickoff are live (not stale) before publishing | PM | v0.4.0 kickoff |
+| A8 | Add rebase SLA (PC-7) to engineering conventions doc or CLAUDE.md | LE | v0.4.0 Wave 1 |
+| A9 | Add #1517 (CSP/security headers) to v0.4.0 board | PM → project-manager | Before v0.4.0 kickoff |
+| A10 | Move soak gate measurement to PostHog/Sentry continuous monitoring; remove as blocking exit gate in v0.4.0 | PM | v0.4.0 kickoff |
+
+---
+
+## Specialist Post-Mortems
+
+Two specialist deep-dives were written in parallel with this document and are the authoritative
+source for their respective domains. Read them for full root-cause detail and implementation rules.
+
+- **Lead Engineer findings** — `docs/product/milestones/v0.3.0/post-mortem-le.md`
+  Covers: missing repo integration tests on #1514; infra agent branch contamination on #1607;
+  pre-PR self-check protocol; first-pass block rate; tiered LE review scope.
+- **Infrastructure / CI/CD findings** — `docs/product/milestones/v0.3.0/post-mortem-infra.md`
+  Covers: actionlint shellcheck failures; E2E shard 503s; staging deploy gap; Sentry auth token
+  missing from production SSM; lint gate rollout process; BFF env var contract; release checklist
+  enforcement.
+
+---
+
+*Directives already codified: BROADCAST.md Active Directives 1–8 cover issues 1, 3, 7, 9 at the
+enforcement level. RELEASE_CHECKLIST.md §§0–1 cover the staging gate and CI green checks. This
+post-mortem provides the root-cause record behind those directives.*
