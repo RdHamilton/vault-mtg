@@ -125,6 +125,11 @@ jobs:
     name: Sign & Notarize macOS (${{ matrix.goarch }})
     runs-on: macos-latest
     needs: [build]
+    # Guard: only run when triggered by a real daemon/v* tag.
+    # workflow_dispatch without a tag must not burn Apple notarization quota
+    # or waste macOS runner minutes. (#1658)
+    if: startsWith(github.ref, 'refs/tags/daemon/v')
+    timeout-minutes: 30
 
     strategy:
       fail-fast: false

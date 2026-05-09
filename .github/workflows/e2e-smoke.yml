@@ -111,6 +111,10 @@ jobs:
         npm run test:e2e:smoke
       env:
         CI: true
+        # RULE-INFRA-03: Every CI job that starts the BFF MUST explicitly set MTGA_ENV.
+        # Relying on config.Load() defaults is forbidden — the default is "production"
+        # which is always wrong in CI. See services/bff/CI_ENV_CONTRACT.md. (#1668)
+        MTGA_ENV: development
         DATABASE_URL: postgres://mtga:mtga@localhost:5432/mtga_e2e?sslmode=disable
         CLERK_SECRET_KEY: ${{ secrets.CLERK_STAGING_SECRET_KEY }}
 
