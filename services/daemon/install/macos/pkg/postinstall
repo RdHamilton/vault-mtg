@@ -1,0 +1,105 @@
+#!/usr/bin/env bash
+# postinstall — runs after pkgbuild places files at their install locations.
+#
+# What this script does:
+#   1. Clears the macOS quarantine extended attribute on the daemon binary so
+#      Gatekeeper does not block the first run with an "unidentified developer"
+#      error.  (ADR-020, Wave 0 confirmed decision 2026-05-09)
+#   2. Writes a default LaunchAgent plist to ~/Library/LaunchAgents/ (per-user,
+#      not system-wide — no LaunchDaemon, no sudo for the agent itself).
+#   3. Loads the LaunchAgent with launchctl so the daemon starts immediately
+#      without requiring a logout/login cycle.
+#
+# The binary is installed by pkgbuild into /usr/local/bin/vaultmtg-daemon
+# (the package root maps to / at install time).
+#
+# The config file (daemon.json) is NOT written here — first-run config
+# acquisition is handled by the daemon binary itself on first launch
+# (see feat/first-run-config detection, issue #1643).
+
+set -euo pipefail
+
+INSTALL_DIR="/usr/local/bin"
+BINARY_NAME="vaultmtg-daemon"
+BINARY_PATH="${INSTALL_DIR}/${BINARY_NAME}"
+
+PLIST_LABEL="com.mtga-companion.daemon"
+PLIST_DIR="${HOME}/Library/LaunchAgents"
+PLIST_PATH="${PLIST_DIR}/${PLIST_LABEL}.plist"
+
+CONFIG_DIR="${HOME}/.mtga-companion"
+CONFIG_FILE="${CONFIG_DIR}/daemon.json"
+
+LOG_FILE="${HOME}/Library/Logs/vaultmtg-daemon.log"
+
+# ---------------------------------------------------------------------------
+# 1. Clear quarantine attribute (ADR-020 §macOS Quarantine Clearing).
+#
+#    -dr = dereference symlinks and recurse (safe on a single binary).
+#    This must run before the LaunchAgent loads the binary, otherwise macOS
+#    will block execution on first run with a Gatekeeper "unidentified developer"
+#    dialog — even for signed binaries that have not yet been notarized.
+# ---------------------------------------------------------------------------
+echo "[postinstall] clearing quarantine attribute on ${BINARY_PATH}"
+xattr -dr com.apple.quarantine "${BINARY_PATH}" || true
+
+# ---------------------------------------------------------------------------
+# 2. Ensure LaunchAgents directory exists.
+# ---------------------------------------------------------------------------
+mkdir -p "${PLIST_DIR}"
+
+# ---------------------------------------------------------------------------
+# 3. Write the LaunchAgent plist.
+#    - RunAtLoad=true   start at login.
+#    - KeepAlive=true   restart if the daemon exits unexpectedly.
+#    - The -config flag is passed explicitly so the daemon always reads from
+#      the expected location, regardless of how the binary is invoked.
+# ---------------------------------------------------------------------------
+echo "[postinstall] writing LaunchAgent plist to ${PLIST_PATH}"
+cat > "${PLIST_PATH}" <<PLIST
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"
+    "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>${PLIST_LABEL}</string>
+
+    <key>ProgramArguments</key>
+    <array>
+        <string>${BINARY_PATH}</string>
+        <string>-config</string>
+        <string>${CONFIG_FILE}</string>
+    </array>
+
+    <!-- Start automatically when the user logs in. -->
+    <key>RunAtLoad</key>
+    <true/>
+
+    <!-- Restart the daemon if it exits for any reason. -->
+    <key>KeepAlive</key>
+    <true/>
+
+    <key>StandardOutPath</key>
+    <string>${LOG_FILE}</string>
+    <key>StandardErrorPath</key>
+    <string>${LOG_FILE}</string>
+</dict>
+</plist>
+PLIST
+
+# ---------------------------------------------------------------------------
+# 4. Load (and enable) the LaunchAgent.
+#
+#    -w persists the enabled state across reboots (writes to the LaunchAgents
+#    DB).  If the job was already loaded (e.g. re-install over an existing
+#    install), unload it first so we pick up any plist changes.
+# ---------------------------------------------------------------------------
+echo "[postinstall] loading LaunchAgent"
+launchctl unload -w "${PLIST_PATH}" 2>/dev/null || true
+launchctl load -w "${PLIST_PATH}"
+
+echo "[postinstall] done"
+echo "  Binary : ${BINARY_PATH}"
+echo "  plist  : ${PLIST_PATH}"
+echo "  Logs   : ${LOG_FILE}"
