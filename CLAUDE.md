@@ -59,6 +59,11 @@ Clerk is the authentication provider for VaultMTG (ADR-009). All user-facing aut
 - **backend-engineer**: When adding a new BFF route, ask first whether it serves user-specific data. If yes, mount it inside the Clerk-protected route group — never leave it open. If a route is intentionally public (health, public metadata), call that out explicitly in the PR description.
 - **front-engineer**: Do not introduce local auth state (Redux slice, Context, Zustand store) that mirrors Clerk session state. Use `useAuth()` / `useUser()` directly at the call site. Do not read or write Clerk session tokens manually.
 
+## Dependency Management
+
+- When upgrading a dependency with a **major version bump**: read the changelog for breaking changes before merging. Create a companion fix PR (or a tracking ticket) for any deprecated API call sites. Never merge a major-version upgrade without either a companion migration or an explicit acceptance note in the PR.
+- If you upgrade a dep and the changelog mentions deprecated APIs you call: fix the call sites in the same PR, not in a follow-up.
+
 ## Test Coverage Guidelines
 - Always update UI/component tests when making UI changes
 - Add integration tests for backend changes (repository, handlers, services)

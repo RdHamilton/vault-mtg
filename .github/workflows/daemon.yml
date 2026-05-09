@@ -17,12 +17,14 @@ on:
     paths:
       - 'services/daemon/**'
       - 'services/contract/**'
+      - 'pkg/logparse/**'
       - '.github/workflows/daemon.yml'
   pull_request:
     branches: [main]
     paths:
       - 'services/daemon/**'
       - 'services/contract/**'
+      - 'pkg/logparse/**'
       - '.github/workflows/daemon.yml'
   workflow_dispatch: {}
 
@@ -33,6 +35,7 @@ jobs:
   test:
     name: Daemon Unit & Integration Tests
     runs-on: ubuntu-latest
+    timeout-minutes: 10
 
     steps:
       - name: Checkout code
@@ -42,6 +45,9 @@ jobs:
         uses: actions/setup-go@v5
         with:
           go-version: '1.25'
+          cache-dependency-path: |
+            services/daemon/go.sum
+            pkg/logparse/go.sum
 
       - name: Configure private module access
         env:
@@ -69,4 +75,28 @@ jobs:
         with:
           files: ./services/daemon/coverage.out
           flags: daemon
+          fail_ci_if_error: false
+
+      # Run pkg/logparse tests — this package was extracted from services/daemon/internal/logreader
+      # and must be validated whenever daemon or logparse files change (#1524).
+      - name: Download pkg/logparse dependencies
+        working-directory: pkg/logparse
+        env:
+          GONOSUMDB: github.com/RdHamilton/MTGA-Companion
+          GOPRIVATE: github.com/RdHamilton/MTGA-Companion
+          GOFLAGS: -mod=mod
+        run: go mod download
+
+      - name: Run pkg/logparse tests
+        working-directory: pkg/logparse
+        env:
+          GONOSUMDB: github.com/RdHamilton/MTGA-Companion
+          GOPRIVATE: github.com/RdHamilton/MTGA-Companion
+        run: go test -v -race -coverprofile=coverage.out -covermode=atomic ./...
+
+      - name: Upload pkg/logparse coverage
+        uses: codecov/codecov-action@v4
+        with:
+          files: ./pkg/logparse/coverage.out
+          flags: logparse
           fail_ci_if_error: false

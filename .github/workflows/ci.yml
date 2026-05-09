@@ -41,6 +41,7 @@ jobs:
   gowork-replace-lint:
     name: Lint — go.work must not contain replace directives
     runs-on: ubuntu-latest
+    timeout-minutes: 2
     steps:
       - name: Checkout code
         uses: actions/checkout@v6
@@ -54,6 +55,33 @@ jobs:
             exit 1
           fi
           echo "go.work is clean — no replace directives found."
+
+  lint-workflows:
+    name: Lint GitHub Actions workflows
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+
+      - name: Set up Go (for actionlint install)
+        uses: actions/setup-go@v6
+        with:
+          go-version: '1.25'
+
+      - name: Cache actionlint binary
+        id: cache-actionlint
+        uses: actions/cache@v4
+        with:
+          path: ~/go/bin/actionlint
+          key: actionlint-${{ runner.os }}-latest
+
+      - name: Install actionlint
+        if: steps.cache-actionlint.outputs.cache-hit != 'true'
+        run: go install github.com/rhysd/actionlint/cmd/actionlint@latest
+
+      - name: Run actionlint
+        run: actionlint
 
   detect-changes:
     name: Detect Changed Modules

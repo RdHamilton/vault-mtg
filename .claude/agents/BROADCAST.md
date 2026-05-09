@@ -6,16 +6,16 @@ description: Shared operational directives broadcast to all agents. Read at the 
 # Agent Broadcast — VaultMTG
 
 **Last updated**: 2026-05-08
-**Updated by**: LE (rogue-agent safeguard)
+**Updated by**: PM (post-mortem process directives)
 
 ---
 
 ## Current Wave
 
-**Wave 4 — v0.4.0 "Closed Beta"**
-- Board: #30
-- Target: August 18, 2026 (internal stretch: June 26, 2026)
-- Critical path: #1524 (CI fix) → #1516 (pagination standard) → #1513/#1514 (analytics endpoints) → #1488 (security audit) → release
+**Wave 4 — v0.3.0 "Telemetry Parity"** ← still v0.3.0; release tag has NOT been cut
+- Board: #29
+- All 9 remaining tickets (#1513, #1514, #1515, #1516, #1517, #1519, #1520, #1524, #1495) are v0.3.0 scope — not v0.4.0
+- Critical path: #1524 (CI fix) → #1516 (pagination standard) → #1513/#1514 (analytics endpoints) → release tag
 
 ---
 
@@ -27,6 +27,10 @@ Read these before picking up any ticket. They override default agent behavior.
 2. **Architect review COMPLETE — PROCEED** — `docs/arch/wave4-implications.md` is merged. Key gates before tickets start: (a) ADR-015 (pagination standard) must be written before #1513/#1514; (b) #1517 (CSP) must schedule after #1573 (Crisp); (c) #1519/#1520/#1513 partial-flag field name must be agreed on before any of the three start coding; (d) #1488 (security audit) is last.
 3. **v0.3.0 release tag is blocked** — Do not cut the v0.3.0 release tag until CI is green. Infrastructure will notify PM when it's ready.
 4. **ENFORCEMENT — task scope violation logged** — A rogue infrastructure agent made out-of-scope commits on 2026-05-08 (reverted a LE-approved CLERK secret, added logparse CI job, moved a ticket). The incident is resolved. All agents must read the Task Scope Enforcement rule in Standing Orders before any action.
+5. **CI must be green before any wave closes** — No wave-close report is valid when CI is red. PM must verify CI status at the time of writing the close report. Red CI = NO-GO. "Unrelated" failures still block the wave — a broken pipeline means the codebase is not shippable.
+6. **Staging must be proven healthy before any release tag** — Before cutting a release tag: (a) run the staging deploy pipeline from scratch, (b) verify BFF starts and `/healthz` returns 200, (c) run Playwright staging smoke suite against staging, (d) confirm all smoke tests pass. This is mandatory — not optional.
+7. **Dependency-coupled tickets must ship together** — Any ticket with a same-PR-or-immediately-after dependency may not be split across waves. LE must reject PRs that violate this constraint. If a foundation ticket cannot ship in its intended wave, that wave does not close.
+8. **All wave-close reports require LE co-sign** — PM writes the report; LE verifies that ACs are met in the merged PR diffs. Both names must appear on the report. No wave closes without both sign-offs.
 
 ---
 

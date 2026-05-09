@@ -4,6 +4,15 @@ on:
   workflow_dispatch:
   # Called by release.yml as the Tier 3 release gate
   workflow_call:
+    inputs:
+      # When called from ci.yml (build-bff-for-e2e job), the caller passes the
+      # artifact name so we can skip the ~3-4 min source build.  If omitted
+      # (manual trigger, release.yml, etc.) we fall back to building from source.
+      bff_artifact_name:
+        description: 'Name of a pre-built BFF binary artifact (upload-artifact name)'
+        required: false
+        type: string
+        default: ''
 
 permissions:
   contents: read
@@ -33,12 +42,42 @@ jobs:
     - name: Checkout code
       uses: actions/checkout@v6
 
-    - name: Set up Go
+    # -----------------------------------------------------------------------
+    # BFF binary — fast path: download pre-built artifact from ci.yml
+    # -----------------------------------------------------------------------
+    - name: Download pre-built BFF artifact
+      if: inputs.bff_artifact_name != ''
+      uses: actions/download-artifact@v4
+      with:
+        name: ${{ inputs.bff_artifact_name }}
+        path: bin
+
+    - name: Make pre-built BFF binary executable
+      if: inputs.bff_artifact_name != ''
+      run: chmod +x bin/mtga-bff
+
+    # -----------------------------------------------------------------------
+    # BFF binary — slow path: build from source (standalone / release trigger)
+    # -----------------------------------------------------------------------
+    - name: Set up Go (source build only)
+      if: inputs.bff_artifact_name == ''
       uses: actions/setup-go@v5
       with:
         go-version: '1.25'
         cache-dependency-path: go.sum
 
+    - name: Build API server (source build only)
+      if: inputs.bff_artifact_name == ''
+      env:
+        GONOSUMDB: github.com/RdHamilton/MTGA-Companion
+        GOPRIVATE: github.com/RdHamilton/MTGA-Companion
+      run: |
+        cd services/bff
+        go build -o ../../bin/mtga-bff ./cmd/main.go
+
+    # -----------------------------------------------------------------------
+    # Frontend / Playwright setup (always required)
+    # -----------------------------------------------------------------------
     - name: Set up Node.js
       uses: actions/setup-node@v4
       with:
@@ -55,14 +94,6 @@ jobs:
       run: |
         cd frontend
         npx playwright install chromium --with-deps
-
-    - name: Build API server
-      env:
-        GONOSUMDB: github.com/RdHamilton/MTGA-Companion
-        GOPRIVATE: github.com/RdHamilton/MTGA-Companion
-      run: |
-        cd services/bff
-        go build -o ../../bin/mtga-bff ./cmd/main.go
 
     - name: Run E2E smoke tests
       run: |

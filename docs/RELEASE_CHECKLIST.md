@@ -4,6 +4,22 @@ Ordered runbook. Execute top to bottom. Do not skip a section.
 
 ---
 
+## 0. Pre-Release Staging Gate
+
+**Must be completed before any release tag is cut. Infrastructure executes; PM confirms.**
+
+- [ ] Run the staging deploy pipeline from scratch (verify all deploy scripts exist and complete without error)
+- [ ] BFF starts on staging: `curl -f https://api-staging.vaultmtg.app/healthz` returns HTTP 200
+- [ ] nginx `/healthz` path present in **both** staging and production vhost configs (check `api.vaultmtg.app.conf`)
+- [ ] systemd unit port matches BFF port binding (staging: confirm `BFF_PORT` env var matches `-port` flag or env-var fallback)
+- [ ] All required env vars present in SSM / staging env file — no missing secrets
+- [ ] Playwright staging smoke suite passes: `cd frontend && npx playwright test --grep @smoke --project=pipeline`
+- [ ] All smoke tests green — no failures, no skips
+
+If any item fails: **stop**. Fix the root cause. Do not proceed to Section 1 until all items are green.
+
+---
+
 ## 1. Pre-Deploy Gates
 
 All of these must be green before you tag.
@@ -222,11 +238,12 @@ If the release included a DB migration that must be rolled back:
 
 ## 5. Sign-Off
 
-Fill in before closing this checklist.
+Fill in before closing this checklist. **Both PM and LE must sign. No release without both.**
 
 | Item | Status | Notes |
 |---|---|---|
-| Pre-deploy gates | | |
+| Section 0 staging gate | | |
+| Pre-deploy gates (Section 1) | | |
 | Deploy completed | | |
 | BFF health | | |
 | SPA loads | | |
@@ -237,7 +254,8 @@ Fill in before closing this checklist.
 
 **Release version**: `v________`
 **Deploy date/time**: `__________`
-**Verified by**: `__________`
+**PM sign-off**: `__________`
+**LE sign-off**: `__________`
 
 Once all rows are green: the release is live. Move all "Done" tickets to "Released" on the project board.
 
