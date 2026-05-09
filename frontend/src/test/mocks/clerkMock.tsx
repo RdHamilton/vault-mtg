@@ -15,6 +15,7 @@ type ClerkTestState = {
   userId?: string;
   firstName?: string;
   lastName?: string;
+  email?: string;
 };
 
 function getTestState(): ClerkTestState {
@@ -75,6 +76,7 @@ export const useAuth = () => {
 export const useUser = () => {
   const state = getTestState();
   if (!state.isSignedIn) return { isLoaded: true, isSignedIn: false, user: null };
+  const email = state.email ?? 'test@example.com';
   return {
     isLoaded: true,
     isSignedIn: true,
@@ -84,6 +86,7 @@ export const useUser = () => {
       lastName: state.lastName ?? 'User',
       fullName: `${state.firstName ?? 'Test'} ${state.lastName ?? 'User'}`,
       imageUrl: '',
+      primaryEmailAddress: { emailAddress: email },
     },
   };
 };

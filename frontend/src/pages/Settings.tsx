@@ -10,6 +10,7 @@ import {
   MLSettingsSection,
   AboutSection,
   ApiKeySection,
+  UserProfileSection,
 } from '../components/settings/sections';
 import { SettingsAccordion } from '../components/settings/SettingsAccordion';
 import type { SettingsAccordionItem } from '../components/settings/SettingsAccordion';
@@ -177,6 +178,12 @@ const Settings = () => {
   // Build accordion items - let React Compiler handle memoization
   const accordionItems: SettingsAccordionItem[] = (() => {
     const items: SettingsAccordionItem[] = [
+      {
+        id: 'user-profile',
+        label: 'User Profile',
+        icon: '👤',
+        content: <UserProfileSection />,
+      },
       {
         id: 'connection',
         label: 'Connection',
