@@ -35,12 +35,72 @@ permissions:
 # ---------------------------------------------------------------------------
 
 jobs:
+  # ---------------------------------------------------------------------------
+  # Pre-flight checks — must pass before any release gates run.
+  # ---------------------------------------------------------------------------
+
+  # Verify that the staging environment is healthy before cutting a release.
+  # Prevents releasing to production against a broken staging baseline.
+  staging-health-gate:
+    name: Verify Staging Health Before Release
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check staging /healthz
+        run: |
+          HTTP=$(curl -s -o /dev/null -w "%{http_code}" \
+            --max-time 10 https://staging-api.vaultmtg.app/healthz)
+          if [ "$HTTP" != "200" ]; then
+            echo "Staging health check failed: HTTP $HTTP" >&2
+            echo "Run the Staging Deploy workflow against main before releasing." >&2
+            exit 1
+          fi
+          echo "Staging healthy: HTTP $HTTP"
+
+  # Verify all required SSM parameters exist in production before releasing.
+  # Prevents a deploy from silently failing due to a missing secret.
+  secrets-inventory:
+    name: Verify Production Secrets Inventory
+    runs-on: ubuntu-latest
+    environment: production
+    permissions:
+      id-token: write
+      contents: read
+    steps:
+      - name: Configure AWS credentials (OIDC)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: us-east-1
+      - name: Assert required SSM parameters exist
+        run: |
+          MISSING=0
+          for param in \
+            /vaultmtg/prod/sentry-auth-token \
+            /vaultmtg/prod/sentry-bff-dsn \
+            /vaultmtg/prod/sentry-spa-dsn \
+            /mtga-companion/production/CLERK_SECRET_KEY \
+            /mtga-companion/production/db-secret-arn \
+            /mtga-companion/production/db-endpoint \
+            /mtga-companion/production/db-name \
+            /vaultmtg/production/spa-bucket-name \
+            /vaultmtg/production/spa-distribution-id; do
+            aws ssm get-parameter --name "$param" --region us-east-1 \
+              --query Parameter.Name --output text > /dev/null 2>&1 \
+              || { echo "MISSING: $param"; MISSING=1; }
+          done
+          [ "$MISSING" -eq 0 ] || exit 1
+
+  # ---------------------------------------------------------------------------
+  # Release gates — run after pre-flight checks pass.
+  # ---------------------------------------------------------------------------
+
   # Run E2E smoke tests before cutting the release artifact.
   # Skippable via input for emergency hotfix releases only.
   # Note: env context is not available in job-level if conditions; skip
   # logic is expressed directly using github and inputs contexts.
   e2e-smoke-gate:
     name: E2E Smoke Gate
+    needs: [staging-health-gate, secrets-inventory]
     uses: ./.github/workflows/e2e-smoke.yml
     if: >-
       !(github.event_name == 'release' && contains(github.event.release.name, '[noe2e]')) &&
