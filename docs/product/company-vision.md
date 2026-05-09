@@ -83,7 +83,7 @@ Build the best MTG Arena companion experience — helping players track matches,
 |------|-----------|
 | 2026-05-05 | Cloud infrastructure live; AWS Activate credits activated |
 | 2026-05-07 | v0.2.0 "Foundation" closed |
-| 2026-06-02 | Waitlist opens (aligned with Marvel Super Heroes Arena set release) |
+| 2026-08-01 | Waitlist opens (updated from June 2; changed 2026-05-09 per Ray's decision) |
 | 2026-06-26 | Internal stretch target — all v0.4.0 exit gates green, first waitlist batch invited |
 | **2026-08-18** | **Closed beta launch — official public commitment** |
 

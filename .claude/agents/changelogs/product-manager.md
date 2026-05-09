@@ -8,6 +8,18 @@
 **RICE score**: [if applicable]
 -->
 
+## 2026-05-08 — v0.3.0 Post-Mortem
+**Triggered by**: User request — candid retrospective of v0.3.0 release failures
+**Decision**: Wrote comprehensive post-mortem naming every failure honestly: 9/31 tickets open, 2/14 exit gates verified, CI red at release time, staging environment never validated end-to-end, rogue agent incident, wave-close report written prematurely. Identified 4 root cause categories (process, technical, agent, communication) and 18 numbered recommendations. 10 action items tied to specific owners and tickets.
+**Output**: docs/reports/0.3.0-post-mortem.md
+**RICE score**: N/A — retrospective document
+
+## 2026-05-08 — Smart Craft Next ML feature research + PRD
+**Triggered by**: User request — find best free-tier ML opportunity for v0.4.0 targeting 50K MAU
+**Decision**: Recommended "Smart Craft Next" (personalized cards-to-craft ranking) over draft pick grades, post-match analysis, and opponent prediction. Draft grades are table stakes (17lands open-source tool already covers them). Smart Craft Next is the only feature that closes the match-data feedback loop with the user's own win history — a differentiation none of the competitors have in a free tier. Implementation is zero per-request inference (nightly Lambda batch + static table read). RICE score: 6,000.
+**Output**: docs/prd/0005-smart-craft-next.md
+**RICE score**: Reach 8K, Impact 3, Confidence 75%, Effort 3pw → Score 6,000
+
 ## 2026-05-09 — v0.3.0 Wave Close
 **Triggered by**: Ray — all tickets merged, requested finalized wave-close report and GO/NO-GO
 **Decision**: GO issued. All 10 required tickets merged, CI green on main. #1517 deferred to v0.4.0. Gates 11/12/14 require manual verification before beta invites.
