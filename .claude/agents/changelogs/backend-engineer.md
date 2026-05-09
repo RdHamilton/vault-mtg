@@ -8,6 +8,25 @@
 **Summary**: One sentence summary of what was done and why.
 -->
 
+## 2026-05-09 — Issues #1639 #1640 #1641: LE review fixes — binary rename + RunLevel + PR checklist
+
+**PR**: #1678
+**Files changed**:
+- `services/daemon/.goreleaser.yml` — renamed all binary/artifact references from `mtga-companion-daemon` to `vaultmtg-daemon`
+- `services/daemon/install/macos/pkg/build-pkg.sh` — updated BINARY_NAME, PKG_NAME, DMG_NAME to `vaultmtg-daemon`
+- `services/daemon/install/macos/pkg/postinstall` — updated BINARY_NAME and log path to `vaultmtg-daemon`
+- `services/daemon/install/windows/nsis/installer.nsi` — renamed binary references to `vaultmtg-daemon.exe`, changed schtasks /RL from HIGHEST to LIMITED (LeastPrivilege)
+**Summary**: Fixed three LE review violations: (1) all binary name references updated to correct `vaultmtg-daemon` across all PR-scoped files, (2) Windows Scheduled Task RunLevel corrected from HIGHEST to LIMITED (LeastPrivilege per #1641 AC), (3) Pre-Review Checklist section added to PR #1678 description.
+
+## 2026-05-09 — [daemon] Issues #1639 #1640 #1641: GoReleaser config + macOS .pkg installer + Windows NSIS installer
+**PR**: #1678
+**Files changed**:
+- `services/daemon/.goreleaser.yml` — GoReleaser v2 (free tier); darwin universal binary via lipo; windows/amd64 exe; after hooks for .pkg/.dmg and NSIS .exe; GONOSUMDB/GOPRIVATE on all Go build env entries; sha256sums attached to release
+- `services/daemon/install/macos/pkg/postinstall` — pkgbuild postinstall: xattr -dr quarantine clear (ADR-020), writes LaunchAgent plist, loads with launchctl per-user
+- `services/daemon/install/macos/pkg/build-pkg.sh` — helper: pkgbuild + hdiutil wraps .pkg in .dmg; optional signing via TEAM_ID
+- `services/daemon/install/windows/nsis/installer.nsi` — per-user NSIS installer; binary to %LOCALAPPDATA%\MTGA-Companion\; AtLogon Scheduled Task RunLevel HIGHEST; no UAC; no MSI/WiX
+**Summary**: Implemented the full binary packaging pipeline for v0.3.1 Wave 2: GoReleaser config (darwin universal + windows exe), macOS .pkg/.dmg postinstall-based installer with quarantine clearing, and Windows NSIS per-user .exe installer with Scheduled Task (no UAC).
+
 ## 2026-05-09 — Issue #1514: add missing integration tests for stats repo (PR #1609 block)
 **PR**: #1609
 **Files changed**:
