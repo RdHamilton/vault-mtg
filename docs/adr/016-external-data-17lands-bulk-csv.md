@@ -203,7 +203,7 @@ memory) is unaffected.
 
 ## Implementation Tickets
 
-These tickets land in milestone v0.4.0 on project board #29. Project
+These tickets land in milestone v0.4.0 on project board #30. Project
 Manager owns final ticket creation, milestone assignment, and
 sequencing; this ADR is the source of truth.
 
