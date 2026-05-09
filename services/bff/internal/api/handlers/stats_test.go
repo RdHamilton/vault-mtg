@@ -398,3 +398,457 @@ func TestStatsHandler_GetFormatDistribution_RepoError(t *testing.T) {
 		t.Errorf("want 500, got %d", rr.Code)
 	}
 }
+
+// ─── Stub implementations (new endpoints) ────────────────────────────────────
+
+type stubDraftAnalyticsReader struct {
+	rows []repository.DraftAnalyticsRow
+	err  error
+}
+
+func (s *stubDraftAnalyticsReader) ListDraftAnalytics(
+	_ context.Context,
+	_ int64,
+	_ string,
+	_ *time.Time,
+	_ string,
+	_ int,
+) ([]repository.DraftAnalyticsRow, error) {
+	return s.rows, s.err
+}
+
+type stubRankProgressionReader struct {
+	rows []repository.RankProgressionRow
+	err  error
+}
+
+func (s *stubRankProgressionReader) ListRankProgression(
+	_ context.Context,
+	_ int64,
+	_ string,
+	_ *time.Time,
+	_ string,
+	_ int,
+) ([]repository.RankProgressionRow, error) {
+	return s.rows, s.err
+}
+
+type stubResultBreakdownReader struct {
+	rows []repository.ResultBreakdownRow
+	err  error
+}
+
+func (s *stubResultBreakdownReader) GetResultBreakdown(_ context.Context, _ int64, _ string) ([]repository.ResultBreakdownRow, error) {
+	return s.rows, s.err
+}
+
+// newFullStatsHandler wires all six readers.
+func newFullStatsHandler(
+	accounts *stubAccountLookup,
+	dp *stubDeckPerformanceReader,
+	wrt *stubWinRateTrendReader,
+	fd *stubFormatDistributionReader,
+	da *stubDraftAnalyticsReader,
+	rp *stubRankProgressionReader,
+	rb *stubResultBreakdownReader,
+) *handlers.StatsHandler {
+	return handlers.NewStatsHandler(accounts, dp, wrt, fd).
+		WithDraftAnalytics(da).
+		WithRankProgression(rp).
+		WithResultBreakdown(rb)
+}
+
+// ─── GetDraftAnalytics ────────────────────────────────────────────────────────
+
+func TestStatsHandler_GetDraftAnalytics_Unauthorized(t *testing.T) {
+	h := newFullStatsHandler(
+		&stubAccountLookup{},
+		&stubDeckPerformanceReader{},
+		&stubWinRateTrendReader{},
+		&stubFormatDistributionReader{},
+		&stubDraftAnalyticsReader{},
+		&stubRankProgressionReader{},
+		&stubResultBreakdownReader{},
+	)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/stats/draft-analytics", nil)
+	rr := httptest.NewRecorder()
+	h.GetDraftAnalytics(rr, req)
+
+	if rr.Code != http.StatusUnauthorized {
+		t.Errorf("want 401, got %d", rr.Code)
+	}
+}
+
+func TestStatsHandler_GetDraftAnalytics_NoAccount(t *testing.T) {
+	h := newFullStatsHandler(
+		&stubAccountLookup{found: false},
+		&stubDeckPerformanceReader{},
+		&stubWinRateTrendReader{},
+		&stubFormatDistributionReader{},
+		&stubDraftAnalyticsReader{},
+		&stubRankProgressionReader{},
+		&stubResultBreakdownReader{},
+	)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/stats/draft-analytics", nil)
+	rr := httptest.NewRecorder()
+	authedStatsHandler(h.GetDraftAnalytics, 1).ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusOK {
+		t.Errorf("want 200, got %d", rr.Code)
+	}
+}
+
+func TestStatsHandler_GetDraftAnalytics_HappyPath(t *testing.T) {
+	now := time.Now().UTC()
+	rows := []repository.DraftAnalyticsRow{
+		{SessionID: "sess-1", SetCode: "BLB", DraftType: "PremierDraft", StartTime: now, Wins: 5, Losses: 2, TotalPicks: 45},
+	}
+
+	h := newFullStatsHandler(
+		&stubAccountLookup{found: true, accountID: 42},
+		&stubDeckPerformanceReader{},
+		&stubWinRateTrendReader{},
+		&stubFormatDistributionReader{},
+		&stubDraftAnalyticsReader{rows: rows},
+		&stubRankProgressionReader{},
+		&stubResultBreakdownReader{},
+	)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/stats/draft-analytics", nil)
+	rr := httptest.NewRecorder()
+	authedStatsHandler(h.GetDraftAnalytics, 1).ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusOK {
+		t.Errorf("want 200, got %d", rr.Code)
+	}
+
+	var resp map[string]interface{}
+	if err := json.Unmarshal(rr.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+
+	data, ok := resp["data"].([]interface{})
+	if !ok {
+		t.Fatalf("expected 'data' array, got %T", resp["data"])
+	}
+
+	if len(data) != 1 {
+		t.Fatalf("want 1 row, got %d", len(data))
+	}
+
+	first := data[0].(map[string]interface{})
+	if first["session_id"] != "sess-1" {
+		t.Errorf("session_id: want sess-1, got %v", first["session_id"])
+	}
+
+	if first["wins"].(float64) != 5 {
+		t.Errorf("wins: want 5, got %v", first["wins"])
+	}
+}
+
+func TestStatsHandler_GetDraftAnalytics_InvalidSetCode(t *testing.T) {
+	h := newFullStatsHandler(
+		&stubAccountLookup{found: true, accountID: 42},
+		&stubDeckPerformanceReader{},
+		&stubWinRateTrendReader{},
+		&stubFormatDistributionReader{},
+		&stubDraftAnalyticsReader{},
+		&stubRankProgressionReader{},
+		&stubResultBreakdownReader{},
+	)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/stats/draft-analytics?set_code=invalid!!!", nil)
+	rr := httptest.NewRecorder()
+	authedStatsHandler(h.GetDraftAnalytics, 1).ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusBadRequest {
+		t.Errorf("want 400, got %d", rr.Code)
+	}
+}
+
+func TestStatsHandler_GetDraftAnalytics_RepoError(t *testing.T) {
+	h := newFullStatsHandler(
+		&stubAccountLookup{found: true, accountID: 42},
+		&stubDeckPerformanceReader{},
+		&stubWinRateTrendReader{},
+		&stubFormatDistributionReader{},
+		&stubDraftAnalyticsReader{err: errors.New("db error")},
+		&stubRankProgressionReader{},
+		&stubResultBreakdownReader{},
+	)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/stats/draft-analytics", nil)
+	rr := httptest.NewRecorder()
+	authedStatsHandler(h.GetDraftAnalytics, 1).ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusInternalServerError {
+		t.Errorf("want 500, got %d", rr.Code)
+	}
+}
+
+// ─── GetRankProgression ───────────────────────────────────────────────────────
+
+func TestStatsHandler_GetRankProgression_Unauthorized(t *testing.T) {
+	h := newFullStatsHandler(
+		&stubAccountLookup{},
+		&stubDeckPerformanceReader{},
+		&stubWinRateTrendReader{},
+		&stubFormatDistributionReader{},
+		&stubDraftAnalyticsReader{},
+		&stubRankProgressionReader{},
+		&stubResultBreakdownReader{},
+	)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/stats/rank-progression", nil)
+	rr := httptest.NewRecorder()
+	h.GetRankProgression(rr, req)
+
+	if rr.Code != http.StatusUnauthorized {
+		t.Errorf("want 401, got %d", rr.Code)
+	}
+}
+
+func TestStatsHandler_GetRankProgression_NoAccount(t *testing.T) {
+	h := newFullStatsHandler(
+		&stubAccountLookup{found: false},
+		&stubDeckPerformanceReader{},
+		&stubWinRateTrendReader{},
+		&stubFormatDistributionReader{},
+		&stubDraftAnalyticsReader{},
+		&stubRankProgressionReader{},
+		&stubResultBreakdownReader{},
+	)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/stats/rank-progression", nil)
+	rr := httptest.NewRecorder()
+	authedStatsHandler(h.GetRankProgression, 1).ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusOK {
+		t.Errorf("want 200, got %d", rr.Code)
+	}
+}
+
+func TestStatsHandler_GetRankProgression_HappyPath(t *testing.T) {
+	now := time.Now().UTC()
+	rankBefore := "Gold-4"
+	rankAfter := "Gold-3"
+	rows := []repository.RankProgressionRow{
+		{
+			MatchID:    "match-1",
+			OccurredAt: now,
+			Format:     "Standard",
+			RankBefore: &rankBefore,
+			RankAfter:  &rankAfter,
+			Result:     "win",
+		},
+	}
+
+	h := newFullStatsHandler(
+		&stubAccountLookup{found: true, accountID: 42},
+		&stubDeckPerformanceReader{},
+		&stubWinRateTrendReader{},
+		&stubFormatDistributionReader{},
+		&stubDraftAnalyticsReader{},
+		&stubRankProgressionReader{rows: rows},
+		&stubResultBreakdownReader{},
+	)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/stats/rank-progression", nil)
+	rr := httptest.NewRecorder()
+	authedStatsHandler(h.GetRankProgression, 1).ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusOK {
+		t.Errorf("want 200, got %d", rr.Code)
+	}
+
+	var resp map[string]interface{}
+	if err := json.Unmarshal(rr.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+
+	data, ok := resp["data"].([]interface{})
+	if !ok {
+		t.Fatalf("expected 'data' array, got %T", resp["data"])
+	}
+
+	if len(data) != 1 {
+		t.Fatalf("want 1 row, got %d", len(data))
+	}
+
+	first := data[0].(map[string]interface{})
+	if first["match_id"] != "match-1" {
+		t.Errorf("match_id: want match-1, got %v", first["match_id"])
+	}
+
+	if first["rank_before"] != "Gold-4" {
+		t.Errorf("rank_before: want Gold-4, got %v", first["rank_before"])
+	}
+}
+
+func TestStatsHandler_GetRankProgression_InvalidFormat(t *testing.T) {
+	h := newFullStatsHandler(
+		&stubAccountLookup{found: true, accountID: 42},
+		&stubDeckPerformanceReader{},
+		&stubWinRateTrendReader{},
+		&stubFormatDistributionReader{},
+		&stubDraftAnalyticsReader{},
+		&stubRankProgressionReader{},
+		&stubResultBreakdownReader{},
+	)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/stats/rank-progression?format=NotAFormat", nil)
+	rr := httptest.NewRecorder()
+	authedStatsHandler(h.GetRankProgression, 1).ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusBadRequest {
+		t.Errorf("want 400, got %d", rr.Code)
+	}
+}
+
+func TestStatsHandler_GetRankProgression_RepoError(t *testing.T) {
+	h := newFullStatsHandler(
+		&stubAccountLookup{found: true, accountID: 42},
+		&stubDeckPerformanceReader{},
+		&stubWinRateTrendReader{},
+		&stubFormatDistributionReader{},
+		&stubDraftAnalyticsReader{},
+		&stubRankProgressionReader{err: errors.New("db error")},
+		&stubResultBreakdownReader{},
+	)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/stats/rank-progression", nil)
+	rr := httptest.NewRecorder()
+	authedStatsHandler(h.GetRankProgression, 1).ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusInternalServerError {
+		t.Errorf("want 500, got %d", rr.Code)
+	}
+}
+
+// ─── GetResultBreakdown ───────────────────────────────────────────────────────
+
+func TestStatsHandler_GetResultBreakdown_Unauthorized(t *testing.T) {
+	h := newFullStatsHandler(
+		&stubAccountLookup{},
+		&stubDeckPerformanceReader{},
+		&stubWinRateTrendReader{},
+		&stubFormatDistributionReader{},
+		&stubDraftAnalyticsReader{},
+		&stubRankProgressionReader{},
+		&stubResultBreakdownReader{},
+	)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/stats/result-breakdown", nil)
+	rr := httptest.NewRecorder()
+	h.GetResultBreakdown(rr, req)
+
+	if rr.Code != http.StatusUnauthorized {
+		t.Errorf("want 401, got %d", rr.Code)
+	}
+}
+
+func TestStatsHandler_GetResultBreakdown_NoAccount(t *testing.T) {
+	h := newFullStatsHandler(
+		&stubAccountLookup{found: false},
+		&stubDeckPerformanceReader{},
+		&stubWinRateTrendReader{},
+		&stubFormatDistributionReader{},
+		&stubDraftAnalyticsReader{},
+		&stubRankProgressionReader{},
+		&stubResultBreakdownReader{},
+	)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/stats/result-breakdown", nil)
+	rr := httptest.NewRecorder()
+	authedStatsHandler(h.GetResultBreakdown, 1).ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusOK {
+		t.Errorf("want 200, got %d", rr.Code)
+	}
+
+	data := decodeStatsData(t, rr.Body.Bytes())
+	if len(data) != 0 {
+		t.Errorf("expected empty data, got %d items", len(data))
+	}
+}
+
+func TestStatsHandler_GetResultBreakdown_HappyPath(t *testing.T) {
+	rows := []repository.ResultBreakdownRow{
+		{Format: "Standard", Wins: 20, Losses: 10, Draws: 0},
+		{Format: "Historic", Wins: 5, Losses: 3, Draws: 0},
+	}
+
+	h := newFullStatsHandler(
+		&stubAccountLookup{found: true, accountID: 42},
+		&stubDeckPerformanceReader{},
+		&stubWinRateTrendReader{},
+		&stubFormatDistributionReader{},
+		&stubDraftAnalyticsReader{},
+		&stubRankProgressionReader{},
+		&stubResultBreakdownReader{rows: rows},
+	)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/stats/result-breakdown", nil)
+	rr := httptest.NewRecorder()
+	authedStatsHandler(h.GetResultBreakdown, 1).ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusOK {
+		t.Errorf("want 200, got %d", rr.Code)
+	}
+
+	data := decodeStatsData(t, rr.Body.Bytes())
+	if len(data) != 2 {
+		t.Fatalf("want 2 rows, got %d", len(data))
+	}
+
+	first := data[0].(map[string]interface{})
+	if first["format"] != "Standard" {
+		t.Errorf("format: want Standard, got %v", first["format"])
+	}
+
+	if first["wins"].(float64) != 20 {
+		t.Errorf("wins: want 20, got %v", first["wins"])
+	}
+}
+
+func TestStatsHandler_GetResultBreakdown_InvalidFormat(t *testing.T) {
+	h := newFullStatsHandler(
+		&stubAccountLookup{found: true, accountID: 42},
+		&stubDeckPerformanceReader{},
+		&stubWinRateTrendReader{},
+		&stubFormatDistributionReader{},
+		&stubDraftAnalyticsReader{},
+		&stubRankProgressionReader{},
+		&stubResultBreakdownReader{},
+	)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/stats/result-breakdown?format=NotAFormat", nil)
+	rr := httptest.NewRecorder()
+	authedStatsHandler(h.GetResultBreakdown, 1).ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusBadRequest {
+		t.Errorf("want 400, got %d", rr.Code)
+	}
+}
+
+func TestStatsHandler_GetResultBreakdown_RepoError(t *testing.T) {
+	h := newFullStatsHandler(
+		&stubAccountLookup{found: true, accountID: 42},
+		&stubDeckPerformanceReader{},
+		&stubWinRateTrendReader{},
+		&stubFormatDistributionReader{},
+		&stubDraftAnalyticsReader{},
+		&stubRankProgressionReader{},
+		&stubResultBreakdownReader{err: errors.New("db error")},
+	)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/stats/result-breakdown", nil)
+	rr := httptest.NewRecorder()
+	authedStatsHandler(h.GetResultBreakdown, 1).ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusInternalServerError {
+		t.Errorf("want 500, got %d", rr.Code)
+	}
+}

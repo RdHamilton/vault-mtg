@@ -477,6 +477,16 @@ func BuildRouter(cfg *config.Config, deps RouterDeps) http.Handler {
 				r.Get("/api/v1/collection", deps.ListV2Handler.GetCollection)
 			}
 
+			// ── Stats / analytics endpoints (issues #1513, #1514) ───────────
+			if deps.StatsHandler != nil {
+				r.Get("/api/v1/stats/deck-performance", deps.StatsHandler.GetDeckPerformance)
+				r.Get("/api/v1/stats/win-rate-trend", deps.StatsHandler.GetWinRateTrend)
+				r.Get("/api/v1/stats/format-distribution", deps.StatsHandler.GetFormatDistribution)
+				r.Get("/api/v1/stats/draft-analytics", deps.StatsHandler.GetDraftAnalytics)
+				r.Get("/api/v1/stats/rank-progression", deps.StatsHandler.GetRankProgression)
+				r.Get("/api/v1/stats/result-breakdown", deps.StatsHandler.GetResultBreakdown)
+			}
+
 			// GET /api/v1/health/daemon — reports whether this user's daemon is
 			// currently connected (last event received within 60 s).
 			// Always 200; the response body carries the status.
@@ -503,6 +513,17 @@ func BuildRouter(cfg *config.Config, deps RouterDeps) http.Handler {
 			r.With(deps.APIKeyAuthMiddl).Get("/api/v2/history/drafts", deps.ListV2Handler.GetDrafts)
 			r.With(deps.APIKeyAuthMiddl).Get("/api/v2/decks", deps.ListV2Handler.GetDecks)
 			r.With(deps.APIKeyAuthMiddl).Get("/api/v2/collection", deps.ListV2Handler.GetCollection)
+			// /api/v1/collection is a v1 alias for the v2 collection endpoint.
+			r.With(deps.APIKeyAuthMiddl).Get("/api/v1/collection", deps.ListV2Handler.GetCollection)
+		}
+
+		if deps.StatsHandler != nil {
+			r.With(deps.APIKeyAuthMiddl).Get("/api/v1/stats/deck-performance", deps.StatsHandler.GetDeckPerformance)
+			r.With(deps.APIKeyAuthMiddl).Get("/api/v1/stats/win-rate-trend", deps.StatsHandler.GetWinRateTrend)
+			r.With(deps.APIKeyAuthMiddl).Get("/api/v1/stats/format-distribution", deps.StatsHandler.GetFormatDistribution)
+			r.With(deps.APIKeyAuthMiddl).Get("/api/v1/stats/draft-analytics", deps.StatsHandler.GetDraftAnalytics)
+			r.With(deps.APIKeyAuthMiddl).Get("/api/v1/stats/rank-progression", deps.StatsHandler.GetRankProgression)
+			r.With(deps.APIKeyAuthMiddl).Get("/api/v1/stats/result-breakdown", deps.StatsHandler.GetResultBreakdown)
 		}
 
 		if deps.DaemonHealthHandler != nil {
