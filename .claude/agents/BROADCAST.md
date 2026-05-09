@@ -59,12 +59,7 @@ These apply to every agent on every task and do not expire:
 - **No new issues created directly by PM**: all GitHub issue creation goes through project-manager
 - **PC-4 (branch cleanliness)**: Every agent runs `git status && git log --oneline -5` before opening any PR. If the working tree is dirty or contains unexpected commits, STOP and report back — do not open the PR.
 - **PC-9 (agent invocation mode)**: Use synchronous invocation for output-producing tasks (research, status checks, reports). Use `run_in_background: true` only for state-update tasks (ticket moves, board updates, GitHub notifications).
-- **PC-10 (LE review after every PR — mandatory)**: Any agent that opens a PR with `gh pr create` MUST include the following as its final output — do NOT stop at "PR created":
-  ```
-  NEXT STEP — LE Review Required:
-  ! claude --agent lead-engineer "Review PR #<NUMBER> — run the full Post-PR Review Protocol from your agent file"
-  ```
-  The PostToolUse hook only fires in the main session. When running as a subagent, you are responsible for surfacing this command so Ray can trigger LE review immediately. Skipping this step leaves a PR unreviewed and unmerged indefinitely.
+- **PC-10 (LE review after every PR — orchestrator rule)**: The PostToolUse hook only fires in the main session. When a subagent reports back that it created a PR, the main orchestrator (Claude Code) MUST immediately spawn a background general-purpose agent to run the full LE review — `run_in_background: true`. Prompt: "You are the lead engineer for MTGA-Companion. Review PR #<NUMBER> and run the full Post-PR Review Protocol from `.claude/agents/lead-engineer.md`. Repo: /Users/ramonehamilton/Documents/Personal Projects/MTGA-Companion." Never let a PR sit unreviewed because it was opened from a subagent session.
 
 ---
 
