@@ -11,6 +11,11 @@ This is the system-wide record of all changes made across the project. Every age
 **Summary**: One sentence summary of what was done and why.
 -->
 
+## 2026-05-09 — [architect] v0.3.1 Wave 0 architectural review and gate
+**PR**: #1673
+**ADR**: N/A — review note only; flags need for ADR-020 addendum (keychain naming, contracts section) and potential ADR-021 (daemon_api_keys lifecycle)
+**Summary**: Delivered mandatory Wave 0 Architectural Implications Note for v0.3.1 Packaging. Verdict: APPROVED WITH CONDITIONS — Wave 1 and Wave 2 unblocked immediately; Wave 4 gated on 8 pre-conditions covering keychain naming resolution, PKCE callback port decision (OQ-5/6/7), Clerk redirect URI registration, missing daemon_api_keys migration, and POST /v1/daemon/register contract documentation.
+
 ## 2026-05-08 — [architect] ADR audit for v0.4.0 + ADR-017, ADR-018
 **PR**: N/A — ADRs committed directly to current branch (fix/ci-e2e-bff-dev-mode)
 **ADR**: docs/adr/017-bff-precomputed-read-contract.md, docs/adr/018-list-endpoint-pagination-standard.md
