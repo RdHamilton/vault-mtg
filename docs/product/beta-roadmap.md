@@ -1,9 +1,9 @@
 # PRD: VaultMTG Beta Roadmap
 
-**Status**: Active — v0.2.0 closed, v0.3.0 closed, v0.4.0 active
+**Status**: Active — v0.2.0 closed, v0.3.0 closed, v0.3.1 active (ships before v0.4.0)
 **Author**: Product Manager
 **Date**: 2026-05-06
-**Last updated**: 2026-05-08
+**Last updated**: 2026-05-09
 **Scope**: v0.2.0 → v0.4.0 (Beta Launch)
 
 ## Closed Beta Launch Date
@@ -81,10 +81,10 @@ The $1,000 AWS Activate credit approved 2026-05-05 provides runway. At pre-beta 
 
 ---
 
-### Milestone 2 — v0.3.0 "Telemetry Parity" — ACTIVE
+### Milestone 2 — v0.3.0 "Telemetry Parity" — CLOSED
 
-**Status**: ACTIVE — started 2026-05-07
-**Board**: #29 — 31 tickets, all Todo
+**Status**: CLOSED — 2026-05-09
+**Board**: #29 — closed
 **Kickoff doc**: `docs/prd/v0.3.0-kickoff.md`
 **Required reading**: ADR-012 (gameplay event correlation), ADR-013 (daemon event ordering), ADR-014 (legacy parser extraction) — all in `docs/adr/`
 
@@ -142,7 +142,21 @@ v0.3.0-lite still satisfies the alpha invite gate — testers can validate match
 
 ---
 
-### Milestone 3 — v0.4.0 "Beta Launch"
+### Milestone 3 — v0.3.1 "Packaging" — ACTIVE
+
+**Status**: ACTIVE — started 2026-05-09
+**Board**: #33 (Project ID: `PVT_kwHOABsZ684BXMn-`)
+**Sequencing**: v0.3.1 ships BEFORE v0.4.0. Engineering does not begin v0.4.0 Wave 0 until v0.3.1 closes and PM issues a GO.
+
+**Theme**: Daemon packaging, macOS signing, and CI hardening.
+
+**What it accomplishes**: Signed and notarized macOS daemon binary, hardened CI pipeline, and tag-guarded release workflows.
+
+**What it does not accomplish**: Any user-facing features; no v0.4.0 beta-readiness work begins during this milestone.
+
+---
+
+### Milestone 4 — v0.4.0 "Beta Launch" — BLOCKED (starts after v0.3.1 closes)
 
 **Theme**: Acquire, convert, and retain the first 500 real users.
 
