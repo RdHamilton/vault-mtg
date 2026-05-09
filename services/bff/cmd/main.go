@@ -160,7 +160,6 @@ func main() {
 		draftRatingsHandler *handlers.DraftRatingsHandler
 		historyHandler      *handlers.HistoryHandler
 		listV2Handler       *handlers.ListV2Handler
-		statsHandler        *handlers.StatsHandler
 		daemonHealthHandler *handlers.DaemonHealthHandler
 	)
 
@@ -198,14 +197,6 @@ func main() {
 		)
 
 		daemonHealthHandler = handlers.NewDaemonHealthHandler(daemonEventsRepo)
-
-		// StatsHandler provides deck performance, win-rate trend, and format
-		// distribution analytics endpoints (issue #1513).
-		statsRepo := repository.NewStatsRepository(sqlDB)
-		statsHandler = handlers.NewStatsHandler(accountRepo, statsRepo, statsRepo, statsRepo).
-			WithDraftAnalytics(statsRepo).
-			WithRankProgression(statsRepo).
-			WithResultBreakdown(statsRepo)
 
 		// Wire Clerk→DB user ID bridge when both Clerk and a database are available.
 		userRepo := repository.NewUserRepository(sqlDB)
@@ -253,7 +244,6 @@ func main() {
 		DraftRatingsHandler: draftRatingsHandler,
 		HistoryHandler:      historyHandler,
 		ListV2Handler:       listV2Handler,
-		StatsHandler:        statsHandler,
 		DaemonHealthHandler: daemonHealthHandler,
 		HealthzHandler:      healthzHandler,
 		ClerkAuthMiddl:      clerkAuthMiddl,
@@ -305,9 +295,7 @@ type RouterDeps struct {
 	DraftRatingsHandler *handlers.DraftRatingsHandler
 	HistoryHandler      *handlers.HistoryHandler
 	// ListV2Handler serves the cursor-paginated v2 list endpoints (ADR-018).
-	ListV2Handler *handlers.ListV2Handler
-	// StatsHandler serves the analytics stats endpoints (issue #1513).
-	StatsHandler        *handlers.StatsHandler
+	ListV2Handler       *handlers.ListV2Handler
 	DaemonHealthHandler *handlers.DaemonHealthHandler
 	// HealthzHandler serves GET /healthz — intentionally public (no auth).
 	HealthzHandler *handlers.HealthzHandler
@@ -477,16 +465,6 @@ func BuildRouter(cfg *config.Config, deps RouterDeps) http.Handler {
 				r.Get("/api/v1/collection", deps.ListV2Handler.GetCollection)
 			}
 
-			// ── Stats / analytics endpoints (issues #1513, #1514) ───────────
-			if deps.StatsHandler != nil {
-				r.Get("/api/v1/stats/deck-performance", deps.StatsHandler.GetDeckPerformance)
-				r.Get("/api/v1/stats/win-rate-trend", deps.StatsHandler.GetWinRateTrend)
-				r.Get("/api/v1/stats/format-distribution", deps.StatsHandler.GetFormatDistribution)
-				r.Get("/api/v1/stats/draft-analytics", deps.StatsHandler.GetDraftAnalytics)
-				r.Get("/api/v1/stats/rank-progression", deps.StatsHandler.GetRankProgression)
-				r.Get("/api/v1/stats/result-breakdown", deps.StatsHandler.GetResultBreakdown)
-			}
-
 			// GET /api/v1/health/daemon — reports whether this user's daemon is
 			// currently connected (last event received within 60 s).
 			// Always 200; the response body carries the status.
@@ -515,15 +493,6 @@ func BuildRouter(cfg *config.Config, deps RouterDeps) http.Handler {
 			r.With(deps.APIKeyAuthMiddl).Get("/api/v2/collection", deps.ListV2Handler.GetCollection)
 			// /api/v1/collection is a v1 alias for the v2 collection endpoint.
 			r.With(deps.APIKeyAuthMiddl).Get("/api/v1/collection", deps.ListV2Handler.GetCollection)
-		}
-
-		if deps.StatsHandler != nil {
-			r.With(deps.APIKeyAuthMiddl).Get("/api/v1/stats/deck-performance", deps.StatsHandler.GetDeckPerformance)
-			r.With(deps.APIKeyAuthMiddl).Get("/api/v1/stats/win-rate-trend", deps.StatsHandler.GetWinRateTrend)
-			r.With(deps.APIKeyAuthMiddl).Get("/api/v1/stats/format-distribution", deps.StatsHandler.GetFormatDistribution)
-			r.With(deps.APIKeyAuthMiddl).Get("/api/v1/stats/draft-analytics", deps.StatsHandler.GetDraftAnalytics)
-			r.With(deps.APIKeyAuthMiddl).Get("/api/v1/stats/rank-progression", deps.StatsHandler.GetRankProgression)
-			r.With(deps.APIKeyAuthMiddl).Get("/api/v1/stats/result-breakdown", deps.StatsHandler.GetResultBreakdown)
 		}
 
 		if deps.DaemonHealthHandler != nil {
