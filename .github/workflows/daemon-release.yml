@@ -1,12 +1,16 @@
 # daemon-release.yml — Release workflow for the daemon module
 #
-# Responsibility: cross-compile release binaries and publish a GitHub Release.
+# Responsibility: build, package, sign, and publish a GitHub Release via GoReleaser.
 # Triggers on `daemon/v*` tags (e.g. daemon/v1.2.3) or manual workflow_dispatch.
 #
 # CI (tests on push/PR) is handled exclusively by daemon.yml.
 #
-# Binary naming convention: mtga-companion-daemon-<os>-<arch>[.exe]
-# Local `make build` must produce the same base names (see services/daemon/Makefile).
+# Job graph:
+#   goreleaser   — runs on ubuntu-latest; tests, cross-compiles all targets, builds
+#                  Windows NSIS installer (via makensis), creates GitHub Release draft.
+#   sign-macos   — runs on macos-latest; downloads darwin universal binary, code-signs,
+#                  notarizes, wraps in .pkg + .dmg, uploads signed artifacts to the
+#                  existing GitHub Release. Tag-guarded to avoid burning Apple quota.
 
 name: Daemon Release
 
@@ -20,14 +24,15 @@ permissions:
   contents: write
 
 jobs:
-  test:
-    # Run tests first so a broken build never produces a release artifact.
-    name: Daemon Tests (pre-release gate)
+  goreleaser:
+    name: GoReleaser (build + release)
     runs-on: ubuntu-latest
 
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # GoReleaser needs full git history for changelog
 
       - name: Set up Go
         uses: actions/setup-go@v5
@@ -40,7 +45,10 @@ jobs:
         run: |
           git config --global url."https://${GITHUB_TOKEN}@github.com/".insteadOf "https://github.com/"
 
-      - name: Download dependencies
+      - name: Install makensis (Windows NSIS installer builder)
+        run: sudo apt-get update -qq && sudo apt-get install -y nsis
+
+      - name: Download Go dependencies
         working-directory: services/daemon
         env:
           GONOSUMDB: github.com/RdHamilton/MTGA-Companion
@@ -48,110 +56,56 @@ jobs:
           GOFLAGS: -mod=mod
         run: go mod download
 
-      - name: Run tests
+      - name: Run tests (pre-release gate)
         working-directory: services/daemon
         env:
           GONOSUMDB: github.com/RdHamilton/MTGA-Companion
           GOPRIVATE: github.com/RdHamilton/MTGA-Companion
         run: go test -race ./...
 
-  build:
-    name: Build (${{ matrix.goos }}/${{ matrix.goarch }})
-    runs-on: ubuntu-latest
-    needs: [test]
-
-    strategy:
-      fail-fast: false
-      # Targets: Windows (amd64), macOS (amd64 + arm64).
-      # Linux desktop daemon is out of scope -- the daemon is a consumer app for Windows/macOS only.
-      # To add Linux, append {goos: linux, goarch: amd64} to the matrix below.
-      matrix:
-        include:
-          - goos: windows
-            goarch: amd64
-            binary: mtga-companion-daemon-windows-amd64.exe
-          - goos: darwin
-            goarch: arm64
-            binary: mtga-companion-daemon-darwin-arm64
-          - goos: darwin
-            goarch: amd64
-            binary: mtga-companion-daemon-darwin-amd64
-
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Set up Go
-        uses: actions/setup-go@v5
+      - name: Run GoReleaser
+        uses: goreleaser/goreleaser-action@v6
         with:
-          go-version: '1.25'
-
-      - name: Configure private module access
+          distribution: goreleaser
+          version: '~> v2'
+          args: release --config services/daemon/.goreleaser.yml --clean
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          git config --global url."https://${GITHUB_TOKEN}@github.com/".insteadOf "https://github.com/"
-
-      - name: Download dependencies
-        working-directory: services/daemon
-        env:
           GONOSUMDB: github.com/RdHamilton/MTGA-Companion
           GOPRIVATE: github.com/RdHamilton/MTGA-Companion
-          GOFLAGS: -mod=mod
-        run: go mod download
+          GITHUB_WORKSPACE: ${{ github.workspace }}
 
-      - name: Build binary
-        working-directory: services/daemon
-        env:
-          GOOS: ${{ matrix.goos }}
-          GOARCH: ${{ matrix.goarch }}
-          CGO_ENABLED: 0
-          GONOSUMDB: github.com/RdHamilton/MTGA-Companion
-          GOPRIVATE: github.com/RdHamilton/MTGA-Companion
-        run: |
-          VERSION="${GITHUB_REF#refs/tags/daemon/v}"
-          go build -v \
-            -ldflags="-s -w -X main.Version=${VERSION}" \
-            -o bin/${{ matrix.binary }} \
-            ./cmd/daemon
-
-      - name: Upload build artifact
+      - name: Upload darwin universal binary for sign-macos
+        # Share the unsigned darwin binary so sign-macos can sign and notarize it.
+        # GoReleaser writes its dist/ to the repo root (cwd of the action), so the
+        # universal binary archive lands at dist/vaultmtg-daemon-darwin-universal.
         uses: actions/upload-artifact@v4
         with:
-          name: ${{ matrix.binary }}
-          path: services/daemon/bin/${{ matrix.binary }}
+          name: vaultmtg-daemon-darwin-universal
+          path: dist/vaultmtg-daemon-darwin-universal
+          if-no-files-found: warn
 
   sign-macos:
-    name: Sign & Notarize macOS (${{ matrix.goarch }})
+    name: Sign & Notarize macOS universal binary
     runs-on: macos-latest
-    needs: [build]
+    needs: [goreleaser]
     # Guard: only run when triggered by a real daemon/v* tag.
     # workflow_dispatch without a tag must not burn Apple notarization quota
     # or waste macOS runner minutes. (#1658)
     if: startsWith(github.ref, 'refs/tags/daemon/v')
     timeout-minutes: 30
 
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - goarch: arm64
-            binary: mtga-companion-daemon-darwin-arm64
-            dmg: mtga-companion-daemon-darwin-arm64.dmg
-            pkg: mtga-companion-daemon-darwin-arm64.pkg
-          - goarch: amd64
-            binary: mtga-companion-daemon-darwin-amd64
-            dmg: mtga-companion-daemon-darwin-amd64.dmg
-            pkg: mtga-companion-daemon-darwin-amd64.pkg
-
     env:
       APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+      BINARY: vaultmtg-daemon-darwin-universal
+      PKG: vaultmtg-daemon-darwin-universal.pkg
+      DMG: vaultmtg-daemon-darwin-universal.dmg
 
     steps:
-      - name: Download macOS binary artifact
+      - name: Download darwin universal binary artifact
         uses: actions/download-artifact@v4
         with:
-          name: ${{ matrix.binary }}
+          name: vaultmtg-daemon-darwin-universal
           path: bin/
 
       - name: Import Developer ID Application certificate
@@ -192,20 +146,20 @@ jobs:
 
       - name: Sign macOS binary
         run: |
-          chmod +x bin/${{ matrix.binary }}
+          chmod +x bin/${{ env.BINARY }}
           codesign \
             --force \
             --deep \
             --options runtime \
             --sign "Developer ID Application: ${{ env.APPLE_TEAM_ID }}" \
             --timestamp \
-            bin/${{ matrix.binary }}
-          codesign --verify --verbose bin/${{ matrix.binary }}
+            bin/${{ env.BINARY }}
+          codesign --verify --verbose bin/${{ env.BINARY }}
 
       - name: Create .pkg installer
         run: |
           mkdir -p pkg-root/usr/local/bin
-          cp bin/${{ matrix.binary }} pkg-root/usr/local/bin/mtga-companion-daemon
+          cp bin/${{ env.BINARY }} pkg-root/usr/local/bin/vaultmtg-daemon
           pkgbuild \
             --root pkg-root \
             --identifier com.vaultmtg.daemon \
@@ -213,82 +167,44 @@ jobs:
             --install-location / \
             --sign "Developer ID Installer: ${{ env.APPLE_TEAM_ID }}" \
             --timestamp \
-            ${{ matrix.pkg }}
+            ${{ env.PKG }}
 
       - name: Wrap .pkg in .dmg
         run: |
           mkdir -p dmg-staging
-          cp ${{ matrix.pkg }} dmg-staging/
+          cp ${{ env.PKG }} dmg-staging/
           hdiutil create \
             -volname "MTGA Companion Daemon" \
             -srcfolder dmg-staging \
             -ov \
             -format UDZO \
-            ${{ matrix.dmg }}
+            ${{ env.DMG }}
 
       - name: Notarize .dmg
         env:
           APPLE_NOTARIZATION_PASSWORD: ${{ secrets.APPLE_NOTARIZATION_PASSWORD }}
         run: |
-          xcrun notarytool submit ${{ matrix.dmg }} \
+          xcrun notarytool submit ${{ env.DMG }} \
             --apple-id "${{ secrets.APPLE_NOTARIZATION_APPLE_ID }}" \
             --team-id "${{ env.APPLE_TEAM_ID }}" \
             --password "$APPLE_NOTARIZATION_PASSWORD" \
             --wait
 
       - name: Staple notarization ticket
-        run: xcrun stapler staple ${{ matrix.dmg }}
+        run: xcrun stapler staple ${{ env.DMG }}
 
       - name: Clean up temporary keychain
         if: always()
         run: |
           security delete-keychain build.keychain || true
 
-      - name: Upload signed .dmg artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: ${{ matrix.dmg }}
-          path: ${{ matrix.dmg }}
-
-  release:
-    name: Create GitHub Release
-    runs-on: ubuntu-latest
-    needs: [build, sign-macos]
-    if: startsWith(github.ref, 'refs/tags/daemon/v')
-
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Download all artifacts
-        uses: actions/download-artifact@v4
-        with:
-          path: dist/
-
-      - name: Flatten artifacts
-        run: |
-          mkdir -p bin
-          find dist/ -type f -exec mv {} bin/ \;
-
-      - name: Generate checksums
-        run: |
-          cd bin
-          sha256sum \
-            mtga-companion-daemon-windows-amd64.exe \
-            mtga-companion-daemon-darwin-arm64.dmg \
-            mtga-companion-daemon-darwin-amd64.dmg \
-            > sha256sums.txt
-
-      - name: Create Release
-        uses: softprops/action-gh-release@v2
-        with:
-          files: |
-            bin/mtga-companion-daemon-windows-amd64.exe
-            bin/mtga-companion-daemon-darwin-arm64.dmg
-            bin/mtga-companion-daemon-darwin-amd64.dmg
-            bin/sha256sums.txt
-          generate_release_notes: true
-          draft: false
-          prerelease: ${{ contains(github.ref, 'alpha') || contains(github.ref, 'beta') || contains(github.ref, 'rc') }}
+      - name: Upload signed macOS artifacts to GitHub Release
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          TAG="${GITHUB_REF#refs/tags/}"
+          gh release upload "$TAG" \
+            "${{ env.PKG }}" \
+            "${{ env.DMG }}" \
+            --repo "${{ github.repository }}" \
+            --clobber
