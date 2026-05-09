@@ -159,6 +159,7 @@ func main() {
 		clerkUserResolver   func(http.Handler) http.Handler
 		draftRatingsHandler *handlers.DraftRatingsHandler
 		historyHandler      *handlers.HistoryHandler
+		listV2Handler       *handlers.ListV2Handler
 		daemonHealthHandler *handlers.DaemonHealthHandler
 	)
 
@@ -184,8 +185,16 @@ func main() {
 		accountRepo := repository.NewAccountRepository(sqlDB)
 		matchesRepo := repository.NewMatchesRepository(sqlDB)
 		draftSessionsRepo := repository.NewDraftSessionsRepository(sqlDB)
+		deckListRepo := repository.NewDeckListRepository(sqlDB)
 
 		historyHandler = handlers.NewHistoryHandler(accountRepo, matchesRepo, draftSessionsRepo)
+
+		// ListV2Handler provides cursor-paginated v2 endpoints for matches,
+		// drafts, decks, and collection (ADR-018).
+		cardInventoryRepoV2 := repository.NewCardInventoryRepository(sqlDB)
+		listV2Handler = handlers.NewListV2Handler(
+			accountRepo, matchesRepo, draftSessionsRepo, deckListRepo, cardInventoryRepoV2,
+		)
 
 		daemonHealthHandler = handlers.NewDaemonHealthHandler(daemonEventsRepo)
 
@@ -227,6 +236,7 @@ func main() {
 		APIKeysHandler:      apiKeysHandler,
 		DraftRatingsHandler: draftRatingsHandler,
 		HistoryHandler:      historyHandler,
+		ListV2Handler:       listV2Handler,
 		DaemonHealthHandler: daemonHealthHandler,
 		HealthzHandler:      healthzHandler,
 		ClerkAuthMiddl:      clerkAuthMiddl,
@@ -276,6 +286,8 @@ type RouterDeps struct {
 	APIKeysHandler      *handlers.APIKeysHandler
 	DraftRatingsHandler *handlers.DraftRatingsHandler
 	HistoryHandler      *handlers.HistoryHandler
+	// ListV2Handler serves the cursor-paginated v2 list endpoints (ADR-018).
+	ListV2Handler       *handlers.ListV2Handler
 	DaemonHealthHandler *handlers.DaemonHealthHandler
 	// HealthzHandler serves GET /healthz — intentionally public (no auth).
 	HealthzHandler *handlers.HealthzHandler
@@ -292,6 +304,10 @@ type RouterDeps struct {
 	// it is installed as the outermost middleware so it captures panics from
 	// all downstream handlers.  Safe to omit in tests and development.
 	SentryMiddl func(http.Handler) http.Handler
+	// E2EUnguardedSSE removes auth from GET /api/v1/events when true.
+	// Must only be set when MTGA_ENV=development (enforced in main).
+	// Used exclusively by the CI pipeline E2E job (BFF_E2E_UNGUARDED_SSE=true).
+	E2EUnguardedSSE bool
 }
 
 // BuildRouter constructs and returns the chi router for the BFF service.
@@ -428,6 +444,17 @@ func BuildRouter(cfg *config.Config, deps RouterDeps) http.Handler {
 				r.Get("/api/v1/history/drafts", deps.HistoryHandler.GetDrafts)
 			}
 
+			// ── v2 cursor-paginated list endpoints (ADR-018) ─────────────────
+			// These replace the v1 offset-paginated list endpoints.  v1 routes
+			// are kept as deprecation shims for one release (v0.4.0), then
+			// removed in v0.4.1.
+			if deps.ListV2Handler != nil {
+				r.Get("/api/v2/history/matches", deps.ListV2Handler.GetMatches)
+				r.Get("/api/v2/history/drafts", deps.ListV2Handler.GetDrafts)
+				r.Get("/api/v2/decks", deps.ListV2Handler.GetDecks)
+				r.Get("/api/v2/collection", deps.ListV2Handler.GetCollection)
+			}
+
 			// GET /api/v1/health/daemon — reports whether this user's daemon is
 			// currently connected (last event received within 60 s).
 			// Always 200; the response body carries the status.
@@ -449,15 +476,36 @@ func BuildRouter(cfg *config.Config, deps RouterDeps) http.Handler {
 			r.With(deps.APIKeyAuthMiddl).Get("/api/v1/history/drafts", deps.HistoryHandler.GetDrafts)
 		}
 
+		if deps.ListV2Handler != nil {
+			r.With(deps.APIKeyAuthMiddl).Get("/api/v2/history/matches", deps.ListV2Handler.GetMatches)
+			r.With(deps.APIKeyAuthMiddl).Get("/api/v2/history/drafts", deps.ListV2Handler.GetDrafts)
+			r.With(deps.APIKeyAuthMiddl).Get("/api/v2/decks", deps.ListV2Handler.GetDecks)
+			r.With(deps.APIKeyAuthMiddl).Get("/api/v2/collection", deps.ListV2Handler.GetCollection)
+		}
+
 		if deps.DaemonHealthHandler != nil {
 			r.With(deps.APIKeyAuthMiddl).Get("/api/v1/health/daemon", deps.DaemonHealthHandler.GetDaemonHealth)
 		}
 
 	default:
-		// Neither auth backend is configured — serve 503 so the gap is visible.
-		r.Get("/api/v1/events", func(w http.ResponseWriter, r *http.Request) {
-			http.Error(w, "service unavailable — database not configured", http.StatusServiceUnavailable)
-		})
+		if deps.E2EUnguardedSSE {
+			// E2E pipeline mode: serve SSE without auth so pipeline log-fixture
+			// tests can receive events.  Only reachable when MTGA_ENV=development
+			// and BFF_E2E_UNGUARDED_SSE=true (enforced in main before BuildRouter).
+			// Inject a sentinel user ID (1) so the SSE broker can subscribe the
+			// connection — no real auth is performed in this mode.
+			e2eSentinelMiddl := func(next http.Handler) http.Handler {
+				return http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+					next.ServeHTTP(w, req.WithContext(bffmiddleware.WithUserID(req.Context(), 1)))
+				})
+			}
+			r.With(e2eSentinelMiddl).Get("/api/v1/events", sseHandler)
+		} else {
+			// Neither auth backend is configured — serve 503 so the gap is visible.
+			r.Get("/api/v1/events", func(w http.ResponseWriter, r *http.Request) {
+				http.Error(w, "service unavailable — database not configured", http.StatusServiceUnavailable)
+			})
+		}
 
 		if deps.DraftRatingsHandler != nil {
 			r.Get("/api/v1/draft-ratings/{setCode}/{format}", func(w http.ResponseWriter, r *http.Request) {

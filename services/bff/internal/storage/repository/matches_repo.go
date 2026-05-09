@@ -6,6 +6,103 @@ import (
 	"time"
 )
 
+// ListByAccountIDCursor returns up to limit+1 matches using keyset (cursor)
+// pagination. The extra row signals has_more=true to the caller.
+//
+// When cursorTS and cursorID are both non-zero the query applies the keyset
+// predicate (timestamp, id) < (cursorTS, cursorID), restricting results to
+// rows that come after the cursor in the default DESC ordering. When cursorTS
+// is nil (first page) no keyset predicate is applied.
+//
+// format may be empty to return all formats.
+func (r *MatchesRepository) ListByAccountIDCursor(
+	ctx context.Context,
+	accountID int64,
+	format string,
+	cursorTS *time.Time,
+	cursorID string,
+	limit int,
+) ([]MatchRow, error) {
+	fetch := limit + 1 // fetch one extra to detect has_more
+
+	var (
+		rows *sql.Rows
+		err  error
+	)
+
+	switch {
+	case format != "" && cursorTS != nil:
+		const q = `
+			SELECT id, format, result, timestamp, duration_seconds, deck_id, rank_before, rank_after,
+			       player_wins, opponent_wins
+			FROM matches
+			WHERE account_id = $1
+			  AND lower(format) = lower($2)
+			  AND (timestamp < $3 OR (timestamp = $3 AND id < $4))
+			ORDER BY timestamp DESC, id DESC
+			LIMIT $5`
+
+		rows, err = r.db.QueryContext(ctx, q, accountID, format, *cursorTS, cursorID, fetch)
+
+	case format != "" && cursorTS == nil:
+		const q = `
+			SELECT id, format, result, timestamp, duration_seconds, deck_id, rank_before, rank_after,
+			       player_wins, opponent_wins
+			FROM matches
+			WHERE account_id = $1 AND lower(format) = lower($2)
+			ORDER BY timestamp DESC, id DESC
+			LIMIT $3`
+
+		rows, err = r.db.QueryContext(ctx, q, accountID, format, fetch)
+
+	case format == "" && cursorTS != nil:
+		const q = `
+			SELECT id, format, result, timestamp, duration_seconds, deck_id, rank_before, rank_after,
+			       player_wins, opponent_wins
+			FROM matches
+			WHERE account_id = $1
+			  AND (timestamp < $2 OR (timestamp = $2 AND id < $3))
+			ORDER BY timestamp DESC, id DESC
+			LIMIT $4`
+
+		rows, err = r.db.QueryContext(ctx, q, accountID, *cursorTS, cursorID, fetch)
+
+	default: // format == "" && cursorTS == nil (first page, no filter)
+		const q = `
+			SELECT id, format, result, timestamp, duration_seconds, deck_id, rank_before, rank_after,
+			       player_wins, opponent_wins
+			FROM matches
+			WHERE account_id = $1
+			ORDER BY timestamp DESC, id DESC
+			LIMIT $2`
+
+		rows, err = r.db.QueryContext(ctx, q, accountID, fetch)
+	}
+
+	if err != nil {
+		return nil, err
+	}
+
+	defer rows.Close()
+
+	var matches []MatchRow
+
+	for rows.Next() {
+		var m MatchRow
+		if err := rows.Scan(
+			&m.ID, &m.Format, &m.Result, &m.Timestamp,
+			&m.DurationSeconds, &m.DeckID, &m.RankBefore, &m.RankAfter,
+			&m.PlayerWins, &m.OpponentWins,
+		); err != nil {
+			return nil, err
+		}
+
+		matches = append(matches, m)
+	}
+
+	return matches, rows.Err()
+}
+
 // MatchRow is a row returned from the matches table for history reads.
 type MatchRow struct {
 	ID              string

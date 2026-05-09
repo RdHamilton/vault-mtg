@@ -59,6 +59,65 @@ func (r *CardInventoryRepository) UpsertDelta(ctx context.Context, u CardInvento
 	return err
 }
 
+// ListByAccountIDCursor returns up to limit+1 card_inventory rows using keyset
+// pagination ordered by card_id ASC. The extra row signals has_more=true.
+//
+// afterCardID is the card_id from the last row of the previous page (0 on the
+// first page, which starts from card_id=1).
+func (r *CardInventoryRepository) ListByAccountIDCursor(
+	ctx context.Context,
+	accountID int64,
+	afterCardID int,
+	limit int,
+) ([]CardInventoryRow, error) {
+	fetch := limit + 1
+
+	var q string
+	var args []interface{}
+
+	if afterCardID > 0 {
+		q = `
+			SELECT id, account_id, card_id, count, snapshot_hash, updated_at
+			FROM card_inventory
+			WHERE account_id = $1 AND card_id > $2
+			ORDER BY card_id ASC
+			LIMIT $3`
+
+		args = []interface{}{accountID, afterCardID, fetch}
+	} else {
+		q = `
+			SELECT id, account_id, card_id, count, snapshot_hash, updated_at
+			FROM card_inventory
+			WHERE account_id = $1
+			ORDER BY card_id ASC
+			LIMIT $2`
+
+		args = []interface{}{accountID, fetch}
+	}
+
+	rows, err := r.db.QueryContext(ctx, q, args...)
+	if err != nil {
+		return nil, err
+	}
+
+	defer rows.Close()
+
+	var cards []CardInventoryRow
+
+	for rows.Next() {
+		var c CardInventoryRow
+		if err := rows.Scan(
+			&c.ID, &c.AccountID, &c.CardID, &c.Count, &c.SnapshotHash, &c.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+
+		cards = append(cards, c)
+	}
+
+	return cards, rows.Err()
+}
+
 // GetByAccountAndCard retrieves a single card_inventory row for the given
 // (account_id, card_id) pair.  Returns sql.ErrNoRows when no row exists.
 func (r *CardInventoryRepository) GetByAccountAndCard(ctx context.Context, accountID int64, cardID int) (CardInventoryRow, error) {

@@ -125,6 +125,111 @@ func (r *DraftSessionsRepository) countByAccountID(ctx context.Context, accountI
 	return total, nil
 }
 
+// ListByAccountIDCursorP returns up to limit+1 draft sessions using keyset
+// (cursor) pagination ordered by start_time DESC, id DESC.
+//
+// When cursorTS is non-nil the keyset predicate
+// (start_time < cursorTS OR (start_time = cursorTS AND id < cursorID)) is
+// applied. setCode may be empty to return all sets.
+func (r *DraftSessionsRepository) ListByAccountIDCursorP(
+	ctx context.Context,
+	accountID int64,
+	setCode string,
+	cursorTS *time.Time,
+	cursorID string,
+	limit int,
+) ([]DraftSessionRow, error) {
+	fetch := limit + 1
+
+	var (
+		rows *sql.Rows
+		err  error
+	)
+
+	switch {
+	case setCode != "" && cursorTS != nil:
+		const q = `
+			SELECT ds.id, ds.set_code, ds.draft_type, ds.start_time, ds.end_time,
+			       COALESCE(SUM(CASE WHEN dmr.result = 'win' THEN 1 ELSE 0 END), 0)  AS wins,
+			       COALESCE(SUM(CASE WHEN dmr.result = 'loss' THEN 1 ELSE 0 END), 0) AS losses
+			FROM draft_sessions ds
+			LEFT JOIN draft_match_results dmr ON dmr.session_id = ds.id
+			WHERE ds.account_id = $1
+			  AND ds.set_code = $2
+			  AND (ds.start_time < $3 OR (ds.start_time = $3 AND ds.id < $4))
+			GROUP BY ds.id, ds.set_code, ds.draft_type, ds.start_time, ds.end_time
+			ORDER BY ds.start_time DESC, ds.id DESC
+			LIMIT $5`
+
+		rows, err = r.db.QueryContext(ctx, q, accountID, setCode, *cursorTS, cursorID, fetch)
+
+	case setCode != "" && cursorTS == nil:
+		const q = `
+			SELECT ds.id, ds.set_code, ds.draft_type, ds.start_time, ds.end_time,
+			       COALESCE(SUM(CASE WHEN dmr.result = 'win' THEN 1 ELSE 0 END), 0)  AS wins,
+			       COALESCE(SUM(CASE WHEN dmr.result = 'loss' THEN 1 ELSE 0 END), 0) AS losses
+			FROM draft_sessions ds
+			LEFT JOIN draft_match_results dmr ON dmr.session_id = ds.id
+			WHERE ds.account_id = $1 AND ds.set_code = $2
+			GROUP BY ds.id, ds.set_code, ds.draft_type, ds.start_time, ds.end_time
+			ORDER BY ds.start_time DESC, ds.id DESC
+			LIMIT $3`
+
+		rows, err = r.db.QueryContext(ctx, q, accountID, setCode, fetch)
+
+	case setCode == "" && cursorTS != nil:
+		const q = `
+			SELECT ds.id, ds.set_code, ds.draft_type, ds.start_time, ds.end_time,
+			       COALESCE(SUM(CASE WHEN dmr.result = 'win' THEN 1 ELSE 0 END), 0)  AS wins,
+			       COALESCE(SUM(CASE WHEN dmr.result = 'loss' THEN 1 ELSE 0 END), 0) AS losses
+			FROM draft_sessions ds
+			LEFT JOIN draft_match_results dmr ON dmr.session_id = ds.id
+			WHERE ds.account_id = $1
+			  AND (ds.start_time < $2 OR (ds.start_time = $2 AND ds.id < $3))
+			GROUP BY ds.id, ds.set_code, ds.draft_type, ds.start_time, ds.end_time
+			ORDER BY ds.start_time DESC, ds.id DESC
+			LIMIT $4`
+
+		rows, err = r.db.QueryContext(ctx, q, accountID, *cursorTS, cursorID, fetch)
+
+	default:
+		const q = `
+			SELECT ds.id, ds.set_code, ds.draft_type, ds.start_time, ds.end_time,
+			       COALESCE(SUM(CASE WHEN dmr.result = 'win' THEN 1 ELSE 0 END), 0)  AS wins,
+			       COALESCE(SUM(CASE WHEN dmr.result = 'loss' THEN 1 ELSE 0 END), 0) AS losses
+			FROM draft_sessions ds
+			LEFT JOIN draft_match_results dmr ON dmr.session_id = ds.id
+			WHERE ds.account_id = $1
+			GROUP BY ds.id, ds.set_code, ds.draft_type, ds.start_time, ds.end_time
+			ORDER BY ds.start_time DESC, ds.id DESC
+			LIMIT $2`
+
+		rows, err = r.db.QueryContext(ctx, q, accountID, fetch)
+	}
+
+	if err != nil {
+		return nil, err
+	}
+
+	defer rows.Close()
+
+	var sessions []DraftSessionRow
+
+	for rows.Next() {
+		var s DraftSessionRow
+		if err := rows.Scan(
+			&s.ID, &s.SetCode, &s.DraftType, &s.StartTime, &s.EndTime,
+			&s.Wins, &s.Losses,
+		); err != nil {
+			return nil, err
+		}
+
+		sessions = append(sessions, s)
+	}
+
+	return sessions, rows.Err()
+}
+
 // UpsertDraftSession inserts or updates a draft_sessions row.
 // Used by the projection worker.
 func (r *DraftSessionsRepository) UpsertDraftSession(ctx context.Context, s DraftSessionUpsert) error {
