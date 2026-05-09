@@ -109,11 +109,14 @@ export default defineConfig({
       stdout: 'pipe',
       stderr: 'pipe',
     },
-    // Vite dev server on port 3000 with REST API mode
+    // Vite dev server on port 3000 with REST API mode.
+    // Timeout raised to 120 s: warmup pre-transforms entry points, but dep
+    // optimisation still needs time on a cold CI runner. 60 s was too tight
+    // when 4 parallel workers start simultaneously (fullyParallel: true).
     {
       command: 'VITE_USE_REST_API=true VITE_CLERK_TEST_MODE=true npm run dev',
       url: 'http://localhost:3000',
-      timeout: 60 * 1000,
+      timeout: 120 * 1000,
       reuseExistingServer: !process.env.CI,
       stdout: 'pipe',
       stderr: 'pipe',
