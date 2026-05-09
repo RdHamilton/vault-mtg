@@ -256,7 +256,7 @@ The architect changelog is the system-wide record of all changes made across the
 
 **Read at the start of every task:**
 ```bash
-cat .claude/agents/changelogs/architect.md
+cat .claude/agents/changelogs/architect.md && echo "---" && cat "/Users/ramonehamilton/Documents/Personal Projects/MTGA-Companion/.claude/agents/BROADCAST.md"
 ```
 
 **Append at the end of every task** (after opening any PR or merging an ADR), using this format with the `[architect]` prefix:

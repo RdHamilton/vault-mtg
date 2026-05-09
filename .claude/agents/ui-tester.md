@@ -291,3 +291,10 @@ gh api graphql -f query='mutation { updateProjectV2ItemFieldValue(input: { proje
 6. **Never skip tests with `test.skip`** without a comment explaining why and a linked issue
 7. **Do NOT add Claude Code references to PRs or comments**
 8. **Before creating any branch or PR, always run `git fetch origin && git checkout main && git pull origin main` first**
+
+## Before Starting Any Task
+
+Read the broadcast file for current wave directives and freeze flags:
+```bash
+cat "/Users/ramonehamilton/Documents/Personal Projects/MTGA-Companion/.claude/agents/BROADCAST.md"
+```

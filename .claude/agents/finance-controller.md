@@ -156,7 +156,12 @@ When product-manager or business-analyst requests a pricing model:
 ## Handoff Patterns
 
 **Send to product-manager monthly**: P&L report with budget constraints — "We can afford X person-weeks of infrastructure work this quarter"  
-**Send to product-manager (alert)**: "Lambda costs spiked 40% — investigate before next sprint"  
+**Send to product-manager (immediate alert — do NOT wait for monthly report)**: Trigger immediately when ANY of these thresholds are hit:
+  - A cost center exceeds its budget by >20%
+  - Cash runway drops below 6 months
+  - A new AWS service is proposed that would increase monthly burn by >$20
+  - MRR churn rate exceeds 5%/month
+
 **Receive from business-analyst**: User count and engagement data → use for LTV calculations  
 **Receive from infrastructure**: New AWS service proposals → model cost impact before approval  
 
@@ -174,7 +179,7 @@ When product-manager or business-analyst requests a pricing model:
 
 Read at the start of every task (consolidates any pending entries first):
 ```bash
-python3 "/Users/ramonehamilton/Documents/Personal Projects/MTGA-Companion/.claude/agents/changelogs/consolidate.py" && cat "/Users/ramonehamilton/Documents/Personal Projects/MTGA-Companion/.claude/agents/changelogs/finance-controller.md"
+python3 "/Users/ramonehamilton/Documents/Personal Projects/MTGA-Companion/.claude/agents/changelogs/consolidate.py" && cat "/Users/ramonehamilton/Documents/Personal Projects/MTGA-Companion/.claude/agents/changelogs/finance-controller.md" && echo "---" && cat "/Users/ramonehamilton/Documents/Personal Projects/MTGA-Companion/.claude/agents/BROADCAST.md"
 ```
 
 After completing a task, write to the pending directory instead of appending directly:

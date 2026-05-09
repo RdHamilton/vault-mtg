@@ -26,6 +26,10 @@ on:
       - '.github/ISSUE_TEMPLATE/**'
       - '.github/PULL_REQUEST_TEMPLATE/**'
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 permissions:
   contents: read
 
@@ -58,6 +62,7 @@ jobs:
       bff: ${{ steps.filter.outputs.bff }}
       frontend: ${{ steps.filter.outputs.frontend }}
       sync: ${{ steps.filter.outputs.sync }}
+      logparse: ${{ steps.filter.outputs.logparse }}
     steps:
     - name: Checkout code
       uses: actions/checkout@v6
@@ -76,6 +81,9 @@ jobs:
             - '.github/workflows/ci.yml'
           sync:
             - 'services/sync/**'
+            - '.github/workflows/ci.yml'
+          logparse:
+            - 'pkg/logparse/**'
             - '.github/workflows/ci.yml'
 
   bff-unit-tests:
@@ -166,7 +174,7 @@ jobs:
   go-lint:
     name: Go Lint
     needs: detect-changes
-    if: needs.detect-changes.outputs.bff == 'true'
+    if: needs.detect-changes.outputs.bff == 'true' || needs.detect-changes.outputs.logparse == 'true'
     runs-on: ubuntu-latest
     steps:
     - name: Checkout code
@@ -182,7 +190,7 @@ jobs:
         GONOSUMDB: github.com/RdHamilton/MTGA-Companion
         GOPRIVATE: github.com/RdHamilton/MTGA-Companion
       run: |
-        for mod in services/bff services/daemon services/sync services/contract; do
+        for mod in services/bff services/daemon services/sync services/contract pkg/logparse; do
           echo "=== go vet $mod ==="
           (cd "$mod" && go vet ./...)
         done
@@ -192,7 +200,7 @@ jobs:
 
     - name: gofumpt check — all modules
       run: |
-        OUT=$(gofumpt -l services/bff services/daemon services/sync services/contract)
+        OUT=$(gofumpt -l services/bff services/daemon services/sync services/contract pkg/logparse)
         if [ -n "$OUT" ]; then
           echo "gofumpt formatting violations:"
           echo "$OUT"
@@ -241,6 +249,43 @@ jobs:
       with:
         files: ./services/sync/coverage.out
         flags: sync-unit
+        fail_ci_if_error: false
+
+  logparse-unit-tests:
+    name: LogParse Unit Tests
+    needs: detect-changes
+    if: needs.detect-changes.outputs.logparse == 'true'
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v6
+
+    - name: Set up Go
+      uses: actions/setup-go@v5
+      with:
+        go-version: '1.25'
+
+    - name: Download dependencies
+      working-directory: pkg/logparse
+      env:
+        GONOSUMDB: github.com/RdHamilton/MTGA-Companion
+        GOPRIVATE: github.com/RdHamilton/MTGA-Companion
+        GOFLAGS: -mod=mod
+      run: go mod download
+
+    - name: Run logparse unit tests
+      working-directory: pkg/logparse
+      env:
+        GONOSUMDB: github.com/RdHamilton/MTGA-Companion
+        GOPRIVATE: github.com/RdHamilton/MTGA-Companion
+      run: go test -race -v -short -coverprofile=coverage.out -covermode=atomic ./...
+
+    - name: Upload coverage to Codecov
+      uses: codecov/codecov-action@v6
+      with:
+        files: ./pkg/logparse/coverage.out
+        flags: logparse-unit
         fail_ci_if_error: false
 
   frontend-e2e:

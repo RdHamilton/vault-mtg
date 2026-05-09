@@ -34,6 +34,18 @@ import { test, expect } from '@playwright/test';
  */
 test.describe('Data Pipeline - Log to UI', () => {
   test.beforeEach(async ({ page }) => {
+    // Inject signed-in Clerk test state so ProtectedRoute renders page content.
+    // The Vite dev server runs with VITE_CLERK_TEST_MODE=true which aliases
+    // @clerk/react to clerkMock.tsx. That mock reads window.__CLERK_TEST_STATE__
+    // to determine auth state; defaulting to signed-out would block all routes.
+    await page.addInitScript(() => {
+      (window as unknown as Record<string, unknown>).__CLERK_TEST_STATE__ = {
+        isSignedIn: true,
+        firstName: 'E2E',
+        lastName: 'Test',
+      };
+    });
+
     // Navigate to app and wait for it to load
     await page.goto('/');
     await expect(page.locator('[data-testid="app-container"]')).toBeVisible({ timeout: 15000 });

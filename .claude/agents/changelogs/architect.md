@@ -11,6 +11,23 @@ This is the system-wide record of all changes made across the project. Every age
 **Summary**: One sentence summary of what was done and why.
 -->
 
+## 2026-05-08 — [architect] ADR audit for v0.4.0 + ADR-017, ADR-018
+**PR**: N/A — ADRs committed directly to current branch (fix/ci-e2e-bff-dev-mode)
+**ADR**: docs/adr/017-bff-precomputed-read-contract.md, docs/adr/018-list-endpoint-pagination-standard.md
+**Files changed**:
+- `docs/adr/017-bff-precomputed-read-contract.md` — read envelope for /v1/user/craft-next and future precomputed endpoints; status enum (ok / not_yet_computed / stale / partial_fallback / format_unsupported); 200-on-empty contract; no request-time computation; account scoped from Clerk context
+- `docs/adr/018-list-endpoint-pagination-standard.md` — keyset pagination standard for #1516; shared listing envelope; typed filter allowlist per handler; no offset; covering-index DBA review per endpoint; /v1 → /v2 migration plan with one-release deprecation window
+**Summary**: Audited existing 16 ADRs against v0.4.0 / Smart Craft Next scope; identified two critical-path gaps (BFF read contract for precomputed reads, list pagination/filter standard) and authored both. Remaining gaps (data retention/GDPR, PostHog event taxonomy, beta invite flow) flagged for follow-up tickets but deferred — not on Wave 4 critical path.
+
+## 2026-05-08 — [architect] prod fixes: nginx welcome page + IAM PutBucketVersioning gap
+**PR**: RdHamilton/mtga-companion-infra#29 (CFN); nginx hot-patch applied directly to EC2 i-065351fbb99da2d22 via SSM
+**Files changed**:
+- (infra) cloudformation/deploy-artifacts.yml — add s3:PutBucketVersioning + s3:GetBucketVersioning to StagingBucketAccess; add StagingArtifactsBucketName param; reference staging bucket by ARN; drop StagingDeployArtifactsBucket resource (bucket managed out-of-band)
+- (infra) nginx/api.vaultmtg.app.conf — add location = / 302 to app.vaultmtg.app; add catch-all JSON 404 (committed locally; pending PR for source-of-truth)
+- (ec2) /etc/nginx/conf.d/api.vaultmtg.app.conf — same content patched in-place via SSM, nginx reloaded; old version backed up as .bak.<ts>
+- (aws) stack mtga-companion-deploy-artifacts — UPDATE_COMPLETE with new IAM permissions
+**Summary**: Fixed two prod-blocking issues. (1) nginx returned the default welcome page on https://api.vaultmtg.app/ because the api.vaultmtg.app server block had no location / handler — added a 302 redirect to app.vaultmtg.app and a JSON 404 catch-all. (2) staging-deploy GitHub Actions workflow was failing AccessDenied on put-bucket-versioning — added s3:PutBucketVersioning and s3:GetBucketVersioning to the GitHubActionsDeployRole and deployed the stack. Discovered: BFF runs as bare process with no systemd unit — filed as follow-on for PM/infrastructure.
+
 ## 2026-05-06 — [architect] Issue #1117: holistic gap analysis — Sync Lambda and BFF
 **PR**: (this PR)
 **ADR**: N/A — gap analysis doc; recommends three new ADRs (010, 011, 012)
@@ -168,8 +185,3 @@ This is the system-wide record of all changes made across the project. Every age
 **Files changed**:
 - `frontend/src/adapters/` — added Authorization header injection to all BFF fetch calls via the REST API adapter layer
 **Summary**: Wired the auth token into every outbound BFF request so authenticated endpoints receive the Authorization header; implemented at the adapter layer to keep components free of auth concerns.
-
-## 2026-05-08 — [architect] Wave 4 Architectural Implications Review (v0.4.0 Closed Beta)
-**PR**: #1585
-**ADR**: N/A (review note; flags pending ADR-015 for #1516 pagination standard)
-**Summary**: One-pass architectural review of Wave 4 (12 tickets). PROCEED with four preconditions: (1) #1516 ADR merges before #1513/#1514 code, (2) #1517 CSP scheduled after #1573 Crisp so origin is in allowlist, (3) #1519/#1520/#1513 partial-flag field name agreed in shared contract before any codes, (4) #1488 security audit scheduled last. Flagged PostHog PII scan as new audit gate for #1573 and activation funnel events.

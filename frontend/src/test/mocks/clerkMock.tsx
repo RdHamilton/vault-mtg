@@ -113,5 +113,10 @@ export const APIKeys = (_props?: Record<string, unknown>) => {
   );
 };
 
+// RedirectToSignIn — renders nothing in test mode; ProtectedRoute uses this
+// to redirect unauthenticated users. The mock prevents a Vite optimizer crash
+// when @clerk/react is aliased to this file via VITE_CLERK_TEST_MODE=true.
+export const RedirectToSignIn = () => null;
+
 // withAuth HOC stub
 export const withAuth = (Component: React.ComponentType) => Component;

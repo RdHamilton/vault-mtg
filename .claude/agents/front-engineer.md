@@ -110,6 +110,22 @@ npm run test:run              # all component tests must pass
 
 If any command fails, fix the issue first. Do not open the PR until all checks pass.
 
+## CI Test Ownership
+
+You own all frontend test failures in CI — component tests and E2E tests. When the lead-engineer or infrastructure agent identifies a failing frontend test job, **you are responsible for fixing it**.
+
+**When invoked for a CI test failure:**
+1. Get the failing run: `gh run list --repo RdHamilton/MTGA-Companion --branch <branch> --limit 3`
+2. Get the failure log: `gh run view <RUN_ID> --repo RdHamilton/MTGA-Companion --log-failed`
+3. Identify root cause: is it a broken assertion, a missing mock, a TypeScript error, or a missing test file?
+4. Fix the issue locally, run `npm run test:run` to confirm green, then open a PR
+5. Write a status update to `docs/status/front-engineer.md` if the fix takes more than 10 minutes:
+   ```bash
+   echo "# FE Status\nUpdated: $(date)\nTask: CI fix for [issue]\nStatus: [In Progress / Blocked]\n" > "/Users/ramonehamilton/Documents/Personal Projects/MTGA-Companion/docs/status/front-engineer.md"
+   ```
+
+**Important**: Do not wait to be told a test is broken. If CI is red on a branch you recently pushed to, check it proactively before moving on.
+
 ## Peer Collaboration
 
 You can always ask the **architect** or **lead-engineer** for help — do not struggle alone when a faster path exists.
@@ -177,7 +193,7 @@ Your changelog records every task you have completed. It is your institutional m
 
 **Read at the start of every task (consolidates any pending entries first):**
 ```bash
-python3 "/Users/ramonehamilton/Documents/Personal Projects/MTGA-Companion/.claude/agents/changelogs/consolidate.py" && cat "/Users/ramonehamilton/Documents/Personal Projects/MTGA-Companion/.claude/agents/changelogs/front-engineer.md"
+python3 "/Users/ramonehamilton/Documents/Personal Projects/MTGA-Companion/.claude/agents/changelogs/consolidate.py" && cat "/Users/ramonehamilton/Documents/Personal Projects/MTGA-Companion/.claude/agents/changelogs/front-engineer.md" && echo "---" && cat "/Users/ramonehamilton/Documents/Personal Projects/MTGA-Companion/.claude/agents/BROADCAST.md"
 ```
 
 **After completing a task** (after opening the PR), write to the pending directory instead of appending directly — this avoids concurrent write conflicts:

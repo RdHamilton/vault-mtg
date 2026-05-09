@@ -44,7 +44,7 @@ export const DownloadProvider = ({ children }: DownloadProviderProps) => {
   });
 
   // Track error task removal timeouts for cleanup
-  const errorTimeoutsRef = useRef<Map<string, NodeJS.Timeout>>(new Map());
+  const errorTimeoutsRef = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map());
 
   // Cleanup timeouts on unmount
   useEffect(() => {

@@ -8,6 +8,18 @@
 **RICE score**: [if applicable]
 -->
 
+## 2026-05-08 — v0.3.0 Close + v0.4.0 Kickoff
+**Triggered by**: User request — formal wave close and next milestone kickoff
+**Decision**: v0.3.0 formally closed (22/22 Wave 0-3 tickets Done). v0.3.0 release tag blocked — CI is red on main (Playwright AbortSignal / CI pipeline for pkg/logparse not yet fixed). Tag will be cut when #1524 lands. v0.4.0 kickoff issued: 12 engineering tickets + 6 business-track tickets on board #30. Critical path: #1524 → #1516 → #1513/#1514 → #1488 → release. Closed beta target: August 18, 2026.
+**Output**: docs/prd/v0.4.0-kickoff.md. Board #30 populated with 23 total items. Board #32 (v0.5.0) created. Business-track issues #1576-#1581 created. Kickoff tracking issue #1582 posted.
+**RICE score**: N/A — wave management
+
+## 2026-05-08 — PM review of X beta announcement schedule
+**Triggered by**: User request — review 3 X posts at docs/marketing/content/2026-05-beta-x-schedule.md
+**Decision**: All 3 posts REQUEST CHANGES. Post 1 and Post 2 fabricated unshipped features (live pick grades, archetype analysis, win-rate-by-archetype). Post 3 invented "200+ early players" social proof and was scheduled 3 months before closed beta launch. Rewrote all 3 in place using only confirmed v0.3.0 features (SSE draft streaming, live draft view, pick history, real-time pack display). Rescheduled Post 3 to 2026-08-18 (closed beta launch day). Added PM review block at top of file.
+**Output**: docs/marketing/content/2026-05-beta-x-schedule.md (revised in place with PM review block)
+**RICE score**: N/A — content review
+
 ## 2026-05-07 — v0.3.0 ADR gap analysis, kickoff doc, and PRD update
 **Triggered by**: User request — three-task v0.3.0 launch sequence
 **Decision**: (1) Read ADRs 012/013/014 and existing tickets #1501-#1517. Found 6 uncovered ADR requirements: GRE flush threshold config, game_plays partial column, daemon_events sequence column, BFF gap detection, desktop import path update, CI pipeline update. Created tickets #1519-#1524 and added to board #29. (2) Wrote v0.3.0 kickoff doc covering all 31 tickets in 4 waves with user stories, ACs, exit gates, Week 2 bailout trigger, and v0.3.0-lite scope. (3) Updated beta-roadmap.md: v0.2.0 closed 2026-05-07, v0.3.0 active with 31 tickets, spike estimate revised to 3-4 weeks, ADR references added, v0.3.0-lite bailout scope added, Stripe deferral confirmed.

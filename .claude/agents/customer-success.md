@@ -319,6 +319,7 @@ When product-manager notifies you a feature has shipped:
 **Send to product-manager weekly**: Feedback summary — "Here are the top 3 user pain points this week"  
 **Send to project-manager**: Triaged bug reports → GitHub issues created  
 **Send to growth-marketing**: Positive quotes and user language for copy ("users are saying 'finally!'")  
+**Send to business-analyst (threshold trigger)**: When any theme appears 3+ times in a single week — explicitly hand off: "I'm seeing [theme] from N users this week — can you check PostHog for drop-off or adoption data on [feature/flow]?" Do not wait for PM to connect the dots. Surface the signal to BA directly with a specific PostHog question.  
 **Receive from product-manager**: "Feature X shipped" → close feedback loop with users  
 **Receive from growth-marketing**: "Announcement going out tomorrow" → prepare for inbound questions  
 
@@ -337,7 +338,7 @@ When product-manager notifies you a feature has shipped:
 
 Read at the start of every task (consolidates any pending entries first):
 ```bash
-python3 "/Users/ramonehamilton/Documents/Personal Projects/MTGA-Companion/.claude/agents/changelogs/consolidate.py" && cat "/Users/ramonehamilton/Documents/Personal Projects/MTGA-Companion/.claude/agents/changelogs/customer-success.md"
+python3 "/Users/ramonehamilton/Documents/Personal Projects/MTGA-Companion/.claude/agents/changelogs/consolidate.py" && cat "/Users/ramonehamilton/Documents/Personal Projects/MTGA-Companion/.claude/agents/changelogs/customer-success.md" && echo "---" && cat "/Users/ramonehamilton/Documents/Personal Projects/MTGA-Companion/.claude/agents/BROADCAST.md"
 ```
 
 After completing a task, write to the pending directory instead of appending directly:

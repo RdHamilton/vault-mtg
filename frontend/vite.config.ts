@@ -26,6 +26,15 @@ export default defineConfig({
     globals: true,
     environment: 'jsdom',
     setupFiles: './src/test/setup.ts',
+    // API service tests that use msw/node run in Node environment to avoid the
+    // jsdom AbortSignal class mismatch with Node 24's undici fetch validation.
+    // These tests import and exercise the real apiClient (not a mock), so they
+    // do NOT need jsdom DOM APIs. setup.ts conditionally imports jest-dom only
+    // when document exists.
+    environmentMatchGlobs: [
+      ['**/*.integration.test.ts', 'node'],
+      ['**/src/services/api/*.test.ts', 'node'],
+    ],
     // Exclude E2E tests (Playwright) from Vitest
     exclude: [
       '**/node_modules/**',

@@ -54,6 +54,24 @@ func runMigrationsWithRetry(dsn string, timeout time.Duration) error {
 func main() {
 	flag.Parse()
 
+	// BFF_PORT env var is used as a fallback when -port is not explicitly
+	// provided on the command line.  This lets the staging systemd unit set
+	// Environment=BFF_PORT=8081 without hardcoding -port in ExecStart (which
+	// gets overwritten on every deploy).  An explicit -port CLI flag always wins.
+	portFlagSet := false
+	flag.Visit(func(f *flag.Flag) {
+		if f.Name == "port" {
+			portFlagSet = true
+		}
+	})
+	if !portFlagSet {
+		if envPort := os.Getenv("BFF_PORT"); envPort != "" {
+			if _, err := fmt.Sscanf(envPort, "%d", port); err != nil {
+				log.Fatalf("invalid BFF_PORT %q: %v", envPort, err)
+			}
+		}
+	}
+
 	cfg, err := config.Load()
 	if err != nil {
 		log.Fatalf("config: %v", err)

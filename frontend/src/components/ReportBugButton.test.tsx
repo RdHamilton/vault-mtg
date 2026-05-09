@@ -1,10 +1,12 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, fireEvent } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import ReportBugButton from './ReportBugButton';
 
 // Hoist mocks so they are available when vi.mock factories run
-const { mockOpenDialog, mockGetFeedback, mockUseUser } = vi.hoisted(() => ({
-  mockOpenDialog: vi.fn(),
+const { mockCreateForm, mockAppendToDom, mockOpen, mockGetFeedback, mockUseUser } = vi.hoisted(() => ({
+  mockCreateForm: vi.fn(),
+  mockAppendToDom: vi.fn(),
+  mockOpen: vi.fn(),
   mockGetFeedback: vi.fn(),
   mockUseUser: vi.fn(),
 }));
@@ -22,7 +24,12 @@ vi.mock('@clerk/react', () => ({
 describe('ReportBugButton', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    mockGetFeedback.mockReturnValue({ openDialog: mockOpenDialog });
+    // Sentry v10 feedback API: createForm() returns Promise<FeedbackDialog>.
+    mockCreateForm.mockResolvedValue({
+      appendToDom: mockAppendToDom,
+      open: mockOpen,
+    });
+    mockGetFeedback.mockReturnValue({ createForm: mockCreateForm });
   });
 
   describe('when user is signed in', () => {
@@ -44,16 +51,18 @@ describe('ReportBugButton', () => {
       expect(screen.getByText('Report a bug')).toBeInTheDocument();
     });
 
-    it('calls openDialog with user name and email on click', () => {
+    it('calls createForm with user name and email, then appends and opens the dialog', async () => {
       render(<ReportBugButton />);
       fireEvent.click(screen.getByTestId('report-bug-button'));
       expect(mockGetFeedback).toHaveBeenCalledTimes(1);
-      expect(mockOpenDialog).toHaveBeenCalledWith({
-        user: { name: 'Ray Hamilton', email: 'ray@example.com' },
+      expect(mockCreateForm).toHaveBeenCalledWith({
+        useSentryUser: { name: 'Ray Hamilton', email: 'ray@example.com' },
       });
+      await waitFor(() => expect(mockAppendToDom).toHaveBeenCalledTimes(1));
+      expect(mockOpen).toHaveBeenCalledTimes(1);
     });
 
-    it('passes undefined for name when fullName is empty', () => {
+    it('passes empty string for name when fullName is empty', async () => {
       mockUseUser.mockReturnValue({
         isSignedIn: true,
         user: {
@@ -65,12 +74,13 @@ describe('ReportBugButton', () => {
       });
       render(<ReportBugButton />);
       fireEvent.click(screen.getByTestId('report-bug-button'));
-      expect(mockOpenDialog).toHaveBeenCalledWith({
-        user: { name: undefined, email: 'ray@example.com' },
+      await waitFor(() => expect(mockCreateForm).toHaveBeenCalled());
+      expect(mockCreateForm).toHaveBeenCalledWith({
+        useSentryUser: { name: '', email: 'ray@example.com' },
       });
     });
 
-    it('passes undefined for email when no email addresses', () => {
+    it('passes empty string for email when no email addresses', async () => {
       mockUseUser.mockReturnValue({
         isSignedIn: true,
         user: {
@@ -82,17 +92,20 @@ describe('ReportBugButton', () => {
       });
       render(<ReportBugButton />);
       fireEvent.click(screen.getByTestId('report-bug-button'));
-      expect(mockOpenDialog).toHaveBeenCalledWith({
-        user: { name: 'Ray Hamilton', email: undefined },
+      await waitFor(() => expect(mockCreateForm).toHaveBeenCalled());
+      expect(mockCreateForm).toHaveBeenCalledWith({
+        useSentryUser: { name: 'Ray Hamilton', email: '' },
       });
     });
 
-    it('does nothing when Sentry feedback integration is unavailable', () => {
+    it('does nothing when Sentry feedback integration is unavailable', async () => {
       mockGetFeedback.mockReturnValue(undefined);
       render(<ReportBugButton />);
       // Should not throw
       fireEvent.click(screen.getByTestId('report-bug-button'));
-      expect(mockOpenDialog).not.toHaveBeenCalled();
+      expect(mockCreateForm).not.toHaveBeenCalled();
+      expect(mockAppendToDom).not.toHaveBeenCalled();
+      expect(mockOpen).not.toHaveBeenCalled();
     });
   });
 

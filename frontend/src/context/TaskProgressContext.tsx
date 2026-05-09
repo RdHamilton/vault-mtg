@@ -68,7 +68,7 @@ export const TaskProgressProvider = ({ children }: TaskProgressProviderProps) =>
   });
 
   // Track cleanup timeouts
-  const cleanupTimeoutsRef = useRef<Map<string, NodeJS.Timeout>>(new Map());
+  const cleanupTimeoutsRef = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map());
 
   // Cleanup on unmount
   useEffect(() => {

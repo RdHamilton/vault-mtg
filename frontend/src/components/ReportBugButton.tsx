@@ -15,7 +15,7 @@ import './ReportBugButton.css';
 const ReportBugButton = () => {
   const { user, isSignedIn } = useUser();
 
-  const handleClick = useCallback(() => {
+  const handleClick = useCallback(async () => {
     if (!isSignedIn || !user) return;
 
     const primaryEmail = user.emailAddresses?.[0]?.emailAddress ?? '';
@@ -27,12 +27,18 @@ const ReportBugButton = () => {
     const feedback = Sentry.getFeedback();
     if (!feedback) return;
 
-    feedback.openDialog({
-      user: {
-        name: name || undefined,
-        email: primaryEmail || undefined,
+    // Sentry v10 feedback API: createForm() returns a Promise<FeedbackDialog>.
+    // The dialog must be appended to the DOM and then opened. We pre-fill the
+    // form via the integration's `useSentryUser` option pattern by passing
+    // overrides — see sentry.io/docs/platforms/javascript/user-feedback.
+    const dialog = await feedback.createForm({
+      useSentryUser: {
+        name: name || '',
+        email: primaryEmail || '',
       },
     });
+    dialog.appendToDom();
+    dialog.open();
   }, [isSignedIn, user]);
 
   if (!isSignedIn) return null;
