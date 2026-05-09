@@ -3,7 +3,7 @@
  * Replaces Wails draft-related function bindings.
  */
 
-import { get, post } from '../apiClient';
+import { get, post } from '../daemonClient';
 import { models, gui, grading, metrics, insights, pickquality, prediction, analytics } from '@/types/models';
 
 // Re-export types for convenience

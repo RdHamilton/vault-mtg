@@ -3,7 +3,7 @@
  * Replaces Wails deck-related function bindings.
  */
 
-import { get, post, put, del } from '../apiClient';
+import { get, post, put, del } from '../daemonClient';
 import { models, gui } from '@/types/models';
 
 // Re-export types for convenience

@@ -3,7 +3,7 @@
  * Replaces Wails settings-related function bindings.
  */
 
-import { get, put } from '../apiClient';
+import { get, put } from '../daemonClient';
 import { gui } from '@/types/models';
 
 // Re-export types for convenience

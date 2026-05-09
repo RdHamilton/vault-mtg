@@ -3,7 +3,7 @@
  * Replaces Wails card-related function bindings.
  */
 
-import { get, post, del, getRaw } from '../apiClient';
+import { get, post, del, getRaw } from '../daemonClient';
 import { models, gui, seventeenlands } from '@/types/models';
 
 // Re-export types for convenience

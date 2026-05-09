@@ -3,7 +3,7 @@
  * Provides functions for Standard legality validation and set management.
  */
 
-import { get, post } from '../apiClient';
+import { get, post } from '../daemonClient';
 
 // Types
 

@@ -3,7 +3,7 @@
  * Replaces Wails match-related function bindings.
  */
 
-import { get, post } from '../apiClient';
+import { get, post } from '../daemonClient';
 import { models, storage } from '@/types/models';
 
 // Re-export types for convenience

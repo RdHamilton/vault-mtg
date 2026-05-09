@@ -1,13 +1,13 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import * as system from '../system';
 
-// Mock the apiClient
-vi.mock('../../apiClient', () => ({
+// Mock the daemonClient (system routes go to the local daemon)
+vi.mock('../../daemonClient', () => ({
   get: vi.fn(),
   post: vi.fn(),
 }));
 
-import { get, post } from '../../apiClient';
+import { get, post } from '../../daemonClient';
 
 describe('system API', () => {
   beforeEach(() => {

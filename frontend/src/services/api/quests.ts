@@ -3,7 +3,7 @@
  * Replaces Wails quest-related function bindings.
  */
 
-import { get } from '../apiClient';
+import { get } from '../daemonClient';
 import { models } from '@/types/models';
 
 /**

@@ -7,13 +7,13 @@ vi.unmock('../standard');
 
 import * as standard from '../standard';
 
-// Mock the apiClient
-vi.mock('../../apiClient', () => ({
+// Mock the daemonClient (standard routes go to the local daemon)
+vi.mock('../../daemonClient', () => ({
   get: vi.fn(),
   post: vi.fn(),
 }));
 
-import { get, post } from '../../apiClient';
+import { get, post } from '../../daemonClient';
 
 describe('standard API', () => {
   beforeEach(() => {

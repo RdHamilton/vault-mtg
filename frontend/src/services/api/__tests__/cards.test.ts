@@ -1,14 +1,15 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import * as cards from '../cards';
 
-// Mock the apiClient
-vi.mock('../../apiClient', () => ({
+// Mock the daemonClient (cards routes go to the local daemon)
+vi.mock('../../daemonClient', () => ({
   get: vi.fn(),
   post: vi.fn(),
+  del: vi.fn(),
   getRaw: vi.fn(),
 }));
 
-import { get, post, getRaw } from '../../apiClient';
+import { get, post, getRaw } from '../../daemonClient';
 
 describe('cards API', () => {
   beforeEach(() => {
