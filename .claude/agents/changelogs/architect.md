@@ -11,6 +11,14 @@ This is the system-wide record of all changes made across the project. Every age
 **Summary**: One sentence summary of what was done and why.
 -->
 
+## 2026-05-08 — [architect] ADR audit for v0.4.0 + ADR-017, ADR-018
+**PR**: N/A — ADRs committed directly to current branch (fix/ci-e2e-bff-dev-mode)
+**ADR**: docs/adr/017-bff-precomputed-read-contract.md, docs/adr/018-list-endpoint-pagination-standard.md
+**Files changed**:
+- `docs/adr/017-bff-precomputed-read-contract.md` — read envelope for /v1/user/craft-next and future precomputed endpoints; status enum (ok / not_yet_computed / stale / partial_fallback / format_unsupported); 200-on-empty contract; no request-time computation; account scoped from Clerk context
+- `docs/adr/018-list-endpoint-pagination-standard.md` — keyset pagination standard for #1516; shared listing envelope; typed filter allowlist per handler; no offset; covering-index DBA review per endpoint; /v1 → /v2 migration plan with one-release deprecation window
+**Summary**: Audited existing 16 ADRs against v0.4.0 / Smart Craft Next scope; identified two critical-path gaps (BFF read contract for precomputed reads, list pagination/filter standard) and authored both. Remaining gaps (data retention/GDPR, PostHog event taxonomy, beta invite flow) flagged for follow-up tickets but deferred — not on Wave 4 critical path.
+
 ## 2026-05-08 — [architect] prod fixes: nginx welcome page + IAM PutBucketVersioning gap
 **PR**: RdHamilton/mtga-companion-infra#29 (CFN); nginx hot-patch applied directly to EC2 i-065351fbb99da2d22 via SSM
 **Files changed**:
