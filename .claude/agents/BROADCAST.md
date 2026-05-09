@@ -24,7 +24,7 @@ description: Shared operational directives broadcast to all agents. Read at the 
 
 Read these before picking up any ticket. They override default agent behavior.
 
-1. **Wave 0 gate — do not start engineering** — All pre-Wave-0 GATE items (A1–A10 from `docs/product/milestones/v0.4.0/kickoff.md` Section 3) must be confirmed complete before any Wave 0 ticket moves to In Progress on the v0.4.0 project (#30). Outstanding gates: A2 (agent permission audit in `docs/engineering/release-checklist.md` §0), A3 (PC-4 in BROADCAST Standing Orders), A4 (PC-9 in BROADCAST Standing Orders). Do not pick up T1–T5 until PM confirms all gates are green.
+1. **Wave 0 gate — do not start engineering** — All pre-Wave-0 GATE items (A1–A10 from `docs/product/milestones/v0.4.0/kickoff.md` Section 3) must be confirmed complete before any Wave 0 ticket moves to In Progress on the v0.4.0 project (#30). Outstanding gates: A2 (agent permission audit in `docs/engineering/release-checklist.md` §0). Do not pick up T1–T5 until PM confirms all gates are green.
 2. **PC-2: CI is a hard gate** — No wave closes with CI red. No release tag is cut with CI red. "Unrelated" failures still block — a broken pipeline means the codebase is not shippable. PM must verify CI status at time of writing any wave-close report.
 3. **PC-6: v0.4.0 project is #30** — Project ID `PVT_kwHOABsZ684BW67K`, Milestone #68. Do NOT reference Project #29 (v0.3.0) or any prior version project. All ticket moves, board queries, and project-item-add calls use #30.
 4. **All wave-close reports require LE co-sign** — PM writes the report; LE verifies ACs are met in the merged PR diffs. Both names must appear. No wave closes without both sign-offs.
