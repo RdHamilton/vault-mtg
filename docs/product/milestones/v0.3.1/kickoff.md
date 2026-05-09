@@ -172,7 +172,62 @@ The architect confirmed the following order is correct and internally consistent
 
 ---
 
-### Wave 4 — SPA Setup Page + Download UX
+### Wave 4 — SPA Routing Fix + Infrastructure Cleanup
+
+| | |
+|---|---|
+| **Theme** | Fix production-blocking routing bugs before any SPA feature work |
+| **Goal** | SPA routes all API calls to the correct target (cloud BFF vs local daemon); nginx/CloudFront returns clean 404+CORS on unhandled routes |
+
+> **Rationale**: Without #1695, every API call that should hit the local daemon is 404ing against the cloud BFF in production — the SPA is functionally broken for daemon-dependent features. #1696 is an infra fix that can run in parallel (#1695 and #1696 have no shared files). Both must close before any SPA feature wave (#1697–#1700, Wave 5) ships to production.
+
+| Ticket | Title | Owner | Effort |
+|--------|-------|-------|--------|
+| #1695 | feat(frontend): split apiClient.ts into dual base URLs — `VITE_BFF_URL` (cloud) and `VITE_DAEMON_URL` (local daemon); update 10 API modules to route to correct target | front-engineer | M |
+| #1696 | fix(infra): nginx/CloudFront returns 503+CORS on unhandled cloud BFF routes — return clean 404 with CORS headers | infrastructure | S |
+
+**Definition of done:**
+- [ ] `apiClient.ts` split: all cloud-BFF calls use `VITE_BFF_URL`; all local daemon calls use `VITE_DAEMON_URL`; no daemon calls route to cloud BFF
+- [ ] All 10 affected API modules updated and type-checked (`npx tsc --noEmit` clean)
+- [ ] nginx/CloudFront config updated: unhandled routes return 404 (not 503) with correct CORS headers
+- [ ] Component tests updated for API module changes; Playwright E2E smoke passes
+- [ ] CI green on main after merge
+
+**Assigned agents**: front-engineer (#1695), infrastructure (#1696) — parallel
+**Estimated effort**: M (1× M + 1× S, parallel)
+
+---
+
+### Wave 5 — First-Run Empty States + Onboarding Analytics
+
+| | |
+|---|---|
+| **Theme** | First-run user experience — show empty states when daemon is not connected; instrument the onboarding funnel |
+| **Goal** | New users who land on Match History, Collection, or Decks without a connected daemon see a clear, actionable empty state rather than a broken or blank UI; funnel analytics fire so we can measure drop-off |
+
+> **Rationale**: Wave 4 (#1695) must close first — these pages rely on correct daemon vs BFF routing to detect the no-daemon state. Once routing is correct, empty states are the highest-impact UX fix for first-run users before beta launch. Funnel events (#1700) ship in the same wave so PostHog data is available from day one of beta.
+
+| Ticket | Title | Owner | Effort |
+|--------|-------|-------|--------|
+| #1697 | feat(frontend): implement empty state for Match History page (first-run, no daemon) | front-engineer | S |
+| #1698 | feat(frontend): implement empty state for Collection page (first-run, no daemon) | front-engineer | S |
+| #1699 | feat(frontend): implement empty state for Decks page (first-run, no daemon) | front-engineer | S |
+| #1700 | feat(frontend): implement first-run onboarding funnel analytics events (funnel_daemon_installed, funnel_first_game_played) | front-engineer | S |
+
+**Definition of done:**
+- [ ] Match History, Collection, and Decks pages each render a design-spec-compliant empty state when daemon is not connected (not a blank screen or error)
+- [ ] Empty states include a clear CTA pointing users to `/setup` or daemon download
+- [ ] `funnel_daemon_installed` and `funnel_first_game_played` PostHog events fire at the correct points in the first-run flow
+- [ ] Component tests added for all three empty state components
+- [ ] Playwright E2E test covers the no-daemon empty state flow end-to-end
+- [ ] CI green on main after merge
+
+**Assigned agents**: front-engineer
+**Estimated effort**: L (4× S)
+
+---
+
+### Wave 6 — SPA Setup Page + Download UX
 
 | | |
 |---|---|
@@ -199,7 +254,7 @@ The architect confirmed the following order is correct and internally consistent
 
 ---
 
-### Wave 5 — GA Readiness Documentation
+### Wave 7 — GA Readiness Documentation
 
 | | |
 |---|---|
@@ -225,14 +280,14 @@ The architect confirmed the following order is correct and internally consistent
 
 ---
 
-### Wave 6 — Component Library Foundation
+### Wave 8 — Component Library Foundation
 
 | | |
 |---|---|
 | **Theme** | Storybook + Chromatic baseline — pre-beta quality gate |
 | **Goal** | Storybook 8 installed and deployed to Chromatic; baseline snapshots approved; Chromatic check required in CI |
 
-> Wave 6 can partially overlap with Wave 5 — the Storybook spike (#1621) has no dependency on Wave 5 tickets and may start as soon as Wave 3 closes.
+> Wave 8 can partially overlap with Wave 7 — the Storybook spike (#1621) has no dependency on Wave 7 tickets and may start as soon as Wave 3 closes.
 
 | Ticket | Title | Owner | Effort |
 |--------|-------|-------|--------|
@@ -252,7 +307,7 @@ The architect confirmed the following order is correct and internally consistent
 
 ---
 
-### Wave 7 — Staging Validation
+### Wave 9 — Staging Validation
 
 | | |
 |---|---|
@@ -278,17 +333,17 @@ The architect confirmed the following order is correct and internally consistent
 
 ---
 
-### Wave 8 — Release Gate (ceremony)
+### Wave 10 — Release Gate (ceremony)
 
 | | |
 |---|---|
 | **Theme** | Final sign-off, tag, and publish |
 | **Goal** | All exit gates verified; v0.3.1 tag cut; GitHub Release created |
 
-**Tickets**: None — ceremony wave. PM files Wave 8 tracking ticket before Wave 6 closes.
+**Tickets**: None — ceremony wave. PM files Wave 10 tracking ticket before Wave 8 closes.
 
 **Definition of done (all must be true before PM issues GO):**
-- [ ] All Waves 1–7 are closed; all tickets in Done state on Project #33
+- [ ] All Waves 1–9 are closed; all tickets in Done state on Project #33
 - [ ] CI green on main (hard gate — no exceptions)
 - [ ] Staging `/healthz` returns 200 after deploy
 - [ ] macOS DMG is signed + notarized + stapled; installs and clears Gatekeeper automatically on macOS 14+ (no bypass required)
@@ -306,7 +361,7 @@ The architect confirmed the following order is correct and internally consistent
 
 ## 4. Architecture Conditions (Wave 0 → Wave 3+ Gates)
 
-These conditions were identified in the arch review. Engineering **MAY NOT begin Wave 3** until all C-1 through C-8 are satisfied. Wave 4 also has specific conditions.
+These conditions were identified in the arch review. Engineering **MAY NOT begin Wave 3** until all C-1 through C-8 are satisfied. Wave 7 also has a specific condition (Azure identity validation).
 
 | # | Condition | Owner | Deadline | Status |
 |---|---|---|---|---|
