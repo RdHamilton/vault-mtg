@@ -8,6 +8,12 @@
 **Summary**: One sentence summary of what was done and why.
 -->
 
+## 2026-05-09 — Issue #1514: add missing integration tests for stats repo (PR #1609 block)
+**PR**: #1609
+**Files changed**:
+- `services/bff/internal/storage/repository/stats_repo_test.go` — added TestStatsRepository_ListDraftAnalytics_*, TestStatsRepository_ListRankProgression_*, TestStatsRepository_GetResultBreakdown_* (14 new test functions total)
+**Summary**: Added the three missing integration-test groups required by the LE block on PR #1609; all tests follow the skip-on-no-TEST_DATABASE_URL pattern, cover empty-account, data correctness, format/set-code filter, cross-account isolation, and keyset pagination cases.
+
 ## 2026-05-06 — Issue #1400: feat(observability): Sentry Go BFF integration
 **PR**: #1408
 **Files changed**:

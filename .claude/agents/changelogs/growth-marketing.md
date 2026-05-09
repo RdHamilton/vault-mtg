@@ -7,6 +7,11 @@
 **Result**: [impressions / clicks / signups if measurable]
 -->
 
+## 2026-05-09 — Marketing site analytics audit (v0.4.0 readiness)
+**Type**: report
+**Output**: docs/reports/2026-05-marketing-analytics-audit.md
+**Result**: 5 tickets identified for PM to action on v0.4.0 board; 0 analytics tools found on marketing site; waitlist form confirmed non-functional (no API call)
+
 ## 2026-05-06 — Beta launch UTM convention and announcement copy
 **Type**: campaign / launch
 **Output**: docs/marketing/utm-naming-convention.md, docs/marketing/beta-launch-copy.md

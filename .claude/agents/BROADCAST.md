@@ -5,17 +5,18 @@ description: Shared operational directives broadcast to all agents. Read at the 
 
 # Agent Broadcast — VaultMTG
 
-**Last updated**: 2026-05-08
-**Updated by**: PM (post-mortem process directives)
+**Last updated**: 2026-05-09
+**Updated by**: PM (v0.4.0 kickoff)
 
 ---
 
 ## Current Wave
 
-**Wave 4 — v0.3.0 "Telemetry Parity"** ← still v0.3.0; release tag has NOT been cut
-- Board: #29
-- All 9 remaining tickets (#1513, #1514, #1515, #1516, #1517, #1519, #1520, #1524, #1495) are v0.3.0 scope — not v0.4.0
-- Critical path: #1524 (CI fix) → #1516 (pagination standard) → #1513/#1514 (analytics endpoints) → release tag
+**v0.4.0 — "Beta Launch"**
+- Board: #30 (Project ID: `PVT_kwHOABsZ684BW67K`, status field: `PVTSSF_lAHOABsZ684BW67KzhSLc30`, Todo option: `cf9b61a3`)
+- v0.3.0 tag: CUT ✓ (2026-05-09)
+- Current focus: Wave 0 — architecture brittleness fixes (T1–T5 from arch assessment) before any new feature work
+- Ray is doing manual testing of v0.3.0; bugs go to Board #30 as they are filed
 
 ---
 

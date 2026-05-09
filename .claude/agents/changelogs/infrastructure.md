@@ -8,6 +8,12 @@
 **Summary**: One sentence summary of what was done and why.
 -->
 
+## 2026-05-09 — Staging Deploy: v0.3.0 main to staging (PRs #1600-#1611)
+**PR**: N/A (operational task, no code change)
+**Files changed**:
+- `docs/status/infrastructure.md` — updated task status checkpoint
+**Summary**: Verified all v0.3.0 PRs (#1600-#1611) merged to main, confirmed CI green, and validated staging deploy pipeline run 25592372425 completed successfully: binary staged via SSM, DB migrations run, BFF restarted, /healthz returned HTTP 200, all required SSM params present (/mtga-companion/staging/*), BFF running on port 8081.
+
 ## 2026-05-05 — Issue #1179: feat(infra): scope Vercel deployments to frontend/ path changes only
 **PR**: #1233
 **Files changed**:

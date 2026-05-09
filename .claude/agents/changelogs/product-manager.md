@@ -8,6 +8,29 @@
 **RICE score**: [if applicable]
 -->
 
+## 2026-05-09 — v0.3.0 Wave Close
+**Triggered by**: Ray — all tickets merged, requested finalized wave-close report and GO/NO-GO
+**Decision**: GO issued. All 10 required tickets merged, CI green on main. #1517 deferred to v0.4.0. Gates 11/12/14 require manual verification before beta invites.
+**Output**: docs/prd/v0.3.0-wave-close.md created; docs/prd/v0.3.0-kickoff.md checkboxes ticked; PR #1611 opened to main
+
+## 2026-05-09 — v0.3.0 Wave-Close Report (Draft)
+**Triggered by**: Ray request — draft wave-close report while #1514 and CI fix (PR #1607) are still in flight
+**Decision**: Produced draft wave-close report with all 8 completed tickets AC-verified, #1514 and #1607 marked PENDING, #1517 recorded as deferred to v0.4.0, soak gates 8 & 9 moved to beta monitoring period per 2026-05-09 decision. GO withheld pending #1514 merge and CI green on main.
+**Output**: docs/prd/v0.3.0-wave-close-draft.md
+**RICE score**: N/A — ceremony deliverable
+
+## 2026-05-08 — v0.3.0 Post-Mortem
+**Triggered by**: User request — candid retrospective of v0.3.0 release failures
+**Decision**: Wrote comprehensive post-mortem naming every failure honestly: 9/31 tickets open, 2/14 exit gates verified, CI red at release time, staging environment never validated end-to-end, rogue agent incident, wave-close report written prematurely. Identified 4 root cause categories (process, technical, agent, communication) and 18 numbered recommendations. 10 action items tied to specific owners and tickets.
+**Output**: docs/reports/0.3.0-post-mortem.md
+**RICE score**: N/A — retrospective document
+
+## 2026-05-08 — Smart Craft Next ML feature research + PRD
+**Triggered by**: User request — find best free-tier ML opportunity for v0.4.0 targeting 50K MAU
+**Decision**: Recommended "Smart Craft Next" (personalized cards-to-craft ranking) over draft pick grades, post-match analysis, and opponent prediction. Draft grades are table stakes (17lands open-source tool already covers them). Smart Craft Next is the only feature that closes the match-data feedback loop with the user's own win history — a differentiation none of the competitors have in a free tier. Implementation is zero per-request inference (nightly Lambda batch + static table read). RICE score: 6,000.
+**Output**: docs/prd/0005-smart-craft-next.md
+**RICE score**: Reach 8K, Impact 3, Confidence 75%, Effort 3pw → Score 6,000
+
 ## 2026-05-08 — v0.3.0 Close + v0.4.0 Kickoff
 **Triggered by**: User request — formal wave close and next milestone kickoff
 **Decision**: v0.3.0 formally closed (22/22 Wave 0-3 tickets Done). v0.3.0 release tag blocked — CI is red on main (Playwright AbortSignal / CI pipeline for pkg/logparse not yet fixed). Tag will be cut when #1524 lands. v0.4.0 kickoff issued: 12 engineering tickets + 6 business-track tickets on board #30. Critical path: #1524 → #1516 → #1513/#1514 → #1488 → release. Closed beta target: August 18, 2026.
