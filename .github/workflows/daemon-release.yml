@@ -18,6 +18,11 @@ on:
   push:
     tags:
       - 'daemon/v*'
+  # Manual dispatch is supported for dry-runs and debugging.
+  # NOTE: without a daemon/v* tag, GoReleaser must be invoked with --snapshot
+  # (already the case when there is no matching tag).  workflow_dispatch on a
+  # branch (not a tag) will fail at the GoReleaser step unless you add
+  # --snapshot to the args in the goreleaser step below.
   workflow_dispatch: {}
 
 permissions:
@@ -77,13 +82,14 @@ jobs:
 
       - name: Upload darwin universal binary for sign-macos
         # Share the unsigned darwin binary so sign-macos can sign and notarize it.
-        # GoReleaser writes its dist/ to the repo root (cwd of the action), so the
-        # universal binary archive lands at dist/vaultmtg-daemon-darwin-universal.
+        # GoReleaser v2 with format:binary writes the universal binary to a
+        # subdirectory named after the universal_binaries id + _darwin_all, so
+        # the path is dist/daemon-universal_darwin_all/vaultmtg-daemon.
         uses: actions/upload-artifact@v4
         with:
           name: vaultmtg-daemon-darwin-universal
-          path: dist/vaultmtg-daemon-darwin-universal
-          if-no-files-found: warn
+          path: dist/daemon-universal_darwin_all/vaultmtg-daemon
+          if-no-files-found: error
 
   sign-macos:
     name: Sign & Notarize macOS universal binary
