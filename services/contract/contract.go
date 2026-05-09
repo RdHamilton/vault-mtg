@@ -157,3 +157,28 @@ type MatchCompletedPayload struct {
 	Format        string        `json:"format"`
 	OpponentName  string        `json:"opponent_name"`
 }
+
+// LifeChangeEntry records a single life-total mutation observed in a game.
+type LifeChangeEntry struct {
+	TeamID     int `json:"team_id"`
+	LifeTotal  int `json:"life_total"`
+	Delta      int `json:"delta"`
+	TurnNumber int `json:"turn_number"`
+}
+
+// GamePlayPayload is embedded in a DaemonEvent with Type "match.game_ended".
+// It carries per-game telemetry collected from the GRE session buffer.
+//
+// Partial indicates the event was emitted before the game was confirmed
+// complete — either because the GRE buffer reached its flush threshold or
+// because the stale-buffer sweep evicted it.  When Partial is true the BFF
+// must set partial=true on the corresponding game_plays row.
+type GamePlayPayload struct {
+	MatchID       string            `json:"match_id"`
+	GameNumber    int               `json:"game_number"`
+	WinningTeamID int               `json:"winning_team_id"`
+	TurnCount     int               `json:"turn_count"`
+	DurationSecs  int               `json:"duration_secs"`
+	LifeChanges   []LifeChangeEntry `json:"life_changes"`
+	Partial       bool              `json:"partial"`
+}

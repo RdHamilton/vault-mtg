@@ -646,6 +646,9 @@ type gamePlayPayload struct {
 	TurnCount     int               `json:"turn_count"`
 	DurationSecs  int               `json:"duration_secs"`
 	LifeChanges   []lifeChangeEntry `json:"life_changes"`
+	// Partial is set when the event was emitted before game completion
+	// (GRE buffer threshold flush or stale sweep eviction).
+	Partial bool `json:"partial"`
 }
 
 type lifeChangeEntry struct {
@@ -691,6 +694,7 @@ func (w *Worker) projectGamePlayEvent(ctx context.Context, row *repository.Daemo
 		DurationSecs:  p.DurationSecs,
 		Sequence:      row.Sequence,
 		OccurredAt:    row.OccurredAt,
+		Partial:       p.Partial,
 	})
 	if err != nil {
 		return fmt.Errorf("InsertGamePlay: %w", err)

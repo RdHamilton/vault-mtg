@@ -831,6 +831,102 @@ func (f *fakeGamePlayStore) InsertLifeChanges(_ context.Context, _ []repository.
 	return f.err
 }
 
+// --- partial flag tests ---
+
+func TestRunOnce_GamePlayEvent_PartialTrue_SetsPartialOnInsert(t *testing.T) {
+	now := time.Now().UTC()
+	payload := makePayload(t, map[string]interface{}{
+		"match_id":        "match-partial-001",
+		"game_number":     1,
+		"winning_team_id": 0,
+		"turn_count":      5,
+		"duration_secs":   60,
+		"life_changes":    []map[string]interface{}{},
+		"partial":         true,
+	})
+
+	gp := &fakeGamePlayStoreCapturing{}
+	events := &fakeEventStore{
+		pending: []repository.DaemonEventRow{
+			{ID: 200, UserID: 1, AccountID: "acct-partial", EventType: "match.game_ended", Payload: payload, OccurredAt: now, Sequence: 1},
+		},
+	}
+	accounts := &fakeAccountStore{accountID: 50}
+
+	w := newWorkerWithGamePlay(events, accounts, gp)
+	w.RunOnce(context.Background())
+
+	if len(gp.gamePlayInserts) != 1 {
+		t.Fatalf("expected 1 game_play insert, got %d", len(gp.gamePlayInserts))
+	}
+	if !gp.gamePlayInserts[0].Partial {
+		t.Errorf("Partial: want true, got false")
+	}
+	if len(events.projected) != 1 || events.projected[0] != 200 {
+		t.Errorf("expected row 200 marked projected, got %v", events.projected)
+	}
+}
+
+func TestRunOnce_GamePlayEvent_PartialFalse_SetsPartialFalseOnInsert(t *testing.T) {
+	now := time.Now().UTC()
+	payload := makePayload(t, map[string]interface{}{
+		"match_id":        "match-npartial-001",
+		"game_number":     1,
+		"winning_team_id": 1,
+		"turn_count":      10,
+		"duration_secs":   120,
+		"life_changes":    []map[string]interface{}{},
+		"partial":         false,
+	})
+
+	gp := &fakeGamePlayStoreCapturing{}
+	events := &fakeEventStore{
+		pending: []repository.DaemonEventRow{
+			{ID: 201, UserID: 1, AccountID: "acct-npartial", EventType: "match.game_ended", Payload: payload, OccurredAt: now, Sequence: 2},
+		},
+	}
+	accounts := &fakeAccountStore{accountID: 51}
+
+	w := newWorkerWithGamePlay(events, accounts, gp)
+	w.RunOnce(context.Background())
+
+	if len(gp.gamePlayInserts) != 1 {
+		t.Fatalf("expected 1 game_play insert, got %d", len(gp.gamePlayInserts))
+	}
+	if gp.gamePlayInserts[0].Partial {
+		t.Errorf("Partial: want false, got true")
+	}
+}
+
+func TestRunOnce_GamePlayEvent_PartialOmitted_DefaultsFalse(t *testing.T) {
+	now := time.Now().UTC()
+	// payload without "partial" key at all — should default to false.
+	payload := makePayload(t, map[string]interface{}{
+		"match_id":     "match-omit-partial",
+		"game_number":  1,
+		"turn_count":   8,
+		"life_changes": []map[string]interface{}{},
+	})
+
+	gp := &fakeGamePlayStoreCapturing{}
+	events := &fakeEventStore{
+		pending: []repository.DaemonEventRow{
+			{ID: 202, UserID: 1, AccountID: "acct-omit", EventType: "match.game_ended", Payload: payload, OccurredAt: now, Sequence: 3},
+		},
+	}
+	accounts := &fakeAccountStore{accountID: 52}
+
+	w := newWorkerWithGamePlay(events, accounts, gp)
+	w.RunOnce(context.Background())
+
+	if len(gp.gamePlayInserts) != 1 {
+		t.Fatalf("expected 1 game_play insert, got %d", len(gp.gamePlayInserts))
+	}
+	if gp.gamePlayInserts[0].Partial {
+		t.Errorf("Partial: want false when key omitted, got true")
+	}
+}
+
 // --- match.game_ended tests ---
 
 // fakeGamePlayStoreCapturing captures calls for assertion.

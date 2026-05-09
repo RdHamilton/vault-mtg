@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -79,6 +80,20 @@ type Config struct {
 	// Controlled by the MTGA_DAEMON_DISABLE_UPDATE_CHECK=1 environment variable.
 	// Default: false (version checks are enabled).
 	DisableUpdateCheck bool `json:"disable_update_check,omitempty"`
+
+	// GRESessionFlushThreshold is the number of GRE log entries that triggers a
+	// partial GamePlayEvent flush from the in-memory session buffer.
+	// Valid range: 50–2000.  Out-of-range values revert to the default (500)
+	// with a warning log.
+	// Controlled by the GRE_SESSION_FLUSH_THRESHOLD env var.
+	// Default: 500.
+	GRESessionFlushThreshold int `json:"gre_session_flush_threshold,omitempty"`
+
+	// GRESessionStaleMinutes is the age (in minutes) at which an idle GRE
+	// session buffer is considered stale and flushed as a partial event.
+	// Controlled by the GRE_SESSION_STALE_MINUTES env var.
+	// Default: 15.
+	GRESessionStaleMinutes int `json:"gre_session_stale_minutes,omitempty"`
 }
 
 // Load reads daemon configuration. Sources in priority order:
@@ -144,16 +159,25 @@ func (c *Config) JWTNeedsRefresh() bool {
 	return time.Until(exp) < 24*time.Hour
 }
 
+const (
+	greFlushThresholdDefault = 500
+	greFlushThresholdMin     = 50
+	greFlushThresholdMax     = 2000
+	greStaleMinutesDefault   = 15
+)
+
 func defaults() *Config {
 	archiveDir := defaultArchiveDir()
 	return &Config{
-		SyncEnabled:        true,
-		PollInterval:       2 * time.Second,
-		UseFSNotify:        true,
-		IngestPath:         "/v1/ingest/events",
-		LogPreserveOnStart: true,
-		LogArchiveMaxAge:   7 * 24 * time.Hour,
-		LogArchiveDir:      archiveDir,
+		SyncEnabled:              true,
+		PollInterval:             2 * time.Second,
+		UseFSNotify:              true,
+		IngestPath:               "/v1/ingest/events",
+		LogPreserveOnStart:       true,
+		LogArchiveMaxAge:         7 * 24 * time.Hour,
+		LogArchiveDir:            archiveDir,
+		GRESessionFlushThreshold: greFlushThresholdDefault,
+		GRESessionStaleMinutes:   greStaleMinutesDefault,
 	}
 }
 
@@ -260,6 +284,16 @@ func applyEnv(cfg *Config) {
 	if os.Getenv("MTGA_DAEMON_DISABLE_UPDATE_CHECK") == "1" {
 		cfg.DisableUpdateCheck = true
 	}
+	if v := os.Getenv("GRE_SESSION_FLUSH_THRESHOLD"); v != "" {
+		if n, err := strconv.Atoi(v); err == nil {
+			cfg.GRESessionFlushThreshold = n
+		}
+	}
+	if v := os.Getenv("GRE_SESSION_STALE_MINUTES"); v != "" {
+		if n, err := strconv.Atoi(v); err == nil {
+			cfg.GRESessionStaleMinutes = n
+		}
+	}
 }
 
 func (c *Config) validate() error {
@@ -268,6 +302,18 @@ func (c *Config) validate() error {
 	}
 	if c.SyncEnabled && c.APIKey == "" && c.DaemonJWT == "" {
 		log.Printf("[config] warning: sync_enabled is true but neither api_key nor daemon_jwt is set; events will be sent without authentication")
+	}
+	// Validate and clamp GRE flush threshold.
+	if c.GRESessionFlushThreshold == 0 {
+		c.GRESessionFlushThreshold = greFlushThresholdDefault
+	}
+	if c.GRESessionFlushThreshold < greFlushThresholdMin || c.GRESessionFlushThreshold > greFlushThresholdMax {
+		log.Printf("[config] warn: GRE_SESSION_FLUSH_THRESHOLD=%d out of range [%d, %d]; reverting to default %d",
+			c.GRESessionFlushThreshold, greFlushThresholdMin, greFlushThresholdMax, greFlushThresholdDefault)
+		c.GRESessionFlushThreshold = greFlushThresholdDefault
+	}
+	if c.GRESessionStaleMinutes == 0 {
+		c.GRESessionStaleMinutes = greStaleMinutesDefault
 	}
 	return nil
 }
