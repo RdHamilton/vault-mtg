@@ -54,6 +54,9 @@ Player.log
 # macOS metadata
 .DS_Store
 
+# GoReleaser build output
+services/daemon/dist/
+
 # Frontend (Vite/React)
 frontend/node_modules/
 frontend/dist/

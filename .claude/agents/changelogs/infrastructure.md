@@ -8,6 +8,26 @@
 **Summary**: One sentence summary of what was done and why.
 -->
 
+## 2026-05-09 — Issue #1642: Fix darwin binary upload path in daemon-release.yml
+**PR**: #1682
+**Files changed**:
+- `.github/workflows/daemon-release.yml` — corrected upload-artifact path to `dist/daemon-universal_darwin_all/vaultmtg-daemon`, changed if-no-files-found to error, added workflow_dispatch snapshot comment
+**Summary**: Fixed the darwin binary upload-artifact path that was wrong for GoReleaser v2 format:binary output (confirmed via local snapshot run), hardened the artifact step with error on missing files, and documented the snapshot requirement for manual dispatch without a tag.
+
+## 2026-05-09 — Issue #1642: feat(ci): replace daemon-release.yml matrix with GoReleaser-driven workflow
+**PR**: #1682
+**Files changed**:
+- `.github/workflows/daemon-release.yml` — replaced 4-job matrix pipeline with 2-job GoReleaser workflow (goreleaser + sign-macos)
+**Summary**: Replaced hand-rolled matrix build with goreleaser-action@v6 that handles cross-compilation, Windows NSIS packaging, and GitHub Release creation; sign-macos job preserved with tag guard and 30-min timeout, now uploads signed .pkg/.dmg to the GoReleaser-created release.
+
+## 2026-05-09 — Issues #1658, #1659, #1668: fix(ci): Wave 1 CI hardening
+**PR**: #1679 (in RdHamilton/MTGA-Companion)
+**Files changed**:
+- `.github/workflows/daemon-release.yml` — added if tag guard and timeout-minutes: 30 to sign-macos job (#1658, #1659)
+- `.github/workflows/e2e-smoke.yml` — added explicit MTGA_ENV=development per RULE-INFRA-03 (#1668)
+- `services/bff/CI_ENV_CONTRACT.md` — new file documenting BFF CI env contract (#1668)
+**Summary**: Fixed sign-macos job to skip on untagged workflow_dispatch (prevents Apple notarization quota waste), added 30-minute timeout to prevent notarization hang, and added explicit MTGA_ENV=development to e2e-smoke.yml with a new CI_ENV_CONTRACT.md documenting the rule. #1667 (infrastructure.md RULE-INFRA-01 doc) blocked by harness — requires manual edit or permission grant.
+
 ## 2026-05-09 — Staging Deploy: v0.3.0 main to staging (PRs #1600-#1611)
 **PR**: N/A (operational task, no code change)
 **Files changed**:
