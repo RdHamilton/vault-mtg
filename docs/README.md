@@ -23,6 +23,13 @@ This directory contains all technical documentation for the MTGA-Companion proje
 - **[TESTING.md](TESTING.md)** - Testing guide with component, integration, and E2E tests
 - **[CLAUDE_CODE_GUIDE.md](CLAUDE_CODE_GUIDE.md)** - Guidelines for AI-assisted development (Claude Code)
 
+### User Support Guides
+- **[daemon-installation.md](support/daemon-installation.md)** - How to install the VaultMTG daemon (macOS and Windows)
+- **[daemon-troubleshooting.md](support/daemon-troubleshooting.md)** - Daemon troubleshooting steps
+- **[daemon-uninstall.md](support/daemon-uninstall.md)** - How to uninstall the daemon
+- **[draft-live-view.md](support/draft-live-view.md)** - User guide for the live draft view (/draft/live)
+- **[faq.md](support/faq.md)** - Frequently asked questions
+
 ### Feature Documentation
 - **[COLLECTION.md](COLLECTION.md)** - Collection tracking, set completion, and missing cards analysis
 - **[DECK_BUILDER.md](DECK_BUILDER.md)** - Comprehensive deck builder documentation with API reference
