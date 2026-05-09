@@ -16,7 +16,7 @@ v0.3.1 delivers a double-clickable, self-configuring daemon installer for macOS 
 
 The milestone ships one primary track:
 
-**Daemon Packaging** — GoReleaser produces a darwin universal binary and windows amd64 binary. Platform-specific installers (.dmg → .pkg on macOS, .exe via NSIS on Windows) handle LaunchAgent and Scheduled Task setup automatically. A PKCE browser-redirect auth flow (ADR-020) eliminates manual key management. The SPA `/setup` page guides users through download, install, and first-run pairing. GA-prep documentation ensures notarization and Azure signing can be activated at GA without a scramble.
+**Daemon Packaging** — GoReleaser produces a darwin universal binary and windows amd64 binary. Platform-specific installers (.dmg → .pkg on macOS, .exe via NSIS on Windows) handle LaunchAgent and Scheduled Task setup automatically. A PKCE browser-redirect auth flow (ADR-020) eliminates manual key management. The SPA `/setup` page guides users through download, install, and first-run pairing. The macOS `.dmg` is signed + notarized + stapled via the active `sign-macos` CI pipeline (PR #1655); Wave 5 verifies this end-to-end and documents Azure signing for GA.
 
 ### Why It Exists
 
@@ -193,19 +193,22 @@ The architect confirmed the following order is correct and internally consistent
 
 | | |
 |---|---|
-| **Theme** | Document signing workflows so GA activation is a checklist, not a scramble |
-| **Goal** | Apple Developer Program and Azure Trusted Signing are documented and ready to activate at GA — neither requires active signing in v0.3.1 |
+| **Theme** | Verify active Apple signing + notarization end-to-end; document Azure signing workflow for GA |
+| **Goal** | Confirm the `sign-macos` pipeline (codesign + notarytool + stapler) produces a Gatekeeper-passing `.dmg`; document Azure Trusted Signing so GA activation is a checklist, not a scramble |
+
+> **Context**: The Apple signing pipeline was implemented and merged in PR #1655. It runs on every `daemon/v*` tag. These tickets are verification + documentation — not activation.
 
 | Ticket | Title | Owner | Effort |
 |--------|-------|-------|--------|
-| #1648 | chore(ga-prep): enroll in Apple Developer Program — document notarization workflow and notarytool credentials in SSM | infrastructure | S |
+| #1648 | chore(ga-prep): verify Apple notarization end-to-end on a release tag — confirm `notarytool` credentials in SSM, stapled .dmg passes Gatekeeper on clean macOS VM | infrastructure | S |
 | #1649 | chore(ga-prep): onboard Azure Trusted Signing — document signing workflow in GoReleaser config, budget approval | infrastructure | S |
 
 **Definition of done:**
-- [ ] Apple Developer Program enrollment documented; `notarytool` credential path in SSM confirmed
+- [ ] Apple signing verified end-to-end: release tag triggers `sign-macos`; `.dmg` is notarized + stapled; Gatekeeper clears automatically on a clean macOS 14+ VM
+- [ ] `notarytool` credential path in SSM confirmed and documented
 - [ ] Azure Trusted Signing workflow documented in GoReleaser config comments; budget approval recorded
-- [ ] Neither ticket requires notarization or signing to be active — documentation is the deliverable
 - [ ] Azure identity validation status confirmed with Ray before this wave closes
+- [ ] Azure active signing is NOT required to close this wave — documentation is the Azure deliverable
 
 **Assigned agents**: infrastructure
 **Estimated effort**: M (2× S)
@@ -278,7 +281,7 @@ The architect confirmed the following order is correct and internally consistent
 - [ ] All Waves 1–7 are closed; all tickets in Done state on Project #33
 - [ ] CI green on main (hard gate — no exceptions)
 - [ ] Staging `/healthz` returns 200 after deploy
-- [ ] macOS DMG installs and runs without Gatekeeper hard-block on macOS 14+
+- [ ] macOS DMG is signed + notarized + stapled; installs and clears Gatekeeper automatically on macOS 14+ (no bypass required)
 - [ ] Windows installer runs without SmartScreen hard-block on Windows 11
 - [ ] PKCE daemon pairing flow completes end-to-end on both platforms
 - [ ] PostHog `daemon_paired` event confirmed firing from at least one real test session
@@ -317,7 +320,7 @@ All of the following must be true before the v0.3.1 tag is cut:
 
 - **EG-1** — All Waves 1–7 closed; all tickets in Done state on Project #33
 - **EG-2** — CI green on main (hard gate — no exceptions; BROADCAST Active Directive 2 applies)
-- **EG-3** — macOS DMG installs without Gatekeeper hard-block on macOS 14+
+- **EG-3** — macOS DMG is signed + notarized + stapled; installs and clears Gatekeeper automatically on macOS 14+ (no bypass required)
 - **EG-4** — Windows installer runs without SmartScreen hard-block on Windows 11
 - **EG-5** — PKCE daemon pairing flow works end-to-end on both platforms
 - **EG-6** — Chromatic baseline approved (zero unresolved snapshot diffs)
@@ -340,8 +343,8 @@ Open items that must be resolved — verified as of 2026-05-09:
 
 | # | Risk | Likelihood | Impact | Mitigation |
 |---|------|-----------|--------|------------|
-| R-1 | Gatekeeper hard-blocks unsigned .dmg on macOS 14+ — right-click → Open does not produce a bypass | Medium | High | Confirm on clean macOS 14 VM in Wave 7; add explicit Gatekeeper bypass instructions to `/setup` page in Wave 4 regardless |
-| R-2 | SmartScreen hard-blocks unsigned .exe on Windows 11 — no bypass path | Medium | High | Document SmartScreen bypass in Wave 4 SPA; confirm on clean Windows 11 VM in Wave 7; escalate to Ray if block is unbypassable without EV signing |
+| R-1 | Notarization credential misconfiguration silently fails the `sign-macos` job — notarized .dmg not produced | Low | High | Wave 5 (#1648) does an end-to-end verification on a real tag; `notarytool` credentials confirmed in SSM before Wave 5 closes |
+| R-2 | SmartScreen hard-blocks unsigned .exe on Windows 11 — no bypass path | Medium | High | Document SmartScreen bypass in Wave 4 SPA; confirm on clean Windows 11 VM in Wave 7; escalate to Ray if block is unbypassable without EV signing (Azure Trusted Signing deferred to GA) |
 | R-3 | PKCE localhost callback port conflict (51423 in use) | Low | Medium | #1650 must retry on 51424, then surface a clear error message — never crash; both ports registered in Clerk |
 | R-4 | `go-keyring` OS keychain integration fails on a specific macOS/Windows version | Low | High | Spike keychain write/read in #1651 before committing; CGO-free cross-compile validated in CI (C-5 condition) |
 | R-5 | Azure identity validation not approved before Wave 5 closes | Medium | Low | Wave 5 documents the workflow only — active signing not required to close the wave; escalate if unresolved before GA prep |
@@ -349,7 +352,7 @@ Open items that must be resolved — verified as of 2026-05-09:
 | R-7 | `daemon_api_keys` migration (#1674) not merged before #1652 starts — Wave 3 integration failure | Medium | High | C-6 condition blocks #1652 from starting; PM must confirm migration is merged before unblocking backend-engineer on #1652 |
 | R-8 | v0.4.0 engineers start work before v0.3.1 closes | Low | High | BROADCAST Active Directive 1 blocks this; PM must not issue GO until Wave 7 is fully green and all exit gates pass |
 | R-A (arch) | Clerk wildcard redirect URI not supported — fixed port is the mitigation | Low | High | Fixed port 51423 chosen; PM must register URIs before Wave 3 starts |
-| R-B (arch) | `go-keyring` requires macOS Keychain entitlement for notarized builds | Medium | Medium | Entitlement documented in #1648; not a Wave 3 blocker since notarization is GA scope |
+| R-B (arch) | `go-keyring` requires macOS Keychain entitlement for notarized builds | Medium | Medium | Entitlement must be confirmed in #1648 (Wave 5) — signing is active, so this is a Wave 5 blocker, not GA scope |
 | R-C (arch) | `go-keyring` CGO dependency fails on Windows cross-compile | Low | High | CGO-free validation added to #1651 ACs as a CI gate |
 | R-D (arch) | Missing `daemon_api_keys` migration causes Wave 3 integration failure | Medium | High | Tracked as #1674; C-6 condition blocks #1652 until migration is merged |
 | R-E (arch) | Gatekeeper quarantine on binary (not just installer) | Medium | High | `xattr -dr com.apple.quarantine` added to #1640 postinstall ACs (Wave 0 Decision 4) |
@@ -362,8 +365,7 @@ Explicit list of what is NOT in v0.3.1:
 
 | Item | Where it goes |
 |------|--------------|
-| Apple notarization (active signing) | GA milestone — Wave 5 documents the runbook only |
-| Azure Trusted Signing (active signing) | GA milestone — Wave 5 documents the workflow only; budget approval needed |
+| Azure Trusted Signing (active signing) | GA milestone — Wave 5 documents the workflow only; identity validation + budget approval pending |
 | Full Storybook component story library (beyond Wave 6 baseline) | v0.4.0 follow-on after Chromatic baseline is established |
 | Security agent / supply-chain scanning beyond npm audit + govulncheck | Post-GA |
 | Windows MSI installer (enterprise) | Post-GA only if requested — beta uses NSIS .exe |

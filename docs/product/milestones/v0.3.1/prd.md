@@ -4,7 +4,7 @@
 **Status**: ACTIVE — started 2026-05-09
 **Board**: #33 (Project ID: `PVT_kwHOABsZ684BXMn-`)
 **Milestone**: v0.3.1 — ships before v0.4.0
-**Last updated**: 2026-05-09 (revised — restored Component Library Foundation wave per Ray's direction; Storybook tickets #1621, #1622, #1625 are v0.3.1 scope)
+**Last updated**: 2026-05-09 (revised — restored Component Library Foundation wave per Ray's direction; Storybook tickets #1621, #1622, #1625 are v0.3.1 scope; corrected — Apple signing+notarization is active via daemon-release.yml sign-macos job, not deferred to GA)
 
 ---
 
@@ -28,14 +28,14 @@ VaultMTG's daemon ships as raw unsigned binaries installed via shell scripts. Be
 2. A PKCE browser-based auth flow so the daemon self-configures without manual API key copy-paste
 3. A BFF registration endpoint to mint API keys from Clerk JWTs
 4. A SPA `/setup` page that guides users through install and first-run pairing
-5. GA-prep documentation so notarization and Azure signing can be activated at GA without scrambling
+5. Verified end-to-end Apple signing + notarization (pipeline active in `daemon-release.yml`); GA-prep documentation for Azure signing (Azure Trusted Signing identity validation still pending)
 
 ---
 
 ## Target Users
 
 - **Beta invitees**: MTG Arena players who are not engineers — they need a standard installer UX.
-- **Future GA team**: Apple Developer Program enrollment and Azure Trusted Signing must be documented before GA, not scrambled at launch.
+- **Future GA team**: Apple signing + notarization is active. Azure Trusted Signing must be documented and identity-validated before GA, not scrambled at launch.
 
 ---
 
@@ -122,17 +122,20 @@ No tickets — ceremony only.
 
 ### Wave 4 — GA Readiness Documentation
 
-**Theme**: Document notarization and Azure signing workflows so GA activation is a checklist, not a scramble.
+**Theme**: Verify the active Apple signing + notarization pipeline end-to-end; document Azure signing workflow for GA activation.
+
+> **Note**: The macOS signing pipeline (`codesign` + `notarytool` + `stapler`) was implemented and merged in PR #1655 via `.github/workflows/daemon-release.yml` (`sign-macos` job). It runs on every release tag. These tickets are about verification and documentation — not activating signing.
 
 | Ticket | Title | Owner | Effort |
 |--------|-------|-------|--------|
-| #1648 | chore(ga-prep): enroll in Apple Developer Program — document notarization workflow and notarytool credentials in SSM | infrastructure | S |
+| #1648 | chore(ga-prep): verify Apple notarization end-to-end on a release tag — confirm `notarytool` credentials in SSM, stapled .dmg passes Gatekeeper on clean macOS VM | infrastructure | S |
 | #1649 | chore(ga-prep): onboard Azure Trusted Signing — document signing workflow in GoReleaser config, budget approval | infrastructure | S |
 
 **Definition of done (Wave 4):**
-- Apple Developer Program enrollment documented; `notarytool` credential path in SSM documented
-- Azure Trusted Signing workflow documented in GoReleaser config comments; budget approval recorded
-- Neither ticket requires actual notarization/signing to be active — documentation is the deliverable
+- Apple signing verified end-to-end: a release tag triggers `sign-macos`, `.dmg` is notarized + stapled, confirmed to pass Gatekeeper on a clean macOS 14+ VM
+- `notarytool` credential path in SSM confirmed and documented
+- Azure Trusted Signing workflow documented in GoReleaser config comments; budget approval recorded; identity validation status confirmed with Ray
+- Azure active signing is NOT required to close Wave 4 — documentation is the deliverable for the Azure side only
 
 ---
 
@@ -204,7 +207,7 @@ No tickets — ceremony only.
 1. CI is green on main (hard gate — no exceptions per BROADCAST Active Directive 2)
 2. Staging deploy pipeline runs from scratch; BFF `/healthz` returns 200
 3. Playwright staging smoke suite passes
-4. Manual install smoke test on macOS 14+ and Windows 11: download `.dmg`/`.exe` → install → PKCE login → daemon starts → first event appears in BFF (checked via DB or PostHog)
+4. Manual install smoke test on macOS 14+ and Windows 11: download `.dmg`/`.exe` → install → PKCE login → daemon starts → first event appears in BFF (checked via DB or PostHog). macOS `.dmg` must be signed + notarized + stapled — Gatekeeper clears automatically with no bypass required.
 5. All Wave 1–7 tickets are in Done state on Project #33 board
 6. PostHog `daemon_paired` event confirmed firing from at least one real test session
 7. `CHANGELOG.md` entry written for v0.3.1
@@ -216,8 +219,7 @@ No tickets — ceremony only.
 
 | Item | Reason deferred |
 |------|----------------|
-| Apple notarization (active) | Requires paid Apple Developer Program enrollment — GA milestone; Wave 4 documents the workflow only |
-| Azure Trusted Signing (active) | $9.99/mo — budget approval needed; GA milestone; Wave 4 documents the workflow only |
+| Azure Trusted Signing (active) | $9.99/mo — budget approval needed; identity validation pending; GA milestone; Wave 4 documents the workflow only |
 | GoReleaser Pro features | Open-source tier sufficient for beta |
 | System tray / menubar icon | Not on critical path for beta |
 | MSI installer (Windows enterprise) | Post-GA only if requested |
@@ -234,10 +236,10 @@ No tickets — ceremony only.
 
 | # | Question | Owner | Gate |
 |---|----------|-------|------|
-| OQ-1 | Apple Developer Program: has Ray confirmed account creation and payment method? Wave 4 (#1648) requires knowing credential storage path. | Ray | Wave 4 |
+| OQ-1 | Apple Developer Program: ✅ Resolved — signing pipeline active via `daemon-release.yml` `sign-macos` job (PR #1655). `notarytool` credential path in SSM to be confirmed in Wave 4 (#1648). | — | Wave 4 |
 | OQ-2 | Azure Trusted Signing budget: approved? Wave 4 (#1649) includes budget approval as an AC — who signs off? | Ray | Wave 4 |
 | OQ-3 | Storybook tickets (#1621, #1622, #1625) scope. | PM | ✅ Resolved — confirmed v0.3.1 per Ray's direction (2026-05-09); tickets relabeled from v0.4.0 to v0.3.1 |
-| OQ-4 | Gatekeeper bypass: on macOS 14+ with no notarization, does right-click → Open produce a one-click bypass, or a hard block? Must be confirmed on a clean macOS 14 VM before Wave 7 closes. | Ray (eng) | Wave 7 |
+| OQ-4 | Gatekeeper bypass: moot — the `.dmg` is signed + notarized + stapled via the active pipeline. Wave 4 (#1648) verifies it passes Gatekeeper on a clean macOS 14 VM. | Ray (eng) | Wave 4 |
 | OQ-5 | Ephemeral port range for PKCE callback — fixed port (e.g., 51423) for UX consistency, or fully random? Fixed port simplifies firewall instructions. Decision needed before #1650 starts. | backend-engineer + Ray | Before Wave 2 |
 | OQ-6 | API key scoping — per-machine or per-user-session? Per-machine is simpler but means reinstall requires re-pairing. | backend-engineer | Before Wave 2 |
 | OQ-7 | Key revocation on reinstall — should the old key be revoked automatically on reinstall? | backend-engineer + Ray | Before Wave 2 |
@@ -269,7 +271,7 @@ No tickets — ceremony only.
 
 | # | Risk | Likelihood | Impact | Mitigation |
 |---|------|-----------|--------|------------|
-| R-1 | Gatekeeper hard-blocks unsigned .dmg on macOS 14+ — right-click → Open does not produce a bypass | Medium | High | Confirm on clean macOS 14 VM in Wave 3; add explicit Gatekeeper bypass instructions to `/setup` page in Wave 3 regardless |
+| R-1 | Notarization credential misconfiguration silently fails the `sign-macos` job — notarized .dmg not produced | Low | High | Wave 4 (#1648) does an end-to-end verification on a real tag; `notarytool` credentials confirmed in SSM before Wave 4 closes |
 | R-2 | SmartScreen hard-blocks unsigned .exe on Windows 11 — no bypass path | Medium | High | Document SmartScreen bypass in Wave 3 SPA; confirm on clean Windows 11 VM; escalate to Ray if block is unbypassable without EV signing |
 | R-3 | PKCE localhost callback port conflict | Low | Medium | Handle gracefully in #1650: retry with ephemeral port, surface error message, never crash |
 | R-4 | `go-keyring` OS keychain integration fails on a specific macOS/Windows version | Low | High | Spike keychain write/read in #1651 before committing to keychain-only storage; keep plaintext fallback path documented |
