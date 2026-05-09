@@ -292,14 +292,19 @@ You can always ask the **architect** or **lead-engineer** for help — do not st
 
 To escalate: stop your current work, describe the specific blocker and what you've already tried, and invoke the relevant agent. Resume once you have an answer.
 
-## Post-PR Review Protocol (Required)
+## Post-PR Review Protocol (Required — PC-10)
 
-After opening a PR with `gh pr create`, the lead-engineer agent automatically reviews it via the `PostToolUse` hook. You do not need to invoke it manually — it fires on every `gh pr create` call.
+After opening a PR with `gh pr create`, you MUST immediately spawn a background general-purpose agent to run the LE review. The PostToolUse hook only fires in the main session — when you run as a subagent it does not fire. Use the Agent tool directly:
 
-The lead-engineer will:
-1. Review the diff for CLAUDE.md compliance
-2. If APPROVED: run functional tests against ticket ACs, merge, and move ticket to Done
-3. If BLOCKED: post findings as a PR comment and stop — do not merge
+```
+Agent(
+  subagent_type: "general-purpose",
+  run_in_background: true,
+  prompt: "You are the lead engineer for MTGA-Companion. Read your full instructions from .claude/agents/lead-engineer.md. Repo: /Users/ramonehamilton/Documents/Personal Projects/MTGA-Companion. Review PR #<NUMBER> and run the full Post-PR Review Protocol."
+)
+```
+
+Do NOT output a CLI command for the user to run. Do NOT skip this step. Spawn the agent yourself before reporting back.
 
 Do not merge your own PRs. The lead-engineer handles merge and ticket close-out.
 
