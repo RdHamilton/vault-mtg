@@ -9,6 +9,7 @@ tools:
   - Edit
   - Grep
   - Glob
+  - Agent
 ---
 
 ## Strict Task Scope Enforcement

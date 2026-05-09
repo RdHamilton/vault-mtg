@@ -59,6 +59,7 @@ These apply to every agent on every task and do not expire:
 - **No new issues created directly by PM**: all GitHub issue creation goes through project-manager
 - **PC-4 (branch cleanliness)**: Every agent runs `git status && git log --oneline -5` before opening any PR. If the working tree is dirty or contains unexpected commits, STOP and report back — do not open the PR.
 - **PC-9 (agent invocation mode)**: Use synchronous invocation for output-producing tasks (research, status checks, reports). Use `run_in_background: true` only for state-update tasks (ticket moves, board updates, GitHub notifications).
+- **PC-10 (LE review after every PR — agent rule)**: Any engineering agent (backend-engineer, front-engineer, infrastructure, dba, architect) that opens a PR with `gh pr create` MUST immediately spawn a background general-purpose agent to run the LE review — do not stop after the PR is created. Use `run_in_background: true` and this prompt: `"You are the lead engineer for MTGA-Companion. Review PR #<NUMBER> and run the full Post-PR Review Protocol from .claude/agents/lead-engineer.md. Repo: /Users/ramonehamilton/Documents/Personal Projects/MTGA-Companion"`. The Agent tool is provisioned in your tools list for exactly this purpose.
 
 ---
 
