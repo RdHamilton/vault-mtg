@@ -1,38 +1,45 @@
 ---
 name: Bug report
-about: Create a report to help us improve
-title: ''
-labels: ''
+about: Report a bug found during testing or normal use
+title: 'bug: '
+labels: bug
 assignees: ''
 
 ---
 
-**Describe the bug**
-A clear and concise description of what the bug is.
+## Description
+<!-- Clear, concise description of the bug -->
 
-**To Reproduce**
-Steps to reproduce the behavior:
-1. Go to '...'
-2. Click on '....'
-3. Scroll down to '....'
-4. See error
+## Steps to Reproduce
+1. 
+2. 
+3. 
 
-**Expected behavior**
-A clear and concise description of what you expected to happen.
+## Expected Behavior
+<!-- What should happen -->
 
-**Screenshots**
-If applicable, add screenshots to help explain your problem.
+## Actual Behavior
+<!-- What actually happens — include error messages, stack traces, or screenshots if available -->
 
-**Desktop (please complete the following information):**
- - OS: [e.g. iOS]
- - Browser [e.g. chrome, safari]
- - Version [e.g. 22]
+## Surface
+<!-- Check the surface where the bug was found -->
+- [ ] Daemon (log parser / local binary)
+- [ ] Analytics endpoints (BFF API)
+- [ ] Live draft overlay (UI)
+- [ ] Other: ___
 
-**Smartphone (please complete the following information):**
- - Device: [e.g. iPhone6]
- - OS: [e.g. iOS8.1]
- - Browser [e.g. stock browser, safari]
- - Version [e.g. 22]
+## Severity
+<!-- Check one -->
+- [ ] P0 — App crash / data loss / blocking all use
+- [ ] P1 — Major feature broken, no workaround
+- [ ] P2 — Feature partially broken, workaround exists
+- [ ] P3 — Minor / cosmetic
 
-**Additional context**
-Add any other context about the problem here.
+## Environment
+- OS: 
+- Browser (if UI): 
+- App version: 
+- MTGA client version (if relevant): 
+
+## Additional Context
+<!-- Logs, screenshots, or anything else relevant -->
