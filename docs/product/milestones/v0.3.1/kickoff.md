@@ -1,81 +1,125 @@
 # v0.3.1 Kickoff: "Packaging"
 
-**Date**: 2026-05-09
 **Milestone**: v0.3.1 "Packaging"
-**Board**: #33 (`PVT_kwHOABsZ684BXMn-`)
+**Date**: 2026-05-09
+**Board**: Project #33 (`PVT_kwHOABsZ684BXMn-`)
 **Author**: Najah (Product Manager)
 **Status**: ACTIVE
 
 ---
 
-## 1. Purpose
-
-This document is the official kickoff for v0.3.1 "Packaging." It establishes wave structure, ownership, dependencies, exit gates, and open PM action items. All engineering agents must read this document before picking up any v0.3.1 ticket.
-
-v0.3.1 ships before v0.4.0. Engineering does not begin v0.4.0 Wave 0 until PM issues a formal GO after the v0.3.1 Wave 7 release gate is green.
-
----
-
-## 2. Milestone Overview
+## 1. Milestone Overview
 
 ### What v0.3.1 Is
 
-v0.3.1 delivers a double-clickable, self-configuring daemon installer for macOS and Windows. Beta users are not engineers. They cannot run shell scripts in a terminal. They cannot copy-paste API keys. This milestone closes that gap.
+v0.3.1 delivers a double-clickable, self-configuring daemon installer for macOS and Windows. Beta users are not engineers. They cannot run shell scripts in a terminal. They cannot copy-paste API keys. This milestone closes that gap before v0.4.0 begins.
 
-The milestone has one primary track:
+The milestone ships one primary track:
 
-1. **Daemon Packaging** — GoReleaser produces a darwin universal binary and windows amd64 binary. Platform-specific installers (.dmg → .pkg on macOS, .exe via NSIS on Windows) handle LaunchAgent and Scheduled Task setup. A PKCE browser-redirect auth flow eliminates manual key management. The SPA `/setup` page guides users through download, install, and first-run pairing. GA-prep documentation ensures notarization and Azure signing can be activated at GA without a scramble.
+**Daemon Packaging** — GoReleaser produces a darwin universal binary and windows amd64 binary. Platform-specific installers (.dmg → .pkg on macOS, .exe via NSIS on Windows) handle LaunchAgent and Scheduled Task setup automatically. A PKCE browser-redirect auth flow (ADR-020) eliminates manual key management. The SPA `/setup` page guides users through download, install, and first-run pairing. GA-prep documentation ensures notarization and Azure signing can be activated at GA without a scramble.
 
 ### Why It Exists
 
-v0.3.0 closed with telemetry parity proven but the daemon still requiring terminal installation. That is a beta blocker. No beta user who is not an engineer will successfully install the daemon without a standard installer. v0.3.1 exists to remove that blocker before v0.4.0 begins beta-readiness work.
+v0.3.0 closed with telemetry parity proven but the daemon still requiring terminal installation. That is a beta blocker. No non-engineer beta user will successfully install the daemon without a standard installer. v0.3.1 removes that blocker before v0.4.0 begins beta-readiness work.
 
-The waitlist opens **August 1, 2026**. The public closed beta launches **August 18, 2026**. v0.3.1 must close well before v0.4.0 can complete its own work. Time is not abundant.
+The waitlist opens **August 1, 2026**. The public closed beta launches **August 18, 2026**. v0.3.1 must close well before v0.4.0 completes its own work.
 
-### What Success Looks Like
+### Success Metrics
 
 - A macOS user downloads the `.dmg`, double-clicks, and the daemon is installed and running within 5 minutes with zero terminal interaction.
 - A Windows user downloads the `.exe`, double-clicks, and the daemon is installed and running within 5 minutes with zero terminal interaction.
 - Both users complete Clerk login via a browser window that opens automatically on first run.
 - PostHog `daemon_paired` event fires within 10 minutes of download for ≥80% of beta invitees.
-- Zero support tickets attributable to "could not install" in the first two weeks of beta.
+- Zero support tickets attributable to "could not install" in the first two weeks of closed beta.
+
+---
+
+## 2. Wave 0 Gate — CLOSED
+
+**Status**: CLOSED — Wave 1 is unblocked.
+**Review completed**: 2026-05-09
+**Reviewer**: Ray (Architect)
+
+The architect reviewed the full v0.3.1 scope and issued **APPROVED WITH CONDITIONS**. Engineering may begin Wave 1 immediately.
+
+### Confirmed Decisions
+
+The following decisions were made during Wave 0 and are binding for all implementation tickets. Engineers must not re-open these questions:
+
+| Decision | Resolution |
+|---|---|
+| **Port 51423** — PKCE callback port | Fixed port `51423`; one retry on `51424`. Clerk redirect URIs `http://localhost:51423/callback` and `http://localhost:51424/callback` must be registered before #1650 starts. |
+| **Keychain service name** | `com.mtga-companion.daemon`, account key `api-key`. ADR-020 updated to reflect this. |
+| **API key scoping** | Per-user, one-key-per-account for beta (`UNIQUE on account_id`). Per-machine expansion is post-GA. |
+| **Key revocation on reinstall** | Silently re-use existing API key on reinstall (no revoke, no re-pair). BFF returns 200 (not 201) if key exists. `--reset` flag deferred to post-beta. |
+| **Quarantine fix in postinstall** | macOS `.pkg` postinstall script (#1640) must call `xattr -dr com.apple.quarantine "$INSTALL_DIR/mtga-companion-daemon"` — added to #1640 ACs. |
+| **Wire format** | `POST /v1/daemon/register` request/response JSON contract documented in ADR-020 §Contracts. |
+
+### Wave Sequencing Confirmed by Architect
+
+The architect confirmed the following order is correct and internally consistent:
+
+- Wave 1 (CI Hardening) must precede all other waves — `sign-macos` bugs can silently hang the release pipeline.
+- Wave 2 (GoReleaser Foundation) must precede Wave 3 (installers).
+- Wave 3 (installers) must precede Wave 4 (PKCE auth) — working installer is the delivery vehicle.
+- Wave 4 (PKCE auth + BFF) must precede Wave 5 (SPA setup page).
+- Wave 5 (SPA) can partially overlap with Wave 6 (Storybook) — Storybook spike #1621 has no Wave 5 dependency.
+- Waves 7 (staging validation) and 8 (release gate) are terminal.
 
 ---
 
 ## 3. Wave Plan
 
-### Wave 0 — Architect Gate (prerequisite, no code)
-
-| | |
-|--|--|
-| **Theme** | Validate architectural implications before engineering starts |
-| **Goal** | Ray (architect) reviews v0.3.1 scope and posts an architectural implications note. PM confirms receipt before any Wave 1 ticket moves to In Progress. |
-| **Tickets** | None — ceremony gate |
-| **Definition of done** | Ray's architectural implications note received and acknowledged by PM |
-| **Assigned** | Ray (architect) + Najah (PM) |
-| **Effort** | XS |
+> Wave numbering in this document follows the PRD (Waves 1–8). The PRD is the source of truth.
 
 ---
 
-### Wave 1 — Binary Build + Installer Foundation
+### Wave 1 — CI Hardening
 
 | | |
-|--|--|
+|---|---|
+| **Theme** | Fix CI bugs before they corrupt the release pipeline |
+| **Goal** | `sign-macos` job is guarded, non-hanging, and cannot silently block tag releases; MTGA_ENV is explicit across all CI jobs |
+
+| Ticket | Title | Owner | Effort |
+|--------|-------|-------|--------|
+| #1658 | fix(ci): add tag guard to sign-macos job on workflow_dispatch | infrastructure | XS |
+| #1659 | fix(ci): add timeout-minutes to sign-macos job to prevent notarization hang | infrastructure | XS |
+| #1667 | fix(ci): add RULE-INFRA-01 lint gate rollout process to infrastructure agent | infrastructure | XS |
+| #1668 | fix(ci): ensure MTGA_ENV is explicitly set in all CI jobs that start the BFF | infrastructure | XS |
+
+**Definition of done:**
+- [ ] `sign-macos` job only runs on tag pushes — `workflow_dispatch` cannot trigger it
+- [ ] `sign-macos` job has `timeout-minutes` set; CI marks the job failed (not hung) if notarization exceeds the limit
+- [ ] RULE-INFRA-01 lint gate rollout process documented in infrastructure agent
+- [ ] `MTGA_ENV` explicitly set in all CI jobs that start the BFF; no jobs rely on implicit defaults
+- [ ] CI green on main after all four merges
+
+**Assigned agents**: infrastructure
+**Estimated effort**: S (4× XS)
+
+---
+
+### Wave 2 — Binary Build + Installer Foundation
+
+| | |
+|---|---|
 | **Theme** | Produce platform installers via GoReleaser |
-| **Goal** | A tag push produces a .dmg (macOS) and .exe (Windows) installer with zero manual build steps |
+| **Goal** | A tag push produces a `.dmg` (macOS) and `.exe` (Windows) installer with zero manual build steps |
 
 | Ticket | Title | Owner | Effort |
 |--------|-------|-------|--------|
 | #1639 | feat(daemon): add GoReleaser config — produce darwin universal binary + windows amd64 binary | backend-engineer | M |
+| #1642 | feat(ci): replace daemon-release.yml matrix with GoReleaser-driven workflow | infrastructure | S |
 | #1640 | feat(daemon): macOS .pkg installer — port LaunchAgent logic from install.sh into pkgbuild/productbuild, wrap in .dmg | backend-engineer | M |
 | #1641 | feat(daemon): Windows NSIS .exe installer — port Scheduled Task logic from install.ps1, no UAC | backend-engineer | M |
-| #1642 | feat(ci): replace daemon-release.yml matrix with GoReleaser-driven workflow | infrastructure | S |
 
 **Definition of done:**
 - [ ] `goreleaser release --snapshot` produces darwin universal binary and windows amd64 binary without errors
+- [ ] macOS `.pkg` postinstall script calls `xattr -dr com.apple.quarantine` after binary copy (per Wave 0 Decision 4)
 - [ ] macOS `.pkg` installs per-user LaunchAgent; daemon starts after install without a terminal
 - [ ] Windows `.exe` installs Scheduled Task; daemon starts after install without UAC prompt
-- [ ] GoReleaser-driven CI workflow active; tag `v*` triggers release build
+- [ ] GoReleaser-driven CI workflow active; `v*` tag triggers release build
 - [ ] CI green on main after merge
 
 **Assigned agents**: backend-engineer (primary), infrastructure
@@ -83,40 +127,45 @@ The waitlist opens **August 1, 2026**. The public closed beta launches **August 
 
 ---
 
-### Wave 2 — First-Run Auth (PKCE + Keychain + BFF Endpoint)
+### Wave 3 — PKCE Auth (dependency-coupled — all 4 tickets ship together)
 
 | | |
-|--|--|
+|---|---|
 | **Theme** | Zero-terminal daemon authentication |
 | **Goal** | Daemon detects missing config, opens browser, completes PKCE, stores key in OS keychain, registers with BFF — no manual key copy-paste ever |
+
+> **Coupling note**: These 4 tickets have hard sub-dependencies. #1643 (config detection) and #1651 (keychain storage) must be implemented before #1650 (PKCE flow) can be tested end-to-end. #1652 (BFF endpoint) must exist before #1650 can complete registration. All 4 must ship together — no partial merges. Wave 0 conditions C-1 through C-8 must be satisfied before this wave starts (see Section 4).
 
 | Ticket | Title | Owner | Effort |
 |--------|-------|-------|--------|
 | #1643 | feat(daemon): first-run config detection — missing daemon.json opens vaultmtg.app/setup or prints URL | backend-engineer | S |
-| #1650 | feat(daemon): implement PKCE OAuth browser-redirect login flow | backend-engineer | M |
 | #1651 | feat(daemon): store Clerk API key in OS keychain (go-keyring) | backend-engineer | S |
+| #1674 | feat(dba): create daemon_api_keys table and migration for daemon registration | backend-engineer | S |
 | #1652 | feat(bff): add POST /v1/daemon/register endpoint — accept Clerk JWT, mint first API key | backend-engineer | S |
+| #1650 | feat(daemon): implement PKCE OAuth browser-redirect login flow | backend-engineer | M |
 
 **Definition of done:**
 - [ ] Daemon with no `daemon.json` opens `vaultmtg.app/setup` in system browser (or prints URL if headless)
-- [ ] PKCE flow completes end-to-end: localhost callback → Clerk login → auth code → `POST /v1/daemon/register`
-- [ ] BFF verifies Clerk JWT, mints API key; endpoint covered by integration tests
-- [ ] Daemon writes API key to OS keychain (macOS Keychain / Windows Credential Manager) — NOT plaintext in `daemon.json`
+- [ ] PKCE flow completes end-to-end: localhost callback on port 51423 (retry 51424) → Clerk login → auth code → `POST /v1/daemon/register`
+- [ ] BFF verifies Clerk JWT, mints API key using `daemon_api_keys` table; rate-limited at 5 req/min per `account_id` (in-memory, no Redis)
+- [ ] BFF returns 200 + existing key if account already has one (not 201)
+- [ ] Daemon writes API key to OS keychain using service `com.mtga-companion.daemon`, account `api-key`
 - [ ] On subsequent starts, daemon reads key from keychain without re-opening browser
-- [ ] Port conflict on localhost callback handled gracefully (retry, no crash)
+- [ ] Port conflict handled gracefully — retry 51424, surface error message, never crash
+- [ ] `GOOS=windows GOARCH=amd64 go build ./...` passes with zero CGO in dependency graph (per Wave 0 Decision 5)
 - [ ] PostHog `daemon_paired` event fires after successful keychain write
 - [ ] `go-keyring` added to `services/daemon/go.mod`
-- [ ] OQ-5, OQ-6, OQ-7 resolved before this wave starts (port choice, key scoping, revocation on reinstall)
+- [ ] Integration tests cover BFF `/v1/daemon/register` — JWT verification, key minting, idempotent re-use, rate limit
 
 **Assigned agents**: backend-engineer (primary)
-**Estimated effort**: L (1× M + 3× S)
+**Estimated effort**: L (1× M + 4× S)
 
 ---
 
-### Wave 3 — SPA Setup Page + Download UX
+### Wave 4 — SPA Setup Page + Download UX
 
 | | |
-|--|--|
+|---|---|
 | **Theme** | Web-based guided install experience |
 | **Goal** | First-time users land on `/setup`, understand platform-specific warnings, download the right installer, and complete PKCE pairing from the browser |
 
@@ -125,12 +174,12 @@ The waitlist opens **August 1, 2026**. The public closed beta launches **August 
 | #1644 | feat(spa): /setup page — first-time install warnings with Gatekeeper + SmartScreen screenshots and bypass instructions | front-engineer | S |
 | #1645 | feat(spa): /setup page — PKCE auth flow replaces SPA-mint-key pairing (ADR-020) | front-engineer | S |
 | #1646 | feat(spa): DaemonDownload.tsx — replace broken install script links with .dmg and .exe download buttons | front-engineer | XS |
-| #1647 | docs(daemon): update install README — describe .pkg/.dmg and NSIS .exe paths, mark shell scripts as power-user fallback | documentation | XS |
+| #1647 | docs(daemon): update install README — describe .pkg/.dmg and NSIS .exe paths, mark shell scripts as power-user fallback | front-engineer | XS |
 
 **Definition of done:**
 - [ ] `/setup` page renders platform-appropriate Gatekeeper (macOS) and SmartScreen (Windows) bypass instructions with screenshots
 - [ ] PKCE flow on SPA replaces old SPA-mint-key flow per ADR-020
-- [ ] `DaemonDownload.tsx` shows `.dmg` and `.exe` download buttons linked to GitHub Releases; no broken shell script links
+- [ ] `DaemonDownload.tsx` shows `.dmg` and `.exe` download buttons linked to GitHub Releases; no broken shell-script links
 - [ ] Install README updated and accurate; shell scripts marked as power-user fallback
 - [ ] Playwright E2E test covers the `/setup` page download button and PKCE redirect
 - [ ] CI green on main after merge
@@ -140,12 +189,12 @@ The waitlist opens **August 1, 2026**. The public closed beta launches **August 
 
 ---
 
-### Wave 4 — GA Readiness Documentation
+### Wave 5 — GA Readiness Documentation
 
 | | |
-|--|--|
+|---|---|
 | **Theme** | Document signing workflows so GA activation is a checklist, not a scramble |
-| **Goal** | Apple Developer Program and Azure Trusted Signing are documented and ready to activate at GA — neither requires actual active signing in v0.3.1 |
+| **Goal** | Apple Developer Program and Azure Trusted Signing are documented and ready to activate at GA — neither requires active signing in v0.3.1 |
 
 | Ticket | Title | Owner | Effort |
 |--------|-------|-------|--------|
@@ -156,30 +205,33 @@ The waitlist opens **August 1, 2026**. The public closed beta launches **August 
 - [ ] Apple Developer Program enrollment documented; `notarytool` credential path in SSM confirmed
 - [ ] Azure Trusted Signing workflow documented in GoReleaser config comments; budget approval recorded
 - [ ] Neither ticket requires notarization or signing to be active — documentation is the deliverable
-- [ ] OQ-1 (Apple account confirmed) and OQ-2 (Azure budget approved) resolved before this wave closes
+- [ ] Azure identity validation status confirmed with Ray before this wave closes
 
 **Assigned agents**: infrastructure
 **Estimated effort**: M (2× S)
 
 ---
 
-### Wave 5 — Component Library Foundation
+### Wave 6 — Component Library Foundation
 
 | | |
-|--|--|
-| **Theme** | Component Library Foundation — Storybook + Chromatic baseline |
-| **Goal** | Storybook 8 installed and deployed to Chromatic; baseline snapshots approved; CI Chromatic check required |
+|---|---|
+| **Theme** | Storybook + Chromatic baseline — pre-beta quality gate |
+| **Goal** | Storybook 8 installed and deployed to Chromatic; baseline snapshots approved; Chromatic check required in CI |
+
+> Wave 6 can partially overlap with Wave 5 — the Storybook spike (#1621) has no dependency on Wave 5 tickets and may start as soon as Wave 3 closes.
 
 | Ticket | Title | Owner | Effort |
 |--------|-------|-------|--------|
-| #1621 | spike(storybook): Storybook + Chromatic discovery spike — evaluate Vite builder compatibility and Chromatic pricing | front-engineer | M |
-| #1622 | feat(storybook): install and configure Storybook 8 with Vite builder | front-engineer | M |
-| #1625 | feat(chromatic): capture Chromatic baseline snapshots for existing components | front-engineer | M |
+| #1621 | Discovery spike: Storybook + Chromatic setup on React 19 + Vite | front-engineer | M |
+| #1622 | feat(frontend): install and configure Storybook 8 with Vite builder | front-engineer | M |
+| #1625 | feat(frontend): capture Chromatic baseline snapshots and approve initial set | front-engineer | M |
 
 **Definition of done:**
-- [ ] Chromatic baseline approved by Ray (no unresolved snapshot diffs)
+- [ ] Storybook 8 running locally with Vite builder against the existing component library
 - [ ] Storybook deployed to Chromatic; Chromatic project URL documented in repo
-- [ ] CI passes with Chromatic check as a required status
+- [ ] Chromatic baseline snapshots captured and approved by Ray (zero unresolved diffs)
+- [ ] Chromatic check added as a required CI status; CI green on main
 - [ ] All three tickets in Done state on Project #33
 
 **Assigned agents**: front-engineer
@@ -187,94 +239,75 @@ The waitlist opens **August 1, 2026**. The public closed beta launches **August 
 
 ---
 
-### Wave 6 — CI Hardening
-
-| | |
-|--|--|
-| **Theme** | Supply-chain security before shipping installers to beta users |
-| **Goal** | Pinned Actions, Node 22 LTS, govulncheck, npm audit — zero high/critical findings |
-
-| Ticket | Title | Owner | Effort |
-|--------|-------|-------|--------|
-| TBD | Upgrade CI to Node.js 22 LTS across all jobs | infrastructure | S |
-| TBD | Pin all GitHub Actions to SHA-pinned versions | infrastructure | XS |
-| TBD | Add `govulncheck` to Go CI jobs | infrastructure | XS |
-| TBD | Add `npm audit --audit-level=high` to frontend CI | infrastructure | XS |
-
-**Definition of done:**
-- [ ] All CI jobs green on Node.js 22 LTS
-- [ ] All GitHub Actions pinned to SHA (no floating tags)
-- [ ] `govulncheck` passes with zero high/critical findings
-- [ ] `npm audit` passes with zero high-severity findings
-
-**Assigned agents**: infrastructure
-**Estimated effort**: M (1× S + 3× XS)
-
-> PM action item: file Wave 6 tickets before Wave 5 closes.
-
----
-
 ### Wave 7 — Staging Validation
 
 | | |
-|--|--|
-| **Theme** | Prove staging is clean before release tag |
-| **Goal** | Staging deploy clean from scratch; smoke suite passes; BFF healthy |
+|---|---|
+| **Theme** | Prove staging is clean before the release tag is cut |
+| **Goal** | Staging deploy clean from scratch; BFF healthy; full platform smoke tests pass |
 
 | Ticket | Title | Owner | Effort |
 |--------|-------|-------|--------|
-| TBD | Staging deploy pipeline smoke test | infrastructure | S |
-| TBD | BFF `/healthz` verified on staging | backend-engineer | XS |
-| TBD | Playwright staging smoke suite runs clean | ui-tester | S |
+| #1669 | test(staging): run full daemon install smoke test on macOS 14+ VM | infrastructure | S |
+| #1670 | test(staging): run full daemon install smoke test on Windows with SmartScreen | infrastructure | S |
+| #1671 | test(staging): end-to-end PKCE daemon pairing flow on both platforms | infrastructure | S |
 
 **Definition of done:**
 - [ ] Staging deploy completes clean from scratch (no prior state assumed)
 - [ ] BFF `/healthz` returns 200 on staging
+- [ ] Full daemon install smoke test passes on macOS 14+ VM (download → install → daemon running)
+- [ ] Full daemon install smoke test passes on Windows 11 with SmartScreen bypass documented
+- [ ] PKCE pairing flow completes end-to-end on both platforms in staging environment
 - [ ] Playwright staging smoke suite passes with zero failures
 
 **Assigned agents**: infrastructure (primary), backend-engineer, ui-tester
-**Estimated effort**: M (2× S + 1× XS)
-
-> PM action item: file Wave 7 tickets before Wave 6 closes.
+**Estimated effort**: M (3× S)
 
 ---
 
-### Wave 8 — Release Gate (Smoke Test + Tag + Changelog)
+### Wave 8 — Release Gate (ceremony)
 
 | | |
-|--|--|
-| **Theme** | End-to-end validation, tag, and publish |
-| **Goal** | Manual install-to-event flow verified on both platforms; tag cut; changelog published |
+|---|---|
+| **Theme** | Final sign-off, tag, and publish |
+| **Goal** | All exit gates verified; v0.3.1 tag cut; GitHub Release created |
 
-**Tickets**: None — ceremony wave.
+**Tickets**: None — ceremony wave. PM files Wave 8 tracking ticket before Wave 6 closes.
 
 **Definition of done (all must be true before PM issues GO):**
-- [ ] CI is green on main (hard gate — no exceptions per BROADCAST Active Directive 2)
-- [ ] Staging deploy pipeline runs from scratch; BFF `/healthz` returns 200
-- [ ] Playwright staging smoke suite passes
-- [ ] Manual install smoke test passed on macOS 14+ and Windows 11:
-  - Download `.dmg`/`.exe` → install → PKCE login → daemon starts → first event appears in BFF (verified via DB query or PostHog)
-- [ ] All Wave 1–7 tickets are in Done state on Project #33 board
+- [ ] All Waves 1–7 are closed; all tickets in Done state on Project #33
+- [ ] CI green on main (hard gate — no exceptions)
+- [ ] Staging `/healthz` returns 200 after deploy
+- [ ] macOS DMG installs and runs without Gatekeeper hard-block on macOS 14+
+- [ ] Windows installer runs without SmartScreen hard-block on Windows 11
+- [ ] PKCE daemon pairing flow completes end-to-end on both platforms
 - [ ] PostHog `daemon_paired` event confirmed firing from at least one real test session
-- [ ] OQ-4 (Gatekeeper hard-block behavior) confirmed before this wave closes
+- [ ] Chromatic baseline approved
 - [ ] `CHANGELOG.md` entry written for v0.3.1
-- [ ] v0.3.1 git tag cut; GitHub Release created with `.dmg` and `.exe` artifacts attached
+- [ ] v0.3.1 git tag cut; GitHub Release created with `.dmg` and `.exe` artifacts attached and checksums verified
 
-**Assigned**: Ray (arch) + Najah (PM) + lead-engineer (LE co-sign required)
+**Assigned**: Ray (arch) + Najah (PM) + lead-engineer (co-sign required)
 **Estimated effort**: S (ceremony)
 
 ---
 
-## 4. Dependencies
+## 4. Architecture Conditions (Wave 0 → Wave 3+ Gates)
 
-Before engineering starts:
+These conditions were identified in the arch review. Engineering **MAY NOT begin Wave 3** until all C-1 through C-8 are satisfied. Wave 4 also has specific conditions.
 
-- [ ] **v0.3.0 tag is cut** ✓ — v0.3.0 closed 2026-05-09
-- [ ] **Apple Developer Program accepted** ✓ — per BROADCAST; documented in #1648
-- [ ] **Azure Artifact Signing account deployed** — identity validation pending Microsoft review (Wave 4 documents the workflow; active signing is GA scope)
-- [ ] **Wave 0 gate** — Ray (architect) architectural implications review must be received and acknowledged by PM before any Wave 1 ticket moves to In Progress
+| # | Condition | Owner | Deadline |
+|---|---|---|---|
+| C-1 | Keychain naming convention resolved — service: `com.mtga-companion.daemon`, account: `api-key`. ADR-020 updated. | Architect (signed off) | Before #1651 In Progress |
+| C-2 | PKCE callback port confirmed as `51423` (fallback `51424`). ADR-020 step 3 updated. | Resolved (Wave 0) | Before #1650 In Progress |
+| C-3 | Clerk OAuth application configured with `http://localhost:51423/callback` and `http://localhost:51424/callback` | PM action (register URIs) + backend-engineer | Before #1650 In Progress |
+| C-4 | API key scoping confirmed: per-user, one-key-per-account, `UNIQUE on account_id`. | Resolved (Wave 0) | Before #1652 In Progress |
+| C-5 | Key revocation behavior confirmed: re-use existing key on reinstall; BFF returns 200 (not 201). | Resolved (Wave 0) | Before #1652 In Progress |
+| C-6 | `daemon_api_keys` migration ticket #1674 merged to main before or with #1652. | DBA / backend-engineer | Before #1652 In Progress |
+| C-7 | `POST /v1/daemon/register` request/response JSON contract documented in ADR-020. | Architect + backend-engineer | Before Wave 3 starts |
+| C-8 | `daemon.json` canonical schema documented in ADR-020 (with migration path from legacy plaintext `api_key`). | Backend-engineer | Before #1643 In Progress |
 
-No v0.4.0 work begins until PM issues GO after Wave 7.
+**Wave 5 condition** (non-blocking for Wave 3 start, must resolve before Wave 5 closes):
+- Azure identity validation approval confirmed. If not received, escalate to Ray.
 
 ---
 
@@ -282,30 +315,24 @@ No v0.4.0 work begins until PM issues GO after Wave 7.
 
 All of the following must be true before the v0.3.1 tag is cut:
 
-- [ ] All 7 waves closed (all tickets in Done state on Board #33)
-- [ ] CI green on main
-- [ ] macOS DMG installs and runs without Gatekeeper hard-block (tested on macOS 14+)
-- [ ] Windows installer (.exe) installs and runs without SmartScreen hard-block (tested on Windows 11)
-- [ ] Daemon pairs successfully via PKCE flow on both platforms (at least one successful pair each)
-- [ ] PostHog `daemon_paired` event confirmed firing from a real test session
-- [ ] Chromatic baseline approved (Wave 5 — required for v0.3.1)
-- [ ] Release checklist completed (RELEASE_CHECKLIST.md)
-- [ ] `CHANGELOG.md` updated
-- [ ] GitHub Release created with `.dmg` and `.exe` artifacts attached and checksums verified
+- **EG-1** — All Waves 1–7 closed; all tickets in Done state on Project #33
+- **EG-2** — CI green on main (hard gate — no exceptions; BROADCAST Active Directive 2 applies)
+- **EG-3** — macOS DMG installs without Gatekeeper hard-block on macOS 14+
+- **EG-4** — Windows installer runs without SmartScreen hard-block on Windows 11
+- **EG-5** — PKCE daemon pairing flow works end-to-end on both platforms
+- **EG-6** — Chromatic baseline approved (zero unresolved snapshot diffs)
+- **EG-7** — Release checklist completed (`CHANGELOG.md` updated; GitHub Release created with `.dmg` and `.exe` artifacts; checksums verified)
+- **EG-8** — Staging `/healthz` returns 200 after clean deploy
 
 ---
 
 ## 6. PM Action Items
 
-Open items that must be resolved — not stale, verified as of 2026-05-09:
+Open items that must be resolved — verified as of 2026-05-09:
 
-- [ ] **File Wave 5 tickets** (CI Hardening) before Wave 4 closes — 4 tickets, infrastructure owner
-- [ ] **File Wave 6 tickets** (Staging Validation) before Wave 5 closes — 3 tickets, infrastructure/backend/ui-tester owners
-- [ ] **Confirm Azure identity validation approved** — Microsoft review in progress; escalate to Ray if no approval by Wave 4 start
-- [ ] **Confirm Ray's architectural implications note received** before any Wave 1 ticket moves to In Progress (Wave 0 gate)
-- [ ] **Resolve OQ-5, OQ-6, OQ-7** (port choice, key scoping, revocation on reinstall) with backend-engineer and Ray before Wave 2 starts
-- [ ] **Confirm OQ-1 and OQ-2** (Apple account + Azure budget) with Ray before Wave 4 starts
-- [ ] **Confirm OQ-4** (Gatekeeper bypass behavior on macOS 14) with Ray before Wave 7 closes — requires a clean macOS 14 VM test
+- [ ] **Register Clerk OAuth redirect URIs** — `http://localhost:51423/callback` and `http://localhost:51424/callback` must be registered in the Clerk OAuth application config before Wave 3 (#1650) starts. This is a PM/infra action, not backend-engineer.
+- [ ] **Confirm Azure identity validation approved** — Microsoft review in progress. Escalate to Ray if no approval by Wave 5 start.
+- [ ] **File Wave 8 release gate tickets** before Wave 6 closes — Wave 8 is a ceremony wave; PM files a tracking ticket so the release gate has a board artifact.
 
 ---
 
@@ -313,31 +340,68 @@ Open items that must be resolved — not stale, verified as of 2026-05-09:
 
 | # | Risk | Likelihood | Impact | Mitigation |
 |---|------|-----------|--------|------------|
-| R-1 | Gatekeeper hard-blocks unsigned .dmg on macOS 14+ | Medium | High | Confirm on clean macOS 14 VM in Wave 3; add Gatekeeper bypass instructions to `/setup` page regardless |
-| R-2 | SmartScreen hard-blocks unsigned .exe on Windows 11 | Medium | High | Document SmartScreen bypass in Wave 3 SPA; confirm on clean Windows 11 VM; escalate to Ray if bypass is not available without EV signing |
-| R-3 | PKCE localhost callback port conflict | Low | Medium | Handle gracefully in #1650: retry with ephemeral port, surface error, never crash |
-| R-4 | `go-keyring` fails on a specific macOS/Windows version | Low | High | Spike keychain write/read in #1651 before committing; keep fallback path documented |
-| R-5 | Azure identity validation not approved before Wave 4 closes | Medium | Low | Wave 4 documents workflow only — approval not required to close wave; escalate if not received before GA prep |
-| R-6 | Wave 5–6 tickets not created before those waves start | High | Medium | PM action item: file Wave 5 before Wave 4 closes, Wave 6 before Wave 5 closes |
-| R-7 | v0.4.0 engineers start work before v0.3.1 closes | Low | High | BROADCAST Active Directive 1 blocks this; PM must not issue GO until Wave 7 is fully green |
+| R-1 | Gatekeeper hard-blocks unsigned .dmg on macOS 14+ — right-click → Open does not produce a bypass | Medium | High | Confirm on clean macOS 14 VM in Wave 7; add explicit Gatekeeper bypass instructions to `/setup` page in Wave 4 regardless |
+| R-2 | SmartScreen hard-blocks unsigned .exe on Windows 11 — no bypass path | Medium | High | Document SmartScreen bypass in Wave 4 SPA; confirm on clean Windows 11 VM in Wave 7; escalate to Ray if block is unbypassable without EV signing |
+| R-3 | PKCE localhost callback port conflict (51423 in use) | Low | Medium | #1650 must retry on 51424, then surface a clear error message — never crash; both ports registered in Clerk |
+| R-4 | `go-keyring` OS keychain integration fails on a specific macOS/Windows version | Low | High | Spike keychain write/read in #1651 before committing; CGO-free cross-compile validated in CI (C-5 condition) |
+| R-5 | Azure identity validation not approved before Wave 5 closes | Medium | Low | Wave 5 documents the workflow only — active signing not required to close the wave; escalate if unresolved before GA prep |
+| R-6 | Clerk does not permit exact `http://localhost:51423/callback` as redirect URI on current plan tier | Low | High | Fallback: custom URL scheme (`mtgacompanion://callback`) — requires new ticket; scope to separate spike if Clerk rejects exact-match localhost URI |
+| R-7 | `daemon_api_keys` migration (#1674) not merged before #1652 starts — Wave 3 integration failure | Medium | High | C-6 condition blocks #1652 from starting; PM must confirm migration is merged before unblocking backend-engineer on #1652 |
+| R-8 | v0.4.0 engineers start work before v0.3.1 closes | Low | High | BROADCAST Active Directive 1 blocks this; PM must not issue GO until Wave 7 is fully green and all exit gates pass |
+| R-A (arch) | Clerk wildcard redirect URI not supported — fixed port is the mitigation | Low | High | Fixed port 51423 chosen; PM must register URIs before Wave 3 starts |
+| R-B (arch) | `go-keyring` requires macOS Keychain entitlement for notarized builds | Medium | Medium | Entitlement documented in #1648; not a Wave 3 blocker since notarization is GA scope |
+| R-C (arch) | `go-keyring` CGO dependency fails on Windows cross-compile | Low | High | CGO-free validation added to #1651 ACs as a CI gate |
+| R-D (arch) | Missing `daemon_api_keys` migration causes Wave 3 integration failure | Medium | High | Tracked as #1674; C-6 condition blocks #1652 until migration is merged |
+| R-E (arch) | Gatekeeper quarantine on binary (not just installer) | Medium | High | `xattr -dr com.apple.quarantine` added to #1640 postinstall ACs (Wave 0 Decision 4) |
 
 ---
 
 ## 8. Out of Scope
 
-Explicit list of what is NOT in v0.3.1 — save for v0.4.0 or later:
+Explicit list of what is NOT in v0.3.1:
 
 | Item | Where it goes |
 |------|--------------|
-| Apple notarization (active signing) | GA milestone |
-| Azure Trusted Signing (active signing) | GA milestone |
+| Apple notarization (active signing) | GA milestone — Wave 5 documents the runbook only |
+| Azure Trusted Signing (active signing) | GA milestone — Wave 5 documents the workflow only; budget approval needed |
+| Full Storybook component story library (beyond Wave 6 baseline) | v0.4.0 follow-on after Chromatic baseline is established |
+| Security agent / supply-chain scanning beyond npm audit + govulncheck | Post-GA |
+| Windows MSI installer (enterprise) | Post-GA only if requested — beta uses NSIS .exe |
 | System tray / menubar icon | Post-GA |
-| MSI installer (Windows enterprise) | Post-GA if requested |
 | Linux packaging | Unsupported platform |
-| Homebrew cask | Post-GA secondary channel |
+| Homebrew cask | Post-GA secondary distribution channel |
 | Automatic daemon auto-updater | Post-GA |
-| Full component story library (beyond Wave 5 baseline) | v0.4.0 follow-on after Chromatic baseline is established |
-| API key issuance/revoke UI (#1314) | Superseded by PKCE; full key management UI post-beta |
-| Full component story library | v0.4.0 Wave 1 follow-on |
-| Stripe integration / paid tiers | Post-beta GA |
-| Any v0.4.0 features | Engineering does not start v0.4.0 until PM issues GO |
+| Device authorization flow (headless) | Fallback for CI/server — not a beta user scenario |
+| API key issuance/revoke UI (#1314) | Superseded by PKCE — daemon handles key acquisition automatically; SPA key management UI deferred post-beta |
+| GoReleaser Pro features | Open-source tier sufficient for beta |
+| Any v0.4.0 feature work | Engineering does not start v0.4.0 until PM issues GO after Wave 7 |
+
+---
+
+## 9. Dependency Summary
+
+```
+v0.3.0 closed (2026-05-09) ✓
+  │
+  └─▶ Wave 1 — CI Hardening (#1658, #1659, #1667, #1668)
+        │
+        └─▶ Wave 2 — Binary Build + Installer Foundation (#1639, #1642, #1640, #1641)
+              │
+              ├─▶ Wave 3 — PKCE Auth [all 4 ship together] (#1643, #1651, #1674, #1652, #1650)
+              │     │  [requires C-1 through C-8 satisfied]
+              │     │
+              │     └─▶ Wave 4 — SPA Setup Page + Download UX (#1644, #1645, #1646, #1647)
+              │           │
+              │           ├─▶ Wave 5 — GA Readiness Docs (#1648, #1649) [partially parallel]
+              │           │
+              │           └─▶ Wave 6 — Component Library (#1621, #1622, #1625)
+              │                 [#1621 spike can start when Wave 3 closes, not Wave 4]
+              │
+              └─▶ Wave 7 — Staging Validation (#1669, #1670, #1671)
+                    │
+                    └─▶ Wave 8 — Release Gate (ceremony)
+                          │
+                          └─▶ v0.3.1 tag ✓
+```
+
+No v0.4.0 work begins until PM issues GO after Wave 8.
