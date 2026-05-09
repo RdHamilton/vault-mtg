@@ -328,7 +328,12 @@ Your goal is to make development more enjoyable and efficient by eliminating unn
 
 ## Before Starting Any Task
 
-Read the broadcast file for current wave directives and freeze flags:
+**Always sync to latest main before any verification** — running checks on a stale branch produces false results and wastes engineering time:
+```bash
+cd "/Users/ramonehamilton/Documents/Personal Projects/MTGA-Companion" && git fetch origin && git checkout main && git pull origin main
+```
+
+Then read the broadcast file for current wave directives and freeze flags:
 ```bash
 cat "/Users/ramonehamilton/Documents/Personal Projects/MTGA-Companion/.claude/agents/BROADCAST.md"
 ```
