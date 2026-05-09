@@ -72,7 +72,7 @@ jobs:
     - name: Upload binary to S3 (staging)
       run: |
         aws s3 cp services/bff/mtga-bff-staging \
-          s3://$STAGING_BUCKET/staging/${{ github.sha }}/mtga-bff-staging
+          "s3://$STAGING_BUCKET/staging/${{ github.sha }}/mtga-bff-staging"
 
     - name: Upload deploy scripts to S3 (staging)
       run: |
@@ -80,7 +80,7 @@ jobs:
         # Scripts for staging are stored alongside prod scripts in the same deploy bucket
         # under a staging/ prefix.
         aws s3 sync scripts/deploy/ \
-          s3://$STAGING_BUCKET/scripts/ \
+          "s3://$STAGING_BUCKET/scripts/" \
           --exclude "*" --include "*.sh"
 
     # Renders /etc/mtga-companion-staging/env from SSM parameter hierarchy

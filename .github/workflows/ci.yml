@@ -446,6 +446,10 @@ jobs:
         # DATABASE_URL and CLERK_SECRET_KEY. Set to "development" so the BFF
         # starts without a database for the pipeline log-fixture tests.
         MTGA_ENV: development
+        # Removes auth from GET /api/v1/events so pipeline log-fixture tests
+        # can receive SSE events without a database or Clerk key.
+        # Safe only because MTGA_ENV=development above; never set in staging/prod.
+        BFF_E2E_UNGUARDED_SSE: true
 
     - name: Upload blob report shard
       if: always()

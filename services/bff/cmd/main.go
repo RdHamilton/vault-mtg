@@ -160,6 +160,7 @@ func main() {
 		draftRatingsHandler *handlers.DraftRatingsHandler
 		historyHandler      *handlers.HistoryHandler
 		listV2Handler       *handlers.ListV2Handler
+		statsHandler        *handlers.StatsHandler
 		daemonHealthHandler *handlers.DaemonHealthHandler
 	)
 
@@ -198,6 +199,11 @@ func main() {
 
 		daemonHealthHandler = handlers.NewDaemonHealthHandler(daemonEventsRepo)
 
+		// StatsHandler provides deck performance, win-rate trend, and format
+		// distribution analytics endpoints (issue #1513).
+		statsRepo := repository.NewStatsRepository(sqlDB)
+		statsHandler = handlers.NewStatsHandler(accountRepo, statsRepo, statsRepo, statsRepo)
+
 		// Wire Clerk→DB user ID bridge when both Clerk and a database are available.
 		userRepo := repository.NewUserRepository(sqlDB)
 		clerkUserResolver = bffmiddleware.ClerkUserResolver(userRepo)
@@ -230,6 +236,13 @@ func main() {
 
 	healthzHandler := handlers.NewHealthzHandler(cfg.Env, cfg.DatabaseURL, storage.MigrationStatus)
 
+	// E2EUnguardedSSE is only honoured in development; in any other env the
+	// flag is silently ignored so a misconfigured staging/prod box stays safe.
+	e2eUnguardedSSE := cfg.Env == "development" && os.Getenv("BFF_E2E_UNGUARDED_SSE") == "true"
+	if e2eUnguardedSSE {
+		log.Println("WARN: BFF_E2E_UNGUARDED_SSE=true — SSE endpoint is unauthenticated (E2E mode only)")
+	}
+
 	r := BuildRouter(cfg, RouterDeps{
 		Broker:              broker,
 		IngestHandler:       ingestHandler,
@@ -237,6 +250,7 @@ func main() {
 		DraftRatingsHandler: draftRatingsHandler,
 		HistoryHandler:      historyHandler,
 		ListV2Handler:       listV2Handler,
+		StatsHandler:        statsHandler,
 		DaemonHealthHandler: daemonHealthHandler,
 		HealthzHandler:      healthzHandler,
 		ClerkAuthMiddl:      clerkAuthMiddl,
@@ -244,6 +258,7 @@ func main() {
 		ClerkUserResolver:   clerkUserResolver,
 		APIKeyAuthMiddl:     apiKeyAuthMiddl,
 		SentryMiddl:         bffmiddleware.NewSentryMiddleware(),
+		E2EUnguardedSSE:     e2eUnguardedSSE,
 	})
 
 	srv := &http.Server{
@@ -287,7 +302,9 @@ type RouterDeps struct {
 	DraftRatingsHandler *handlers.DraftRatingsHandler
 	HistoryHandler      *handlers.HistoryHandler
 	// ListV2Handler serves the cursor-paginated v2 list endpoints (ADR-018).
-	ListV2Handler       *handlers.ListV2Handler
+	ListV2Handler *handlers.ListV2Handler
+	// StatsHandler serves the analytics stats endpoints (issue #1513).
+	StatsHandler        *handlers.StatsHandler
 	DaemonHealthHandler *handlers.DaemonHealthHandler
 	// HealthzHandler serves GET /healthz — intentionally public (no auth).
 	HealthzHandler *handlers.HealthzHandler
