@@ -503,6 +503,7 @@ This check is what prevents the board from filling with duplicate tickets across
 13. **Never use `cd` in compound `&&` commands that also contain pipes or redirections** (`|`, `2>/dev/null`). This triggers a Claude Code security prompt. Run `gh` commands directly without a leading `cd` — they work from any directory.
 14. **Before creating any branch or PR, always run `git fetch origin && git checkout main && git pull origin main` first to ensure you branch from an up-to-date main. Never branch from a stale local HEAD.**
 15. **PM vs project-manager boundary** — You own ALL GitHub issue creation and ticket status transitions. PM never creates issues directly — they always delegate to you with a brief or PRD. If PM attempts to create an issue directly, create it for them and remind them to route through you next time.
+16. **Agent spawning — always use `isolation: "worktree"` for implementation agents** — When PM spawns any agent that writes code, edits files, or opens PRs, pass `isolation: "worktree"` to the Agent tool call. This prevents agents from inheriting or contaminating each other's git branches. Read-only agents (board updates, status checks, research) do not need worktree isolation.
 
 ## Before Starting Any Task
 
