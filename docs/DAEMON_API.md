@@ -891,6 +891,29 @@ Initial WebSocket API release.
 
 ---
 
+## GRE Session Buffer Configuration
+
+The daemon accumulates GRE (Game Rules Engine) log entries in an in-memory
+session buffer per MTGA session and flushes them as partial `match.game_ended`
+events when a threshold is reached, when a session becomes stale, or when the
+daemon shuts down gracefully.
+
+### Config Fields
+
+| Field | JSON key | Env var | Default | Range | Description |
+|---|---|---|---|---|---|
+| `GRESessionFlushThreshold` | `gre_session_flush_threshold` | `GRE_SESSION_FLUSH_THRESHOLD` | `500` | 50–2000 | Number of GRE entries that triggers an immediate partial flush. Values outside the range revert to the default with a warning log. |
+| `GRESessionStaleMinutes` | `gre_session_stale_minutes` | `GRE_SESSION_STALE_MINUTES` | `15` | >0 | Age in minutes after which an idle session buffer is evicted and flushed as partial by the background sweep goroutine (runs every 10 minutes). |
+
+### Partial Events
+
+When a `match.game_ended` event is flushed before the game completes (threshold
+hit, stale sweep, or daemon shutdown), its payload includes `"partial": true`.
+The BFF projector writes `partial = true` on the corresponding `game_plays` row
+so consumers can distinguish complete vs. truncated game records.
+
+---
+
 ## References
 
 - [ARCHITECTURE.md](ARCHITECTURE.md) - System architecture

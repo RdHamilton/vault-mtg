@@ -1,1 +1,2 @@
-ALTER TABLE game_plays DROP COLUMN partial;
+ALTER TABLE game_plays
+    DROP COLUMN IF EXISTS partial;

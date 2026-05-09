@@ -17,6 +17,10 @@ type GamePlayInsert struct {
 	DurationSecs  int
 	Sequence      uint64
 	OccurredAt    time.Time
+	// Partial indicates the row was emitted before the game was confirmed
+	// complete — the GRE buffer hit its flush threshold or the stale sweep
+	// evicted it.  Maps to the partial column added in migration 000074.
+	Partial bool
 }
 
 // LifeChangeInsert holds one life-change row to be written to
@@ -41,6 +45,7 @@ type GamePlayRow struct {
 	DurationSecs  int
 	Sequence      uint64
 	OccurredAt    time.Time
+	Partial       bool
 }
 
 // GamePlayRepository provides write and read access to game_plays and
@@ -64,15 +69,16 @@ func (r *GamePlayRepository) InsertGamePlay(ctx context.Context, ins GamePlayIns
 	const q = `
 		INSERT INTO game_plays
 			(account_id, match_id, game_number, winning_team_id, turn_count,
-			 duration_secs, sequence, occurred_at)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+			 duration_secs, sequence, occurred_at, partial)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
 		ON CONFLICT (account_id, match_id, game_number)
 		DO UPDATE SET
 			winning_team_id = EXCLUDED.winning_team_id,
 			turn_count      = EXCLUDED.turn_count,
 			duration_secs   = EXCLUDED.duration_secs,
 			sequence        = EXCLUDED.sequence,
-			occurred_at     = EXCLUDED.occurred_at
+			occurred_at     = EXCLUDED.occurred_at,
+			partial         = EXCLUDED.partial
 		WHERE game_plays.sequence < EXCLUDED.sequence
 		RETURNING id`
 
@@ -87,6 +93,7 @@ func (r *GamePlayRepository) InsertGamePlay(ctx context.Context, ins GamePlayIns
 		ins.DurationSecs,
 		ins.Sequence,
 		ins.OccurredAt,
+		ins.Partial,
 	).Scan(&id)
 
 	if err == sql.ErrNoRows {
@@ -151,7 +158,7 @@ func (r *GamePlayRepository) InsertLifeChanges(ctx context.Context, changes []Li
 func (r *GamePlayRepository) GetGamePlay(ctx context.Context, accountID int64, matchID string, gameNumber int) (GamePlayRow, error) {
 	const q = `
 		SELECT id, account_id, match_id, game_number, winning_team_id,
-		       turn_count, duration_secs, sequence, occurred_at
+		       turn_count, duration_secs, sequence, occurred_at, partial
 		FROM game_plays
 		WHERE account_id = $1 AND match_id = $2 AND game_number = $3`
 
@@ -166,6 +173,7 @@ func (r *GamePlayRepository) GetGamePlay(ctx context.Context, accountID int64, m
 		&row.DurationSecs,
 		&row.Sequence,
 		&row.OccurredAt,
+		&row.Partial,
 	)
 
 	return row, err
@@ -177,7 +185,7 @@ func (r *GamePlayRepository) GetGamePlay(ctx context.Context, accountID int64, m
 func (r *GamePlayRepository) ListGamePlaysByMatch(ctx context.Context, accountID int64, matchID string) ([]GamePlayRow, error) {
 	const q = `
 		SELECT id, account_id, match_id, game_number, winning_team_id,
-		       turn_count, duration_secs, sequence, occurred_at
+		       turn_count, duration_secs, sequence, occurred_at, partial
 		FROM game_plays
 		WHERE account_id = $1 AND match_id = $2
 		ORDER BY occurred_at, sequence`
@@ -201,6 +209,7 @@ func (r *GamePlayRepository) ListGamePlaysByMatch(ctx context.Context, accountID
 			&row.DurationSecs,
 			&row.Sequence,
 			&row.OccurredAt,
+			&row.Partial,
 		); err != nil {
 			return nil, err
 		}

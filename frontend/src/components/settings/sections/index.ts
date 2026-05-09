@@ -33,3 +33,6 @@ export type { MLSettingsSectionProps } from './MLSettingsSection';
 
 export { ApiKeySection } from './ApiKeySection';
 export type { ApiKeySectionProps } from './ApiKeySection';
+
+export { UserProfileSection } from './UserProfileSection';
+export type { UserProfileSectionProps, UserProfileData } from './UserProfileSection';

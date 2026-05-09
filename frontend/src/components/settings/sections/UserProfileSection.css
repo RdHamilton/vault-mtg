@@ -1,0 +1,42 @@
+.user-profile-section {
+  /* Inherits .settings-section base styles */
+}
+
+.user-profile-loading,
+.user-profile-unauthenticated {
+  color: #aaa;
+  font-size: 14px;
+  padding: 8px 0;
+}
+
+.user-profile-content {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.user-profile-avatar {
+  width: 56px;
+  height: 56px;
+  border-radius: 50%;
+  object-fit: cover;
+  border: 2px solid #444;
+  flex-shrink: 0;
+}
+
+.user-profile-details {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.user-profile-name {
+  font-size: 16px;
+  font-weight: 600;
+  color: #f0f0f0;
+}
+
+.user-profile-email {
+  font-size: 13px;
+  color: #aaa;
+}
