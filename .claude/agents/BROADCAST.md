@@ -6,7 +6,7 @@ description: Shared operational directives broadcast to all agents. Read at the 
 # Agent Broadcast — VaultMTG
 
 **Last updated**: 2026-05-09
-**Updated by**: PM (v0.4.0 kickoff)
+**Updated by**: PM (v0.4.0 kickoff cleanup)
 
 ---
 
@@ -24,21 +24,19 @@ description: Shared operational directives broadcast to all agents. Read at the 
 
 Read these before picking up any ticket. They override default agent behavior.
 
-1. **P0: CI is red on main** — Infrastructure owns #1524. No new feature work starts until CI is green and main is clean.
-2. **Architect review COMPLETE — PROCEED** — `docs/arch/wave4-implications.md` is merged. Key gates before tickets start: (a) ADR-015 (pagination standard) must be written before #1513/#1514; (b) #1517 (CSP) must schedule after #1573 (Crisp); (c) #1519/#1520/#1513 partial-flag field name must be agreed on before any of the three start coding; (d) #1488 (security audit) is last.
-3. **v0.3.0 release tag is blocked** — Do not cut the v0.3.0 release tag until CI is green. Infrastructure will notify PM when it's ready.
-4. **ENFORCEMENT — task scope violation logged** — A rogue infrastructure agent made out-of-scope commits on 2026-05-08 (reverted a LE-approved CLERK secret, added logparse CI job, moved a ticket). The incident is resolved. All agents must read the Task Scope Enforcement rule in Standing Orders before any action.
-5. **CI must be green before any wave closes** — No wave-close report is valid when CI is red. PM must verify CI status at the time of writing the close report. Red CI = NO-GO. "Unrelated" failures still block the wave — a broken pipeline means the codebase is not shippable.
-6. **Staging must be proven healthy before any release tag** — Before cutting a release tag: (a) run the staging deploy pipeline from scratch, (b) verify BFF starts and `/healthz` returns 200, (c) run Playwright staging smoke suite against staging, (d) confirm all smoke tests pass. This is mandatory — not optional.
-7. **Dependency-coupled tickets must ship together** — Any ticket with a same-PR-or-immediately-after dependency may not be split across waves. LE must reject PRs that violate this constraint. If a foundation ticket cannot ship in its intended wave, that wave does not close.
-8. **All wave-close reports require LE co-sign** — PM writes the report; LE verifies that ACs are met in the merged PR diffs. Both names must appear on the report. No wave closes without both sign-offs.
+1. **Wave 0 gate — do not start engineering** — All pre-Wave-0 GATE items (A1–A10 from `docs/prd/v0.4.0-kickoff.md` Section 3) must be confirmed complete before any Wave 0 ticket moves to In Progress on the v0.4.0 project (#30). Outstanding gates: A2 (agent permission audit in RELEASE_CHECKLIST.md §0), A3 (PC-4 in BROADCAST Standing Orders), A4 (PC-9 in BROADCAST Standing Orders). Do not pick up T1–T5 until PM confirms all gates are green.
+2. **PC-2: CI is a hard gate** — No wave closes with CI red. No release tag is cut with CI red. "Unrelated" failures still block — a broken pipeline means the codebase is not shippable. PM must verify CI status at time of writing any wave-close report.
+3. **PC-6: v0.4.0 project is #30** — Project ID `PVT_kwHOABsZ684BW67K`, Milestone #68. Do NOT reference Project #27 (PM backlog) or Project #29 (v0.3.0). All ticket moves, board queries, and project-item-add calls use #30.
+4. **All wave-close reports require LE co-sign** — PM writes the report; LE verifies ACs are met in the merged PR diffs. Both names must appear. No wave closes without both sign-offs.
+5. **Dependency-coupled tickets must ship together** — Tickets with a same-PR-or-immediately-after dependency may not be split across waves. LE must reject PRs that violate this. If a foundation ticket cannot ship in its intended wave, that wave does not close.
+6. **Staging proven healthy before any release tag** — Before cutting a release tag: (a) run staging deploy pipeline from scratch, (b) verify BFF `/healthz` returns 200, (c) run Playwright staging smoke suite, (d) confirm all smoke tests pass.
 
 ---
 
 ## Freeze Flags
 
 - [ ] **Code freeze** (inactive)
-- [x] **Release freeze** — v0.3.0 tag blocked until CI green (#1524)
+- [ ] **Release freeze** (inactive — v0.3.0 tag cut 2026-05-09 ✓)
 - [ ] **Merge freeze** (inactive)
 
 ---
@@ -59,6 +57,8 @@ These apply to every agent on every task and do not expire:
 - **Status checkpoints for long-running tasks**: infrastructure, backend-engineer, and dba must write `docs/status/{agent}.md` at each major step during tasks expected to take >5 minutes. If the same status is written 3+ times without advancing, add `## STUCK — NEEDS RESTART` as the first line of the file so PM's standup flags it to Ray immediately
 - **CI test failures route to the right owner**: frontend test failures → front-engineer; Go test failures → backend-engineer; pipeline/env failures → infrastructure
 - **No new issues created directly by PM**: all GitHub issue creation goes through project-manager
+- **PC-4 (branch cleanliness)**: Every agent runs `git status && git log --oneline -5` before opening any PR. If the working tree is dirty or contains unexpected commits, STOP and report back — do not open the PR.
+- **PC-9 (agent invocation mode)**: Use synchronous invocation for output-producing tasks (research, status checks, reports). Use `run_in_background: true` only for state-update tasks (ticket moves, board updates, GitHub notifications).
 
 ---
 
