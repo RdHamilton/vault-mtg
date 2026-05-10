@@ -121,14 +121,22 @@ export default defineConfig({
       stdout: 'pipe',
       stderr: 'pipe',
     },
-    // Vite dev server on port 3000 with REST API mode.
-    // Timeout raised to 120 s: warmup pre-transforms entry points, but dep
-    // optimisation still needs time on a cold CI runner. 60 s was too tight
-    // when 4 parallel workers start simultaneously (fullyParallel: true).
+    // On CI: build then preview. vite preview serves pre-compiled static files —
+    // no on-demand module transforms. This eliminates the cold-start bottleneck
+    // where 4 parallel Playwright workers each wait 30+ s for Vite to transform
+    // hundreds of TypeScript modules on first request.
+    //
+    // On local: continue using vite dev (HMR, instant feedback).
+    //
+    // Both env vars must be set at BUILD time so Vite bakes them into the bundle:
+    //   VITE_USE_REST_API=true  — enables REST API adapter
+    //   VITE_CLERK_TEST_MODE=true — aliases @clerk/react → clerkMock.tsx
     {
-      command: 'VITE_USE_REST_API=true VITE_CLERK_TEST_MODE=true npm run dev',
+      command: process.env.CI
+        ? 'VITE_USE_REST_API=true VITE_CLERK_TEST_MODE=true npm run build && VITE_USE_REST_API=true npx vite preview --port 3000'
+        : 'VITE_USE_REST_API=true VITE_CLERK_TEST_MODE=true npm run dev',
       url: 'http://localhost:3000',
-      timeout: 120 * 1000,
+      timeout: 180 * 1000,
       reuseExistingServer: !process.env.CI,
       stdout: 'pipe',
       stderr: 'pipe',

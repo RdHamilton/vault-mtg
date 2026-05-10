@@ -439,11 +439,7 @@ jobs:
       run: cd frontend && npx playwright install-deps chromium
 
     - name: Run E2E tests (shard ${{ matrix.shard }}/4)
-      # --workers=2: Vite transforms modules on-demand; with 4 parallel workers all
-      # loading the app simultaneously on a cold CI runner, the transform queue
-      # saturates and React takes 30+ s to mount. 2 workers lets the first load
-      # warm the Vite cache before the second browser hits it.
-      run: cd frontend && npm run test:e2e:pipeline -- --shard=${{ matrix.shard }}/4 --reporter=blob --workers=2
+      run: cd frontend && npm run test:e2e:pipeline -- --shard=${{ matrix.shard }}/4 --reporter=blob
       env:
         CI: true
         # BFF config.Load() defaults MTGA_ENV to "production" which requires
