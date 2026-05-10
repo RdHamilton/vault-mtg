@@ -131,9 +131,16 @@ export default defineConfig({
     // Both env vars must be set at BUILD time so Vite bakes them into the bundle:
     //   VITE_USE_REST_API=true  — enables REST API adapter
     //   VITE_CLERK_TEST_MODE=true — aliases @clerk/react → clerkMock.tsx
+    //   VITE_BFF_URL — must be overridden at build time in CI so the preview
+    //     bundle points at localhost:8080 (the BFF webServer below) instead of
+    //     .env.production's value (https://api.vaultmtg.app/api/v1). Without
+    //     this override, initializeServices() in the browser calls the remote
+    //     production API, which is unreachable from the CI runner and blocks
+    //     renderApp() until the network request times out — preventing the React
+    //     tree (and app-container) from ever mounting during the 60 s window.
     {
       command: process.env.CI
-        ? 'VITE_USE_REST_API=true VITE_CLERK_TEST_MODE=true npm run build && VITE_USE_REST_API=true npx vite preview --port 3000'
+        ? 'VITE_USE_REST_API=true VITE_CLERK_TEST_MODE=true VITE_BFF_URL=http://localhost:8080/api/v1 npm run build && npx vite preview --port 3000'
         : 'VITE_USE_REST_API=true VITE_CLERK_TEST_MODE=true npm run dev',
       url: 'http://localhost:3000',
       timeout: 180 * 1000,

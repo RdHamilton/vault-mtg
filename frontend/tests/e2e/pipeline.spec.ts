@@ -70,12 +70,16 @@ test.describe('Data Pipeline - Log to UI', () => {
     //   table                 — matches loaded from live data
     //   .protected-route-prompt — ProtectedRoute blocked; auth injection failed
     //                             (test will fail later but at least beforeEach ends)
+    // Use .first() to avoid Playwright strict-mode violations when multiple
+    // selectors match simultaneously (e.g. .filter-row + .empty-state both
+    // visible at the same time once MatchHistory mounts without live data).
     await expect(
       page.locator('.filter-row')
         .or(page.locator('.empty-state'))
         .or(page.locator('.error-state'))
         .or(page.locator('.match-history-table-container table'))
         .or(page.locator('[data-testid="protected-route-prompt"]'))
+        .first()
     ).toBeVisible();
   });
 
