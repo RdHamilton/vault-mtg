@@ -8,6 +8,24 @@
 **Summary**: One sentence summary of what was done and why.
 -->
 
+## 2026-05-10 — Staging deploy fix: migrations require S3 download (no repo on EC2)
+**PR**: #1734 (in RdHamilton/MTGA-Companion)
+**Files changed**:
+- `.github/workflows/staging-deploy.yml` -- added S3 sync for migration SQL files and infra/db/ SQL; pass DEPLOY_BUCKET to migration SSM command
+- `infra/scripts/run-staging-migrations.sh` -- download migrations + grant SQL from S3 when DEPLOY_BUCKET is set; auto-install golang-migrate v4.18.3 if missing
+**Summary**: Staging migration step failed because the script expected the repo at /opt/mtga-companion but EC2 only has the binary. Fixed by uploading migration files to S3 during deploy and downloading to /tmp on EC2 when DEPLOY_BUCKET is set; also auto-installs golang-migrate CLI which was absent from the instance.
+
+## 2026-05-10 — IAM policy fix: s3:PutBucketVersioning + ssm:GetCommandInvocation
+**PR**: N/A (live IAM inline policy fix on github-actions-oidc-deploy role)
+**Files changed**: none (AWS IAM inline policy updated directly)
+**Summary**: Diagnosed two layered IAM gaps on the github-actions-oidc-deploy role blocking staging deploy: (1) s3:PutBucketVersioning missing for the staging bucket (though that step had || true and did not actually block); (2) ssm:GetCommandInvocation was scoped to EC2 instance and document ARNs rather than "*" -- causing immediate exit 254 on every SSM polling loop. Fixed both by updating the inline policy. SSM provision step now passes; deploy is failing on a separate EC2 setup issue (migrations directory not found at /opt/mtga-companion).
+
+## 2026-05-10 — Staging deploy fix: bash -e + SSM exit code 254 interaction
+**PR**: #1733 (in RdHamilton/MTGA-Companion)
+**Files changed**:
+- `.github/workflows/staging-deploy.yml` — added set +e/set -e around all four get-command-invocation poll calls to prevent bash -e aborting before RC is captured
+**Summary**: Diagnosed that all four SSM polling loops were being aborted by bash -e when aws ssm get-command-invocation returned exit code 254 (InvocationDoesNotExist) on the first iteration; SSM commands actually succeeded on EC2. Fixed by wrapping each poll call with set +e/set -e so RC is safely captured.
+
 ## 2026-05-09 — Issue #1642: Fix darwin binary upload path in daemon-release.yml
 **PR**: #1682
 **Files changed**:
