@@ -153,19 +153,19 @@ The architect confirmed the following order is correct and internally consistent
 | #1650 | feat(daemon): implement PKCE OAuth browser-redirect login flow | backend-engineer | M |
 
 **Definition of done:**
-- [ ] Daemon with no `daemon.json` opens `vaultmtg.app/setup` in system browser (or prints URL if headless)
-- [ ] PKCE flow completes end-to-end: localhost callback on port 51423 (retry 51424) → Clerk login → auth code → `POST /v1/daemon/register`
-- [ ] BFF verifies Clerk JWT, mints API key using `daemon_api_keys` table; rate-limited at 5 req/hour per `account_id` (in-memory, no Redis)
-- [ ] `POST /v1/daemon/register` request body requires three fields: `device_id` (UUID, unique per daemon installation), `platform` (string — e.g. `darwin`, `windows`), `daemon_ver` (semver string — e.g. `0.3.1`); missing any field returns 400
-- [ ] `daemon_api_keys` schema includes `device_id UUID NOT NULL`, `platform TEXT NOT NULL`, `daemon_ver TEXT NOT NULL`, and `UNIQUE(device_id)` in addition to the existing `UNIQUE(account_id)`
-- [ ] BFF returns 200 + existing key if account already has one (not 201)
-- [ ] Daemon writes API key to OS keychain using service `com.mtga-companion.daemon`, account `api-key`
-- [ ] On subsequent starts, daemon reads key from keychain without re-opening browser
-- [ ] Port conflict handled gracefully — retry 51424, surface error message, never crash
-- [ ] `GOOS=windows GOARCH=amd64 go build ./...` passes with zero CGO in dependency graph (per Wave 0 Decision 5)
-- [ ] PostHog `daemon_paired` event fires after successful keychain write
-- [ ] `go-keyring` added to `services/daemon/go.mod`
-- [ ] Integration tests cover BFF `/v1/daemon/register` — JWT verification, key minting, idempotent re-use, rate limit
+- [x] Daemon with no `daemon.json` opens `vaultmtg.app/setup` in system browser (or prints URL if headless)
+- [x] PKCE flow completes end-to-end: localhost callback on port 51423 (retry 51424) → Clerk login → auth code → `POST /v1/daemon/register`
+- [x] BFF verifies Clerk JWT, mints API key using `daemon_api_keys` table; rate-limited at 5 req/hour per `account_id` (in-memory, no Redis)
+- [x] `POST /v1/daemon/register` request body requires three fields: `device_id` (UUID, unique per daemon installation), `platform` (string — e.g. `darwin`, `windows`), `daemon_ver` (semver string — e.g. `0.3.1`); missing any field returns 400
+- [x] `daemon_api_keys` schema includes `device_id UUID NOT NULL`, `platform TEXT NOT NULL`, `daemon_ver TEXT NOT NULL`, and `UNIQUE(device_id)` in addition to the existing `UNIQUE(account_id)`
+- [x] BFF returns 200 + existing key if account already has one (not 201)
+- [x] Daemon writes API key to OS keychain using service `com.mtga-companion.daemon`, account `api-key`
+- [x] On subsequent starts, daemon reads key from keychain without re-opening browser
+- [x] Port conflict handled gracefully — retry 51424, surface error message, never crash
+- [x] `GOOS=windows GOARCH=amd64 go build ./...` passes with zero CGO in dependency graph (per Wave 0 Decision 5)
+- [x] PostHog `daemon_paired` event fires after successful keychain write
+- [x] `go-keyring` added to `services/daemon/go.mod`
+- [x] Integration tests cover BFF `/v1/daemon/register` — JWT verification, key minting, idempotent re-use, rate limit
 
 **Assigned agents**: backend-engineer (primary)
 **Estimated effort**: L (1× M + 4× S)
