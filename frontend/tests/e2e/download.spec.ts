@@ -44,7 +44,7 @@ test.describe('Download Page', () => {
       await expect(link).toBeVisible();
       await expect(link).toHaveAttribute(
         'href',
-        `${RELEASES_BASE}/mtga-companion-daemon-darwin-arm64.tar.gz`
+        `${RELEASES_BASE}/mtga-companion-daemon-darwin-arm64.dmg`
       );
     });
 
@@ -53,7 +53,7 @@ test.describe('Download Page', () => {
       await expect(link).toBeVisible();
       await expect(link).toHaveAttribute(
         'href',
-        `${RELEASES_BASE}/mtga-companion-daemon-darwin-amd64.tar.gz`
+        `${RELEASES_BASE}/mtga-companion-daemon-darwin-amd64.dmg`
       );
     });
 

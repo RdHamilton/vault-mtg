@@ -51,7 +51,11 @@ test.describe('Data Pipeline - Log to UI', () => {
     // first auth-state read on a cold Vite preview bundle in CI — going
     // straight to /match-history removes that race entirely.
     await page.goto('/match-history', { waitUntil: 'domcontentloaded' });
-    await expect(page.locator('[data-testid="app-container"]')).toBeVisible();
+    // Layout renders app-container unconditionally (no auth dependency), but on
+    // cold CI runners the Vite preview bundle can take longer than the 30s default
+    // to fully parse and hydrate React. Use an explicit 60s timeout so shard cold
+    // starts don't race past this anchor on a 4-way CI split.
+    await expect(page.locator('[data-testid="app-container"]')).toBeVisible({ timeout: 60000 });
 
     // Wait for Match History to mount and be in a stable rendered state.
     //
