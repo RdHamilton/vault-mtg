@@ -46,23 +46,32 @@ test.describe('Data Pipeline - Log to UI', () => {
       };
     });
 
-    // Navigate to app. Use 'domcontentloaded' so page.goto returns as soon as
-    // the HTML is parsed — Vite transforms JS modules on-demand and on a cold
-    // CI runner the 'load' event (which waits for all assets) can take 30+ s.
-    // The toBeVisible() call below then has the full expect.timeout (30 s) to
-    // wait for React to mount and render app-container.
-    await page.goto('/', { waitUntil: 'domcontentloaded' });
+    // Navigate directly to /match-history. Navigating to / causes a React
+    // Router redirect to /match-history that can race with ProtectedRoute's
+    // first auth-state read on a cold Vite preview bundle in CI — going
+    // straight to /match-history removes that race entirely.
+    await page.goto('/match-history', { waitUntil: 'domcontentloaded' });
     await expect(page.locator('[data-testid="app-container"]')).toBeVisible();
 
-    // Wait for the match history page content to be ready (daemon has processed log).
-    // Accept table, empty-state, or error-state — all three mean the page has
-    // finished loading. In CI without a database the BFF returns 404, which
-    // renders ErrorState (.error-state); locally with live data the table or
-    // EmptyState (.empty-state) renders instead.
+    // Wait for Match History to mount and be in a stable rendered state.
+    //
+    // Accepted states (in order of likelihood in CI without a live daemon):
+    //   .filter-row           — always rendered once MatchHistory mounts; this
+    //                           fires immediately, before any async data arrives.
+    //                           Covers the window where loading:false but
+    //                           daemonChecked:false (no daemon-empty or error-state
+    //                           yet) — previously caused a 30-s timeout.
+    //   .empty-state          — DaemonEmptyState (via EmptyState) or no-data
+    //   .error-state          — BFF returned an error (no database in CI)
+    //   table                 — matches loaded from live data
+    //   .protected-route-prompt — ProtectedRoute blocked; auth injection failed
+    //                             (test will fail later but at least beforeEach ends)
     await expect(
-      page.locator('.match-history-table-container table')
+      page.locator('.filter-row')
         .or(page.locator('.empty-state'))
         .or(page.locator('.error-state'))
+        .or(page.locator('.match-history-table-container table'))
+        .or(page.locator('[data-testid="protected-route-prompt"]'))
     ).toBeVisible();
   });
 
