@@ -8,6 +8,12 @@
 **Summary**: One sentence summary of what was done and why.
 -->
 
+## 2026-05-10 — Staging deploy failure diagnosis and fix
+**PR**: #1732 (in RdHamilton/MTGA-Companion)
+**Files changed**:
+- `.github/workflows/staging-deploy.yml` — added SUCCEEDED flag to all four SSM polling loops so exit 1 only fires on actual timeout, not on successful break
+**Summary**: Diagnosed two layered issues: (1) a rogue mtga-bff.service (production unit) on the staging instance was crash-looping on port 8080 due to wrong env file path -- stopped and disabled it; (2) all four SSM polling loops in staging-deploy.yml fell through to unconditional exit 1 after a successful break, causing every deploy to report failure -- fixed with a SUCCEEDED flag pattern in each loop.
+
 ## 2026-05-09 — Issue #1642: Fix darwin binary upload path in daemon-release.yml
 **PR**: #1682
 **Files changed**:

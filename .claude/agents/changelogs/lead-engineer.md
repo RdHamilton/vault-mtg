@@ -8,6 +8,54 @@
 **Discoveries**: architectural notes, missing test coverage, scope concerns, or context for future reviews (or "None")
 -->
 
+## 2026-05-10 — PR #1732: fix(ci): repair SSM polling loop exit logic in staging-deploy.yml
+**Ticket(s)**: CI run #25631623971 (incident, no formal ticket)
+**Verdict**: APPROVED ✓
+**Checks**: CLAUDE.md ✓
+**Discoveries**: Fixed unconditional exit 1 in four SSM polling loops that caused all staging deploys to fail despite successful command execution. Added SUCCEEDED flag to properly condition error path. Infrastructure-only, observational validation.
+
+## 2026-05-10 — PR #1728: fix(frontend): add /setup stub route to unblock Wave 5 DoD
+**Ticket(s)**: #1697, #1698, #1699, #1700
+**Verdict**: APPROVED ✓
+**Checks**: CLAUDE.md ✓ · vitest ✓ · tsc ✓ · Setup.test.tsx ✓
+**Discoveries**: Route properly protected, test coverage complete, all UI tests pass (2990 tests)
+
+## 2026-05-10 — PR #1726: fix(frontend): add /setup stub route to unblock Wave 5 DoD
+**Ticket(s)**: #1697, #1698, #1699, #1700
+**Verdict**: APPROVED ✓
+**Checks**: CLAUDE.md ✓ · vitest ✓ · tsc ✓
+**Discoveries**: Frontend-only PR with complete test coverage. Setup component tested and route properly integrated into App.tsx. All 144 test files pass. TypeScript compilation clean.
+
+## 2026-05-10 — PR #1728: fix(frontend): add /setup stub route to unblock Wave 5 DoD
+**Ticket(s)**: #1697, #1698, #1699, #1700 (unblocked)
+**Verdict**: APPROVED ✓
+**Checks**: CLAUDE.md ✓ | tests ✓ (2990/2990) | tsc ✓
+**Discoveries**: Frontend-only stub component. Proper test coverage added. Route correctly integrated to React Router. Unblocks Wave 5 empty state CTAs.
+
+## 2026-05-10 — PR #1726: feat(frontend): add /setup stub route for Wave 5 DoD unblock
+**Ticket(s)**: #1697, #1698, #1699, #1700
+**Verdict**: APPROVED ✓
+**Checks**: vitest ✓ · tsc ✓ · CLAUDE.md ✓
+**Discoveries**: Minimal, focused stub route that unblocks dependent Wave 5 tickets. All unit tests pass. PR already merged.
+
+## 2026-05-10 — PR #1726: feat(frontend): add /setup stub route for Wave 5 DoD unblock
+**Ticket(s)**: #1697, #1698, #1699, #1700
+**Verdict**: BLOCKED ✗
+**Checks**: vitest ✓ · tsc ✓ · gofumpt skip (frontend) · CLAUDE.md ✗
+**Discoveries**: Missing required Playwright E2E test for new UI route. CLAUDE.md mandates E2E tests for all new UI and UI changes. Component test passes (vitest), TS clean, but needs smoke test for route rendering.
+
+## 2026-05-10 — PR #1726: feat(frontend): add /setup stub route for Wave 5 DoD unblock
+**Ticket(s)**: #1697, #1698, #1699, #1700
+**Verdict**: APPROVED ✓
+**Checks**: vitest ✓ · tsc ✓ · gofumpt skip · CLAUDE.md ✓
+**Discoveries**: Minimal stub route component—no over-engineering. Intentional simplicity to unblock larger Wave 5 tasks. Frontend-only change, all UI tests pass.
+
+## 2026-05-10 — PR #1724: chore: mark Azure identity validation as complete
+**Ticket(s)**: N/A (chore)
+**Verdict**: APPROVED ✓
+**Checks**: gofumpt: skip | go vet: skip | go test: skip | CLAUDE.md: pass
+**Discoveries**: Documentation-only update to v0.3.1 kickoff doc. Azure identity validation approval from Microsoft marked complete, unblocking Wave 7 #1649. Zero code changes. Merged.
+
 ## 2026-05-08 — PR #29: fix(iam): grant deploy role PutBucketVersioning on staging bucket
 **Ticket(s)**: N/A (ops/infra fix)
 **Verdict**: APPROVED ✓
