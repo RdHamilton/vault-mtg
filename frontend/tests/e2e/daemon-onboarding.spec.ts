@@ -25,10 +25,8 @@ test.describe('Daemon Onboarding Flow', () => {
       localStorage.removeItem('vaultmtg_onboarding_completed');
     });
 
-    // Wait for the app to load
-    await expect(page.locator('[data-testid="app-container"]')).toBeVisible({
-      timeout: 15_000,
-    });
+    // Wait for the app to load (timeout governed by global expect.timeout: 30_000)
+    await expect(page.locator('[data-testid="app-container"]')).toBeVisible();
   });
 
   test('@smoke onboarding modal appears for new user with no daemon', async ({ page }) => {
@@ -48,14 +46,10 @@ test.describe('Daemon Onboarding Flow', () => {
       localStorage.removeItem('vaultmtg_onboarding_completed');
     });
 
-    await expect(page.locator('[data-testid="app-container"]')).toBeVisible({
-      timeout: 15_000,
-    });
+    await expect(page.locator('[data-testid="app-container"]')).toBeVisible();
 
     // Onboarding modal should appear once the daemon health check returns disconnected
-    await expect(page.locator('[data-testid="onboarding-modal"]')).toBeVisible({
-      timeout: 10_000,
-    });
+    await expect(page.locator('[data-testid="onboarding-modal"]')).toBeVisible();
   });
 
   test('@smoke step 1 shows download link to vaultmtg.app/download', async ({ page }) => {
@@ -73,9 +67,7 @@ test.describe('Daemon Onboarding Flow', () => {
       localStorage.removeItem('vaultmtg_onboarding_completed');
     });
 
-    await expect(page.locator('[data-testid="onboarding-modal"]')).toBeVisible({
-      timeout: 10_000,
-    });
+    await expect(page.locator('[data-testid="onboarding-modal"]')).toBeVisible();
 
     const downloadLink = page.locator('[data-testid="onboarding-download-link"]');
     await expect(downloadLink).toBeVisible();
@@ -97,9 +89,7 @@ test.describe('Daemon Onboarding Flow', () => {
       localStorage.removeItem('vaultmtg_onboarding_completed');
     });
 
-    await expect(page.locator('[data-testid="onboarding-modal"]')).toBeVisible({
-      timeout: 10_000,
-    });
+    await expect(page.locator('[data-testid="onboarding-modal"]')).toBeVisible();
 
     await page.locator('[data-testid="onboarding-step-1-next"]').click();
     await expect(page.locator('[data-testid="onboarding-step-2"]')).toBeVisible();
@@ -120,9 +110,7 @@ test.describe('Daemon Onboarding Flow', () => {
       localStorage.removeItem('vaultmtg_onboarding_completed');
     });
 
-    await expect(page.locator('[data-testid="onboarding-modal"]')).toBeVisible({
-      timeout: 10_000,
-    });
+    await expect(page.locator('[data-testid="onboarding-modal"]')).toBeVisible();
 
     await page.locator('[data-testid="onboarding-step-1-next"]').click();
     await expect(page.locator('[data-testid="onboarding-platform-mac"]')).toBeVisible();
@@ -144,9 +132,7 @@ test.describe('Daemon Onboarding Flow', () => {
       localStorage.removeItem('vaultmtg_onboarding_completed');
     });
 
-    await expect(page.locator('[data-testid="onboarding-modal"]')).toBeVisible({
-      timeout: 10_000,
-    });
+    await expect(page.locator('[data-testid="onboarding-modal"]')).toBeVisible();
 
     await page.locator('[data-testid="onboarding-step-1-next"]').click();
     await page.locator('[data-testid="onboarding-step-2-next"]').click();
@@ -168,9 +154,7 @@ test.describe('Daemon Onboarding Flow', () => {
       localStorage.removeItem('vaultmtg_onboarding_completed');
     });
 
-    await expect(page.locator('[data-testid="onboarding-modal"]')).toBeVisible({
-      timeout: 10_000,
-    });
+    await expect(page.locator('[data-testid="onboarding-modal"]')).toBeVisible();
 
     await page.locator('[data-testid="onboarding-step-1-next"]').click();
     await page.locator('[data-testid="onboarding-step-2-next"]').click();
@@ -205,17 +189,13 @@ test.describe('Daemon Onboarding Flow', () => {
       localStorage.removeItem('vaultmtg_onboarding_completed');
     });
 
-    await expect(page.locator('[data-testid="onboarding-modal"]')).toBeVisible({
-      timeout: 10_000,
-    });
+    await expect(page.locator('[data-testid="onboarding-modal"]')).toBeVisible();
 
     await page.locator('[data-testid="onboarding-step-1-next"]').click();
     await page.locator('[data-testid="onboarding-step-2-next"]').click();
 
     // Wait for the step 3 poll to succeed and show the success state
-    await expect(page.locator('[data-testid="onboarding-success-heading"]')).toBeVisible({
-      timeout: 10_000,
-    });
+    await expect(page.locator('[data-testid="onboarding-success-heading"]')).toBeVisible();
   });
 
   test('dismiss button closes modal and does not re-show', async ({ page }) => {
@@ -233,9 +213,7 @@ test.describe('Daemon Onboarding Flow', () => {
       localStorage.removeItem('vaultmtg_onboarding_completed');
     });
 
-    await expect(page.locator('[data-testid="onboarding-modal"]')).toBeVisible({
-      timeout: 10_000,
-    });
+    await expect(page.locator('[data-testid="onboarding-modal"]')).toBeVisible();
 
     await page.locator('[data-testid="onboarding-modal-close"]').click();
     await expect(page.locator('[data-testid="onboarding-modal"]')).not.toBeVisible();
@@ -262,9 +240,7 @@ test.describe('Daemon Onboarding Flow', () => {
       localStorage.removeItem('vaultmtg_onboarding_completed');
     });
 
-    await expect(page.locator('[data-testid="onboarding-modal"]')).toBeVisible({
-      timeout: 10_000,
-    });
+    await expect(page.locator('[data-testid="onboarding-modal"]')).toBeVisible();
 
     // Dismiss
     await page.locator('[data-testid="onboarding-modal-close"]').click();

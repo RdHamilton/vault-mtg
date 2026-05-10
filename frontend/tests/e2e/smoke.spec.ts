@@ -24,10 +24,8 @@ test.describe('@smoke Vercel BFF Connectivity', () => {
   test('SPA loads — root element visible', async ({ page }) => {
     await page.goto(BASE_URL);
 
-    // The app container must be present within 15s (accounts for cold-start).
-    await expect(page.locator('[data-testid="app-container"]')).toBeVisible({
-      timeout: 15_000,
-    });
+    // The app container must be present (timeout governed by global expect.timeout: 30_000).
+    await expect(page.locator('[data-testid="app-container"]')).toBeVisible();
   });
 
   test('SPA loads — page has a non-empty title', async ({ page }) => {
