@@ -1,0 +1,33 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="400" height="220" viewBox="0 0 400 220" role="img" aria-label="macOS Gatekeeper security warning dialog">
+  <title>macOS Gatekeeper security warning dialog</title>
+
+  <!-- Dialog background -->
+  <rect x="20" y="10" width="360" height="200" rx="12" ry="12" fill="#ececec" />
+  <!-- Title bar -->
+  <rect x="20" y="10" width="360" height="38" rx="12" ry="12" fill="#d8d8d8" />
+  <rect x="20" y="32" width="360" height="16" fill="#d8d8d8" />
+
+  <!-- Traffic lights -->
+  <circle cx="48" cy="29" r="6" fill="#ff5f57" />
+  <circle cx="68" cy="29" r="6" fill="#febc2e" />
+  <circle cx="88" cy="29" r="6" fill="#28c840" />
+
+  <!-- App icon (generic rounded square) -->
+  <rect x="168" y="58" width="64" height="64" rx="14" ry="14" fill="#9147ff" />
+  <!-- Shield overlay -->
+  <path d="M200 70 L214 76 L214 88 Q214 100 200 108 Q186 100 186 88 L186 76 Z" fill="white" opacity="0.9" />
+  <!-- Warning badge on icon -->
+  <circle cx="222" cy="112" r="10" fill="#ff5f57" />
+  <text x="222" y="116" text-anchor="middle" font-size="12" font-weight="bold" fill="white">!</text>
+
+  <!-- Dialog text -->
+  <text x="200" y="142" text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, sans-serif" font-size="13" font-weight="600" fill="#1d1d1f">"VaultMTG" cannot be opened</text>
+  <text x="200" y="158" text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, sans-serif" font-size="12" fill="#3d3d3d">because it is from an unidentified developer.</text>
+  <text x="200" y="174" text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, sans-serif" font-size="11" fill="#6e6e6e">macOS cannot verify that this app is free from malware.</text>
+
+  <!-- Buttons -->
+  <rect x="220" y="188" width="70" height="16" rx="8" fill="#d8d8d8" />
+  <text x="255" y="200" text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, sans-serif" font-size="11" fill="#1d1d1f">Cancel</text>
+  <rect x="304" y="188" width="60" height="16" rx="8" fill="#9147ff" />
+  <text x="334" y="200" text-anchor="middle" font-family="-apple-system, BlinkMacSystemFont, sans-serif" font-size="11" font-weight="600" fill="white">Open</text>
+</svg>

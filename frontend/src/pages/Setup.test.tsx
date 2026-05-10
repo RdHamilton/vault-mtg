@@ -136,6 +136,13 @@ describe('Setup — macOS platform', () => {
       .filter((el) => !el.closest('details'));
     expect(topLevel).toHaveLength(0);
   });
+
+  it('renders a Gatekeeper screenshot image in the Gatekeeper warning section', () => {
+    renderSetup();
+    const img = screen.getByTestId('gatekeeper-screenshot');
+    expect(img).toBeInTheDocument();
+    expect(img).toHaveAttribute('alt', 'macOS Gatekeeper security warning dialog');
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -178,6 +185,13 @@ describe('Setup — Windows platform', () => {
   it('Gatekeeper warning is in a collapsed details element on Windows', () => {
     renderSetup();
     expect(screen.getByTestId('gatekeeper-details')).toBeInTheDocument();
+  });
+
+  it('renders a SmartScreen screenshot image in the SmartScreen warning section', () => {
+    renderSetup();
+    const img = screen.getByTestId('smartscreen-screenshot');
+    expect(img).toBeInTheDocument();
+    expect(img).toHaveAttribute('alt', 'Windows SmartScreen protection dialog');
   });
 });
 

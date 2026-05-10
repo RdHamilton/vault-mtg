@@ -107,6 +107,15 @@
   font-style: italic;
 }
 
+.setup-warning-screenshot {
+  display: block;
+  margin-top: 16px;
+  max-width: 400px;
+  width: 100%;
+  border-radius: 6px;
+  border: 1px solid #3d3d3d;
+}
+
 .setup-other-platform {
   border: 1px solid #3d3d3d;
   border-radius: 8px;

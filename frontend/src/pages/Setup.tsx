@@ -19,6 +19,8 @@
 import { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { trackEvent, type Platform } from '@/services/analytics';
+import gatekeeperScreenshot from '@/assets/gatekeeper-warning.svg';
+import smartscreenScreenshot from '@/assets/smartscreen-warning.svg';
 import './Setup.css';
 
 function detectPlatform(): Platform {
@@ -91,6 +93,12 @@ function GatekeeperWarning() {
           You only need to do this once. After the first approval, macOS will remember
           your choice and open the daemon normally on every subsequent launch.
         </p>
+        <img
+          src={gatekeeperScreenshot}
+          alt="macOS Gatekeeper security warning dialog"
+          className="setup-warning-screenshot"
+          data-testid="gatekeeper-screenshot"
+        />
       </div>
     </div>
   );
@@ -130,6 +138,12 @@ function SmartScreenWarning() {
           You only need to do this once. SmartScreen will not prompt again for the
           same installer on your machine.
         </p>
+        <img
+          src={smartscreenScreenshot}
+          alt="Windows SmartScreen protection dialog"
+          className="setup-warning-screenshot"
+          data-testid="smartscreen-screenshot"
+        />
       </div>
     </div>
   );
