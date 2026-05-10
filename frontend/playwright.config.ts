@@ -31,6 +31,11 @@ export default defineConfig({
   // Retry on CI only
   retries: process.env.CI ? 2 : 0,
 
+  // Global assertion timeout for expect().toBeVisible(), toHaveText(), etc.
+  // actionTimeout (below) only governs page actions (click, fill, waitForSelector).
+  // Without this, Playwright's default of 5 s governs — too short for cold CI.
+  expect: { timeout: 30_000 },
+
   // Reporter to use
   reporter: [
     ['html', { open: 'never' }],
