@@ -18,14 +18,8 @@
 
 import { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { trackEvent } from '@/services/analytics';
+import { trackEvent, type Platform } from '@/services/analytics';
 import './Setup.css';
-
-// ---------------------------------------------------------------------------
-// Platform detection
-// ---------------------------------------------------------------------------
-
-type Platform = 'macos' | 'windows' | 'unknown';
 
 function detectPlatform(): Platform {
   const ua = navigator.userAgent.toLowerCase();

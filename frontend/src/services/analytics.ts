@@ -59,6 +59,11 @@ export function stopSessionReplay(): void {
 // ── Event name constants (locked taxonomy) ────────────────────────────────────
 
 export const Events = {
+  // Setup / onboarding
+  SETUP_PAGE_VIEWED: 'setup_page_viewed',
+  SETUP_PAIRING_SUCCESS: 'setup_pairing_success',
+  SETUP_PAIRING_TIMEOUT: 'setup_pairing_timeout',
+
   // Activation funnel
   FUNNEL_LANDING_PAGE_VIEWED: 'funnel_landing_page_viewed',
   FUNNEL_SIGN_UP_STARTED: 'funnel_sign_up_started',
@@ -105,6 +110,9 @@ export const Events = {
 
 export type EventName = (typeof Events)[keyof typeof Events];
 
+/** Platform on which the setup page is running. */
+export type Platform = 'macos' | 'windows' | 'unknown';
+
 // ── Typed property shapes per event ──────────────────────────────────────────
 //
 // Every entry in the discriminated union covers one event from the taxonomy.
@@ -112,6 +120,19 @@ export type EventName = (typeof Events)[keyof typeof Events];
 // enforce completeness at every trackEvent call site.
 
 export type AnalyticsEvent =
+  // Setup / onboarding
+  | {
+      name: 'setup_page_viewed';
+      properties: { platform: Platform };
+    }
+  | {
+      name: 'setup_pairing_success';
+      properties: { platform: Platform };
+    }
+  | {
+      name: 'setup_pairing_timeout';
+      properties: { platform: Platform };
+    }
   // Activation funnel
   | {
       name: 'funnel_landing_page_viewed';
