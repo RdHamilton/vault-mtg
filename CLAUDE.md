@@ -30,7 +30,6 @@ To prevent laptop memory spikes when running agents:
 - **Use `haiku` model for simple agents** — pass `model: "haiku"` to the Agent tool for any task that is: moving a ticket, writing a changelog entry, reading files, or short research queries. Reserve default (sonnet) for implementation tasks.
 - **One instance per type by default** — prefer running one instance of a given agent type at a time. Run multiple only when the work is fully independent (e.g., 3 separate tickets with no shared files).
 - **Foreground over background for long tasks** — `run_in_background: true` keeps a full process alive until it completes. Only use background when you have genuinely independent parallel work to do immediately.
-- **Always use `isolation: "worktree"` for implementation agents** — any agent that writes code, edits files, or opens PRs MUST be spawned with `isolation: "worktree"`. This gives each agent its own isolated git worktree and prevents agents from committing on each other's branches. Skip worktree only for read-only agents (research, board updates, status checks).
 - **Context compaction is automatic** — Claude Code compacts context automatically when the window fills. The `/compact` command triggers it early if needed.
 
 ## Authentication (Clerk)
