@@ -1,0 +1,89 @@
+name: Deploy Staging SPA to S3 + CloudFront
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'frontend/**'
+  workflow_dispatch:
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  deploy:
+    name: Build and Deploy Staging SPA
+    runs-on: ubuntu-latest
+    environment: staging
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: 'npm'
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install dependencies
+        working-directory: frontend
+        run: npm ci
+
+      - name: Build React SPA (staging)
+        working-directory: frontend
+        run: npm run build
+        env:
+          VITE_BFF_URL: ${{ vars.VITE_BFF_URL }}
+          VITE_CLERK_PUBLISHABLE_KEY: ${{ vars.VITE_CLERK_PUBLISHABLE_KEY }}
+          VITE_POSTHOG_KEY: ${{ vars.VITE_POSTHOG_KEY }}
+          VITE_SENTRY_DSN: ${{ vars.VITE_SENTRY_DSN }}
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: us-east-1
+
+      - name: Read SSM parameters
+        id: ssm
+        run: |
+          BUCKET=$(aws ssm get-parameter \
+            --name /vaultmtg/staging/spa-bucket-name \
+            --region us-east-1 \
+            --query Parameter.Value \
+            --output text)
+          DIST_ID=$(aws ssm get-parameter \
+            --name /vaultmtg/staging/spa-distribution-id \
+            --region us-east-1 \
+            --query Parameter.Value \
+            --output text)
+          echo "bucket=$BUCKET" >> "$GITHUB_OUTPUT"
+          echo "dist_id=$DIST_ID" >> "$GITHUB_OUTPUT"
+
+      - name: Sync build output to S3 (staging)
+        run: |
+          aws s3 sync frontend/dist/ s3://${{ steps.ssm.outputs.bucket }} \
+            --delete \
+            --region us-east-1
+
+      - name: Invalidate CloudFront cache (staging)
+        run: |
+          aws cloudfront create-invalidation \
+            --distribution-id ${{ steps.ssm.outputs.dist_id }} \
+            --paths "/*"
+
+      - name: Post-deploy SPA smoke check
+        run: |
+          for i in $(seq 1 6); do
+            if curl -fsSL https://stg-app.vaultmtg.app/ | grep -q '<div id="root"'; then
+              echo "Staging SPA smoke check passed."
+              exit 0
+            fi
+            echo "Attempt $i/6 failed, waiting 10s..."
+            sleep 10
+          done
+          echo "Staging SPA smoke check failed after 60s"
+          exit 1
