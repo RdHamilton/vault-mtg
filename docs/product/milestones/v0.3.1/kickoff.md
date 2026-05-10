@@ -400,7 +400,7 @@ All of the following must be true before the v0.3.1 tag is cut:
 Open items that must be resolved — updated 2026-05-09:
 
 - [x] **Register Clerk OAuth redirect URIs** — DONE 2026-05-09. `http://localhost:51423/callback` and `http://localhost:51424/callback` registered in Clerk Native Applications → Allowlist. C-3 satisfied.
-- [ ] **Confirm Azure identity validation approved** — Microsoft review in progress. Escalate to Ray if no approval by Wave 5 start.
+- [x] **Confirm Azure identity validation approved** — DONE 2026-05-10. Identity validation approved by Microsoft. Wave 7 #1649 unblocked.
 - [ ] **File Wave 8 release gate tickets** before Wave 6 closes — Wave 8 is a ceremony wave; PM files a tracking ticket so the release gate has a board artifact.
 
 **Pending cleanup**: PR #1686 (changelogs + gitignore + go.work.sum) — open, pending merge.
