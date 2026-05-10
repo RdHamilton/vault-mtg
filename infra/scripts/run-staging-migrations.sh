@@ -31,21 +31,38 @@
 
 set -euo pipefail
 
-PROFILE="${AWS_PROFILE:-personal}"
 REGION="${AWS_REGION:-us-east-1}"
 
-REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+# When run on EC2 via SSM (from /tmp), BASH_SOURCE[0] resolves to /tmp and
+# the relative ../../ traversal produces a broken path. Use the canonical EC2
+# repo location when the relative path doesn't contain a services/ tree, then
+# fall back to the relative path for local development use.
+_SCRIPT_RELATIVE_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+if [[ -d "$_SCRIPT_RELATIVE_ROOT/services/bff" ]]; then
+    REPO_ROOT="$_SCRIPT_RELATIVE_ROOT"
+else
+    REPO_ROOT="/opt/mtga-companion"
+fi
 MIGRATIONS_DIR="$REPO_ROOT/services/bff/internal/storage/migrations/postgres"
 
 if [[ ! -d "$MIGRATIONS_DIR" ]]; then
     echo "[run-staging-migrations] ERROR: migrations directory not found at $MIGRATIONS_DIR"
+    echo "  Expected: $MIGRATIONS_DIR"
+    echo "  The EC2 instance must have the repo checked out at /opt/mtga-companion."
     exit 1
 fi
 
 echo "[run-staging-migrations] Fetching staging DATABASE_URL from SSM..."
 
+# On EC2 the instance IAM role provides credentials — no named profile exists.
+# Locally, AWS_PROFILE can be set to override (defaults to 'personal').
+_PROFILE_ARG=()
+if [[ -n "${AWS_PROFILE:-}" ]]; then
+    _PROFILE_ARG=(--profile "$AWS_PROFILE")
+fi
+
 DATABASE_URL=$(aws ssm get-parameter \
-    --profile  "$PROFILE" \
+    "${_PROFILE_ARG[@]}" \
     --region   "$REGION" \
     --name     "/mtga-companion/staging/database-url" \
     --with-decryption \
@@ -80,15 +97,18 @@ echo "[run-staging-migrations] Migrations complete."
 # ---------------------------------------------------------------------------
 echo "[run-staging-migrations] Applying table-level grants..."
 
+# Staging master credentials are stored under the staging SSM path tree,
+# not production. Using production paths here was a bug that caused a
+# permissions error on every staging deploy.
 SECRET_ARN=$(aws ssm get-parameter \
-    --profile "$PROFILE" \
+    "${_PROFILE_ARG[@]}" \
     --region  "$REGION" \
-    --name    "/mtga-companion/production/db-secret-arn" \
+    --name    "/mtga-companion/staging/db-secret-arn" \
     --query   "Parameter.Value" \
     --output  text)
 
 SECRET_JSON=$(aws secretsmanager get-secret-value \
-    --profile   "$PROFILE" \
+    "${_PROFILE_ARG[@]}" \
     --region    "$REGION" \
     --secret-id "$SECRET_ARN" \
     --query     "SecretString" \
@@ -98,9 +118,9 @@ MASTER_PASSWORD=$(echo "$SECRET_JSON" | python3 -c "import json,sys; print(json.
 MASTER_USER=$(echo     "$SECRET_JSON" | python3 -c "import json,sys; print(json.load(sys.stdin)['username'])")
 
 DB_ENDPOINT=$(aws ssm get-parameter \
-    --profile "$PROFILE" \
+    "${_PROFILE_ARG[@]}" \
     --region  "$REGION" \
-    --name    "/mtga-companion/production/db-endpoint" \
+    --name    "/mtga-companion/staging/db-endpoint" \
     --query   "Parameter.Value" \
     --output  text)
 

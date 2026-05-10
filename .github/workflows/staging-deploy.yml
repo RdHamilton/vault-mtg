@@ -76,11 +76,13 @@ jobs:
 
     - name: Upload deploy scripts to S3 (staging)
       run: |
-        # Fetch scripts from the infra repo via the deployed scripts path.
-        # Scripts for staging are stored alongside prod scripts in the same deploy bucket
-        # under a staging/ prefix.
+        # Upload scripts/deploy/ (restart, stage-binary, provision, etc.)
         aws s3 sync scripts/deploy/ \
           "s3://$STAGING_BUCKET/scripts/" \
+          --exclude "*" --include "*.sh"
+        # Upload infra/scripts/ (run-staging-migrations.sh and other infra scripts)
+        aws s3 sync infra/scripts/ \
+          "s3://$STAGING_BUCKET/infra-scripts/" \
           --exclude "*" --include "*.sh"
 
     # Renders /etc/mtga-companion-staging/env from SSM parameter hierarchy
@@ -164,7 +166,7 @@ jobs:
         COMMAND_ID=$(aws ssm send-command \
           --instance-ids "${{ secrets.EC2_INSTANCE_ID }}" \
           --document-name "AWS-RunShellScript" \
-          --parameters 'commands=["AWS_PROFILE=default bash /opt/mtga-companion/scripts/run-staging-migrations.sh"]' \
+          --parameters 'commands=["aws s3 cp s3://${{ env.STAGING_BUCKET }}/infra-scripts/run-staging-migrations.sh /tmp/run-staging-migrations.sh && chmod +x /tmp/run-staging-migrations.sh && /tmp/run-staging-migrations.sh"]' \
           --region us-east-1 \
           --query "Command.CommandId" \
           --output text)
