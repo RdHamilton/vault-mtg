@@ -178,6 +178,7 @@ The architect confirmed the following order is correct and internally consistent
 |---|---|
 | **Theme** | Fix production-blocking routing bugs before any SPA feature work |
 | **Goal** | SPA routes all API calls to the correct target (cloud BFF vs local daemon); nginx/CloudFront returns clean 404+CORS on unhandled routes |
+| **Status** | CLOSED — all tickets merged; DoD verified by LE. Wave 5 is unblocked. |
 
 > **Rationale**: Without #1695, every API call that should hit the local daemon is 404ing against the cloud BFF in production — the SPA is functionally broken for daemon-dependent features. #1696 is an infra fix that can run in parallel (#1695 and #1696 have no shared files). Both must close before any SPA feature wave (#1697–#1700, Wave 5) ships to production.
 
@@ -187,11 +188,11 @@ The architect confirmed the following order is correct and internally consistent
 | #1696 | fix(infra): nginx/CloudFront returns 503+CORS on unhandled cloud BFF routes — return clean 404 with CORS headers | infrastructure | S |
 
 **Definition of done:**
-- [ ] `apiClient.ts` split: all cloud-BFF calls use `VITE_BFF_URL`; all local daemon calls use `VITE_DAEMON_URL`; no daemon calls route to cloud BFF
-- [ ] All 10 affected API modules updated and type-checked (`npx tsc --noEmit` clean)
-- [ ] nginx/CloudFront config updated: unhandled routes return 404 (not 503) with correct CORS headers
-- [ ] Component tests updated for API module changes; Playwright E2E smoke passes
-- [ ] CI green on main after merge
+- [x] `apiClient.ts` split: all cloud-BFF calls use `VITE_BFF_URL`; all local daemon calls use `VITE_DAEMON_URL`; no daemon calls route to cloud BFF
+- [x] All 10 affected API modules updated and type-checked (`npx tsc --noEmit` clean)
+- [x] nginx/CloudFront config updated: unhandled routes return 404 (not 503) with correct CORS headers
+- [x] Component tests updated for API module changes; Playwright E2E smoke passes
+- [x] CI green on main after merge
 
 **Assigned agents**: front-engineer (#1695), infrastructure (#1696) — parallel
 **Estimated effort**: M (1× M + 1× S, parallel)
