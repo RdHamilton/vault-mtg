@@ -1,0 +1,66 @@
+name: Chromatic
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'frontend/src/**'
+      - 'frontend/.storybook/**'
+      - 'frontend/package.json'
+      - 'frontend/package-lock.json'
+      - '.github/workflows/chromatic.yml'
+  pull_request:
+    branches: [main]
+    paths:
+      - 'frontend/src/**'
+      - 'frontend/.storybook/**'
+      - 'frontend/package.json'
+      - 'frontend/package-lock.json'
+      - '.github/workflows/chromatic.yml'
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  chromatic:
+    name: Chromatic Visual Tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+        with:
+          # Chromatic requires full git history to diff against baseline commits.
+          fetch-depth: 0
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v5
+        with:
+          node-version: '24'
+          cache: 'npm'
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+        working-directory: frontend
+
+      - name: Run Chromatic
+        # REQUIRES: CHROMATIC_PROJECT_TOKEN secret must be set in GitHub Actions secrets.
+        # To provision:
+        #   1. Create a project at https://www.chromatic.com
+        #   2. Copy the project token from the project settings
+        #   3. Add it as a GitHub Actions secret named CHROMATIC_PROJECT_TOKEN
+        #      at https://github.com/RdHamilton/MTGA-Companion/settings/secrets/actions
+        uses: chromaui/action@latest
+        with:
+          workingDir: frontend
+          projectToken: ${{ secrets.CHROMATIC_PROJECT_TOKEN }}
+          buildScriptName: build-storybook
+          # Only exit with error on actual visual regressions (diffs), not on
+          # new stories that need baseline approval.
+          exitOnceUploaded: true
