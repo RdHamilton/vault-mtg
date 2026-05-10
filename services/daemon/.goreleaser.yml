@@ -9,6 +9,102 @@
 #
 # Run locally (dry-run):
 #   cd services/daemon && goreleaser release --snapshot --clean
+#
+# ---------------------------------------------------------------------------
+# GA CODE SIGNING -- DEFERRED TO GA (not active for beta)
+# ---------------------------------------------------------------------------
+# ADR-011 Section 5 documents the full GA signing strategy. Summary:
+#
+# macOS -- Apple Developer ID notarization (ticket #1648)
+# -------------------------------------------------------
+# Status: DOCUMENTED. Credential enrollment pending Apple Developer Program
+#         ($99/yr, budget approved). Active signing activates at GA.
+# Identity validation: approved 2026-05-10.
+#
+# How it works (when activated):
+#   1. build    -- GoReleaser produces universal binary (lipo darwin/amd64 + arm64)
+#   2. sign     -- codesign --options runtime --sign "Developer ID Application: <TEAM_ID>"
+#   3. pkg      -- pkgbuild --sign "Developer ID Installer: <TEAM_ID>"
+#   4. notarize -- xcrun notarytool submit <.dmg> --wait
+#   5. staple   -- xcrun stapler staple <.dmg>
+#   6. publish  -- GitHub Release via goreleaser-action
+#
+# CI implementation: .github/workflows/daemon-release.yml job sign-macos.
+# The sign-macos job is live and tag-guarded (refs/tags/daemon/v*).
+# It requires these GitHub Actions secrets:
+#   APPLE_TEAM_ID                        -- 10-char team identifier from Apple account
+#   APPLE_DEVELOPER_CERTIFICATE          -- base64-encoded Developer ID Application .p12
+#   APPLE_DEVELOPER_CERTIFICATE_PASSWORD -- passphrase for the .p12
+#   APPLE_INSTALLER_CERTIFICATE          -- base64-encoded Developer ID Installer .p12
+#   APPLE_INSTALLER_CERTIFICATE_PASSWORD -- passphrase for the installer .p12
+#   APPLE_NOTARIZATION_APPLE_ID          -- Apple ID email used for notarytool
+#   APPLE_NOTARIZATION_PASSWORD          -- app-specific password for notarytool
+#                                           (generated at appleid.apple.com)
+#
+# SSM credential path convention (populate before GA activation):
+#   /vaultmtg/prod/apple-team-id
+#   /vaultmtg/prod/apple-notarization-apple-id
+#   /vaultmtg/prod/apple-notarization-password    (SecureString)
+#   /vaultmtg/prod/apple-developer-certificate    (SecureString, base64 .p12)
+#   /vaultmtg/prod/apple-developer-certificate-password (SecureString)
+#   /vaultmtg/prod/apple-installer-certificate    (SecureString, base64 .p12)
+#   /vaultmtg/prod/apple-installer-certificate-password (SecureString)
+#
+# These SSM params are loaded into GitHub Actions secrets before signing.
+# Full enrollment runbook: docs/runbooks/macos-notarization.md
+#
+# Windows -- Azure Trusted Signing (ticket #1649)
+# ------------------------------------------------
+# Status: DOCUMENTED. Azure identity validation approved 2026-05-10.
+#         Account creation pending ($9.99/mo, budget approved -- GA line item).
+#         Active signing activates at GA.
+#
+# How it works (when activated):
+#   1. build    -- GoReleaser produces vaultmtg-daemon-windows-amd64.exe
+#   2. sign     -- Azure Trusted Signing via microsoft/trusted-signing-action@v0
+#                  Signs the .exe using Azure account credentials
+#   3. installer -- NSIS wraps the signed .exe into a per-user installer
+#   4. publish  -- GitHub Release via goreleaser-action
+#
+# Required GitHub Actions secrets (populate before GA activation):
+#   AZURE_TENANT_ID               -- Azure AD tenant ID
+#   AZURE_CLIENT_ID               -- Service principal (app registration) client ID
+#   AZURE_CLIENT_SECRET           -- Service principal secret (SecureString in SSM)
+#   AZURE_TRUSTED_SIGNING_ACCOUNT -- Trusted Signing account name
+#   AZURE_CERTIFICATE_PROFILE     -- Certificate profile name
+#
+# SSM credential path convention (populate before GA activation):
+#   /vaultmtg/prod/azure-tenant-id
+#   /vaultmtg/prod/azure-client-id
+#   /vaultmtg/prod/azure-client-secret            (SecureString)
+#   /vaultmtg/prod/azure-trusted-signing-account
+#   /vaultmtg/prod/azure-certificate-profile
+#
+# GA workflow step to add in daemon-release.yml (goreleaser job, after GoReleaser):
+#
+#   - name: Sign Windows binary (Azure Trusted Signing)
+#     if: startsWith(github.ref, 'refs/tags/daemon/v')
+#     uses: microsoft/trusted-signing-action@v0
+#     with:
+#       azure-tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+#       azure-client-id: ${{ secrets.AZURE_CLIENT_ID }}
+#       azure-client-secret: ${{ secrets.AZURE_CLIENT_SECRET }}
+#       endpoint: https://eus.codesigning.azure.net/
+#       trusted-signing-account-name: ${{ secrets.AZURE_TRUSTED_SIGNING_ACCOUNT }}
+#       certificate-profile-name: ${{ secrets.AZURE_CERTIFICATE_PROFILE }}
+#       files-folder: dist/
+#       files-folder-filter: exe
+#       file-digest: SHA256
+#       timestamp-rfc3161: http://timestamp.acs.microsoft.com
+#       timestamp-digest: SHA256
+#
+# Budget summary (ADR-011, budget approved 2026-05-10):
+#   Apple Developer Program: $99/yr
+#   Azure Trusted Signing:   $9.99/mo (~$120/yr)
+#   Total GA signing cost:   ~$219/yr
+#
+# Full Azure signing runbook: docs/runbooks/windows-trusted-signing.md
+# ---------------------------------------------------------------------------
 
 version: 2
 
