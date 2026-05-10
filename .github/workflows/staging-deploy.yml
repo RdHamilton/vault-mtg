@@ -107,7 +107,7 @@ jobs:
             --instance-id "${{ secrets.EC2_INSTANCE_ID }}" \
             --region us-east-1 \
             --output json 2>&1); RC=$?
-          if [ $RC -ne 0 ]; then
+          if [ "$RC" -ne 0 ]; then
             # InvocationDoesNotExist means SSM has not dispatched yet -- treat as Pending.
             if echo "$RAW" | grep -q "InvocationDoesNotExist"; then
               echo "[$i/24] Status: Pending (invocation not yet registered)"
@@ -116,19 +116,21 @@ jobs:
               echo "[$i/24] API error (rc=$RC): $RAW"
             fi
           else
-            STATUS=$(echo "$RAW" | python3 -c "import sys,json; print(json.load(sys.stdin)['Status'])")
+            STATUS=$(echo "$RAW" | jq -r '.Status // "Unknown"')
             echo "[$i/24] Status: $STATUS"
             if [ "$STATUS" = "Success" ]; then
               echo "Staging env provisioned."
               break
             elif [ "$STATUS" = "Failed" ] || [ "$STATUS" = "Cancelled" ] || [ "$STATUS" = "TimedOut" ]; then
               echo "Provision failed: $STATUS"
-              echo "$RAW" | python3 -c "import sys,json; print(json.load(sys.stdin).get('StandardErrorContent',''))"
+              echo "$RAW" | jq -r '.StandardErrorContent // ""'
               exit 1
             fi
           fi
           sleep 10
         done
+        echo "SSM command timed out waiting for terminal state" >&2
+        exit 1
 
     - name: Stage binary on EC2 via SSM
       run: |
@@ -148,7 +150,7 @@ jobs:
             --instance-id "${{ secrets.EC2_INSTANCE_ID }}" \
             --region us-east-1 \
             --output json 2>&1); RC=$?
-          if [ $RC -ne 0 ]; then
+          if [ "$RC" -ne 0 ]; then
             # InvocationDoesNotExist means SSM has not dispatched yet -- treat as Pending.
             if echo "$RAW" | grep -q "InvocationDoesNotExist"; then
               echo "[$i/60] Status: Pending (invocation not yet registered)"
@@ -157,19 +159,21 @@ jobs:
               echo "[$i/60] API error (rc=$RC): $RAW"
             fi
           else
-            STATUS=$(echo "$RAW" | python3 -c "import sys,json; print(json.load(sys.stdin)['Status'])")
+            STATUS=$(echo "$RAW" | jq -r '.Status // "Unknown"')
             echo "[$i/60] Status: $STATUS"
             if [ "$STATUS" = "Success" ]; then
               echo "Staging binary staged."
               break
             elif [ "$STATUS" = "Failed" ] || [ "$STATUS" = "Cancelled" ] || [ "$STATUS" = "TimedOut" ]; then
               echo "Stage failed: $STATUS"
-              echo "$RAW" | python3 -c "import sys,json; print(json.load(sys.stdin).get('StandardErrorContent',''))"
+              echo "$RAW" | jq -r '.StandardErrorContent // ""'
               exit 1
             fi
           fi
           sleep 10
         done
+        echo "SSM command timed out waiting for terminal state" >&2
+        exit 1
 
     - name: Run database migrations on staging
       run: |
@@ -189,7 +193,7 @@ jobs:
             --instance-id "${{ secrets.EC2_INSTANCE_ID }}" \
             --region us-east-1 \
             --output json 2>&1); RC=$?
-          if [ $RC -ne 0 ]; then
+          if [ "$RC" -ne 0 ]; then
             # InvocationDoesNotExist means SSM has not dispatched yet -- treat as Pending.
             if echo "$RAW" | grep -q "InvocationDoesNotExist"; then
               echo "[$i/18] Status: Pending (invocation not yet registered)"
@@ -198,19 +202,21 @@ jobs:
               echo "[$i/18] API error (rc=$RC): $RAW"
             fi
           else
-            STATUS=$(echo "$RAW" | python3 -c "import sys,json; print(json.load(sys.stdin)['Status'])")
+            STATUS=$(echo "$RAW" | jq -r '.Status // "Unknown"')
             echo "[$i/18] Status: $STATUS"
             if [ "$STATUS" = "Success" ]; then
               echo "Staging migrations applied."
               break
             elif [ "$STATUS" = "Failed" ] || [ "$STATUS" = "Cancelled" ] || [ "$STATUS" = "TimedOut" ]; then
               echo "Migrations failed: $STATUS"
-              echo "$RAW" | python3 -c "import sys,json; print(json.load(sys.stdin).get('StandardErrorContent',''))"
+              echo "$RAW" | jq -r '.StandardErrorContent // ""'
               exit 1
             fi
           fi
           sleep 10
         done
+        echo "SSM command timed out waiting for terminal state" >&2
+        exit 1
 
     - name: Restart staging BFF service via SSM
       run: |
@@ -230,7 +236,7 @@ jobs:
             --instance-id "${{ secrets.EC2_INSTANCE_ID }}" \
             --region us-east-1 \
             --output json 2>&1); RC=$?
-          if [ $RC -ne 0 ]; then
+          if [ "$RC" -ne 0 ]; then
             # InvocationDoesNotExist means SSM has not dispatched yet -- treat as Pending.
             if echo "$RAW" | grep -q "InvocationDoesNotExist"; then
               echo "[$i/12] Status: Pending (invocation not yet registered)"
@@ -239,19 +245,21 @@ jobs:
               echo "[$i/12] API error (rc=$RC): $RAW"
             fi
           else
-            STATUS=$(echo "$RAW" | python3 -c "import sys,json; print(json.load(sys.stdin)['Status'])")
+            STATUS=$(echo "$RAW" | jq -r '.Status // "Unknown"')
             echo "[$i/12] Status: $STATUS"
             if [ "$STATUS" = "Success" ]; then
               echo "Staging service restarted."
               break
             elif [ "$STATUS" = "Failed" ] || [ "$STATUS" = "Cancelled" ] || [ "$STATUS" = "TimedOut" ]; then
               echo "Restart failed: $STATUS"
-              echo "$RAW" | python3 -c "import sys,json; print(json.load(sys.stdin).get('StandardErrorContent',''))"
+              echo "$RAW" | jq -r '.StandardErrorContent // ""'
               exit 1
             fi
           fi
           sleep 10
         done
+        echo "SSM command timed out waiting for terminal state" >&2
+        exit 1
 
     - name: Post-deploy health check (staging)
       run: |
