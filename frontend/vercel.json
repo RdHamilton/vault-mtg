@@ -1,4 +1,0 @@
-{
-  "ignoreCommand": "if [ \"$VERCEL_ENV\" = \"production\" ]; then exit 1; fi; exit 0",
-  "rewrites": [{ "source": "/(.*)", "destination": "/index.html" }]
-}
