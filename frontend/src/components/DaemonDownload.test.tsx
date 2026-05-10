@@ -47,7 +47,7 @@ describe('DaemonDownload', () => {
       expect(link).toBeInTheDocument();
       expect(link).toHaveAttribute(
         'href',
-        `${RELEASES_BASE}/mtga-companion-daemon-darwin-arm64.tar.gz`
+        `${RELEASES_BASE}/mtga-companion-daemon-darwin-arm64.dmg`
       );
     });
 
@@ -57,7 +57,7 @@ describe('DaemonDownload', () => {
       expect(link).toBeInTheDocument();
       expect(link).toHaveAttribute(
         'href',
-        `${RELEASES_BASE}/mtga-companion-daemon-darwin-amd64.tar.gz`
+        `${RELEASES_BASE}/mtga-companion-daemon-darwin-amd64.dmg`
       );
     });
 
@@ -170,6 +170,9 @@ describe('DaemonDownload', () => {
       render(<DaemonDownload />);
       const step = screen.getByTestId('getting-started-step-2');
       expect(step).toHaveTextContent('Run the installer');
+      // macOS uses .dmg, not install script
+      expect(step).toHaveTextContent('.dmg');
+      expect(step).not.toHaveTextContent('install script');
     });
 
     it('should render step 3 — Launch MTGA Arena', () => {
