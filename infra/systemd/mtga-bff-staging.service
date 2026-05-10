@@ -1,0 +1,28 @@
+[Unit]
+Description=MTGA Companion BFF — Staging
+Documentation=https://github.com/ramonehamilton/MTGA-Companion
+After=network.target
+
+[Service]
+Type=simple
+User=ec2-user
+Group=ec2-user
+
+ExecStart=/usr/local/bin/mtga-bff-staging
+
+# Load env file rendered by provision-staging-env.sh from SSM
+EnvironmentFile=/etc/mtga-companion-staging/env
+
+# Explicit env overrides
+Environment=MTGA_ENV=staging
+
+Restart=on-failure
+RestartSec=5
+
+# Logging — journald captures stdout/stderr
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=mtga-bff-staging
+
+[Install]
+WantedBy=multi-user.target

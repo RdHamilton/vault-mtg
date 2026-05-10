@@ -119,3 +119,71 @@ If absent, run `infra/scripts/install-staging-service.sh` on the instance.
 ## Previous Investigation (Run #25620349421)
 
 Prior agent session (01:20 ET) diagnosed the Stage Binary SSM poll-loop timeout as a transient GHA API race, not an EC2 issue. That run ultimately succeeded through the staging step. Failures at restart and migrations steps are the new issues diagnosed and fixed here.
+
+---
+
+# Task: Install mtga-bff-staging.service on EC2
+
+**Updated**: 2026-05-10T05:40 UTC
+**Status**: Unit installed and enabled — blocked on bad SENTRY_DSN SSM parameter (Ray action required)
+
+## What Was Done
+
+1. `infra/systemd/mtga-bff-staging.service` already existed in repo with correct config:
+   - Binary: `/usr/local/bin/mtga-bff-staging`
+   - EnvironmentFile: `/etc/mtga-companion-staging/env`
+   - `MTGA_ENV=staging`, `Restart=on-failure`, `RestartSec=5`, `User=ec2-user`
+2. Unit file written to `/etc/systemd/system/mtga-bff-staging.service` on `i-065351fbb99da2d22` via SSM.
+3. `systemctl daemon-reload && systemctl enable mtga-bff-staging` — succeeded.
+4. `systemctl start mtga-bff-staging` — service crashes immediately on every start.
+
+## Root Cause of Crash
+
+```
+sentry.Init: [Sentry] DsnParseError: invalid scheme
+```
+
+The SSM parameter `/vaultmtg/staging/sentry-bff-dsn` (type: `String`) contains a **raw KMS/Secrets Manager ciphertext blob** instead of a plaintext Sentry DSN URL. The `provision-staging-env.sh` script correctly fetches it without `--with-decryption` (it's a `String` type), but the stored value was never the actual DSN — it's encrypted ciphertext. The BFF binary treats it as the DSN and Sentry rejects the scheme.
+
+**Parameter value (corrupted):**
+```
+AQICAHhL4WPgmGSIc3GopW9... (base64 KMS ciphertext)
+```
+
+**Expected value format:**
+```
+https://<key>@<org>.ingest.sentry.io/<project-id>
+```
+
+## Checkpoint Log
+
+| Time (UTC) | Checkpoint |
+|-----------|-----------|
+| 2026-05-10 05:30 | Unit file confirmed correct in repo |
+| 2026-05-10 05:31 | Unit written to EC2 via SSM, enabled successfully |
+| 2026-05-10 05:32 | Start attempted — crash loop due to bad SENTRY_DSN |
+| 2026-05-10 05:38 | Service stopped and disabled to halt crash loop |
+| 2026-05-10 05:40 | PR opened for `infra/systemd/mtga-bff-staging.service` |
+
+## Ray Action Required — BLOCKER
+
+**Fix the corrupted `/vaultmtg/staging/sentry-bff-dsn` SSM parameter:**
+
+1. Get the real Sentry DSN from the Sentry dashboard for the staging project.
+2. Re-store it:
+```bash
+aws ssm put-parameter --profile personal --region us-east-1 \
+  --name /vaultmtg/staging/sentry-bff-dsn \
+  --type String \
+  --value "https://<key>@<org>.ingest.sentry.io/<project-id>" \
+  --overwrite
+```
+3. Re-run `provision-staging-env.sh` on the instance to regenerate `/etc/mtga-companion-staging/env`.
+4. Re-enable and start the service:
+```bash
+aws ssm send-command --profile personal \
+  --instance-ids i-065351fbb99da2d22 \
+  --document-name AWS-RunShellScript \
+  --parameters 'commands=["systemctl enable mtga-bff-staging","systemctl start mtga-bff-staging","systemctl status mtga-bff-staging --no-pager"]' \
+  --region us-east-1
+```
