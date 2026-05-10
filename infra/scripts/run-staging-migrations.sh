@@ -33,6 +33,11 @@ set -euo pipefail
 
 REGION="${AWS_REGION:-us-east-1}"
 
+# DEPLOY_BUCKET is set by the staging deploy workflow (injected via SSM command
+# environment). When set, migrations are downloaded from S3 instead of read from
+# a local repo checkout -- this is the normal path on the EC2 staging instance.
+DEPLOY_BUCKET="${DEPLOY_BUCKET:-}"
+
 # When run on EC2 via SSM (from /tmp), BASH_SOURCE[0] resolves to /tmp and
 # the relative ../../ traversal produces a broken path. Use the canonical EC2
 # repo location when the relative path doesn't contain a services/ tree, then
@@ -46,15 +51,40 @@ fi
 MIGRATIONS_DIR="$REPO_ROOT/services/bff/internal/storage/migrations/postgres"
 
 if [[ ! -d "$MIGRATIONS_DIR" ]]; then
-    echo "[run-staging-migrations] ERROR: migrations directory not found at $MIGRATIONS_DIR"
-    echo "  Expected: $MIGRATIONS_DIR"
-    echo "  The EC2 instance must have the repo checked out at /opt/mtga-companion."
-    exit 1
+    if [[ -n "$DEPLOY_BUCKET" ]]; then
+        # CI deploy path: download migrations from S3 (uploaded by staging-deploy.yml)
+        echo "[run-staging-migrations] Repo not at $REPO_ROOT -- downloading migrations from s3://$DEPLOY_BUCKET/migrations/postgres/ ..."
+        MIGRATIONS_DIR="/tmp/staging-migrations-postgres"
+        mkdir -p "$MIGRATIONS_DIR"
+        aws s3 sync "s3://$DEPLOY_BUCKET/migrations/postgres/" "$MIGRATIONS_DIR/" --region "$REGION"
+        echo "[run-staging-migrations] Migrations downloaded to $MIGRATIONS_DIR"
+    else
+        echo "[run-staging-migrations] ERROR: migrations directory not found at $MIGRATIONS_DIR"
+        echo "  Expected: $MIGRATIONS_DIR"
+        echo "  On EC2 set DEPLOY_BUCKET to download migrations from S3."
+        echo "  Locally: run from the repo root or set REPO_ROOT."
+        exit 1
+    fi
+fi
+
+# Install golang-migrate CLI if not present.
+# On the EC2 staging instance this is not pre-installed; we fetch the latest
+# linux/amd64 release tarball from GitHub and install to /usr/local/bin.
+if ! command -v migrate &>/dev/null; then
+    echo "[run-staging-migrations] migrate CLI not found -- installing ..."
+    MIGRATE_VERSION="v4.18.3"
+    MIGRATE_TARBALL="migrate.linux-amd64.tar.gz"
+    curl -fsSL \
+        "https://github.com/golang-migrate/migrate/releases/download/${MIGRATE_VERSION}/${MIGRATE_TARBALL}" \
+        -o "/tmp/${MIGRATE_TARBALL}"
+    tar -xzf "/tmp/${MIGRATE_TARBALL}" -C /tmp
+    install -m 0755 /tmp/migrate /usr/local/bin/migrate
+    echo "[run-staging-migrations] migrate ${MIGRATE_VERSION} installed."
 fi
 
 echo "[run-staging-migrations] Fetching staging DATABASE_URL from SSM..."
 
-# On EC2 the instance IAM role provides credentials — no named profile exists.
+# On EC2 the instance IAM role provides credentials -- no named profile exists.
 # Locally, AWS_PROFILE can be set to override (defaults to 'personal').
 _PROFILE_ARG=()
 if [[ -n "${AWS_PROFILE:-}" ]]; then
@@ -124,12 +154,19 @@ DB_ENDPOINT=$(aws ssm get-parameter \
     --query   "Parameter.Value" \
     --output  text)
 
+GRANT_SQL="$REPO_ROOT/infra/db/grant-staging-tables.sql"
+if [[ ! -f "$GRANT_SQL" ]] && [[ -n "$DEPLOY_BUCKET" ]]; then
+    echo "[run-staging-migrations] Downloading grant-staging-tables.sql from S3 ..."
+    aws s3 cp "s3://$DEPLOY_BUCKET/infra-db/grant-staging-tables.sql" /tmp/grant-staging-tables.sql --region "$REGION"
+    GRANT_SQL="/tmp/grant-staging-tables.sql"
+fi
+
 PGPASSWORD="$MASTER_PASSWORD" psql \
     -h "$DB_ENDPOINT" \
     -U "$MASTER_USER" \
     -d vaultmtg_staging \
     -v ON_ERROR_STOP=1 \
-    -f "$REPO_ROOT/infra/db/grant-staging-tables.sql"
+    -f "$GRANT_SQL"
 
 echo "[run-staging-migrations] Table grants applied."
 echo ""
