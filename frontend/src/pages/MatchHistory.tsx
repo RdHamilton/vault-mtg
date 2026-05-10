@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import { EventsOn } from '@/services/websocketClient';
 import { matches as matchesApi } from '@/services/api';
 import { models } from '@/types/models';
@@ -6,11 +6,14 @@ import { getDisplayFormat, getDisplayEventName } from '@/utils/formatNormalizati
 import LoadingSpinner from '../components/LoadingSpinner';
 import Tooltip from '../components/Tooltip';
 import EmptyState from '../components/EmptyState';
+import DaemonEmptyState from '../components/DaemonEmptyState';
 import ErrorState from '../components/ErrorState';
 import MatchDetailsModal from '../components/MatchDetailsModal';
 import MatchNotesModal from '../components/MatchNotesModal';
 import MatchComparisonPanel from '../components/MatchComparisonPanel';
 import { useAppContext } from '../context/AppContext';
+import { useDaemonStatus } from '../hooks/useDaemonStatus';
+import { trackEvent } from '@/services/analytics';
 import './MatchHistory.css';
 
 type SortField = 'Timestamp' | 'Result' | 'Format' | 'EventName' | 'DeckName';
@@ -19,6 +22,21 @@ type SortDirection = 'asc' | 'desc';
 const MatchHistory = () => {
   const { filters, updateFilters } = useAppContext();
   const { dateRange, customStartDate, customEndDate, cardFormat, queueType, result } = filters.matchHistory;
+
+  // Daemon connectivity — drives the no-daemon empty state
+  const { daemonConnected, daemonChecked } = useDaemonStatus();
+
+  // Analytics: fire funnel_daemon_installed once when daemon first connects
+  const daemonInstalledFiredRef = useRef(false);
+  useEffect(() => {
+    if (daemonChecked && daemonConnected && !daemonInstalledFiredRef.current) {
+      daemonInstalledFiredRef.current = true;
+      trackEvent({ name: 'funnel_daemon_installed', properties: { source: 'match_history' } });
+    }
+  }, [daemonChecked, daemonConnected]);
+
+  // Analytics: fire funnel_first_game_played once when the first match record is seen
+  const firstGamePlayedFiredRef = useRef(false);
 
   const [matchList, setMatchList] = useState<models.Match[]>([]);
   const [loading, setLoading] = useState(true);
@@ -107,7 +125,20 @@ const MatchHistory = () => {
       }
 
       const matchData = await matchesApi.getMatches(matchesApi.statsFilterToRequest(filter));
-      setMatchList(matchData || []);
+      const matches = matchData || [];
+      setMatchList(matches);
+      // Fire first-game-played funnel event when the user has at least one match
+      if (matches.length > 0 && !firstGamePlayedFiredRef.current) {
+        firstGamePlayedFiredRef.current = true;
+        const firstMatch = matches[0];
+        trackEvent({
+          name: 'funnel_first_game_played',
+          properties: {
+            format: firstMatch.Format ?? undefined,
+            source: 'match_history',
+          },
+        });
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load matches');
       console.error('Error loading matches:', err);
@@ -186,7 +217,19 @@ const MatchHistory = () => {
         }
 
         const matchData = await matchesApi.getMatches(matchesApi.statsFilterToRequest(filter));
-        setMatchList(matchData || []);
+        const matches = matchData || [];
+        setMatchList(matches);
+        if (matches.length > 0 && !firstGamePlayedFiredRef.current) {
+          firstGamePlayedFiredRef.current = true;
+          const firstMatch = matches[0];
+          trackEvent({
+            name: 'funnel_first_game_played',
+            properties: {
+              format: firstMatch.Format ?? undefined,
+              source: 'match_history',
+            },
+          });
+        }
       } catch (err) {
         setError(err instanceof Error ? err.message : 'Failed to load matches');
         console.error('Error loading matches:', err);
@@ -414,7 +457,16 @@ const MatchHistory = () => {
       {/* Content - Loading/Error/Empty States */}
       {loading && <LoadingSpinner message="Loading matches..." />}
 
-      {error && (
+      {/* Daemon not connected — show first-run empty state */}
+      {!loading && daemonChecked && !daemonConnected && (
+        <DaemonEmptyState
+          page="match_history"
+          heading="Daemon not connected"
+          subtext="Match History requires the VaultMTG daemon to be running. Download and start the daemon to see your match history."
+        />
+      )}
+
+      {error && daemonConnected && (
         <ErrorState
           message="Failed to load matches"
           error={error}
@@ -422,7 +474,7 @@ const MatchHistory = () => {
         />
       )}
 
-      {!loading && !error && matchList.length === 0 && (
+      {!loading && !error && daemonConnected && matchList.length === 0 && (
         dateRange === 'all' && cardFormat === 'all' && queueType === 'all' && result === 'all' ? (
           <EmptyState
             icon="🎮"
@@ -441,7 +493,7 @@ const MatchHistory = () => {
       )}
 
       {/* Table Container - Scrollable */}
-      {!loading && !error && matchList.length > 0 && (
+      {!loading && !error && daemonConnected && matchList.length > 0 && (
         <>
           <div className="match-history-table-container">
             <table>

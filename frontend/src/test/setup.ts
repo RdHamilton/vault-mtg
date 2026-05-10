@@ -31,6 +31,19 @@ vi.mock('@/services/websocketClient', () => mockWailsRuntime);
 // Mock the REST API modules globally
 vi.mock('@/services/api', () => mockApi);
 
+// Mock bffHealth globally — returns connected by default so pages render normally.
+// Tests that need daemon-disconnected behaviour can override this mock per-test.
+vi.mock('@/services/api/bffHealth', () => ({
+  getDaemonHealth: vi.fn(() => Promise.resolve({ status: 'connected' })),
+}));
+
+// Mock useDaemonStatus globally — returns connected+checked by default so page
+// tests that predate Wave 5 do not need to be updated to account for the hook.
+// Tests that need disconnected state can override: vi.mocked(useDaemonStatus).mockReturnValue(...)
+vi.mock('@/hooks/useDaemonStatus', () => ({
+  useDaemonStatus: vi.fn(() => ({ daemonConnected: true, daemonChecked: true })),
+}));
+
 // Mock individual API modules that are imported directly
 vi.mock('@/services/api/standard', () => ({
   validateDeckStandard: vi.fn(() => Promise.resolve({ isLegal: true, errors: [], warnings: [], setBreakdown: [] })),

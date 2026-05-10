@@ -6,12 +6,18 @@ import { useRotationNotifications } from '@/hooks/useRotationNotifications';
 import { useSettings } from '@/hooks/useSettings';
 import { RotationBanner } from '@/components/RotationBanner';
 import EmptyState from '@/components/EmptyState';
+import DaemonEmptyState from '@/components/DaemonEmptyState';
+import { useDaemonStatus } from '@/hooks/useDaemonStatus';
 import './Decks.css';
 
 type ExportFormat = 'arena' | 'moxfield' | 'archidekt' | 'mtgo' | 'mtggoldfish' | 'plaintext';
 
 export default function Decks() {
   const navigate = useNavigate();
+
+  // Daemon connectivity — drives the no-daemon empty state
+  const { daemonConnected, daemonChecked } = useDaemonStatus();
+
   const [deckList, setDeckList] = useState<gui.DeckListItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -206,6 +212,22 @@ export default function Decks() {
     const mins = minutes % 60;
     return `~${hours}h ${mins}m avg`;
   };
+
+  // Daemon not connected — show first-run empty state immediately
+  if (daemonChecked && !daemonConnected) {
+    return (
+      <div className="decks-page">
+        <div className="decks-header">
+          <h1>My Decks</h1>
+        </div>
+        <DaemonEmptyState
+          page="decks"
+          heading="Daemon not connected"
+          subtext="Decks requires the VaultMTG daemon to be running. Download and start the daemon to manage your decks."
+        />
+      </div>
+    );
+  }
 
   if (loading) {
     return (
