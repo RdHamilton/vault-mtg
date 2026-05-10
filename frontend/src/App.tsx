@@ -155,6 +155,7 @@ function App() {
           {/* Public routes — no auth required */}
           <Route path="/" element={<Navigate to="/match-history" replace />} />
           <Route path="/download" element={<Download />} />
+          <Route path="/setup" element={<Setup />} />
 
           {/* Protected routes — require Clerk authentication */}
           <Route element={<ProtectedRoute />}>
@@ -177,7 +178,6 @@ function App() {
             <Route path="/history/drafts" element={<BffDraftHistory />} />
             <Route path="/draft/live" element={<DraftLive />} />
             <Route path="/api-keys" element={<ApiKeysPage />} />
-            <Route path="/setup" element={<Setup />} />
           </Route>
         </Routes>
       </Layout>

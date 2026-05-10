@@ -22,13 +22,13 @@ const DOWNLOAD_OPTIONS: DownloadOption[] = [
   {
     label: 'macOS (Apple Silicon)',
     platform: 'darwin-arm64',
-    ext: 'tar.gz',
+    ext: 'dmg',
     description: 'macOS 12+ on M1/M2/M3',
   },
   {
     label: 'macOS (Intel)',
     platform: 'darwin-amd64',
-    ext: 'tar.gz',
+    ext: 'dmg',
     description: 'macOS 12+ on Intel',
   },
 ];
@@ -43,7 +43,7 @@ const GETTING_STARTED_STEPS = [
     number: 2,
     title: 'Run the installer',
     description:
-      'On macOS: extract the archive and run the install script. On Windows: run the downloaded .exe installer.',
+      'On macOS: open the .dmg, drag the daemon to Applications, then launch it. On Windows: run the .exe installer and follow the Next → Next → Finish prompts.',
   },
   {
     number: 3,
