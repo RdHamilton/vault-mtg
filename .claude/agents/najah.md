@@ -11,6 +11,7 @@ tools:
   - Glob
   - WebSearch
   - WebFetch
+  - Agent
 ---
 
 ## Strict Task Scope Enforcement
