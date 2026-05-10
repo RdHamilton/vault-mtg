@@ -44,17 +44,57 @@ jobs:
   staging-health-gate:
     name: Verify Staging Health Before Release
     runs-on: ubuntu-latest
+    environment: staging
+    permissions:
+      id-token: write
+      contents: read
     steps:
-      - name: Check staging /healthz
+      - name: Configure AWS credentials (OIDC)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: us-east-1
+
+      - name: Check staging /healthz via SSM
         run: |
-          HTTP=$(curl -s -o /dev/null -w "%{http_code}" \
-            --max-time 10 https://staging-api.vaultmtg.app/healthz)
-          if [ "$HTTP" != "200" ]; then
-            echo "Staging health check failed: HTTP $HTTP" >&2
-            echo "Run the Staging Deploy workflow against main before releasing." >&2
+          COMMAND_ID=$(aws ssm send-command \
+            --instance-ids "${{ secrets.EC2_INSTANCE_ID }}" \
+            --document-name "AWS-RunShellScript" \
+            --parameters 'commands=["curl -sf http://127.0.0.1:8081/healthz && echo staging-healthz-ok"]' \
+            --region us-east-1 \
+            --query "Command.CommandId" \
+            --output text)
+
+          SUCCEEDED=0
+          for i in $(seq 1 12); do
+            STATUS=$(aws ssm get-command-invocation \
+              --command-id "$COMMAND_ID" \
+              --instance-id "${{ secrets.EC2_INSTANCE_ID }}" \
+              --region us-east-1 \
+              --query "Status" \
+              --output text 2>/dev/null || echo "Pending")
+            echo "[$i/12] Status: $STATUS"
+            if [ "$STATUS" = "Success" ]; then
+              echo "Staging healthy."
+              SUCCEEDED=1
+              break
+            elif [ "$STATUS" = "Failed" ] || [ "$STATUS" = "Cancelled" ] || [ "$STATUS" = "TimedOut" ]; then
+              echo "Staging health check failed: $STATUS" >&2
+              echo "Run the Staging Deploy workflow against main before releasing." >&2
+              aws ssm get-command-invocation \
+                --command-id "$COMMAND_ID" \
+                --instance-id "${{ secrets.EC2_INSTANCE_ID }}" \
+                --region us-east-1 \
+                --query "StandardErrorContent" \
+                --output text
+              exit 1
+            fi
+            sleep 5
+          done
+          if [ "$SUCCEEDED" -ne 1 ]; then
+            echo "Staging health check timed out." >&2
             exit 1
           fi
-          echo "Staging healthy: HTTP $HTTP"
 
   # Verify all required SSM parameters exist in production before releasing.
   # Prevents a deploy from silently failing due to a missing secret.
