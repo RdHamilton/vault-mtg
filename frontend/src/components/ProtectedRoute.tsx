@@ -1,5 +1,5 @@
-import { Outlet } from 'react-router-dom';
-import { useAuth, RedirectToSignIn } from '@clerk/react';
+import { Outlet, useLocation } from 'react-router-dom';
+import { useAuth, SignInButton } from '@clerk/react';
 import './ProtectedRoute.css';
 
 interface ProtectedRouteProps {
@@ -8,7 +8,7 @@ interface ProtectedRouteProps {
 
 /**
  * ProtectedRoute guards content that requires authentication.
- * When the user is not signed in, it renders a sign-in prompt instead.
+ * When the user is not signed in, it renders a sign-in prompt with a modal trigger.
  *
  * Supports two usage patterns:
  *   1. Layout route (React Router v6): <Route element={<ProtectedRoute />}>
@@ -18,6 +18,7 @@ interface ProtectedRouteProps {
  */
 const ProtectedRoute = ({ children }: ProtectedRouteProps) => {
   const { isSignedIn, isLoaded } = useAuth();
+  const location = useLocation();
 
   if (!isLoaded) {
     return (
@@ -28,15 +29,36 @@ const ProtectedRoute = ({ children }: ProtectedRouteProps) => {
   }
 
   if (!isSignedIn) {
-    return <RedirectToSignIn />;
+    const segments = location.pathname.split('/').filter(Boolean);
+    const lastSegment = segments[segments.length - 1] ?? 'this page';
+    const pageName = lastSegment
+      .split('-')
+      .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
+      .join(' ');
+
+    return (
+      <div className="protected-route-prompt" data-testid="protected-route-prompt">
+        <div className="protected-route-card">
+          <p className="protected-route-title">Sign in to access {pageName}</p>
+          <p className="protected-route-subtitle">
+            Create an account or sign in to view your data.
+          </p>
+          <div className="protected-route-actions">
+            <SignInButton mode="modal">
+              <button className="protected-route-btn" data-testid="protected-route-sign-in-btn">
+                Sign In
+              </button>
+            </SignInButton>
+          </div>
+        </div>
+      </div>
+    );
   }
 
-  // Layout route: render nested routes via Outlet
   if (children === undefined) {
     return <Outlet />;
   }
 
-  // Wrapper usage: render provided children
   return <>{children}</>;
 };
 

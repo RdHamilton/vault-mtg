@@ -133,7 +133,7 @@ describe('App', () => {
       renderAppWithRoute('/match-history');
 
       await waitFor(() => {
-        expect(screen.getByTestId('redirect-to-sign-in')).toBeInTheDocument();
+        expect(screen.getByTestId('protected-route-prompt')).toBeInTheDocument();
       });
       expect(screen.queryByTestId('match-history-page')).not.toBeInTheDocument();
 
