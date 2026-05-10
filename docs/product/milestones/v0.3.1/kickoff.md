@@ -216,12 +216,12 @@ The architect confirmed the following order is correct and internally consistent
 | #1700 | feat(frontend): implement first-run onboarding funnel analytics events (funnel_daemon_installed, funnel_first_game_played) | front-engineer | S |
 
 **Definition of done:**
-- [ ] Match History, Collection, and Decks pages each render a design-spec-compliant empty state when daemon is not connected (not a blank screen or error)
-- [ ] Empty states include a clear CTA pointing users to `/setup` or daemon download
-- [ ] `funnel_daemon_installed` and `funnel_first_game_played` PostHog events fire at the correct points in the first-run flow
-- [ ] Component tests added for all three empty state components
-- [ ] Playwright E2E test covers the no-daemon empty state flow end-to-end
-- [ ] CI green on main after merge
+- [x] Match History, Collection, and Decks pages each render a design-spec-compliant empty state when daemon is not connected (not a blank screen or error)
+- [x] Empty states include a clear CTA pointing users to `/setup` or daemon download
+- [x] `funnel_daemon_installed` and `funnel_first_game_played` PostHog events fire at the correct points in the first-run flow
+- [x] Component tests added for all three empty state components
+- [x] Playwright E2E test covers the no-daemon empty state flow end-to-end
+- [x] CI green on main after merge
 
 **Assigned agents**: front-engineer
 **Estimated effort**: L (4× S)
