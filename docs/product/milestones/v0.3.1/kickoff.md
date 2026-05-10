@@ -234,6 +234,7 @@ The architect confirmed the following order is correct and internally consistent
 |---|---|
 | **Theme** | Web-based guided install experience |
 | **Goal** | First-time users land on `/setup`, understand platform-specific warnings, download the right installer, and complete PKCE pairing from the browser |
+| **Status** | CLOSED — all tickets merged; DoD verified by LE. PRs: #1775, #1776, #1777, #1778, #1779, #1780. |
 
 | Ticket | Title | Owner | Effort |
 |--------|-------|-------|--------|
@@ -243,12 +244,12 @@ The architect confirmed the following order is correct and internally consistent
 | #1647 | docs(daemon): update install README — describe .pkg/.dmg and NSIS .exe paths, mark shell scripts as power-user fallback | front-engineer | XS |
 
 **Definition of done:**
-- [ ] `/setup` page renders platform-appropriate Gatekeeper (macOS) and SmartScreen (Windows) bypass instructions with screenshots
-- [ ] PKCE flow on SPA replaces old SPA-mint-key flow per ADR-020
-- [ ] `DaemonDownload.tsx` shows `.dmg` and `.exe` download buttons linked to GitHub Releases; no broken shell-script links
-- [ ] Install README updated and accurate; shell scripts marked as power-user fallback
-- [ ] Playwright E2E test covers the `/setup` page download button and PKCE redirect
-- [ ] CI green on main after merge
+- [x] `/setup` page renders platform-appropriate Gatekeeper (macOS) and SmartScreen (Windows) bypass instructions with screenshots
+- [x] PKCE flow on SPA replaces old SPA-mint-key flow per ADR-020
+- [x] `DaemonDownload.tsx` shows `.dmg` and `.exe` download buttons linked to GitHub Releases; no broken shell-script links
+- [x] Install README updated and accurate; shell scripts marked as power-user fallback
+- [x] Playwright E2E test covers the `/setup` page download button and PKCE redirect
+- [x] CI green on main after merge
 
 **Assigned agents**: front-engineer (primary)
 **Estimated effort**: M (2× S + 2× XS)
