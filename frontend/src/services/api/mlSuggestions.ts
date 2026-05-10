@@ -3,7 +3,7 @@
  * Handles ML-powered card suggestions based on synergy analysis.
  */
 
-import { del, get, post, put } from '../apiClient';
+import { del, get, post, put } from '../daemonClient';
 
 /**
  * ML suggestion types.

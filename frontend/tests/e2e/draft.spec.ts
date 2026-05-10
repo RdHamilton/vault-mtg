@@ -19,7 +19,7 @@ test.describe('Draft', () => {
     });
 
     await page.goto('/');
-    await expect(page.locator('[data-testid="app-container"]')).toBeVisible({ timeout: 10000 });
+    await expect(page.locator('[data-testid="app-container"]')).toBeVisible();
 
     await page.click('a[href="/draft"]');
     await page.waitForURL('**/draft');
@@ -43,7 +43,7 @@ test.describe('Draft', () => {
       const draftEmpty = page.locator('.draft-empty');
 
       // Wait for either content type to appear
-      await expect(draftContainer.or(draftEmpty).first()).toBeVisible({ timeout: 10000 });
+      await expect(draftContainer.or(draftEmpty).first()).toBeVisible();
 
       const hasContainer = await draftContainer.isVisible();
       const hasEmpty = await draftEmpty.isVisible();
@@ -57,7 +57,7 @@ test.describe('Draft', () => {
       const draftEmpty = page.locator('.draft-empty');
 
       // Wait for content to load
-      await expect(draftContainer.or(draftEmpty).or(historicalSection).first()).toBeVisible({ timeout: 10000 });
+      await expect(draftContainer.or(draftEmpty).or(historicalSection).first()).toBeVisible();
 
       const hasHistorical = await historicalSection.isVisible();
       const hasDraftContent = await draftContainer.isVisible();
@@ -71,7 +71,7 @@ test.describe('Draft', () => {
     test('should not show error state on initial load', async ({ page }) => {
       // Wait for content to load
       const content = page.locator('.draft-container, .draft-empty');
-      await expect(content.first()).toBeVisible({ timeout: 10000 });
+      await expect(content.first()).toBeVisible();
 
       const errorState = page.locator('.error-state');
       await expect(errorState).not.toBeVisible();
@@ -85,7 +85,7 @@ test.describe('Draft', () => {
       const draftEmpty = page.locator('.draft-empty');
       const historicalSection = page.locator('text=Historical Drafts');
 
-      await expect(draftContainer.or(draftEmpty).or(historicalSection).first()).toBeVisible({ timeout: 10000 });
+      await expect(draftContainer.or(draftEmpty).or(historicalSection).first()).toBeVisible();
 
       // Look for Build Deck button in the page
       const buildDeckButton = page.locator('button.btn-build-deck, button:has-text("Build Deck")');
@@ -104,7 +104,7 @@ test.describe('Draft', () => {
       const draftEmpty = page.locator('.draft-empty');
       const historicalSection = page.locator('text=Historical Drafts');
 
-      await expect(draftContainer.or(draftEmpty).or(historicalSection).first()).toBeVisible({ timeout: 10000 });
+      await expect(draftContainer.or(draftEmpty).or(historicalSection).first()).toBeVisible();
 
       // Find a Build Deck button
       const buildDeckButton = page.locator('button.btn-build-deck, button:has-text("Build Deck")').first();
@@ -129,7 +129,7 @@ test.describe('Draft', () => {
       const draftEmpty = page.locator('.draft-empty');
       const historicalSection = page.locator('text=Historical Drafts');
 
-      await expect(draftContainer.or(draftEmpty).or(historicalSection).first()).toBeVisible({ timeout: 10000 });
+      await expect(draftContainer.or(draftEmpty).or(historicalSection).first()).toBeVisible();
 
       // Find a Build Deck button
       const buildDeckButton = page.locator('button.btn-build-deck, button:has-text("Build Deck")').first();
@@ -141,11 +141,11 @@ test.describe('Draft', () => {
 
         // Wait for DeckBuilder to load
         const deckBuilder = page.locator('.deck-builder');
-        await expect(deckBuilder).toBeVisible({ timeout: 15000 });
+        await expect(deckBuilder).toBeVisible();
 
         // Verify deck header is displayed with deck name
         const deckHeader = page.locator('.deck-header h2, .deck-title h2');
-        await expect(deckHeader).toBeVisible({ timeout: 10000 });
+        await expect(deckHeader).toBeVisible();
 
         // Deck name should contain "Draft" (e.g., "QuickDraft_DSK Draft")
         const deckName = await deckHeader.textContent();
@@ -159,7 +159,7 @@ test.describe('Draft', () => {
       const draftEmpty = page.locator('.draft-empty');
       const historicalSection = page.locator('text=Historical Drafts');
 
-      await expect(draftContainer.or(draftEmpty).or(historicalSection).first()).toBeVisible({ timeout: 10000 });
+      await expect(draftContainer.or(draftEmpty).or(historicalSection).first()).toBeVisible();
 
       // Find a Build Deck button
       const buildDeckButton = page.locator('button.btn-build-deck, button:has-text("Build Deck")').first();
@@ -171,11 +171,11 @@ test.describe('Draft', () => {
 
         // Wait for DeckBuilder to load
         const deckBuilder = page.locator('.deck-builder');
-        await expect(deckBuilder).toBeVisible({ timeout: 15000 });
+        await expect(deckBuilder).toBeVisible();
 
         // Wait for cards to load (deck list should have cards)
         const deckList = page.locator('.deck-list, .deck-cards');
-        await expect(deckList).toBeVisible({ timeout: 10000 });
+        await expect(deckList).toBeVisible();
 
         // Check that the deck has cards (not empty)
         // Look for card entries or quantity indicators
@@ -198,7 +198,7 @@ test.describe('Draft', () => {
       const draftEmpty = page.locator('.draft-empty');
       const historicalSection = page.locator('text=Historical Drafts');
 
-      await expect(draftContainer.or(draftEmpty).or(historicalSection).first()).toBeVisible({ timeout: 10000 });
+      await expect(draftContainer.or(draftEmpty).or(historicalSection).first()).toBeVisible();
 
       // Find a Build Deck button
       const buildDeckButton = page.locator('button.btn-build-deck, button:has-text("Build Deck")').first();
@@ -210,7 +210,7 @@ test.describe('Draft', () => {
 
         // Wait for DeckBuilder to load
         const deckBuilder = page.locator('.deck-builder');
-        await expect(deckBuilder).toBeVisible({ timeout: 15000 });
+        await expect(deckBuilder).toBeVisible();
 
         // For draft decks, Suggest Decks button should be visible
         const suggestDecksButton = page.locator('button.suggest-decks-btn, button:has-text("Suggest Decks")');
@@ -228,7 +228,7 @@ test.describe('Draft', () => {
       const draftEmpty = page.locator('.draft-empty');
       const historicalSection = page.locator('text=Historical Drafts');
 
-      await expect(draftContainer.or(draftEmpty).or(historicalSection).first()).toBeVisible({ timeout: 10000 });
+      await expect(draftContainer.or(draftEmpty).or(historicalSection).first()).toBeVisible();
 
       // Find a Build Deck button
       const buildDeckButton = page.locator('button.btn-build-deck, button:has-text("Build Deck")').first();
@@ -240,7 +240,7 @@ test.describe('Draft', () => {
 
         // Wait for DeckBuilder to load
         const deckBuilder = page.locator('.deck-builder');
-        await expect(deckBuilder).toBeVisible({ timeout: 15000 });
+        await expect(deckBuilder).toBeVisible();
 
         // Verify Export button is present
         const exportButton = page.locator('button:has-text("Export")');

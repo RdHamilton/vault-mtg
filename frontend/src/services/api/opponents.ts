@@ -1,4 +1,4 @@
-import { get } from '../apiClient';
+import { get } from '../daemonClient';
 
 // Types for opponent analysis
 

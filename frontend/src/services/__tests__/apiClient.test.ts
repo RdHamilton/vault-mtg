@@ -8,6 +8,7 @@ import {
   del,
   healthCheck,
   ApiRequestError,
+  cloudClient,
   getApiKey,
   setApiKey,
   createSSEConnection,
@@ -372,5 +373,45 @@ describe('ApiRequestError', () => {
     const error = new ApiRequestError('Test', 500);
     expect(error).toBeInstanceOf(Error);
     expect(error).toBeInstanceOf(ApiRequestError);
+  });
+});
+
+describe('cloudClient alias', () => {
+  it('is exported from apiClient', () => {
+    expect(cloudClient).toBeDefined();
+  });
+
+  it('exposes get, post, put, patch, del helpers', () => {
+    expect(typeof cloudClient.get).toBe('function');
+    expect(typeof cloudClient.post).toBe('function');
+    expect(typeof cloudClient.put).toBe('function');
+    expect(typeof cloudClient.patch).toBe('function');
+    expect(typeof cloudClient.del).toBe('function');
+  });
+
+  it('exposes getRaw helper', () => {
+    expect(typeof cloudClient.getRaw).toBe('function');
+  });
+
+  it('exposes API key management helpers', () => {
+    expect(typeof cloudClient.getApiKey).toBe('function');
+    expect(typeof cloudClient.setApiKey).toBe('function');
+  });
+
+  it('exposes configuration helpers', () => {
+    expect(typeof cloudClient.configureApi).toBe('function');
+    expect(typeof cloudClient.getApiConfig).toBe('function');
+  });
+
+  it('exposes healthCheck and createSSEConnection', () => {
+    expect(typeof cloudClient.healthCheck).toBe('function');
+    expect(typeof cloudClient.createSSEConnection).toBe('function');
+  });
+
+  it('get is the same reference as the named export', () => {
+    expect(cloudClient.get).toBe(get);
+    expect(cloudClient.post).toBe(post);
+    expect(cloudClient.put).toBe(put);
+    expect(cloudClient.del).toBe(del);
   });
 });

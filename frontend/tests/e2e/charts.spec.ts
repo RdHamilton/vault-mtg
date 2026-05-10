@@ -9,7 +9,7 @@ import { test, expect } from '@playwright/test';
 test.describe('Charts', () => {
   test.beforeEach(async ({ page }) => {
     await page.goto('/');
-    await expect(page.locator('[data-testid="app-container"]')).toBeVisible({ timeout: 10000 });
+    await expect(page.locator('[data-testid="app-container"]')).toBeVisible();
 
     await page.click('a.tab[href="/charts/win-rate-trend"]');
     await page.waitForURL('**/charts/**');
@@ -24,7 +24,7 @@ test.describe('Charts', () => {
     test('should display chart content after loading', async ({ page }) => {
       // Wait for chart filter to appear
       const dateRangeFilter = page.locator('select').first();
-      await expect(dateRangeFilter).toBeVisible({ timeout: 10000 });
+      await expect(dateRangeFilter).toBeVisible();
     });
   });
 

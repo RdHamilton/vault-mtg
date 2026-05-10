@@ -31,6 +31,11 @@ export default defineConfig({
   // Retry on CI only
   retries: process.env.CI ? 2 : 0,
 
+  // Global assertion timeout for expect().toBeVisible(), toHaveText(), etc.
+  // actionTimeout (below) only governs page actions (click, fill, waitForSelector).
+  // Without this, Playwright's default of 5 s governs — too short for cold CI.
+  expect: { timeout: 30_000 },
+
   // Reporter to use
   reporter: [
     ['html', { open: 'never' }],
@@ -42,6 +47,9 @@ export default defineConfig({
   use: {
     // Base URL for the Vite dev server
     baseURL: 'http://localhost:3000',
+
+    // Timeout for each Playwright action (click, fill, waitForSelector, etc.)
+    actionTimeout: 30_000,
 
     // Collect trace on failure for debugging
     trace: 'on-first-retry',
@@ -86,10 +94,14 @@ export default defineConfig({
         viewport: { width: 1280, height: 800 },
       },
     },
-    // Pipeline tests - uses log fixtures to test full data flow
+    // Pipeline tests - uses log fixtures to test full data flow.
+    // Timeout raised to 60 s: on a cold CI runner, Vite transforms all modules
+    // on-demand for the first request from each of the 4 parallel workers.
+    // The combined page.goto + initializeServices + React mount can exceed 30 s.
     {
       name: 'pipeline',
       testMatch: /pipeline\.spec\.ts/,
+      timeout: 60_000,
       use: { ...devices['Desktop Chrome'] },
     },
   ],
@@ -109,11 +121,22 @@ export default defineConfig({
       stdout: 'pipe',
       stderr: 'pipe',
     },
-    // Vite dev server on port 3000 with REST API mode
+    // On CI: build then preview. vite preview serves pre-compiled static files —
+    // no on-demand module transforms. This eliminates the cold-start bottleneck
+    // where 4 parallel Playwright workers each wait 30+ s for Vite to transform
+    // hundreds of TypeScript modules on first request.
+    //
+    // On local: continue using vite dev (HMR, instant feedback).
+    //
+    // Both env vars must be set at BUILD time so Vite bakes them into the bundle:
+    //   VITE_USE_REST_API=true  — enables REST API adapter
+    //   VITE_CLERK_TEST_MODE=true — aliases @clerk/react → clerkMock.tsx
     {
-      command: 'VITE_USE_REST_API=true VITE_CLERK_TEST_MODE=true npm run dev',
+      command: process.env.CI
+        ? 'VITE_USE_REST_API=true VITE_CLERK_TEST_MODE=true npm run build && VITE_USE_REST_API=true npx vite preview --port 3000'
+        : 'VITE_USE_REST_API=true VITE_CLERK_TEST_MODE=true npm run dev',
       url: 'http://localhost:3000',
-      timeout: 60 * 1000,
+      timeout: 180 * 1000,
       reuseExistingServer: !process.env.CI,
       stdout: 'pipe',
       stderr: 'pipe',

@@ -75,7 +75,7 @@ test.describe('History: /history/matches', () => {
       const empty = page.locator('[data-testid="match-history-empty"]');
 
       // Either data or empty state must be visible — no crash/blank page.
-      await expect(table.or(empty)).toBeVisible({ timeout: 15_000 });
+      await expect(table.or(empty)).toBeVisible();
     });
 
     test('page title is "Match History"', async ({ page }) => {
@@ -84,7 +84,7 @@ test.describe('History: /history/matches', () => {
       // Wait for loading to complete
       const table = page.locator('[data-testid="match-history-table"]');
       const empty = page.locator('[data-testid="match-history-empty"]');
-      await expect(table.or(empty)).toBeVisible({ timeout: 15_000 });
+      await expect(table.or(empty)).toBeVisible();
 
       await expect(page.locator('h1.page-title')).toHaveText('Match History');
     });
@@ -94,7 +94,7 @@ test.describe('History: /history/matches', () => {
 
       const table = page.locator('[data-testid="match-history-table"]');
       const empty = page.locator('[data-testid="match-history-empty"]');
-      await expect(table.or(empty)).toBeVisible({ timeout: 15_000 });
+      await expect(table.or(empty)).toBeVisible();
 
       // Error state must not be visible after a successful load.
       const errorState = page.locator('.error-state');
@@ -106,7 +106,7 @@ test.describe('History: /history/matches', () => {
 
       const table = page.locator('[data-testid="match-history-table"]');
       const empty = page.locator('[data-testid="match-history-empty"]');
-      await expect(table.or(empty)).toBeVisible({ timeout: 15_000 });
+      await expect(table.or(empty)).toBeVisible();
 
       const hasData = await table.isVisible();
       if (hasData) {
@@ -123,7 +123,7 @@ test.describe('History: /history/matches', () => {
 
       const table = page.locator('[data-testid="match-history-table"]');
       const empty = page.locator('[data-testid="match-history-empty"]');
-      await expect(table.or(empty)).toBeVisible({ timeout: 15_000 });
+      await expect(table.or(empty)).toBeVisible();
 
       const hasData = await table.isVisible();
       if (hasData) {
@@ -152,7 +152,7 @@ test.describe('History: /history/matches', () => {
 
       // After the failed request the error state div must be visible.
       const errorState = page.locator('.error-state');
-      await expect(errorState).toBeVisible({ timeout: 15_000 });
+      await expect(errorState).toBeVisible();
 
       // The match table and empty state must NOT appear simultaneously with the error.
       await expect(page.locator('[data-testid="match-history-table"]')).not.toBeVisible();
@@ -193,7 +193,7 @@ test.describe('History: /history/drafts', () => {
       const table = page.locator('[data-testid="draft-history-table"]');
       const empty = page.locator('[data-testid="draft-history-empty"]');
 
-      await expect(table.or(empty)).toBeVisible({ timeout: 15_000 });
+      await expect(table.or(empty)).toBeVisible();
     });
 
     test('page title is "Draft History"', async ({ page }) => {
@@ -201,7 +201,7 @@ test.describe('History: /history/drafts', () => {
 
       const table = page.locator('[data-testid="draft-history-table"]');
       const empty = page.locator('[data-testid="draft-history-empty"]');
-      await expect(table.or(empty)).toBeVisible({ timeout: 15_000 });
+      await expect(table.or(empty)).toBeVisible();
 
       await expect(page.locator('h1.page-title')).toHaveText('Draft History');
     });
@@ -211,7 +211,7 @@ test.describe('History: /history/drafts', () => {
 
       const table = page.locator('[data-testid="draft-history-table"]');
       const empty = page.locator('[data-testid="draft-history-empty"]');
-      await expect(table.or(empty)).toBeVisible({ timeout: 15_000 });
+      await expect(table.or(empty)).toBeVisible();
 
       const errorState = page.locator('.error-state');
       await expect(errorState).not.toBeVisible();
@@ -222,7 +222,7 @@ test.describe('History: /history/drafts', () => {
 
       const table = page.locator('[data-testid="draft-history-table"]');
       const empty = page.locator('[data-testid="draft-history-empty"]');
-      await expect(table.or(empty)).toBeVisible({ timeout: 15_000 });
+      await expect(table.or(empty)).toBeVisible();
 
       const hasData = await table.isVisible();
       if (hasData) {
@@ -239,7 +239,7 @@ test.describe('History: /history/drafts', () => {
 
       const table = page.locator('[data-testid="draft-history-table"]');
       const empty = page.locator('[data-testid="draft-history-empty"]');
-      await expect(table.or(empty)).toBeVisible({ timeout: 15_000 });
+      await expect(table.or(empty)).toBeVisible();
 
       const hasData = await table.isVisible();
       if (hasData) {
@@ -265,7 +265,7 @@ test.describe('History: /history/drafts', () => {
       await page.goto('/history/drafts');
 
       const errorState = page.locator('.error-state');
-      await expect(errorState).toBeVisible({ timeout: 15_000 });
+      await expect(errorState).toBeVisible();
 
       await expect(page.locator('[data-testid="draft-history-table"]')).not.toBeVisible();
       await expect(page.locator('[data-testid="draft-history-empty"]')).not.toBeVisible();

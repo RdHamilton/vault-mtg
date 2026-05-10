@@ -18,9 +18,29 @@ export default defineConfig({
   },
   server: {
     port: 3000,
+    // Pre-transform critical entry points before workers start.
+    // Eliminates the Vite on-demand transform race when fullyParallel + 4 CI
+    // workers all hit the dev server simultaneously before module graph is warm.
+    warmup: {
+      clientFiles: [
+        './src/main.tsx',
+        './src/App.tsx',
+        './src/components/Layout.tsx',
+        './src/context/AppContext.tsx',
+        './src/services/adapter.ts',
+      ],
+    },
   },
   optimizeDeps: {
-    force: true, // Always re-bundle dependencies on startup (avoids stale cache issues)
+    // Pre-bundle heavy deps during dev server startup so the first worker
+    // request does not trigger a blocking dep-optimization crawl.
+    include: [
+      'react',
+      'react-dom',
+      'react-dom/client',
+      'react-router-dom',
+      '@sentry/react',
+    ],
   },
   test: {
     globals: true,

@@ -14,7 +14,7 @@ test.describe('Deck Builder Recommendations', () => {
   test.describe('Deck Validation (#903)', () => {
     test.beforeEach(async ({ page }) => {
       await page.goto('/');
-      await expect(page.locator('[data-testid="app-container"]')).toBeVisible({ timeout: 10000 });
+      await expect(page.locator('[data-testid="app-container"]')).toBeVisible();
     });
 
     test('should display correct card count in validation banner', async ({ page }) => {
@@ -25,7 +25,7 @@ test.describe('Deck Builder Recommendations', () => {
       // Wait for decks to load
       const deckCard = page.locator('.deck-card');
       const emptyState = page.locator('.empty-state');
-      await expect(deckCard.first().or(emptyState)).toBeVisible({ timeout: 10000 });
+      await expect(deckCard.first().or(emptyState)).toBeVisible();
 
       const hasCards = await deckCard.first().isVisible();
 
@@ -43,7 +43,7 @@ test.describe('Deck Builder Recommendations', () => {
 
           // Wait for DeckBuilder to load
           const deckBuilder = page.locator('.deck-builder');
-          await expect(deckBuilder).toBeVisible({ timeout: 10000 });
+          await expect(deckBuilder).toBeVisible();
 
           // Check legality banner displays
           const legalityBanner = page.locator('.legality-banner');
@@ -84,7 +84,7 @@ test.describe('Deck Builder Recommendations', () => {
       // Wait for decks to load
       const deckCard = page.locator('.deck-card');
       const emptyState = page.locator('.empty-state');
-      await expect(deckCard.first().or(emptyState)).toBeVisible({ timeout: 10000 });
+      await expect(deckCard.first().or(emptyState)).toBeVisible();
 
       const hasCards = await deckCard.first().isVisible();
 
@@ -101,7 +101,7 @@ test.describe('Deck Builder Recommendations', () => {
           await page.waitForURL('**/decks/**');
 
           const deckBuilder = page.locator('.deck-builder');
-          await expect(deckBuilder).toBeVisible({ timeout: 10000 });
+          await expect(deckBuilder).toBeVisible();
 
           // Legality banner should be visible for Standard decks
           const legalityBanner = page.locator('.legality-banner');
@@ -119,7 +119,7 @@ test.describe('Deck Builder Recommendations', () => {
   test.describe('Card Recommendations (#904)', () => {
     test.beforeEach(async ({ page }) => {
       await page.goto('/');
-      await expect(page.locator('[data-testid="app-container"]')).toBeVisible({ timeout: 10000 });
+      await expect(page.locator('[data-testid="app-container"]')).toBeVisible();
     });
 
     test('should show recommendations button for decks with cards', async ({ page }) => {
@@ -130,7 +130,7 @@ test.describe('Deck Builder Recommendations', () => {
       // Wait for decks to load
       const deckCard = page.locator('.deck-card');
       const emptyState = page.locator('.empty-state');
-      await expect(deckCard.first().or(emptyState)).toBeVisible({ timeout: 10000 });
+      await expect(deckCard.first().or(emptyState)).toBeVisible();
 
       const hasCards = await deckCard.first().isVisible();
 
@@ -147,7 +147,7 @@ test.describe('Deck Builder Recommendations', () => {
           await page.waitForURL('**/decks/**');
 
           const deckBuilder = page.locator('.deck-builder');
-          await expect(deckBuilder).toBeVisible({ timeout: 10000 });
+          await expect(deckBuilder).toBeVisible();
 
           // Suggestions button should be visible
           const suggestionsButton = page.locator('button').filter({ hasText: /suggestions|recommend/i });
@@ -169,7 +169,7 @@ test.describe('Deck Builder Recommendations', () => {
       // Wait for decks to load
       const deckCard = page.locator('.deck-card');
       const emptyState = page.locator('.empty-state');
-      await expect(deckCard.first().or(emptyState)).toBeVisible({ timeout: 10000 });
+      await expect(deckCard.first().or(emptyState)).toBeVisible();
 
       const hasCards = await deckCard.first().isVisible();
 
@@ -185,7 +185,7 @@ test.describe('Deck Builder Recommendations', () => {
           await page.waitForURL('**/decks/**');
 
           const deckBuilder = page.locator('.deck-builder');
-          await expect(deckBuilder).toBeVisible({ timeout: 10000 });
+          await expect(deckBuilder).toBeVisible();
 
           // Look for suggestions panel
           const suggestionsPanel = page.locator('.ml-suggestions-panel, .suggestions-panel');
@@ -206,7 +206,7 @@ test.describe('Deck Builder Recommendations', () => {
   test.describe('Suggest Decks for Draft (#902)', () => {
     test.beforeEach(async ({ page }) => {
       await page.goto('/');
-      await expect(page.locator('[data-testid="app-container"]')).toBeVisible({ timeout: 10000 });
+      await expect(page.locator('[data-testid="app-container"]')).toBeVisible();
     });
 
     test('should show Suggest Decks button for draft decks', async ({ page }) => {
@@ -217,7 +217,7 @@ test.describe('Deck Builder Recommendations', () => {
       // Wait for draft sessions to load
       const draftSession = page.locator('.draft-session, .draft-card');
       const emptyState = page.locator('.empty-state');
-      await expect(draftSession.first().or(emptyState)).toBeVisible({ timeout: 10000 });
+      await expect(draftSession.first().or(emptyState)).toBeVisible();
 
       const hasDrafts = await draftSession.first().isVisible();
 
@@ -227,7 +227,7 @@ test.describe('Deck Builder Recommendations', () => {
 
         // Wait for draft detail or deck builder to load
         const draftDetail = page.locator('.draft-detail, .deck-builder');
-        await expect(draftDetail).toBeVisible({ timeout: 10000 });
+        await expect(draftDetail).toBeVisible();
 
         // Look for Suggest Decks button
         const suggestDecksButton = page.locator('button').filter({ hasText: /suggest.*deck/i });
@@ -248,7 +248,7 @@ test.describe('Deck Builder Recommendations', () => {
       // Wait for draft sessions to load
       const draftSession = page.locator('.draft-session, .draft-card');
       const emptyState = page.locator('.empty-state');
-      await expect(draftSession.first().or(emptyState)).toBeVisible({ timeout: 10000 });
+      await expect(draftSession.first().or(emptyState)).toBeVisible();
 
       const hasDrafts = await draftSession.first().isVisible();
 
@@ -256,7 +256,7 @@ test.describe('Deck Builder Recommendations', () => {
         await draftSession.first().click();
 
         const draftDetail = page.locator('.draft-detail, .deck-builder');
-        await expect(draftDetail).toBeVisible({ timeout: 10000 });
+        await expect(draftDetail).toBeVisible();
 
         const suggestDecksButton = page.locator('button').filter({ hasText: /suggest.*deck/i });
         const hasButton = await suggestDecksButton.isVisible().catch(() => false);
@@ -295,7 +295,7 @@ test.describe('Deck Builder Recommendations', () => {
       // Wait for draft sessions to load
       const draftSession = page.locator('.draft-session, .draft-card');
       const emptyState = page.locator('.empty-state');
-      await expect(draftSession.first().or(emptyState)).toBeVisible({ timeout: 10000 });
+      await expect(draftSession.first().or(emptyState)).toBeVisible();
 
       const hasDrafts = await draftSession.first().isVisible();
 
@@ -303,7 +303,7 @@ test.describe('Deck Builder Recommendations', () => {
         await draftSession.first().click();
 
         const draftDetail = page.locator('.draft-detail, .deck-builder');
-        await expect(draftDetail).toBeVisible({ timeout: 10000 });
+        await expect(draftDetail).toBeVisible();
 
         // Check card count in draft pool
         const draftPool = page.locator('.draft-pool, .card-pool');
@@ -327,7 +327,7 @@ test.describe('Deck Builder Recommendations', () => {
               const responseIndicator = suggestionsPanel.or(loadingSpinner).or(errorMessage);
 
               // Wait for some response (up to 10 seconds for set caching)
-              await expect(responseIndicator).toBeVisible({ timeout: 10000 }).catch(() => {
+              await expect(responseIndicator).toBeVisible().catch(() => {
                 console.log('No response indicator visible after clicking Suggest Decks');
               });
 
@@ -349,7 +349,7 @@ test.describe('Deck Builder Recommendations', () => {
   test.describe('Navigation and Integration', () => {
     test.beforeEach(async ({ page }) => {
       await page.goto('/');
-      await expect(page.locator('[data-testid="app-container"]')).toBeVisible({ timeout: 10000 });
+      await expect(page.locator('[data-testid="app-container"]')).toBeVisible();
     });
 
     test('should navigate between decks and draft pages', async ({ page }) => {
@@ -376,7 +376,7 @@ test.describe('Deck Builder Recommendations', () => {
 
       // Wait for content to load
       const content = page.locator('.deck-card, .empty-state');
-      await expect(content.first()).toBeVisible({ timeout: 10000 });
+      await expect(content.first()).toBeVisible();
 
       // Should not show error state
       const errorState = page.locator('.error-state');

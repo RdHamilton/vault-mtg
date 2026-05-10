@@ -10,7 +10,7 @@ import { test, expect } from '@playwright/test';
 test.describe('Draft Analytics', () => {
   test.beforeEach(async ({ page }) => {
     await page.goto('/');
-    await expect(page.locator('[data-testid="app-container"]')).toBeVisible({ timeout: 10000 });
+    await expect(page.locator('[data-testid="app-container"]')).toBeVisible();
 
     // Navigate to Draft tab first
     await page.click('a[href="/draft"]');
@@ -20,12 +20,12 @@ test.describe('Draft Analytics', () => {
   test.describe('Sub-navigation', () => {
     test('@smoke should display Draft sub-navigation bar', async ({ page }) => {
       const subTabBar = page.locator('.sub-tab-bar');
-      await expect(subTabBar).toBeVisible({ timeout: 10000 });
+      await expect(subTabBar).toBeVisible();
     });
 
     test('should have Current Draft and Analytics sub-tabs', async ({ page }) => {
       const subTabBar = page.locator('.sub-tab-bar');
-      await expect(subTabBar).toBeVisible({ timeout: 10000 });
+      await expect(subTabBar).toBeVisible();
 
       await expect(subTabBar.locator('a[href="/draft"]')).toBeVisible();
       await expect(subTabBar.locator('a[href="/draft-analytics"]')).toBeVisible();
@@ -33,7 +33,7 @@ test.describe('Draft Analytics', () => {
 
     test('should have Current Draft active by default', async ({ page }) => {
       const subTabBar = page.locator('.sub-tab-bar');
-      await expect(subTabBar).toBeVisible({ timeout: 10000 });
+      await expect(subTabBar).toBeVisible();
 
       const activeSubTab = subTabBar.locator('a.active');
       await expect(activeSubTab).toContainText(/Current Draft/i);
@@ -41,7 +41,7 @@ test.describe('Draft Analytics', () => {
 
     test('@smoke should navigate to Analytics via sub-nav', async ({ page }) => {
       const subTabBar = page.locator('.sub-tab-bar');
-      await expect(subTabBar).toBeVisible({ timeout: 10000 });
+      await expect(subTabBar).toBeVisible();
 
       await page.click('.sub-tab-bar a[href="/draft-analytics"]');
       await page.waitForURL('**/draft-analytics');
@@ -70,7 +70,7 @@ test.describe('Draft Analytics', () => {
       await page.waitForURL('**/draft-analytics');
 
       const pageTitle = page.locator('h1:has-text("Draft Analytics")');
-      await expect(pageTitle).toBeVisible({ timeout: 10000 });
+      await expect(pageTitle).toBeVisible();
     });
   });
 
@@ -86,7 +86,7 @@ test.describe('Draft Analytics', () => {
 
       await expect(
         loadingState.or(contentState).or(emptyState)
-      ).toBeVisible({ timeout: 15000 });
+      ).toBeVisible();
     });
 
     test('should display empty state message when no data', async ({ page }) => {
@@ -308,14 +308,14 @@ test.describe('Draft Analytics', () => {
 
       await expect(
         loadingState.or(contentState).or(emptyState)
-      ).toBeVisible({ timeout: 15000 });
+      ).toBeVisible();
     });
 
     test('should show Draft sub-tabs when navigating directly', async ({ page }) => {
       await page.goto('/draft-analytics');
 
       const subTabBar = page.locator('.sub-tab-bar');
-      await expect(subTabBar).toBeVisible({ timeout: 10000 });
+      await expect(subTabBar).toBeVisible();
 
       // Analytics should be active
       const activeSubTab = subTabBar.locator('a.active');

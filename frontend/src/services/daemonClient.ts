@@ -9,13 +9,12 @@
  * must continue to import from ./apiClient.
  */
 
-import {
+import type {
   ApiConfig,
   ApiError,
-  ApiRequestError,
   RawGetResult,
-  getApiKey,
 } from './apiClient';
+import { ApiRequestError, getApiKey } from './apiClient';
 
 // ---------------------------------------------------------------------------
 // Configuration

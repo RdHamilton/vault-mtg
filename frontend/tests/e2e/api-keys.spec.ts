@@ -49,10 +49,10 @@ test.describe('Feature: API Keys page', () => {
     async ({ page }) => {
       await setClerkSignedIn(page);
       await page.goto('/api-keys');
-      await expect(page.locator('[data-testid="app-container"]')).toBeVisible({ timeout: 15_000 });
+      await expect(page.locator('[data-testid="app-container"]')).toBeVisible();
 
       // Page container must render
-      await expect(page.locator('[data-testid="api-keys-page"]')).toBeVisible({ timeout: 10_000 });
+      await expect(page.locator('[data-testid="api-keys-page"]')).toBeVisible();
 
       // Page title
       await expect(page.locator('h1')).toContainText('API Keys');
@@ -65,36 +65,36 @@ test.describe('Feature: API Keys page', () => {
   test('signed-in user sees create API key button', async ({ page }) => {
     await setClerkSignedIn(page);
     await page.goto('/api-keys');
-    await expect(page.locator('[data-testid="app-container"]')).toBeVisible({ timeout: 15_000 });
+    await expect(page.locator('[data-testid="app-container"]')).toBeVisible();
 
-    await expect(page.locator('[data-testid="clerk-create-api-key-btn"]')).toBeVisible({ timeout: 10_000 });
+    await expect(page.locator('[data-testid="clerk-create-api-key-btn"]')).toBeVisible();
   });
 
   test('signed-in user sees API key list area', async ({ page }) => {
     await setClerkSignedIn(page);
     await page.goto('/api-keys');
-    await expect(page.locator('[data-testid="app-container"]')).toBeVisible({ timeout: 15_000 });
+    await expect(page.locator('[data-testid="app-container"]')).toBeVisible();
 
-    await expect(page.locator('[data-testid="clerk-api-key-list"]')).toBeVisible({ timeout: 10_000 });
+    await expect(page.locator('[data-testid="clerk-api-key-list"]')).toBeVisible();
   });
 
   test('signed-in user sees description mentioning one-time key visibility', async ({ page }) => {
     await setClerkSignedIn(page);
     await page.goto('/api-keys');
-    await expect(page.locator('[data-testid="app-container"]')).toBeVisible({ timeout: 15_000 });
+    await expect(page.locator('[data-testid="app-container"]')).toBeVisible();
 
     await expect(
       page.locator('.api-keys-description')
-    ).toContainText('full key is only shown once', { timeout: 10_000 });
+    ).toContainText('full key is only shown once');
   });
 
   test('unauthenticated user visiting /api-keys sees sign-in prompt, not the keys page', async ({ page }) => {
     await setClerkSignedOut(page);
     await page.goto('/api-keys');
-    await expect(page.locator('[data-testid="app-container"]')).toBeVisible({ timeout: 15_000 });
+    await expect(page.locator('[data-testid="app-container"]')).toBeVisible();
 
     // ProtectedRoute must intercept
-    await expect(page.locator('[data-testid="protected-route-prompt"]')).toBeVisible({ timeout: 10_000 });
+    await expect(page.locator('[data-testid="protected-route-prompt"]')).toBeVisible();
 
     // API keys page content must NOT render
     await expect(page.locator('[data-testid="api-keys-page"]')).not.toBeVisible();
@@ -103,10 +103,10 @@ test.describe('Feature: API Keys page', () => {
   test('api-keys-content container wraps the Clerk component', async ({ page }) => {
     await setClerkSignedIn(page);
     await page.goto('/api-keys');
-    await expect(page.locator('[data-testid="app-container"]')).toBeVisible({ timeout: 15_000 });
+    await expect(page.locator('[data-testid="app-container"]')).toBeVisible();
 
     const content = page.locator('[data-testid="api-keys-content"]');
-    await expect(content).toBeVisible({ timeout: 10_000 });
+    await expect(content).toBeVisible();
 
     // Clerk stub is a child of the content container
     await expect(content.locator('[data-testid="clerk-api-keys-component"]')).toBeVisible();

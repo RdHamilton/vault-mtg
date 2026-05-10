@@ -24,7 +24,7 @@ test.describe('Collection', () => {
     });
 
     await page.goto('/');
-    await expect(page.locator('[data-testid="app-container"]')).toBeVisible({ timeout: 15000 });
+    await expect(page.locator('[data-testid="app-container"]')).toBeVisible();
 
     await page.click('a[href="/collection"]');
     await page.waitForURL('**/collection');
@@ -47,12 +47,12 @@ test.describe('Collection', () => {
   test.describe('Collection Header', () => {
     test('should display collection header', async ({ page }) => {
       const header = page.locator('[data-testid="collection-header"]');
-      await expect(header).toBeVisible({ timeout: 10000 });
+      await expect(header).toBeVisible();
     });
 
     test('should display collection stats summary', async ({ page }) => {
       const stats = page.locator('[data-testid="collection-stats"]');
-      await expect(stats).toBeVisible({ timeout: 10000 });
+      await expect(stats).toBeVisible();
     });
   });
 
@@ -83,7 +83,7 @@ test.describe('Collection', () => {
       const collectionPage = page.locator('[data-testid="collection-page"]');
 
       // Wait for the page container — loading state resolves before this renders
-      await expect(collectionPage).toBeVisible({ timeout: 15000 });
+      await expect(collectionPage).toBeVisible();
 
       const cardGrid = page.locator('[data-testid="collection-card-grid"]');
       const emptyState = page.locator('[data-testid="collection-empty"]');
@@ -98,7 +98,7 @@ test.describe('Collection', () => {
   test.describe('Set Completion Toggle', () => {
     test('should show Set Completion button when a set is selected', async ({ page }) => {
       // Wait for page to load
-      await expect(page.locator('[data-testid="collection-page"]')).toBeVisible({ timeout: 15000 });
+      await expect(page.locator('[data-testid="collection-page"]')).toBeVisible();
 
       // Select a set — button only appears when setCode filter is active
       const setFilter = page.locator('[data-testid="collection-set-filter"]');
@@ -118,7 +118,7 @@ test.describe('Collection', () => {
   test.describe('Loading State', () => {
     test('should not show error state on initial load', async ({ page }) => {
       // Wait for page container
-      await expect(page.locator('[data-testid="collection-page"]')).toBeVisible({ timeout: 15000 });
+      await expect(page.locator('[data-testid="collection-page"]')).toBeVisible();
 
       const errorState = page.locator('[data-testid="collection-error"]');
       await expect(errorState).not.toBeVisible();

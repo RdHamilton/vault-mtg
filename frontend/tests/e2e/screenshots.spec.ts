@@ -34,7 +34,7 @@ test.describe('Documentation Screenshots', () => {
 
   test('capture Match History page', async ({ page }) => {
     await page.goto('/');
-    await expect(page.locator('[data-testid="app-container"]')).toBeVisible({ timeout: 15000 });
+    await expect(page.locator('[data-testid="app-container"]')).toBeVisible();
 
     // Wait for primary content to be visible
     await page.waitForSelector('.match-history-table-container, .empty-state', { timeout: 10000 }).catch(() => {});
@@ -47,7 +47,7 @@ test.describe('Documentation Screenshots', () => {
 
   test('capture Draft History page', async ({ page }) => {
     await page.goto('/draft');
-    await expect(page.locator('[data-testid="app-container"]')).toBeVisible({ timeout: 15000 });
+    await expect(page.locator('[data-testid="app-container"]')).toBeVisible();
 
     // Wait for draft content to be visible
     await page.waitForSelector('.draft-container, .draft-empty, .empty-state', { timeout: 10000 }).catch(() => {});
@@ -60,7 +60,7 @@ test.describe('Documentation Screenshots', () => {
 
   test('capture Decks page', async ({ page }) => {
     await page.goto('/decks');
-    await expect(page.locator('[data-testid="app-container"]')).toBeVisible({ timeout: 15000 });
+    await expect(page.locator('[data-testid="app-container"]')).toBeVisible();
 
     // Wait for decks page content to be visible
     await page.waitForSelector('.decks-page', { timeout: 10000 }).catch(() => {});
@@ -73,7 +73,7 @@ test.describe('Documentation Screenshots', () => {
 
   test('capture Quests page', async ({ page }) => {
     await page.goto('/quests');
-    await expect(page.locator('[data-testid="app-container"]')).toBeVisible({ timeout: 15000 });
+    await expect(page.locator('[data-testid="app-container"]')).toBeVisible();
 
     // Wait for quests content to be visible
     await page.waitForSelector('.quests-section, .quests-header, .empty-state', { timeout: 10000 }).catch(() => {});
@@ -86,7 +86,7 @@ test.describe('Documentation Screenshots', () => {
 
   test('capture Collection page', async ({ page }) => {
     await page.goto('/collection');
-    await expect(page.locator('[data-testid="app-container"]')).toBeVisible({ timeout: 15000 });
+    await expect(page.locator('[data-testid="app-container"]')).toBeVisible();
 
     // Wait for collection content to be visible
     await page.waitForSelector('.collection-container, .collection-page, .empty-state', { timeout: 15000 }).catch(() => {});
@@ -99,7 +99,7 @@ test.describe('Documentation Screenshots', () => {
 
   test('capture Meta Dashboard', async ({ page }) => {
     await page.goto('/meta');
-    await expect(page.locator('[data-testid="app-container"]')).toBeVisible({ timeout: 15000 });
+    await expect(page.locator('[data-testid="app-container"]')).toBeVisible();
 
     // Wait for meta page content to be visible
     await page.waitForSelector('.meta-page', { timeout: 15000 }).catch(() => {});
@@ -112,7 +112,7 @@ test.describe('Documentation Screenshots', () => {
 
   test('capture Charts - Deck Performance', async ({ page }) => {
     await page.goto('/charts/deck-performance');
-    await expect(page.locator('[data-testid="app-container"]')).toBeVisible({ timeout: 15000 });
+    await expect(page.locator('[data-testid="app-container"]')).toBeVisible();
 
     // Wait for chart page container to be visible
     await page.waitForSelector('.page-container', { timeout: 10000 }).catch(() => {});
@@ -125,7 +125,7 @@ test.describe('Documentation Screenshots', () => {
 
   test('capture Charts - Format Distribution', async ({ page }) => {
     await page.goto('/charts/format-distribution');
-    await expect(page.locator('[data-testid="app-container"]')).toBeVisible({ timeout: 15000 });
+    await expect(page.locator('[data-testid="app-container"]')).toBeVisible();
 
     // Wait for chart page container to be visible
     await page.waitForSelector('.page-container', { timeout: 10000 }).catch(() => {});
@@ -138,7 +138,7 @@ test.describe('Documentation Screenshots', () => {
 
   test('capture Charts - Result Breakdown', async ({ page }) => {
     await page.goto('/charts/result-breakdown');
-    await expect(page.locator('[data-testid="app-container"]')).toBeVisible({ timeout: 15000 });
+    await expect(page.locator('[data-testid="app-container"]')).toBeVisible();
 
     // Wait for chart page container to be visible
     await page.waitForSelector('.page-container', { timeout: 10000 }).catch(() => {});
@@ -151,7 +151,7 @@ test.describe('Documentation Screenshots', () => {
 
   test('capture Settings page', async ({ page }) => {
     await page.goto('/settings');
-    await expect(page.locator('[data-testid="app-container"]')).toBeVisible({ timeout: 15000 });
+    await expect(page.locator('[data-testid="app-container"]')).toBeVisible();
 
     // Wait for settings page content to be visible
     await page.waitForSelector('.settings-page, .settings-container, [class*="settings"]', { timeout: 10000 }).catch(() => {});

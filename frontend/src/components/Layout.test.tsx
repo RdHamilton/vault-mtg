@@ -18,6 +18,10 @@ vi.mock('@sentry/react', async (importOriginal) => {
   };
 });
 
+// Mock DaemonHealthIndicator to prevent async polling effects from firing
+// after jsdom teardown (causes "window is not defined" ReferenceError in CI).
+vi.mock('./DaemonHealthIndicator', () => ({ default: () => null }));
+
 // Mock useDownload since Layout renders Footer which includes DownloadProgressBar
 vi.mock('@/context/DownloadContext', () => ({
   useDownload: () => ({

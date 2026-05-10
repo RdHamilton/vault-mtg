@@ -12,7 +12,7 @@ const RELEASES_BASE =
 test.describe('Download Page', () => {
   test.beforeEach(async ({ page }) => {
     await page.goto('/download');
-    await expect(page.locator('[data-testid="app-container"]')).toBeVisible({ timeout: 10000 });
+    await expect(page.locator('[data-testid="app-container"]')).toBeVisible();
   });
 
   test('@smoke should display the daemon download section', async ({ page }) => {
@@ -98,7 +98,7 @@ test.describe('Download Page', () => {
   test('navigating from nav tab reaches download page', async ({ page }) => {
     // Start from match history
     await page.goto('/');
-    await expect(page.locator('[data-testid="app-container"]')).toBeVisible({ timeout: 10000 });
+    await expect(page.locator('[data-testid="app-container"]')).toBeVisible();
 
     // Click the Download tab
     await page.locator('[data-testid="nav-tab-download"]').click();

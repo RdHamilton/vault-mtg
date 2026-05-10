@@ -9,7 +9,7 @@ import { test, expect } from '@playwright/test';
 test.describe('Decks', () => {
   test.beforeEach(async ({ page }) => {
     await page.goto('/');
-    await expect(page.locator('[data-testid="app-container"]')).toBeVisible({ timeout: 10000 });
+    await expect(page.locator('[data-testid="app-container"]')).toBeVisible();
 
     await page.click('a[href="/decks"]');
     await page.waitForURL('**/decks');
@@ -33,7 +33,7 @@ test.describe('Decks', () => {
       const emptyState = page.locator('.empty-state');
 
       // Wait for either content type to appear
-      await expect(deckCard.first().or(emptyState)).toBeVisible({ timeout: 10000 });
+      await expect(deckCard.first().or(emptyState)).toBeVisible();
 
       const hasCards = await deckCard.first().isVisible();
       const hasEmptyState = await emptyState.isVisible();
@@ -46,7 +46,7 @@ test.describe('Decks', () => {
     test('should have create deck button', async ({ page }) => {
       // Wait for page to fully load
       const pageContent = page.locator('.deck-card, .empty-state, .decks-header');
-      await expect(pageContent.first()).toBeVisible({ timeout: 10000 });
+      await expect(pageContent.first()).toBeVisible();
 
       const createButton = page.locator('button').filter({ hasText: /create|new/i });
       const hasButton = await createButton.isVisible().catch(() => false);
@@ -59,7 +59,7 @@ test.describe('Decks', () => {
     test('should not show error state on initial load', async ({ page }) => {
       // Wait for content to load
       const content = page.locator('.deck-card, .empty-state');
-      await expect(content.first()).toBeVisible({ timeout: 10000 });
+      await expect(content.first()).toBeVisible();
 
       const errorState = page.locator('.error-state');
       await expect(errorState).not.toBeVisible();
@@ -71,7 +71,7 @@ test.describe('Decks', () => {
       // Wait for decks to load
       const deckCard = page.locator('.deck-card');
       const emptyState = page.locator('.empty-state');
-      await expect(deckCard.first().or(emptyState)).toBeVisible({ timeout: 10000 });
+      await expect(deckCard.first().or(emptyState)).toBeVisible();
 
       const hasCards = await deckCard.first().isVisible();
 
@@ -90,7 +90,7 @@ test.describe('Decks', () => {
 
           // Wait for DeckBuilder to load
           const deckBuilder = page.locator('.deck-builder');
-          await expect(deckBuilder).toBeVisible({ timeout: 10000 });
+          await expect(deckBuilder).toBeVisible();
 
           // Build Around button should be visible for non-draft decks
           const buildAroundButton = page.locator('button.build-around-btn');
@@ -104,7 +104,7 @@ test.describe('Decks', () => {
       // Wait for decks to load
       const deckCard = page.locator('.deck-card');
       const emptyState = page.locator('.empty-state');
-      await expect(deckCard.first().or(emptyState)).toBeVisible({ timeout: 10000 });
+      await expect(deckCard.first().or(emptyState)).toBeVisible();
 
       const hasCards = await deckCard.first().isVisible();
 
@@ -151,7 +151,7 @@ test.describe('Decks', () => {
       // Wait for decks to load
       const deckCard = page.locator('.deck-card');
       const emptyState = page.locator('.empty-state');
-      await expect(deckCard.first().or(emptyState)).toBeVisible({ timeout: 10000 });
+      await expect(deckCard.first().or(emptyState)).toBeVisible();
 
       const hasCards = await deckCard.first().isVisible();
 
@@ -168,7 +168,7 @@ test.describe('Decks', () => {
           await page.waitForURL('**/decks/**');
 
           const deckBuilder = page.locator('.deck-builder');
-          await expect(deckBuilder).toBeVisible({ timeout: 10000 });
+          await expect(deckBuilder).toBeVisible();
 
           // Build Around button should NOT be visible for draft decks
           const buildAroundButton = page.locator('button.build-around-btn');
@@ -184,7 +184,7 @@ test.describe('Decks', () => {
     test('should search for cards in Build Around modal', async ({ page }) => {
       const deckCard = page.locator('.deck-card');
       const emptyState = page.locator('.empty-state');
-      await expect(deckCard.first().or(emptyState)).toBeVisible({ timeout: 10000 });
+      await expect(deckCard.first().or(emptyState)).toBeVisible();
 
       const hasCards = await deckCard.first().isVisible();
 
@@ -214,7 +214,7 @@ test.describe('Decks', () => {
 
             // Wait for search results to appear
             const searchResults = page.locator('.search-results');
-            await expect(searchResults).toBeVisible({ timeout: 10000 }).catch(() => {
+            await expect(searchResults).toBeVisible().catch(() => {
               // No results is also a valid outcome
             });
 
@@ -229,7 +229,7 @@ test.describe('Decks', () => {
     test('should show color filter buttons in Build Around modal', async ({ page }) => {
       const deckCard = page.locator('.deck-card');
       const emptyState = page.locator('.empty-state');
-      await expect(deckCard.first().or(emptyState)).toBeVisible({ timeout: 10000 });
+      await expect(deckCard.first().or(emptyState)).toBeVisible();
 
       const hasCards = await deckCard.first().isVisible();
 
@@ -274,7 +274,7 @@ test.describe('Decks', () => {
     test('should show budget mode checkbox in Build Around modal', async ({ page }) => {
       const deckCard = page.locator('.deck-card');
       const emptyState = page.locator('.empty-state');
-      await expect(deckCard.first().or(emptyState)).toBeVisible({ timeout: 10000 });
+      await expect(deckCard.first().or(emptyState)).toBeVisible();
 
       const hasCards = await deckCard.first().isVisible();
 
@@ -326,7 +326,7 @@ test.describe('Decks', () => {
     test('should close Build Around modal with Escape key', async ({ page }) => {
       const deckCard = page.locator('.deck-card');
       const emptyState = page.locator('.empty-state');
-      await expect(deckCard.first().or(emptyState)).toBeVisible({ timeout: 10000 });
+      await expect(deckCard.first().or(emptyState)).toBeVisible();
 
       const hasCards = await deckCard.first().isVisible();
 
@@ -363,7 +363,7 @@ test.describe('Decks', () => {
     test('should close Build Around modal when clicking overlay', async ({ page }) => {
       const deckCard = page.locator('.deck-card');
       const emptyState = page.locator('.empty-state');
-      await expect(deckCard.first().or(emptyState)).toBeVisible({ timeout: 10000 });
+      await expect(deckCard.first().or(emptyState)).toBeVisible();
 
       const hasCards = await deckCard.first().isVisible();
 

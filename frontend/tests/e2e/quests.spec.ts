@@ -9,7 +9,7 @@ import { test, expect } from '@playwright/test';
 test.describe('Quests', () => {
   test.beforeEach(async ({ page }) => {
     await page.goto('/');
-    await expect(page.locator('[data-testid="app-container"]')).toBeVisible({ timeout: 10000 });
+    await expect(page.locator('[data-testid="app-container"]')).toBeVisible();
 
     await page.click('a[href="/quests"]');
     await page.waitForURL('**/quests');
@@ -32,7 +32,7 @@ test.describe('Quests', () => {
       const emptyState = page.locator('.empty-state');
 
       // Wait for either content type to appear
-      await expect(questsSection.first().or(emptyState)).toBeVisible({ timeout: 10000 });
+      await expect(questsSection.first().or(emptyState)).toBeVisible();
 
       const hasSection = await questsSection.first().isVisible();
       const hasEmptyState = await emptyState.isVisible();
@@ -45,7 +45,7 @@ test.describe('Quests', () => {
     test('should have date range filter', async ({ page }) => {
       // Wait for page to load
       const questsHeader = page.locator('.quests-header');
-      await expect(questsHeader).toBeVisible({ timeout: 10000 });
+      await expect(questsHeader).toBeVisible();
 
       // Check for date range select (if present)
       const dateRangeSelect = page.locator('select').first();
@@ -62,7 +62,7 @@ test.describe('Quests', () => {
     test('should not show error state on initial load', async ({ page }) => {
       // Wait for content to load
       const content = page.locator('.quests-section, .empty-state, .quests-header');
-      await expect(content.first()).toBeVisible({ timeout: 10000 });
+      await expect(content.first()).toBeVisible();
 
       const errorState = page.locator('.error-state');
       await expect(errorState).not.toBeVisible();

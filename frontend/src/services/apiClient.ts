@@ -327,3 +327,29 @@ export function createSSEConnection(path: string): EventSource | null {
   url.searchParams.set('token', key);
   return new EventSource(url.toString());
 }
+
+// ---------------------------------------------------------------------------
+// cloudClient alias
+// ---------------------------------------------------------------------------
+
+/**
+ * Named alias for the cloud BFF client module.
+ * Satisfies `import { cloudClient } from '../apiClient'` per AC #1695.
+ * Bundles the core HTTP helpers under a single namespace so callers that
+ * need to explicitly distinguish cloud vs daemon routes can do so without
+ * ambiguity.
+ */
+export const cloudClient = {
+  get,
+  post,
+  put,
+  patch,
+  del,
+  getRaw,
+  getApiKey,
+  setApiKey,
+  configureApi,
+  getApiConfig,
+  healthCheck,
+  createSSEConnection,
+} as const;

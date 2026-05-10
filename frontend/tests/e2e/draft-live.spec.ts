@@ -48,7 +48,7 @@ test.describe('DraftLive', () => {
     // The page must render.
     await expect(
       page.locator('[data-testid="draft-live-container"]')
-    ).toBeVisible({ timeout: 10_000 });
+    ).toBeVisible();
 
     // Empty state must be visible — no active draft.
     await expect(page.locator('[data-testid="empty-state"]')).toBeVisible();
@@ -117,15 +117,13 @@ test.describe('DraftLive', () => {
     });
 
     await page.goto('/draft/live');
-    await expect(page.locator('[data-testid="draft-live-container"]')).toBeVisible({
-      timeout: 10_000,
-    });
+    await expect(page.locator('[data-testid="draft-live-container"]')).toBeVisible();
 
     // Pack section must appear.
     await expect(page.locator('[data-testid="draft-live-pack"]')).toBeVisible();
 
     // Pack cards appear.
-    await expect(page.locator('[data-testid="pack-card-101"]')).toBeVisible({ timeout: 8_000 });
+    await expect(page.locator('[data-testid="pack-card-101"]')).toBeVisible();
     await expect(page.locator('[data-testid="pack-card-102"]')).toBeVisible();
     await expect(page.locator('[data-testid="pack-card-103"]')).toBeVisible();
 
@@ -199,14 +197,10 @@ test.describe('DraftLive', () => {
     });
 
     await page.goto('/draft/live');
-    await expect(page.locator('[data-testid="draft-live-container"]')).toBeVisible({
-      timeout: 10_000,
-    });
+    await expect(page.locator('[data-testid="draft-live-container"]')).toBeVisible();
 
     // After the pick event, the picked card should appear in history.
-    await expect(page.locator('[data-testid="picked-card-201"]')).toBeVisible({
-      timeout: 8_000,
-    });
+    await expect(page.locator('[data-testid="picked-card-201"]')).toBeVisible();
 
     // History section is visible.
     await expect(page.locator('[data-testid="draft-live-history"]')).toBeVisible();
@@ -247,15 +241,9 @@ test.describe('DraftLive', () => {
     });
 
     await page.goto('/draft/live');
-    await expect(page.locator('[data-testid="draft-live-container"]')).toBeVisible({
-      timeout: 10_000,
-    });
+    await expect(page.locator('[data-testid="draft-live-container"]')).toBeVisible();
 
-    await expect(page.locator('[data-testid="draft-live-set"]')).toHaveText('MKM', {
-      timeout: 8_000,
-    });
-    await expect(page.locator('[data-testid="draft-live-format"]')).toHaveText('Premier Draft', {
-      timeout: 8_000,
-    });
+    await expect(page.locator('[data-testid="draft-live-set"]')).toHaveText('MKM');
+    await expect(page.locator('[data-testid="draft-live-format"]')).toHaveText('Premier Draft');
   });
 });

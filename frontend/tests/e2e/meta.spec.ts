@@ -9,7 +9,7 @@ import { test, expect } from '@playwright/test';
 test.describe('Meta', () => {
   test.beforeEach(async ({ page }) => {
     await page.goto('/');
-    await expect(page.locator('[data-testid="app-container"]')).toBeVisible({ timeout: 10000 });
+    await expect(page.locator('[data-testid="app-container"]')).toBeVisible();
 
     await page.click('a[href="/meta"]');
     await page.waitForURL('**/meta');
@@ -18,7 +18,7 @@ test.describe('Meta', () => {
   test.describe('Navigation and Page Load', () => {
     test('@smoke should navigate to Meta page', async ({ page }) => {
       const metaPage = page.locator('.meta-page');
-      await expect(metaPage).toBeVisible({ timeout: 10000 });
+      await expect(metaPage).toBeVisible();
     });
 
     test('should display page title', async ({ page }) => {
@@ -29,7 +29,7 @@ test.describe('Meta', () => {
   test.describe('Meta Header', () => {
     test('should display meta header', async ({ page }) => {
       const header = page.locator('.meta-header');
-      await expect(header).toBeVisible({ timeout: 10000 });
+      await expect(header).toBeVisible();
     });
 
     test('should display format selector', async ({ page }) => {
@@ -73,7 +73,7 @@ test.describe('Meta', () => {
   test.describe('Meta Content', () => {
     test('should display meta content or loading state', async ({ page }) => {
       const metaPage = page.locator('.meta-page');
-      await expect(metaPage).toBeVisible({ timeout: 10000 });
+      await expect(metaPage).toBeVisible();
 
       // Should have some content
       const content = await metaPage.textContent();
@@ -84,20 +84,20 @@ test.describe('Meta', () => {
   test.describe('Loading State', () => {
     test('should show loading indicator while fetching data', async ({ page }) => {
       const metaPage = page.locator('.meta-page');
-      await expect(metaPage).toBeVisible({ timeout: 10000 });
+      await expect(metaPage).toBeVisible();
     });
 
     test('should handle refresh button click', async ({ page }) => {
       // Wait for page to load
       const refreshButton = page.locator('.refresh-button');
-      await expect(refreshButton).toBeVisible({ timeout: 10000 });
+      await expect(refreshButton).toBeVisible();
 
       // Click refresh
       await refreshButton.click();
 
       // Page should still be visible after refresh
       const metaPage = page.locator('.meta-page');
-      await expect(metaPage).toBeVisible({ timeout: 10000 });
+      await expect(metaPage).toBeVisible();
     });
   });
 });

@@ -3,7 +3,7 @@
  * Handles deck notes, match notes, and improvement suggestions.
  */
 
-import { get, post, put, del } from '../apiClient';
+import { get, post, put, del } from '../daemonClient';
 
 /**
  * Note category types.

@@ -9,7 +9,7 @@ import { test, expect } from '@playwright/test';
 test.describe('Match History', () => {
   test.beforeEach(async ({ page }) => {
     await page.goto('/');
-    await expect(page.locator('[data-testid="app-container"]')).toBeVisible({ timeout: 10000 });
+    await expect(page.locator('[data-testid="app-container"]')).toBeVisible();
   });
 
   test.describe('Navigation and Page Load', () => {
@@ -99,7 +99,7 @@ test.describe('Match History', () => {
       const emptyState = page.locator('.empty-state');
 
       // Wait for either content type to appear
-      await expect(table.or(emptyState)).toBeVisible({ timeout: 10000 });
+      await expect(table.or(emptyState)).toBeVisible();
 
       const hasTable = await table.isVisible();
       const hasEmptyState = await emptyState.isVisible();
@@ -150,7 +150,7 @@ test.describe('Match History', () => {
     test('should not show error state on initial load', async ({ page }) => {
       // Wait for content to load
       const content = page.locator('.match-history-table-container, .empty-state');
-      await expect(content.first()).toBeVisible({ timeout: 10000 });
+      await expect(content.first()).toBeVisible();
 
       const errorState = page.locator('.error-state');
       await expect(errorState).not.toBeVisible();

@@ -53,7 +53,7 @@ test.describe('Feature: Clerk Auth UI', () => {
   test('signed-out state: AuthBar shows SignInButton and SignUpButton; UserButton is NOT visible @smoke', async ({ page }) => {
     await setClerkSignedOut(page);
     await page.goto('/');
-    await expect(page.locator('[data-testid="app-container"]')).toBeVisible({ timeout: 15_000 });
+    await expect(page.locator('[data-testid="app-container"]')).toBeVisible();
 
     // Auth bar container must be present
     const authBar = page.locator('[data-testid="auth-bar"]');
@@ -71,10 +71,10 @@ test.describe('Feature: Clerk Auth UI', () => {
   test('protected route redirect: navigating to /draft while unauthenticated shows sign-in prompt, not Draft content @smoke', async ({ page }) => {
     await setClerkSignedOut(page);
     await page.goto('/draft');
-    await expect(page.locator('[data-testid="app-container"]')).toBeVisible({ timeout: 15_000 });
+    await expect(page.locator('[data-testid="app-container"]')).toBeVisible();
 
     // ProtectedRoute sign-in prompt must be shown
-    await expect(page.locator('[data-testid="protected-route-prompt"]')).toBeVisible({ timeout: 10_000 });
+    await expect(page.locator('[data-testid="protected-route-prompt"]')).toBeVisible();
 
     // The prompt should contain the sign-in button
     await expect(page.locator('[data-testid="protected-route-sign-in-btn"]')).toBeVisible();
@@ -87,16 +87,16 @@ test.describe('Feature: Clerk Auth UI', () => {
   test('protected route redirect: sign-in prompt title mentions Draft access', async ({ page }) => {
     await setClerkSignedOut(page);
     await page.goto('/draft');
-    await expect(page.locator('[data-testid="app-container"]')).toBeVisible({ timeout: 15_000 });
+    await expect(page.locator('[data-testid="app-container"]')).toBeVisible();
 
-    await expect(page.locator('[data-testid="protected-route-prompt"]')).toBeVisible({ timeout: 10_000 });
+    await expect(page.locator('[data-testid="protected-route-prompt"]')).toBeVisible();
     await expect(page.locator('text=Sign in to access Draft')).toBeVisible();
   });
 
   test('signed-in state: UserButton is visible; SignInButton and SignUpButton are NOT visible @smoke', async ({ page }) => {
     await setClerkSignedIn(page);
     await page.goto('/');
-    await expect(page.locator('[data-testid="app-container"]')).toBeVisible({ timeout: 15_000 });
+    await expect(page.locator('[data-testid="app-container"]')).toBeVisible();
 
     // Auth bar must be present
     await expect(page.locator('[data-testid="auth-bar"]')).toBeVisible();
@@ -113,12 +113,12 @@ test.describe('Feature: Clerk Auth UI', () => {
   test('signed-in state: navigating to /draft renders Draft content, not the sign-in prompt', async ({ page }) => {
     await setClerkSignedIn(page);
     await page.goto('/draft');
-    await expect(page.locator('[data-testid="app-container"]')).toBeVisible({ timeout: 15_000 });
+    await expect(page.locator('[data-testid="app-container"]')).toBeVisible();
 
     // Sign-in prompt must NOT appear
     await expect(page.locator('[data-testid="protected-route-prompt"]')).not.toBeVisible();
 
     // Draft content (container) must render — .draft-container wraps .draft-empty
-    await expect(page.locator('.draft-container').first()).toBeVisible({ timeout: 15_000 });
+    await expect(page.locator('.draft-container').first()).toBeVisible();
   });
 });

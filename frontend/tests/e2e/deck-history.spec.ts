@@ -10,7 +10,7 @@ import { test, expect } from '@playwright/test';
 test.describe('Deck History', () => {
   test.beforeEach(async ({ page }) => {
     await page.goto('/');
-    await expect(page.locator('[data-testid="app-container"]')).toBeVisible({ timeout: 10000 });
+    await expect(page.locator('[data-testid="app-container"]')).toBeVisible();
 
     await page.click('a[href="/decks"]');
     await page.waitForURL('**/decks');
@@ -21,7 +21,7 @@ test.describe('Deck History', () => {
       // Wait for decks to load
       const deckCard = page.locator('.deck-card');
       const emptyState = page.locator('.empty-state');
-      await expect(deckCard.first().or(emptyState)).toBeVisible({ timeout: 10000 });
+      await expect(deckCard.first().or(emptyState)).toBeVisible();
 
       const hasCards = await deckCard.first().isVisible();
 
@@ -32,7 +32,7 @@ test.describe('Deck History', () => {
 
         // Wait for deck builder to load
         const deckBuilder = page.locator('.deck-builder');
-        await expect(deckBuilder).toBeVisible({ timeout: 10000 });
+        await expect(deckBuilder).toBeVisible();
 
         // Look for history button (if deck has permutations)
         const historyButton = page.locator('button').filter({ hasText: /history/i });
@@ -50,7 +50,7 @@ test.describe('Deck History', () => {
     test('should open deck history modal when clicking history button', async ({ page }) => {
       const deckCard = page.locator('.deck-card');
       const emptyState = page.locator('.empty-state');
-      await expect(deckCard.first().or(emptyState)).toBeVisible({ timeout: 10000 });
+      await expect(deckCard.first().or(emptyState)).toBeVisible();
 
       const hasCards = await deckCard.first().isVisible();
 
@@ -59,7 +59,7 @@ test.describe('Deck History', () => {
         await page.waitForURL('**/decks/**');
 
         const deckBuilder = page.locator('.deck-builder');
-        await expect(deckBuilder).toBeVisible({ timeout: 10000 });
+        await expect(deckBuilder).toBeVisible();
 
         const historyButton = page.locator('button').filter({ hasText: /history/i });
         const hasHistoryButton = await historyButton.isVisible().catch(() => false);
@@ -81,7 +81,7 @@ test.describe('Deck History', () => {
     test('should display version list in history modal', async ({ page }) => {
       const deckCard = page.locator('.deck-card');
       const emptyState = page.locator('.empty-state');
-      await expect(deckCard.first().or(emptyState)).toBeVisible({ timeout: 10000 });
+      await expect(deckCard.first().or(emptyState)).toBeVisible();
 
       const hasCards = await deckCard.first().isVisible();
 
@@ -90,7 +90,7 @@ test.describe('Deck History', () => {
         await page.waitForURL('**/decks/**');
 
         const deckBuilder = page.locator('.deck-builder');
-        await expect(deckBuilder).toBeVisible({ timeout: 10000 });
+        await expect(deckBuilder).toBeVisible();
 
         const historyButton = page.locator('button').filter({ hasText: /history/i });
         const hasHistoryButton = await historyButton.isVisible().catch(() => false);
@@ -112,7 +112,7 @@ test.describe('Deck History', () => {
     test('should show "(Current)" badge for current permutation', async ({ page }) => {
       const deckCard = page.locator('.deck-card');
       const emptyState = page.locator('.empty-state');
-      await expect(deckCard.first().or(emptyState)).toBeVisible({ timeout: 10000 });
+      await expect(deckCard.first().or(emptyState)).toBeVisible();
 
       const hasCards = await deckCard.first().isVisible();
 
@@ -121,7 +121,7 @@ test.describe('Deck History', () => {
         await page.waitForURL('**/decks/**');
 
         const deckBuilder = page.locator('.deck-builder');
-        await expect(deckBuilder).toBeVisible({ timeout: 10000 });
+        await expect(deckBuilder).toBeVisible();
 
         const historyButton = page.locator('button').filter({ hasText: /history/i });
         const hasHistoryButton = await historyButton.isVisible().catch(() => false);
@@ -151,7 +151,7 @@ test.describe('Deck History', () => {
     test('should disable restore button for current version', async ({ page }) => {
       const deckCard = page.locator('.deck-card');
       const emptyState = page.locator('.empty-state');
-      await expect(deckCard.first().or(emptyState)).toBeVisible({ timeout: 10000 });
+      await expect(deckCard.first().or(emptyState)).toBeVisible();
 
       const hasCards = await deckCard.first().isVisible();
 
@@ -160,7 +160,7 @@ test.describe('Deck History', () => {
         await page.waitForURL('**/decks/**');
 
         const deckBuilder = page.locator('.deck-builder');
-        await expect(deckBuilder).toBeVisible({ timeout: 10000 });
+        await expect(deckBuilder).toBeVisible();
 
         const historyButton = page.locator('button').filter({ hasText: /history/i });
         const hasHistoryButton = await historyButton.isVisible().catch(() => false);
@@ -197,7 +197,7 @@ test.describe('Deck History', () => {
     test('should close modal when clicking close button', async ({ page }) => {
       const deckCard = page.locator('.deck-card');
       const emptyState = page.locator('.empty-state');
-      await expect(deckCard.first().or(emptyState)).toBeVisible({ timeout: 10000 });
+      await expect(deckCard.first().or(emptyState)).toBeVisible();
 
       const hasCards = await deckCard.first().isVisible();
 
@@ -206,7 +206,7 @@ test.describe('Deck History', () => {
         await page.waitForURL('**/decks/**');
 
         const deckBuilder = page.locator('.deck-builder');
-        await expect(deckBuilder).toBeVisible({ timeout: 10000 });
+        await expect(deckBuilder).toBeVisible();
 
         const historyButton = page.locator('button').filter({ hasText: /history/i });
         const hasHistoryButton = await historyButton.isVisible().catch(() => false);
@@ -230,7 +230,7 @@ test.describe('Deck History', () => {
     test('should close modal when clicking overlay', async ({ page }) => {
       const deckCard = page.locator('.deck-card');
       const emptyState = page.locator('.empty-state');
-      await expect(deckCard.first().or(emptyState)).toBeVisible({ timeout: 10000 });
+      await expect(deckCard.first().or(emptyState)).toBeVisible();
 
       const hasCards = await deckCard.first().isVisible();
 
@@ -239,7 +239,7 @@ test.describe('Deck History', () => {
         await page.waitForURL('**/decks/**');
 
         const deckBuilder = page.locator('.deck-builder');
-        await expect(deckBuilder).toBeVisible({ timeout: 10000 });
+        await expect(deckBuilder).toBeVisible();
 
         const historyButton = page.locator('button').filter({ hasText: /history/i });
         const hasHistoryButton = await historyButton.isVisible().catch(() => false);
@@ -263,7 +263,7 @@ test.describe('Deck History', () => {
     test('should allow selecting different versions', async ({ page }) => {
       const deckCard = page.locator('.deck-card');
       const emptyState = page.locator('.empty-state');
-      await expect(deckCard.first().or(emptyState)).toBeVisible({ timeout: 10000 });
+      await expect(deckCard.first().or(emptyState)).toBeVisible();
 
       const hasCards = await deckCard.first().isVisible();
 
@@ -272,7 +272,7 @@ test.describe('Deck History', () => {
         await page.waitForURL('**/decks/**');
 
         const deckBuilder = page.locator('.deck-builder');
-        await expect(deckBuilder).toBeVisible({ timeout: 10000 });
+        await expect(deckBuilder).toBeVisible();
 
         const historyButton = page.locator('button').filter({ hasText: /history/i });
         const hasHistoryButton = await historyButton.isVisible().catch(() => false);
@@ -306,7 +306,7 @@ test.describe('Deck History', () => {
     test('should display match statistics for versions', async ({ page }) => {
       const deckCard = page.locator('.deck-card');
       const emptyState = page.locator('.empty-state');
-      await expect(deckCard.first().or(emptyState)).toBeVisible({ timeout: 10000 });
+      await expect(deckCard.first().or(emptyState)).toBeVisible();
 
       const hasCards = await deckCard.first().isVisible();
 
@@ -315,7 +315,7 @@ test.describe('Deck History', () => {
         await page.waitForURL('**/decks/**');
 
         const deckBuilder = page.locator('.deck-builder');
-        await expect(deckBuilder).toBeVisible({ timeout: 10000 });
+        await expect(deckBuilder).toBeVisible();
 
         const historyButton = page.locator('button').filter({ hasText: /history/i });
         const hasHistoryButton = await historyButton.isVisible().catch(() => false);
