@@ -84,6 +84,14 @@ jobs:
         aws s3 sync infra/scripts/ \
           "s3://$STAGING_BUCKET/infra-scripts/" \
           --exclude "*" --include "*.sh"
+        # Upload postgres migration files so EC2 can run them without a repo checkout
+        aws s3 sync services/bff/internal/storage/migrations/postgres/ \
+          "s3://$STAGING_BUCKET/migrations/postgres/" \
+          --delete
+        # Upload infra/db/ SQL files (grant-staging-tables.sql etc.)
+        aws s3 sync infra/db/ \
+          "s3://$STAGING_BUCKET/infra-db/" \
+          --exclude "*" --include "*.sql"
 
     # Renders /etc/mtga-companion-staging/env from SSM parameter hierarchy
     # /vaultmtg/staging/* and /mtga-companion/staging/*.
@@ -196,7 +204,7 @@ jobs:
         COMMAND_ID=$(aws ssm send-command \
           --instance-ids "${{ secrets.EC2_INSTANCE_ID }}" \
           --document-name "AWS-RunShellScript" \
-          --parameters 'commands=["aws s3 cp s3://${{ env.STAGING_BUCKET }}/infra-scripts/run-staging-migrations.sh /tmp/run-staging-migrations.sh && chmod +x /tmp/run-staging-migrations.sh && /tmp/run-staging-migrations.sh"]' \
+          --parameters 'commands=["export DEPLOY_BUCKET=${{ env.STAGING_BUCKET }} && export AWS_REGION=us-east-1 && aws s3 cp s3://${{ env.STAGING_BUCKET }}/infra-scripts/run-staging-migrations.sh /tmp/run-staging-migrations.sh && chmod +x /tmp/run-staging-migrations.sh && /tmp/run-staging-migrations.sh"]' \
           --region us-east-1 \
           --query "Command.CommandId" \
           --output text)
