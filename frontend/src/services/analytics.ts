@@ -65,6 +65,8 @@ export const Events = {
   FUNNEL_SIGN_UP_COMPLETED: 'funnel_sign_up_completed',
   FUNNEL_DAEMON_DOWNLOAD_STARTED: 'funnel_daemon_download_started',
   FUNNEL_DAEMON_CONNECTED: 'funnel_daemon_connected',
+  FUNNEL_DAEMON_INSTALLED: 'funnel_daemon_installed',
+  FUNNEL_FIRST_GAME_PLAYED: 'funnel_first_game_played',
   FUNNEL_FIRST_DATA_LOADED: 'funnel_first_data_loaded',
   FUNNEL_FIRST_FEATURE_USED: 'funnel_first_feature_used',
 
@@ -144,6 +146,24 @@ export type AnalyticsEvent =
       name: 'funnel_daemon_connected';
       properties?: {
         time_since_signup_seconds?: number;
+        source?: string;
+      };
+    }
+  | {
+      name: 'funnel_daemon_installed';
+      properties?: {
+        /** Daemon version string if known */
+        daemon_version?: string;
+        /** Source page where the event fired */
+        source?: string;
+      };
+    }
+  | {
+      name: 'funnel_first_game_played';
+      properties?: {
+        /** Format of the first game (e.g. "Standard", "Limited") */
+        format?: string;
+        /** Source page where the event fired */
         source?: string;
       };
     }
