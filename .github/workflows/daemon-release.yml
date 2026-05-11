@@ -83,7 +83,8 @@ jobs:
           SEMVER="${RAW#daemon/}"
           echo "tag=${SEMVER}" >> "$GITHUB_OUTPUT"
           # Create a local alias tag so GoReleaser's tag-to-commit validation passes.
-          git tag "${SEMVER}"
+          # Use -f to overwrite if the tag already exists locally (e.g. fetched from remote).
+          git tag -f "${SEMVER}"
 
       - name: Run GoReleaser
         uses: goreleaser/goreleaser-action@v6
