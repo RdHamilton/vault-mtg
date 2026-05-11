@@ -146,6 +146,7 @@ jobs:
           echo "$CERT_BASE64" | base64 --decode > /tmp/dev-id-app.p12
           security create-keychain -p "temp-keychain-password" build.keychain
           security default-keychain -s build.keychain
+          security list-keychains -d user -s build.keychain login.keychain
           security unlock-keychain -p "temp-keychain-password" build.keychain
           security set-keychain-settings -t 7200 -l build.keychain
           security import /tmp/dev-id-app.p12 \
