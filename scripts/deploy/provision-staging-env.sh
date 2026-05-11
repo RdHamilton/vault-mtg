@@ -54,6 +54,7 @@ write_param PORT                    /mtga-companion/staging/PORT
 write_param ALLOWED_ORIGINS         /mtga-companion/staging/ALLOWED_ORIGINS
 write_param CLERK_PUBLISHABLE_KEY   /mtga-companion/staging/CLERK_PUBLISHABLE_KEY
 write_param CLERK_SECRET_KEY        /mtga-companion/staging/CLERK_SECRET_KEY --with-decryption
+write_param CLERK_FRONTEND_API      /mtga-companion/staging/CLERK_FRONTEND_API
 write_param DATABASE_URL            /mtga-companion/staging/database-url      --with-decryption
 
 # VaultMTG service keys

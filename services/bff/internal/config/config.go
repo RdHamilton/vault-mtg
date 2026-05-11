@@ -75,6 +75,15 @@ type Config struct {
 	// infrastructure/ssm/parameters.md for the parameter path.
 	ClerkSecretKey string
 
+	// ClerkFrontendAPI is the Clerk Frontend API base URL (e.g.
+	// https://clerk.vaultmtg.app) used by the OAuth-token middleware to call
+	// /oauth/userinfo when validating PKCE access tokens from the daemon.
+	//
+	// Sourced from CLERK_FRONTEND_API.  May be empty in development; when empty
+	// the OAuth-token middleware is not constructed and routes protected by it
+	// are not mounted.
+	ClerkFrontendAPI string
+
 	// SentryDSN is the Sentry Data Source Name used to initialise the
 	// sentry-go SDK at BFF startup.
 	//
@@ -154,6 +163,7 @@ func Load() (*Config, error) {
 		DaemonLatestVersion:                 daemonLatestVersion,
 		DaemonReleasedAt:                    os.Getenv("BFF_DAEMON_RELEASED_AT"),
 		ClerkSecretKey:                      clerkSecretKey,
+		ClerkFrontendAPI:                    strings.TrimSpace(os.Getenv("CLERK_FRONTEND_API")),
 		SentryDSN:                           strings.TrimSpace(os.Getenv("SENTRY_DSN")),
 		PostHogAPIKey:                       strings.TrimSpace(os.Getenv("POSTHOG_API_KEY")),
 	}

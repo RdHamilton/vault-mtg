@@ -142,6 +142,7 @@ func main() {
 	// a 503.
 	var clerkAuthMiddl func(http.Handler) http.Handler
 	var clerkAuthSSEMiddl func(http.Handler) http.Handler
+	var clerkOAuthMiddl func(http.Handler) http.Handler
 	if cfg.ClerkSecretKey != "" {
 		clerkAuthMiddl = bffmiddleware.RequireClerkAuth(cfg.ClerkSecretKey)
 		// SSE middleware accepts the Clerk session cookie as a fallback token
@@ -150,6 +151,15 @@ func main() {
 		clerkAuthSSEMiddl = bffmiddleware.RequireClerkAuthForSSE(cfg.ClerkSecretKey)
 	} else {
 		log.Println("CLERK_SECRET_KEY not set — Clerk JWT auth disabled (development only).")
+	}
+	// The daemon's PKCE flow returns a Clerk OAuth access token (jti prefix
+	// "oat_") which is NOT a session JWT and is rejected by RequireClerkAuth.
+	// RequireClerkOAuthToken validates these tokens via /oauth/userinfo on the
+	// configured Frontend API host.
+	if cfg.ClerkFrontendAPI != "" {
+		clerkOAuthMiddl = bffmiddleware.RequireClerkOAuthToken(cfg.ClerkFrontendAPI)
+	} else {
+		log.Println("CLERK_FRONTEND_API not set — daemon OAuth-token auth disabled (development only).")
 	}
 
 	// Wire API key handler and auth middleware when a database is available.
@@ -270,6 +280,7 @@ func main() {
 		HealthzHandler:        healthzHandler,
 		ClerkAuthMiddl:        clerkAuthMiddl,
 		ClerkAuthSSEMiddl:     clerkAuthSSEMiddl,
+		ClerkOAuthMiddl:       clerkOAuthMiddl,
 		ClerkUserResolver:     clerkUserResolver,
 		APIKeyAuthMiddl:       apiKeyAuthMiddl,
 		SentryMiddl:           bffmiddleware.NewSentryMiddleware(),
@@ -334,6 +345,10 @@ type RouterDeps struct {
 	// browser EventSource API cannot set custom request headers.
 	// See middleware.RequireClerkAuthForSSE for the full design rationale.
 	ClerkAuthSSEMiddl func(http.Handler) http.Handler
+	// ClerkOAuthMiddl validates Clerk OAuth access tokens (jti "oat_*") via
+	// /oauth/userinfo.  Used on POST /api/v1/daemon/register — the daemon
+	// PKCE flow returns OAuth access tokens, not session JWTs.
+	ClerkOAuthMiddl   func(http.Handler) http.Handler
 	ClerkUserResolver func(http.Handler) http.Handler
 	APIKeyAuthMiddl   func(http.Handler) http.Handler
 	// SentryMiddl is the Sentry panic/error capture middleware.  When non-nil
@@ -388,18 +403,21 @@ func BuildRouter(cfg *config.Config, deps RouterDeps) http.Handler {
 	daemonVersionHandler := handlers.NewDaemonVersionHandler(cfg)
 	r.Get("/api/v1/daemon/version", daemonVersionHandler.GetDaemonVersion)
 
-	// POST /api/v1/daemon/register — daemon PKCE registration (Clerk JWT required).
+	// POST /api/v1/daemon/register — daemon PKCE registration (Clerk OAuth token required).
 	// The daemon calls this immediately after completing the PKCE browser flow,
-	// sending the Clerk session JWT as the Bearer token.  The handler mints (or
-	// retrieves) a per-account API key and returns it in the response body.
+	// sending the Clerk OAuth access token as the Bearer token.  The handler
+	// validates the token via Clerk's /oauth/userinfo, mints (or retrieves) a
+	// per-account API key, and returns it in the response body.  This route
+	// uses RequireClerkOAuthToken (NOT RequireClerkAuth) because the PKCE flow
+	// returns OAuth access tokens (jti "oat_*") rather than session JWTs.
 	// Mounted under /api/v1/ to match the rest of the daemon-facing API (events,
 	// daemon/version) — nginx only forwards /api/v1/* to the BFF.
 	// See ADR-020 §POST /api/v1/daemon/register Wire Format.
 	if deps.DaemonRegisterHandler != nil {
-		if deps.ClerkAuthMiddl != nil {
-			r.With(deps.ClerkAuthMiddl).Post("/api/v1/daemon/register", deps.DaemonRegisterHandler.Register)
+		if deps.ClerkOAuthMiddl != nil {
+			r.With(deps.ClerkOAuthMiddl).Post("/api/v1/daemon/register", deps.DaemonRegisterHandler.Register)
 		} else {
-			log.Println("WARN: POST /api/v1/daemon/register disabled — CLERK_SECRET_KEY not configured")
+			log.Println("WARN: POST /api/v1/daemon/register disabled — CLERK_FRONTEND_API not configured")
 		}
 	}
 
