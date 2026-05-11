@@ -229,7 +229,8 @@ release:
     - glob: "services/daemon/vaultmtg-daemon-darwin-universal.pkg"
     - glob: "services/daemon/vaultmtg-daemon-darwin-universal.dmg"
     # Windows NSIS .exe produced by the builds post hook.
-    - glob: "services/daemon/vaultmtg-daemon-setup-*.exe"
+    # Written to repo root by makensis (OutFile uses relative path from invocation dir).
+    - glob: "vaultmtg-daemon-setup-*.exe"
 
 # ---------------------------------------------------------------------------
 # Snapshot (local dev / CI dry-run)
