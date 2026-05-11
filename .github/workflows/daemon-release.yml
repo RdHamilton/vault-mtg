@@ -181,7 +181,7 @@ jobs:
             --force \
             --deep \
             --options runtime \
-            --sign "Developer ID Application: ${{ env.APPLE_TEAM_ID }}" \
+            --sign "${{ secrets.APPLE_SIGNING_IDENTITY }}" \
             --timestamp \
             bin/${{ env.BINARY }}
           codesign --verify --verbose bin/${{ env.BINARY }}
@@ -195,7 +195,7 @@ jobs:
             --identifier com.vaultmtg.daemon \
             --version "${GITHUB_REF#refs/tags/daemon/v}" \
             --install-location / \
-            --sign "Developer ID Installer: ${{ env.APPLE_TEAM_ID }}" \
+            --sign "${{ secrets.APPLE_INSTALLER_IDENTITY }}" \
             --timestamp \
             ${{ env.PKG }}
 
