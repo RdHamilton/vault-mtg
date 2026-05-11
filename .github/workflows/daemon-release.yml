@@ -175,18 +175,22 @@ jobs:
           rm /tmp/dev-id-installer.p12
 
       - name: Sign macOS binary
+        env:
+          SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
         run: |
           chmod +x bin/${{ env.BINARY }}
           codesign \
             --force \
             --deep \
             --options runtime \
-            --sign "${{ secrets.APPLE_SIGNING_IDENTITY }}" \
+            --sign "$SIGNING_IDENTITY" \
             --timestamp \
             bin/${{ env.BINARY }}
           codesign --verify --verbose bin/${{ env.BINARY }}
 
       - name: Create .pkg installer
+        env:
+          INSTALLER_IDENTITY: ${{ secrets.APPLE_INSTALLER_IDENTITY }}
         run: |
           mkdir -p pkg-root/usr/local/bin
           cp bin/${{ env.BINARY }} pkg-root/usr/local/bin/vaultmtg-daemon
@@ -195,7 +199,7 @@ jobs:
             --identifier com.vaultmtg.daemon \
             --version "${GITHUB_REF#refs/tags/daemon/v}" \
             --install-location / \
-            --sign "${{ secrets.APPLE_INSTALLER_IDENTITY }}" \
+            --sign "$INSTALLER_IDENTITY" \
             --timestamp \
             ${{ env.PKG }}
 
