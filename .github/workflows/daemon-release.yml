@@ -208,16 +208,48 @@ jobs:
       - name: Create .pkg installer
         env:
           INSTALLER_IDENTITY: ${{ secrets.APPLE_INSTALLER_IDENTITY }}
-          CLERK_FRONTEND_API: https://clerk.vaultmtg.app
-          CLERK_PUBLISHABLE_KEY: ${{ vars.VITE_CLERK_PUBLISHABLE_KEY }}
-          CLERK_OAUTH_CLIENT_ID: ${{ secrets.CLERK_OAUTH_CLIENT_ID }}
-          VAULTMTG_CLOUD_API_URL: ${{ steps.cloud_url.outputs.url }}
+          CLERK_FRONTEND_API_VALUE: https://clerk.vaultmtg.app
+          CLERK_PUBLISHABLE_KEY_VALUE: ${{ vars.VITE_CLERK_PUBLISHABLE_KEY }}
+          CLERK_OAUTH_CLIENT_ID_VALUE: ${{ secrets.CLERK_OAUTH_CLIENT_ID }}
+          VAULTMTG_CLOUD_API_URL_VALUE: ${{ steps.cloud_url.outputs.url }}
         run: |
           mkdir -p pkg-root/usr/local/bin
           cp bin/${{ env.BINARY }} pkg-root/usr/local/bin/vaultmtg-daemon
+
+          # pkgbuild does not propagate env vars to the installed postinstall.
+          # Substitute placeholders in a copy of the script BEFORE bundling.
+          SCRIPTS_DIR=$(mktemp -d)
+          cp -r services/daemon/install/macos/pkg/. "$SCRIPTS_DIR/"
+
+          # Escape sed replacement metacharacters (\, &) and the | delimiter so
+          # values with special chars (e.g. a future Clerk client_id) don't
+          # silently corrupt the substitution.
+          escape_sed() {
+            printf '%s' "$1" | sed -e 's/[\&|]/\\&/g'
+          }
+          ESC_CLOUD_API_URL=$(escape_sed "$VAULTMTG_CLOUD_API_URL_VALUE")
+          ESC_CLERK_FRONTEND_API=$(escape_sed "$CLERK_FRONTEND_API_VALUE")
+          ESC_CLERK_PUBLISHABLE_KEY=$(escape_sed "$CLERK_PUBLISHABLE_KEY_VALUE")
+          ESC_CLERK_OAUTH_CLIENT_ID=$(escape_sed "$CLERK_OAUTH_CLIENT_ID_VALUE")
+
+          sed -i.bak \
+            -e "s|__VAULTMTG_CLOUD_API_URL__|$ESC_CLOUD_API_URL|g" \
+            -e "s|__CLERK_FRONTEND_API__|$ESC_CLERK_FRONTEND_API|g" \
+            -e "s|__CLERK_PUBLISHABLE_KEY__|$ESC_CLERK_PUBLISHABLE_KEY|g" \
+            -e "s|__CLERK_OAUTH_CLIENT_ID__|$ESC_CLERK_OAUTH_CLIENT_ID|g" \
+            "$SCRIPTS_DIR/postinstall"
+          rm -f "$SCRIPTS_DIR/postinstall.bak"
+
+          # Sanity check: confirm no placeholders survived the substitution.
+          if grep -q '__[A-Z_]*__' "$SCRIPTS_DIR/postinstall"; then
+            echo "ERROR: postinstall still contains unsubstituted placeholders:" >&2
+            grep -n '__[A-Z_]*__' "$SCRIPTS_DIR/postinstall" >&2
+            exit 1
+          fi
+
           pkgbuild \
             --root pkg-root \
-            --scripts services/daemon/install/macos/pkg \
+            --scripts "$SCRIPTS_DIR" \
             --identifier com.vaultmtg.daemon \
             --version "${GITHUB_REF#refs/tags/daemon/v}" \
             --install-location / \
