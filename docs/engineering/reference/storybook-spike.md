@@ -55,17 +55,19 @@ GO. Ship Storybook 10 + `@storybook/react-vite` as the component library foundat
 4. Value: paste the token copied from Step 1.
 5. Click **Add secret**.
 
-### Step 3: Capture the Baseline
+### Step 3: Approve the Initial Baseline
 
-After adding the token, the next push to `main` that touches `frontend/src/**` or `.storybook/**` will trigger the Chromatic workflow. Chromatic will upload the Storybook build and create the initial baseline. All stories will be auto-accepted on the first run.
+Steps 1–2 are already complete (project created, token provisioned as of 2026-05-10). The first Chromatic run found 23 unreviewed visual changes — these are all new stories, not regressions. Go to the build and accept all to establish the baseline:
 
-### Step 4: Document the Project URL
+**Build to review**: `https://www.chromatic.com/build?appId=6a011ad4409d5fcfc80e5a25&number=4`
 
-Once the project is created on Chromatic, update this file with the actual project URL:
+Click **Accept all** on this build. Subsequent runs will only flag genuine visual regressions.
 
-**Chromatic Project URL**: `TODO — update once project is created at chromatic.com`
+### Project URL (provisioned 2026-05-10)
 
-Expected format: `https://www.chromatic.com/builds?appId=<app-id>`
+**Chromatic Project URL**: `https://www.chromatic.com/builds?appId=6a011ad4409d5fcfc80e5a25`
+
+App ID: `6a011ad4409d5fcfc80e5a25`
 
 ---
 
