@@ -1,5 +1,12 @@
 name: Chromatic
 
+# Pull requests: always run so the 'Chromatic Visual Tests' check is always
+# present as a required status. Path filtering is done inside the job via the
+# 'detect-changes' step -- if no frontend files changed the job exits early
+# (green) without running the expensive Storybook build or consuming Chromatic quota.
+#
+# Push to main: still path-filtered to avoid running the full build on every
+# non-frontend commit merged to main (post-merge snapshots are less critical).
 on:
   push:
     branches: [main]
@@ -11,12 +18,8 @@ on:
       - '.github/workflows/chromatic.yml'
   pull_request:
     branches: [main]
-    paths:
-      - 'frontend/src/**'
-      - 'frontend/.storybook/**'
-      - 'frontend/package.json'
-      - 'frontend/package-lock.json'
-      - '.github/workflows/chromatic.yml'
+    # No path filter -- the job must always run on PRs so the required status
+    # check is always emitted (even when zero frontend files changed).
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -33,35 +36,82 @@ jobs:
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@v6
+        uses: actions/checkout@v4
         with:
           # Chromatic requires full git history to diff against baseline commits.
           fetch-depth: 0
 
+      - name: Detect frontend changes
+        id: changes
+        run: |
+          # On pull_request events, diff against the base branch.
+          # On push events (main), diff against the previous commit.
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            BASE="${{ github.event.pull_request.base.sha }}"
+            HEAD="${{ github.event.pull_request.head.sha }}"
+          else
+            BASE="${{ github.event.before }}"
+            HEAD="${{ github.sha }}"
+          fi
+
+          CHANGED=$(git diff --name-only "$BASE" "$HEAD" 2>/dev/null || git diff --name-only HEAD~1 HEAD)
+          echo "Changed files:"
+          echo "$CHANGED"
+
+          if echo "$CHANGED" | grep -qE '^frontend/(src|\.storybook|package\.json|package-lock\.json)'; then
+            echo "frontend_changed=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "frontend_changed=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Skip (no frontend changes)
+        if: steps.changes.outputs.frontend_changed == 'false'
+        run: echo "No frontend files changed -- skipping Storybook build and Chromatic upload."
+
       - name: Set up Node.js
-        uses: actions/setup-node@v5
+        if: steps.changes.outputs.frontend_changed == 'true'
+        uses: actions/setup-node@v4
         with:
-          node-version: '24'
+          node-version: '20'
           cache: 'npm'
           cache-dependency-path: frontend/package-lock.json
 
       - name: Install dependencies
+        if: steps.changes.outputs.frontend_changed == 'true'
         run: npm ci
         working-directory: frontend
 
       - name: Build Storybook
+        if: steps.changes.outputs.frontend_changed == 'true'
         run: npm run build-storybook
         working-directory: frontend
 
+      - name: Check for Chromatic token
+        if: steps.changes.outputs.frontend_changed == 'true'
+        id: token_check
+        run: |
+          if [ -z "${{ secrets.CHROMATIC_PROJECT_TOKEN }}" ]; then
+            echo "has_token=false" >> "$GITHUB_OUTPUT"
+            echo "::warning::CHROMATIC_PROJECT_TOKEN secret is not set. Skipping Chromatic upload."
+            echo "To provision: go to https://www.chromatic.com, create a project, then add the token"
+            echo "as a GitHub Actions secret at https://github.com/RdHamilton/MTGA-Companion/settings/secrets/actions"
+          else
+            echo "has_token=true" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Run Chromatic
+        # This step is the visual regression gate. It fails CI when unreviewed visual
+        # changes are detected, forcing a human review on the Chromatic dashboard.
+        #
         # REQUIRES: CHROMATIC_PROJECT_TOKEN secret must be set in GitHub Actions secrets.
         # To provision:
         #   1. Create a project at https://www.chromatic.com
-        #   2. Copy the project token from the project settings
+        #      (see docs/engineering/reference/storybook-spike.md)
+        #   2. Copy the project token from Project Settings > Manage > Token
         #   3. Add it as a GitHub Actions secret named CHROMATIC_PROJECT_TOKEN
         #      at https://github.com/RdHamilton/MTGA-Companion/settings/secrets/actions
-        #
-        # --exit-zero-on-changes: CI stays green when visual changes need review;
-        # the Chromatic dashboard is the review surface, not CI red/green.
-        run: npx chromatic --storybook-build-dir=storybook-static --exit-zero-on-changes --project-token=${{ secrets.CHROMATIC_PROJECT_TOKEN }}
+        if: >
+          steps.changes.outputs.frontend_changed == 'true' &&
+          steps.token_check.outputs.has_token == 'true'
+        run: npx chromatic --storybook-build-dir=storybook-static --project-token=${{ secrets.CHROMATIC_PROJECT_TOKEN }}
         working-directory: frontend
