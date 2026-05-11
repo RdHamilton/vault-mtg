@@ -27,6 +27,7 @@ on:
 
 permissions:
   contents: write
+  actions: write
 
 jobs:
   goreleaser:
@@ -246,3 +247,27 @@ jobs:
             "${{ env.DMG }}" \
             --repo "${{ github.repository }}" \
             --clobber
+
+      - name: Update staging VITE_DAEMON_VERSION and redeploy
+        # Only auto-update staging for pre-release tags (rc, alpha, beta, pre).
+        # Stable releases (e.g. daemon/v0.3.1) go through a manual promotion so
+        # production download links are never updated without explicit intent.
+        if: |
+          contains(github.ref_name, '-rc') ||
+          contains(github.ref_name, '-alpha') ||
+          contains(github.ref_name, '-beta') ||
+          contains(github.ref_name, '-pre')
+        env:
+          # GH_VARIABLES_PAT must be a fine-grained PAT with
+          # "Variables: Read and write" permission for this repository.
+          # The default GITHUB_TOKEN cannot write environment variables.
+          GH_TOKEN: ${{ secrets.GH_VARIABLES_PAT }}
+        run: |
+          SEMVER="${GITHUB_REF_NAME#daemon/}"
+          gh variable set VITE_DAEMON_VERSION \
+            --env staging \
+            --body "$SEMVER" \
+            --repo "${{ github.repository }}"
+          gh workflow run deploy-spa-staging.yml \
+            --ref main \
+            --repo "${{ github.repository }}"

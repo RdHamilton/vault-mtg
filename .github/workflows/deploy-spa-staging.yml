@@ -41,9 +41,10 @@ jobs:
           VITE_POSTHOG_KEY: ${{ vars.VITE_POSTHOG_KEY }}
           VITE_SENTRY_DSN: ${{ vars.VITE_SENTRY_DSN }}
           # Pins daemon downloads to the latest signed pre-release build.
-          # Production omits this var so downloads resolve via /releases/latest/download/,
-          # which always points to the current stable release.
-          VITE_DAEMON_VERSION: v0.3.1-rc11
+          # Updated automatically by daemon-release.yml after each successful
+          # pre-release signing run. Production omits this var entirely so
+          # downloads resolve via /releases/latest/download/.
+          VITE_DAEMON_VERSION: ${{ vars.VITE_DAEMON_VERSION }}
 
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v4
