@@ -117,15 +117,22 @@ cat > "${PLIST_PATH}" <<PLIST
 PLIST
 
 # ---------------------------------------------------------------------------
-# 4. Load (and enable) the LaunchAgent.
+# 5. Load the LaunchAgent into the correct user gui domain.
 #
-#    -w persists the enabled state across reboots (writes to the LaunchAgents
-#    DB).  If the job was already loaded (e.g. re-install over an existing
-#    install), unload it first so we pick up any plist changes.
+#    pkgbuild postinstall scripts run as root. LaunchAgents must be loaded
+#    into the user's gui domain (not the system domain). Use launchctl
+#    bootstrap/bootout with the gui/<uid> target, run as the actual user
+#    via launchctl asuser so the agent is registered correctly.
+#
+#    $SUDO_USER is set by sudo to the invoking user's name; if absent
+#    (direct root shell) fall back to the owner of HOME.
 # ---------------------------------------------------------------------------
-echo "[postinstall] loading LaunchAgent"
-launchctl unload -w "${PLIST_PATH}" 2>/dev/null || true
-launchctl load -w "${PLIST_PATH}"
+REAL_USER="${SUDO_USER:-$(stat -f '%Su' "${HOME}")}"
+REAL_UID=$(id -u "${REAL_USER}")
+
+echo "[postinstall] loading LaunchAgent into gui/${REAL_UID} (user: ${REAL_USER})"
+launchctl asuser "${REAL_UID}" launchctl bootout "gui/${REAL_UID}" "${PLIST_PATH}" 2>/dev/null || true
+launchctl asuser "${REAL_UID}" launchctl bootstrap "gui/${REAL_UID}" "${PLIST_PATH}"
 
 echo "[postinstall] done"
 echo "  Binary : ${BINARY_PATH}"
