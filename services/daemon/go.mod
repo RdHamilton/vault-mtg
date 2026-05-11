@@ -6,7 +6,7 @@ toolchain go1.25.10
 
 require (
 	github.com/RdHamilton/MTGA-Companion/services/contract v0.1.0
-	github.com/fsnotify/fsnotify v1.10.0
+	github.com/fsnotify/fsnotify v1.10.1
 	github.com/google/uuid v1.6.0
 	github.com/stretchr/testify v1.11.1
 	github.com/zalando/go-keyring v0.2.8
