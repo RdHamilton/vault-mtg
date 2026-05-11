@@ -225,12 +225,13 @@ release:
   draft: false
   prerelease: auto
   extra_files:
-    # macOS .pkg/.dmg produced by the universal_binaries post hook.
-    - glob: "services/daemon/vaultmtg-daemon-darwin-universal.pkg"
-    - glob: "services/daemon/vaultmtg-daemon-darwin-universal.dmg"
     # Windows NSIS .exe produced by the builds post hook.
     # Written to repo root by makensis (OutFile uses relative path from invocation dir).
     - glob: "vaultmtg-daemon-setup-*.exe"
+    # NOTE: macOS .pkg/.dmg are NOT listed here.
+    # They are built and uploaded by the sign-macos job (macos-latest runner) via
+    # 'gh release upload' after notarization. GoReleaser runs on ubuntu-latest and
+    # cannot build or find the macOS artifacts.
 
 # ---------------------------------------------------------------------------
 # Snapshot (local dev / CI dry-run)
