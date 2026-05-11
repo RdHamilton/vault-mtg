@@ -4,7 +4,11 @@
  */
 import { http, HttpResponse } from 'msw';
 
-const API_BASE = 'http://localhost:8080/api/v1';
+// All routes here are still served by the daemon localapi (Phase 2 has only
+// migrated /matches to the BFF, and matches integration tests have their own
+// dedicated mocks). Keep this aligned with daemonClient's default base URL
+// so MSW intercepts the requests instead of letting them escape.
+const API_BASE = 'http://localhost:9001/api/v1';
 
 /**
  * Create a standard API success response wrapper.

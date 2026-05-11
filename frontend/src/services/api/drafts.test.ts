@@ -11,7 +11,11 @@ import type {
 } from './drafts';
 import type { models } from '@/types/models';
 
-const API_BASE = 'http://localhost:8080/api/v1';
+// drafts.ts still routes through the local daemonClient (live-state +
+// not-yet-migrated cloud reads), which targets the daemon localapi on
+// 127.0.0.1:9001. Keep the test base URL aligned so MSW intercepts the
+// request instead of letting it escape and erroring under "onUnhandledRequest".
+const API_BASE = 'http://localhost:9001/api/v1';
 
 // Helper to create success response
 function successResponse<T>(data: T) {

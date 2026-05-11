@@ -43,10 +43,10 @@ type versionInfoResponse struct {
 // daemon has no local DB / WebSocket so those sub-blocks report "n/a"; the
 // SPA tolerates unknown sub-statuses.
 type healthStatusResponse struct {
-	Status    string                  `json:"status"`
-	Version   string                  `json:"version"`
-	Uptime    int64                   `json:"uptime"` // seconds
-	Database  subsystemHealthResponse `json:"database"`
+	Status     string                  `json:"status"`
+	Version    string                  `json:"version"`
+	Uptime     int64                   `json:"uptime"` // seconds
+	Database   subsystemHealthResponse `json:"database"`
 	LogMonitor subsystemHealthResponse `json:"logMonitor"`
 	Websocket  websocketHealthResponse `json:"websocket"`
 	Metrics    healthMetricsResponse   `json:"metrics"`

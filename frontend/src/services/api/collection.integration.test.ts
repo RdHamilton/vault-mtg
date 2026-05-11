@@ -21,7 +21,10 @@ vi.unmock('@/services/api');
 // Import the actual API functions after unmocking
 import { collection } from '@/services/api';
 
-const API_BASE = 'http://localhost:8080/api/v1';
+// collection.ts still routes through the local daemonClient (Phase 2 has
+// not migrated /collection yet), so MSW must intercept the daemon URL,
+// not the BFF. See drafts.test.ts for the same pattern.
+const API_BASE = 'http://localhost:9001/api/v1';
 
 describe('Collection API Integration Tests', () => {
   // Start MSW server before all tests
