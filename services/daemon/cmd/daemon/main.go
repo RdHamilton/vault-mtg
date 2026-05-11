@@ -35,6 +35,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/ramonehamilton/mtga-daemon/internal/config"
 	"github.com/ramonehamilton/mtga-daemon/internal/daemon"
 	"github.com/ramonehamilton/mtga-daemon/internal/keychain"
@@ -193,7 +194,14 @@ func runPKCEAuth(cfg *config.Config, cfgPath string) error {
 	}
 
 	log.Printf("[mtga-daemon] PKCE: auth code received; registering with BFF")
-	apiKey, accountID, err := registerWithBFF(ctx, cfg.CloudAPIURL, tok.AccessToken)
+
+	// device_id is a stable per-installation UUID. Generate one on first run
+	// and persist it via daemon.json so re-registrations reuse the same id.
+	if cfg.DaemonID == "" {
+		cfg.DaemonID = uuid.NewString()
+	}
+
+	apiKey, accountID, err := registerWithBFF(ctx, cfg.CloudAPIURL, tok.AccessToken, cfg.DaemonID, runtime.GOOS, Version)
 	if err != nil {
 		return fmt.Errorf("BFF registration: %w", err)
 	}
@@ -219,10 +227,22 @@ func runPKCEAuth(cfg *config.Config, cfgPath string) error {
 // registerWithBFF calls POST /daemon/register (relative to the configured
 // cloud_api_url, which already includes the /api/v1 prefix) with the Clerk JWT
 // and returns the minted API key and account_id.
-func registerWithBFF(ctx context.Context, bffBaseURL, clerkJWT string) (apiKey, accountID string, err error) {
+//
+// deviceID is a per-installation UUID, platform is runtime.GOOS, and daemonVer
+// is the build-time version string — all three are required by the BFF handler.
+func registerWithBFF(ctx context.Context, bffBaseURL, clerkJWT, deviceID, platform, daemonVer string) (apiKey, accountID string, err error) {
 	url := strings.TrimRight(bffBaseURL, "/") + "/daemon/register"
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewReader([]byte("{}")))
+	body, err := json.Marshal(map[string]string{
+		"device_id":  deviceID,
+		"platform":   platform,
+		"daemon_ver": daemonVer,
+	})
+	if err != nil {
+		return "", "", fmt.Errorf("marshal request body: %w", err)
+	}
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewReader(body))
 	if err != nil {
 		return "", "", fmt.Errorf("create request: %w", err)
 	}
@@ -236,20 +256,20 @@ func registerWithBFF(ctx context.Context, bffBaseURL, clerkJWT string) (apiKey, 
 	}
 	defer func() { _ = resp.Body.Close() }()
 
-	body, err := io.ReadAll(resp.Body)
+	respBody, err := io.ReadAll(resp.Body)
 	if err != nil {
 		return "", "", fmt.Errorf("read body: %w", err)
 	}
 
 	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusCreated {
-		return "", "", fmt.Errorf("BFF returned %d: %s", resp.StatusCode, string(body))
+		return "", "", fmt.Errorf("BFF returned %d: %s", resp.StatusCode, string(respBody))
 	}
 
 	var result struct {
 		APIKey    string `json:"api_key"`
 		AccountID string `json:"account_id"`
 	}
-	if err := json.Unmarshal(body, &result); err != nil {
+	if err := json.Unmarshal(respBody, &result); err != nil {
 		return "", "", fmt.Errorf("decode response: %w", err)
 	}
 	if result.APIKey == "" {

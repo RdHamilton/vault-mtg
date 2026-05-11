@@ -71,8 +71,9 @@ type Config struct {
 	// AccountID is the MTGA account ID used to tag events sent to BFF.
 	AccountID string `json:"account_id"`
 
-	// IngestPath is the BFF endpoint path for event ingestion.
-	// Default: /v1/ingest/events.
+	// IngestPath is the BFF endpoint path for event ingestion, RELATIVE to
+	// cloud_api_url (which itself contains the /api/v1 prefix).
+	// Default: /ingest/events.
 	IngestPath string `json:"ingest_path"`
 
 	// LogArchiveDir is the directory where log snapshots are stored.
