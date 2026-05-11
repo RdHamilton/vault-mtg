@@ -24,13 +24,21 @@ BINARY_NAME="vaultmtg-daemon"
 BINARY_PATH="${INSTALL_DIR}/${BINARY_NAME}"
 
 PLIST_LABEL="com.mtga-companion.daemon"
-PLIST_DIR="${HOME}/Library/LaunchAgents"
+
+# Resolve the real (non-root) user so all files under $HOME are created with
+# correct ownership. postinstall runs as root; $SUDO_USER names the invoking
+# user. Fall back to the stat owner of $HOME for non-interactive installs.
+REAL_USER="${SUDO_USER:-$(stat -f '%Su' "${HOME}")}"
+REAL_UID=$(id -u "${REAL_USER}")
+REAL_HOME=$(eval echo "~${REAL_USER}")
+
+PLIST_DIR="${REAL_HOME}/Library/LaunchAgents"
 PLIST_PATH="${PLIST_DIR}/${PLIST_LABEL}.plist"
 
-CONFIG_DIR="${HOME}/.mtga-companion"
+CONFIG_DIR="${REAL_HOME}/.mtga-companion"
 CONFIG_FILE="${CONFIG_DIR}/daemon.json"
 
-LOG_FILE="${HOME}/Library/Logs/vaultmtg-daemon.log"
+LOG_FILE="${REAL_HOME}/Library/Logs/vaultmtg-daemon.log"
 
 # Baked in at build time by the CI workflow. Defaults are production values.
 CLOUD_API_URL="${VAULTMTG_CLOUD_API_URL:-https://api.vaultmtg.app/api/v1}"
@@ -52,10 +60,12 @@ xattr -dr com.apple.quarantine "${BINARY_PATH}" || true
 # 2. Write daemon.json with cloud_api_url (required field).
 #    Only written on a fresh install — skip if the file already exists so
 #    re-installs do not clobber the user's existing api_key / daemon_jwt.
+#    Use install(1) so file ownership is set to the real user, not root.
 # ---------------------------------------------------------------------------
-mkdir -p "${CONFIG_DIR}"
+install -d -m 755 -o "${REAL_USER}" "${CONFIG_DIR}"
 if [[ ! -f "${CONFIG_FILE}" ]]; then
   echo "[postinstall] writing ${CONFIG_FILE}"
+  install -m 600 -o "${REAL_USER}" /dev/null "${CONFIG_FILE}"
   cat > "${CONFIG_FILE}" <<JSON
 {
   "cloud_api_url": "${CLOUD_API_URL}",
@@ -65,9 +75,9 @@ JSON
 fi
 
 # ---------------------------------------------------------------------------
-# 3. Ensure LaunchAgents directory exists.
+# 3. Ensure LaunchAgents directory exists (owned by the real user).
 # ---------------------------------------------------------------------------
-mkdir -p "${PLIST_DIR}"
+install -d -m 755 -o "${REAL_USER}" "${PLIST_DIR}"
 
 # ---------------------------------------------------------------------------
 # 4. Write the LaunchAgent plist.
