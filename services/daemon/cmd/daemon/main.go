@@ -216,10 +216,11 @@ func runPKCEAuth(cfg *config.Config, cfgPath string) error {
 	return nil
 }
 
-// registerWithBFF calls POST /v1/daemon/register with the Clerk JWT and returns
-// the minted API key and account_id.
+// registerWithBFF calls POST /daemon/register (relative to the configured
+// cloud_api_url, which already includes the /api/v1 prefix) with the Clerk JWT
+// and returns the minted API key and account_id.
 func registerWithBFF(ctx context.Context, bffBaseURL, clerkJWT string) (apiKey, accountID string, err error) {
-	url := strings.TrimRight(bffBaseURL, "/") + "/v1/daemon/register"
+	url := strings.TrimRight(bffBaseURL, "/") + "/daemon/register"
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewReader([]byte("{}")))
 	if err != nil {

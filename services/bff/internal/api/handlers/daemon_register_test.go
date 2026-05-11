@@ -43,7 +43,7 @@ func (s *stubDaemonAPIKeyRepo) UpsertKey(_ context.Context, accountID, keyHash, 
 
 // ─── helpers ──────────────────────────────────────────────────────────────────
 
-// newRegisterRequest builds a POST /v1/daemon/register request with a JSON body.
+// newRegisterRequest builds a POST /api/v1/daemon/register request with a JSON body.
 // When accountID is non-empty it simulates RequireClerkAuth having verified a JWT.
 func newRegisterRequest(accountID string) *http.Request {
 	body := map[string]string{
@@ -52,7 +52,7 @@ func newRegisterRequest(accountID string) *http.Request {
 		"daemon_ver": "0.3.1",
 	}
 	b, _ := json.Marshal(body)
-	req := httptest.NewRequest(http.MethodPost, "/v1/daemon/register", bytes.NewReader(b))
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/daemon/register", bytes.NewReader(b))
 	req.Header.Set("Content-Type", "application/json")
 	if accountID != "" {
 		req = middleware.WithClerkUserID(req, accountID)
@@ -60,10 +60,10 @@ func newRegisterRequest(accountID string) *http.Request {
 	return req
 }
 
-// newRegisterRequestWithBody builds a POST /v1/daemon/register request with a custom JSON body.
+// newRegisterRequestWithBody builds a POST /api/v1/daemon/register request with a custom JSON body.
 func newRegisterRequestWithBody(accountID string, body map[string]string) *http.Request {
 	b, _ := json.Marshal(body)
-	req := httptest.NewRequest(http.MethodPost, "/v1/daemon/register", bytes.NewReader(b))
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/daemon/register", bytes.NewReader(b))
 	req.Header.Set("Content-Type", "application/json")
 	if accountID != "" {
 		req = middleware.WithClerkUserID(req, accountID)
@@ -154,7 +154,7 @@ func TestDaemonRegister_MissingClerkAuth_Returns401(t *testing.T) {
 		"daemon_ver": "0.3.1",
 	}
 	b, _ := json.Marshal(body)
-	req := httptest.NewRequest(http.MethodPost, "/v1/daemon/register", bytes.NewReader(b))
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/daemon/register", bytes.NewReader(b))
 	req.Header.Set("Content-Type", "application/json")
 	rr := httptest.NewRecorder()
 	h.Register(rr, req)

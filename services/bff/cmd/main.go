@@ -388,16 +388,18 @@ func BuildRouter(cfg *config.Config, deps RouterDeps) http.Handler {
 	daemonVersionHandler := handlers.NewDaemonVersionHandler(cfg)
 	r.Get("/api/v1/daemon/version", daemonVersionHandler.GetDaemonVersion)
 
-	// POST /v1/daemon/register — daemon PKCE registration (Clerk JWT required).
+	// POST /api/v1/daemon/register — daemon PKCE registration (Clerk JWT required).
 	// The daemon calls this immediately after completing the PKCE browser flow,
 	// sending the Clerk session JWT as the Bearer token.  The handler mints (or
 	// retrieves) a per-account API key and returns it in the response body.
-	// See ADR-020 §POST /v1/daemon/register Wire Format.
+	// Mounted under /api/v1/ to match the rest of the daemon-facing API (events,
+	// daemon/version) — nginx only forwards /api/v1/* to the BFF.
+	// See ADR-020 §POST /api/v1/daemon/register Wire Format.
 	if deps.DaemonRegisterHandler != nil {
 		if deps.ClerkAuthMiddl != nil {
-			r.With(deps.ClerkAuthMiddl).Post("/v1/daemon/register", deps.DaemonRegisterHandler.Register)
+			r.With(deps.ClerkAuthMiddl).Post("/api/v1/daemon/register", deps.DaemonRegisterHandler.Register)
 		} else {
-			log.Println("WARN: POST /v1/daemon/register disabled — CLERK_SECRET_KEY not configured")
+			log.Println("WARN: POST /api/v1/daemon/register disabled — CLERK_SECRET_KEY not configured")
 		}
 	}
 
