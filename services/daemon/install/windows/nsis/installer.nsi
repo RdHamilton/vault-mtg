@@ -30,7 +30,9 @@
 ; General attributes
 ;----------------------------------------------------------------------
 Name              "MTGA Companion Daemon ${VERSION}"
-OutFile           "vaultmtg-daemon-setup-${VERSION}.exe"
+; Output path is relative to where makensis is invoked (repo root when run via GoReleaser CI).
+; GoReleaser extra_files glob expects services/daemon/vaultmtg-daemon-setup-*.exe.
+OutFile           "services/daemon/vaultmtg-daemon-setup-${VERSION}.exe"
 
 ; Per-user install — no UAC prompt (RequestExecutionLevel user)
 RequestExecutionLevel user
