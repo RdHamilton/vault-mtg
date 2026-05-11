@@ -147,8 +147,8 @@ builds:
             bash -c '[ "${IS_SNAPSHOT}" = "true" ] && exit 0;
             command -v makensis >/dev/null 2>&1 || exit 0;
             makensis
-            /DVERSION={{ .Version }}
-            /DBINARY_PATH=dist/vaultmtg-daemon-windows-amd64.exe
+            -DVERSION={{ .Version }}
+            -DBINARY_PATH=dist/vaultmtg-daemon-windows-amd64.exe
             install/windows/nsis/installer.nsi'
           env:
             - IS_SNAPSHOT={{ .IsSnapshot }}
