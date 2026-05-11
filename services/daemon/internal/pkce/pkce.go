@@ -67,7 +67,7 @@ type Config struct {
 	Scopes []string
 
 	// TokenEndpoint is the Clerk token exchange endpoint.
-	// e.g. ClerkFrontendAPI + "/v1/oauth/token"
+	// e.g. ClerkFrontendAPI + "/oauth/token"
 	TokenEndpoint string
 }
 

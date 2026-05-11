@@ -175,7 +175,7 @@ func runPKCEAuth(cfg *config.Config, cfgPath string) error {
 
 	headless := os.Getenv("MTGA_DAEMON_HEADLESS") == "1"
 
-	tokenEndpoint := strings.TrimRight(clerkFrontendAPI, "/") + "/v1/oauth/token"
+	tokenEndpoint := strings.TrimRight(clerkFrontendAPI, "/") + "/oauth/token"
 
 	pkceCfg := pkce.Config{
 		ClerkFrontendAPI: clerkFrontendAPI,
