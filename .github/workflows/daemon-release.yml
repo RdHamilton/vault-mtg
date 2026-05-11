@@ -69,14 +69,21 @@ jobs:
         run: go test -race ./...
 
       - name: Resolve semver tag for GoReleaser
-        # GoReleaser requires a plain semver tag. Our mono-repo tags use the
-        # 'daemon/v*' prefix for namespacing. Strip 'daemon/' so GoReleaser
-        # sees e.g. 'v0.3.1-rc1' instead of 'daemon/v0.3.1-rc1'.
+        # GoReleaser v2 requires the GORELEASER_CURRENT_TAG value to exist as
+        # an actual git tag (it validates tag-to-commit alignment). Our mono-repo
+        # uses 'daemon/v*' tags for namespacing, which are not valid semver.
+        #
+        # Fix: strip the 'daemon/' prefix to get a plain semver string, then
+        # create a local-only git tag with that name pointing at the same commit.
+        # The local tag satisfies GoReleaser's validation without pushing a
+        # duplicate tag to the remote.
         id: semver
         run: |
           RAW="${{ github.ref_name }}"
           SEMVER="${RAW#daemon/}"
           echo "tag=${SEMVER}" >> "$GITHUB_OUTPUT"
+          # Create a local alias tag so GoReleaser's tag-to-commit validation passes.
+          git tag "${SEMVER}"
 
       - name: Run GoReleaser
         uses: goreleaser/goreleaser-action@v6
