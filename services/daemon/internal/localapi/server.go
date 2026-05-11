@@ -15,6 +15,7 @@ import (
 	"net"
 	"net/http"
 	"strings"
+	"sync/atomic"
 	"time"
 )
 
@@ -26,21 +27,29 @@ const DefaultPort = 9001
 // shutdownTimeout caps how long the local API server takes to drain on stop.
 const shutdownTimeout = 5 * time.Second
 
-// State is the subset of daemon state exposed by the local API. Populated by
-// the daemon at construction time; fields the daemon does not yet know
-// (e.g. account_id before PKCE completes) may be empty.
+// State is the subset of daemon state exposed by the local API. Some fields
+// (Version, SessionID, StartedAt, AccountID, CloudAPIURL) are stable for the
+// life of the daemon process; others (LastDispatchAt, BFFReachable) change as
+// the daemon dispatches events. The daemon refreshes them via SetState.
 type State struct {
-	Version   string
-	SessionID string
-	StartedAt time.Time
-	AccountID string
+	Version        string
+	SessionID      string
+	StartedAt      time.Time
+	AccountID      string
+	CloudAPIURL    string
+	LastDispatchAt *time.Time
+	BFFReachable   bool
 }
 
 // Server is the loopback HTTP server. Construct with New, then call Start
 // before the daemon enters its main run loop and Stop on shutdown.
+//
+// State is held behind an atomic pointer so concurrent reads from HTTP
+// handlers and writes from the daemon's dispatch goroutine are safe without
+// a mutex on the hot path.
 type Server struct {
 	port  int
-	state State
+	state atomic.Pointer[State]
 	srv   *http.Server
 	ln    net.Listener
 }
@@ -48,7 +57,25 @@ type Server struct {
 // New returns a Server bound to 127.0.0.1:port. Use DefaultPort unless tests
 // need an ephemeral port (pass 0 to let the OS pick).
 func New(port int, state State) *Server {
-	return &Server{port: port, state: state}
+	s := &Server{port: port}
+	s.state.Store(&state)
+	return s
+}
+
+// SetState atomically replaces the published state snapshot. Callers should
+// always pass a complete State (Snapshot pattern); the server does not merge
+// partial updates.
+func (s *Server) SetState(state State) {
+	s.state.Store(&state)
+}
+
+// snapshot returns a copy of the current state. Always non-nil for a Server
+// that was constructed via New.
+func (s *Server) snapshot() State {
+	if p := s.state.Load(); p != nil {
+		return *p
+	}
+	return State{}
 }
 
 // Start binds the listener and serves in a background goroutine. Returns once
@@ -68,7 +95,19 @@ func (s *Server) Start() error {
 	s.ln = ln
 
 	mux := http.NewServeMux()
+	// Liveness — kept at the root for the SPA's hardcoded Setup.tsx probe.
 	mux.HandleFunc("/health", s.handleHealth)
+
+	// Phase 1 — system endpoints under /api/v1/system/* mirroring the contract
+	// the SPA's daemonClient expects (frontend/src/services/api/system.ts).
+	mux.HandleFunc("/api/v1/system/status", s.handleSystemStatus)
+	mux.HandleFunc("/api/v1/system/health", s.handleSystemHealth)
+	mux.HandleFunc("/api/v1/system/version", s.handleSystemVersion)
+	mux.HandleFunc("/api/v1/system/account", s.handleSystemAccount)
+	mux.HandleFunc("/api/v1/system/database/path", s.handleSystemDatabasePath)
+	mux.HandleFunc("/api/v1/system/daemon/status", s.handleSystemDaemonStatus)
+	mux.HandleFunc("/api/v1/system/daemon/connect", s.handleSystemDaemonConnect)
+	mux.HandleFunc("/api/v1/system/daemon/disconnect", s.handleSystemDaemonDisconnect)
 
 	s.srv = &http.Server{
 		Handler:           withCORS(mux),
@@ -118,26 +157,41 @@ type healthResponse struct {
 // always "ok" while the server is running — if the server is down the SPA's
 // fetch fails outright, which is the actual offline signal.
 func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodGet && r.Method != http.MethodHead {
-		w.Header().Set("Allow", "GET, HEAD")
-		w.WriteHeader(http.StatusMethodNotAllowed)
+	if !s.requireGet(w, r) {
 		return
 	}
 
+	st := s.snapshot()
 	resp := healthResponse{
 		Status:    "ok",
-		Version:   s.state.Version,
-		SessionID: s.state.SessionID,
-		StartedAt: s.state.StartedAt.UTC().Format(time.RFC3339),
-		AccountID: s.state.AccountID,
+		Version:   st.Version,
+		SessionID: st.SessionID,
+		StartedAt: st.StartedAt.UTC().Format(time.RFC3339),
+		AccountID: st.AccountID,
 	}
+	writeJSON(w, r, http.StatusOK, resp)
+}
 
+// requireGet returns true when the request is a GET/HEAD. Otherwise it writes
+// 405 and returns false so the caller can early-return.
+func (s *Server) requireGet(w http.ResponseWriter, r *http.Request) bool {
+	if r.Method == http.MethodGet || r.Method == http.MethodHead {
+		return true
+	}
+	w.Header().Set("Allow", "GET, HEAD")
+	w.WriteHeader(http.StatusMethodNotAllowed)
+	return false
+}
+
+// writeJSON serializes payload as JSON with the given status. HEAD requests
+// get just the headers + status.
+func writeJSON(w http.ResponseWriter, r *http.Request, status int, payload any) {
 	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(status)
 	if r.Method == http.MethodHead {
-		w.WriteHeader(http.StatusOK)
 		return
 	}
-	_ = json.NewEncoder(w).Encode(resp)
+	_ = json.NewEncoder(w).Encode(payload)
 }
 
 // withCORS wraps a handler with permissive CORS headers. The daemon serves

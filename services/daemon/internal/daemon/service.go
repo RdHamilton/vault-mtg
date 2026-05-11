@@ -218,10 +218,12 @@ func (s *Service) Run(ctx context.Context) error {
 	// this process. Non-fatal — if the port is busy (e.g. a previous daemon
 	// instance is still draining), the daemon continues with dispatch only.
 	localAPI := localapi.New(localapi.DefaultPort, localapi.State{
-		Version:   s.version,
-		SessionID: s.sessionID,
-		StartedAt: time.Now().UTC(),
-		AccountID: s.cfg.AccountID,
+		Version:      s.version,
+		SessionID:    s.sessionID,
+		StartedAt:    time.Now().UTC(),
+		AccountID:    s.cfg.AccountID,
+		CloudAPIURL:  s.cfg.CloudAPIURL,
+		BFFReachable: true, // optimistic — flips when a dispatch fails
 	})
 	if err := localAPI.Start(); err != nil {
 		log.Printf("[daemon] warn: local API server did not start: %v", err)

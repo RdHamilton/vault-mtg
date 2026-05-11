@@ -22,7 +22,7 @@ describe('daemonClient', () => {
     vi.clearAllMocks();
     // Reset to default daemon config
     configureDaemonApi({
-      baseUrl: 'http://localhost:8080/api/v1',
+      baseUrl: 'http://localhost:9001/api/v1',
       timeout: 30000,
     });
     localStorage.clear();
@@ -48,7 +48,7 @@ describe('daemonClient', () => {
       configureDaemonApi({ timeout: 5000 });
       const config = getDaemonApiConfig();
       expect(config.timeout).toBe(5000);
-      expect(config.baseUrl).toBe('http://localhost:8080/api/v1');
+      expect(config.baseUrl).toBe('http://localhost:9001/api/v1');
     });
 
     it('daemon default baseUrl differs from cloudClient default when VITE_DAEMON_URL is set', () => {
@@ -110,7 +110,7 @@ describe('daemonClient', () => {
       const result = await get('/drafts');
 
       expect(mockFetch).toHaveBeenCalledWith(
-        'http://localhost:8080/api/v1/drafts',
+        'http://localhost:9001/api/v1/drafts',
         expect.objectContaining({ method: 'GET' })
       );
       expect(result).toEqual({ items: [] });
@@ -146,7 +146,7 @@ describe('daemonClient', () => {
       const result = await post('/matches', { format: 'Ranked' });
 
       const [url, init] = mockFetch.mock.calls[0] as [string, RequestInit];
-      expect(url).toBe('http://localhost:8080/api/v1/matches');
+      expect(url).toBe('http://localhost:9001/api/v1/matches');
       expect(init.method).toBe('POST');
       expect(init.body).toBe(JSON.stringify({ format: 'Ranked' }));
       expect(result).toEqual({ created: true });
@@ -168,7 +168,7 @@ describe('daemonClient', () => {
       await put('/settings', { theme: 'dark' });
 
       const [url, init] = mockFetch.mock.calls[0] as [string, RequestInit];
-      expect(url).toBe('http://localhost:8080/api/v1/settings');
+      expect(url).toBe('http://localhost:9001/api/v1/settings');
       expect(init.method).toBe('PUT');
     });
   });
@@ -188,7 +188,7 @@ describe('daemonClient', () => {
       const result = await del('/decks/abc123');
 
       const [url, init] = mockFetch.mock.calls[0] as [string, RequestInit];
-      expect(url).toBe('http://localhost:8080/api/v1/decks/abc123');
+      expect(url).toBe('http://localhost:9001/api/v1/decks/abc123');
       expect(init.method).toBe('DELETE');
       expect(result).toBeUndefined();
     });
