@@ -220,11 +220,23 @@ jobs:
           # Substitute placeholders in a copy of the script BEFORE bundling.
           SCRIPTS_DIR=$(mktemp -d)
           cp -r services/daemon/install/macos/pkg/. "$SCRIPTS_DIR/"
+
+          # Escape sed replacement metacharacters (\, &) and the | delimiter so
+          # values with special chars (e.g. a future Clerk client_id) don't
+          # silently corrupt the substitution.
+          escape_sed() {
+            printf '%s' "$1" | sed -e 's/[\&|]/\\&/g'
+          }
+          ESC_CLOUD_API_URL=$(escape_sed "$VAULTMTG_CLOUD_API_URL_VALUE")
+          ESC_CLERK_FRONTEND_API=$(escape_sed "$CLERK_FRONTEND_API_VALUE")
+          ESC_CLERK_PUBLISHABLE_KEY=$(escape_sed "$CLERK_PUBLISHABLE_KEY_VALUE")
+          ESC_CLERK_OAUTH_CLIENT_ID=$(escape_sed "$CLERK_OAUTH_CLIENT_ID_VALUE")
+
           sed -i.bak \
-            -e "s|__VAULTMTG_CLOUD_API_URL__|$VAULTMTG_CLOUD_API_URL_VALUE|g" \
-            -e "s|__CLERK_FRONTEND_API__|$CLERK_FRONTEND_API_VALUE|g" \
-            -e "s|__CLERK_PUBLISHABLE_KEY__|$CLERK_PUBLISHABLE_KEY_VALUE|g" \
-            -e "s|__CLERK_OAUTH_CLIENT_ID__|$CLERK_OAUTH_CLIENT_ID_VALUE|g" \
+            -e "s|__VAULTMTG_CLOUD_API_URL__|$ESC_CLOUD_API_URL|g" \
+            -e "s|__CLERK_FRONTEND_API__|$ESC_CLERK_FRONTEND_API|g" \
+            -e "s|__CLERK_PUBLISHABLE_KEY__|$ESC_CLERK_PUBLISHABLE_KEY|g" \
+            -e "s|__CLERK_OAUTH_CLIENT_ID__|$ESC_CLERK_OAUTH_CLIENT_ID|g" \
             "$SCRIPTS_DIR/postinstall"
           rm -f "$SCRIPTS_DIR/postinstall.bak"
 

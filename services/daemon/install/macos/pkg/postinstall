@@ -51,13 +51,16 @@ CLERK_FRONTEND_API="__CLERK_FRONTEND_API__"
 CLERK_PUBLISHABLE_KEY="__CLERK_PUBLISHABLE_KEY__"
 CLERK_OAUTH_CLIENT_ID="__CLERK_OAUTH_CLIENT_ID__"
 
-# Fail loudly if placeholders were not substituted at build time.
-case "$CLOUD_API_URL" in
-  __*__)
-    echo "[postinstall] ERROR: build-time substitution did not run; placeholders are still present" >&2
-    exit 1
-    ;;
-esac
+# Fail loudly if any placeholder was not substituted at build time.
+for var in CLOUD_API_URL CLERK_FRONTEND_API CLERK_PUBLISHABLE_KEY CLERK_OAUTH_CLIENT_ID; do
+  eval "value=\${$var}"
+  case "$value" in
+    __*__)
+      echo "[postinstall] ERROR: build-time substitution did not run for ${var} (still '${value}')" >&2
+      exit 1
+      ;;
+  esac
+done
 
 # ---------------------------------------------------------------------------
 # 1. Clear quarantine attribute (ADR-020 §macOS Quarantine Clearing).
