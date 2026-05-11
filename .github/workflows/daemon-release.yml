@@ -169,8 +169,9 @@ jobs:
             -P "$CERT_PASSWORD" \
             -T /usr/bin/pkgbuild \
             -T /usr/bin/productbuild
+          # Include pkgbuild: in partition list so pkgbuild can access the installer key
           security set-key-partition-list \
-            -S apple-tool:,apple:,codesign: \
+            -S apple-tool:,apple:,codesign:,pkgbuild: \
             -s -k "temp-keychain-password" build.keychain
           rm /tmp/dev-id-installer.p12
 
