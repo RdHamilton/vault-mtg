@@ -425,7 +425,7 @@ func TestRunFiresUpdateCheckOnStartupAndTicker(t *testing.T) {
 
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
-		case "/api/v1/daemon/version":
+		case "/daemon/version":
 			versionCalls.Add(1)
 			w.Header().Set("Content-Type", "application/json")
 			fmt.Fprint(w, `{"latest":"0.1.0","released_at":"2026-01-01T00:00:00Z","download_url":"https://example.com"}`)
@@ -474,7 +474,7 @@ func TestRunSkipsUpdateCheckWhenDisabled(t *testing.T) {
 	var versionCalls atomic.Int32
 
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path == "/api/v1/daemon/version" {
+		if r.URL.Path == "/daemon/version" {
 			versionCalls.Add(1)
 		}
 		w.WriteHeader(http.StatusAccepted)

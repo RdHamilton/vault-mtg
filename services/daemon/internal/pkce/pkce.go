@@ -73,8 +73,13 @@ type Config struct {
 
 // TokenResponse is the result of a successful PKCE flow.
 type TokenResponse struct {
-	// AccessToken is the Clerk session JWT returned after token exchange.
+	// AccessToken is the Clerk OAuth access token returned after token exchange.
 	AccessToken string
+
+	// IDToken is the OIDC id_token returned alongside the access token.
+	// Used for proving identity to the BFF when the BFF middleware expects
+	// an OIDC-shaped JWT rather than an OAuth access token.
+	IDToken string
 
 	// RefreshToken may be present on some Clerk configurations.
 	RefreshToken string
@@ -328,6 +333,7 @@ func parseTokenResponse(body []byte) (*TokenResponse, error) {
 
 	return &TokenResponse{
 		AccessToken:  token,
+		IDToken:      raw.IDToken,
 		RefreshToken: raw.RefreshToken,
 	}, nil
 }
