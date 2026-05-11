@@ -68,6 +68,16 @@ jobs:
           GOPRIVATE: github.com/RdHamilton/MTGA-Companion
         run: go test -race ./...
 
+      - name: Resolve semver tag for GoReleaser
+        # GoReleaser requires a plain semver tag. Our mono-repo tags use the
+        # 'daemon/v*' prefix for namespacing. Strip 'daemon/' so GoReleaser
+        # sees e.g. 'v0.3.1-rc1' instead of 'daemon/v0.3.1-rc1'.
+        id: semver
+        run: |
+          RAW="${{ github.ref_name }}"
+          SEMVER="${RAW#daemon/}"
+          echo "tag=${SEMVER}" >> "$GITHUB_OUTPUT"
+
       - name: Run GoReleaser
         uses: goreleaser/goreleaser-action@v6
         with:
@@ -79,6 +89,9 @@ jobs:
           GONOSUMDB: github.com/RdHamilton/MTGA-Companion
           GOPRIVATE: github.com/RdHamilton/MTGA-Companion
           GITHUB_WORKSPACE: ${{ github.workspace }}
+          # Override the version GoReleaser reads from git so it sees the plain
+          # semver (e.g. 'v0.3.1-rc1') instead of the prefixed tag ('daemon/v0.3.1-rc1').
+          GORELEASER_CURRENT_TAG: ${{ steps.semver.outputs.tag }}
 
       - name: Upload darwin universal binary for sign-macos
         # Share the unsigned darwin binary so sign-macos can sign and notarize it.
