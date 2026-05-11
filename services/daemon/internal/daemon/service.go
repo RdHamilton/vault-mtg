@@ -15,6 +15,7 @@ import (
 	"github.com/ramonehamilton/mtga-daemon/internal/config"
 	"github.com/ramonehamilton/mtga-daemon/internal/dispatch"
 	"github.com/ramonehamilton/mtga-daemon/internal/gre"
+	"github.com/ramonehamilton/mtga-daemon/internal/keychain"
 	"github.com/ramonehamilton/mtga-daemon/internal/logreader"
 	"github.com/ramonehamilton/mtga-daemon/internal/registrar"
 	"github.com/ramonehamilton/mtga-daemon/internal/updatecheck"
@@ -41,9 +42,24 @@ type Service struct {
 
 // New creates a Service from cfg.
 func New(cfg *config.Config) *Service {
-	// Use DaemonJWT as the bearer token if present; fall back to APIKey.
-	token := cfg.DaemonJWT
-	if token == "" {
+	// Resolve the dispatcher bearer token in this priority order:
+	//   1. cfg.Keychain == true → load api_key from the OS keychain (PKCE path).
+	//   2. cfg.DaemonJWT (legacy HMAC daemon-JWT path).
+	//   3. cfg.APIKey plaintext (pre-keychain-migration legacy path).
+	// The PKCE path is the only one that works against the current BFF; the
+	// legacy registrar refresher is no longer wired because the BFF no longer
+	// mounts /api/daemon/register (see ADR-009 / #1315).
+	token := ""
+	switch {
+	case cfg.Keychain:
+		key, err := keychain.Get()
+		if err != nil {
+			log.Printf("[daemon] warn: keychain.Get failed: %v — dispatcher will start with no bearer", err)
+		}
+		token = key
+	case cfg.DaemonJWT != "":
+		token = cfg.DaemonJWT
+	default:
 		token = cfg.APIKey
 	}
 	d := dispatch.New(cfg.CloudAPIURL, cfg.IngestPath, token)
@@ -56,8 +72,12 @@ func New(cfg *config.Config) *Service {
 		regClient:  registrar.NewClient(cfg.CloudAPIURL),
 		version:    "dev",
 	}
-	// Wire the dispatcher's 401 refresher to the service.
-	d.WithRefresher(svc)
+	// Wire the legacy refresher only when NOT in keychain mode. With keychain
+	// the api_key does not expire, and the legacy /api/daemon/register endpoint
+	// is not served by the BFF — calling it on every 401 would just spam 404s.
+	if !cfg.Keychain {
+		d.WithRefresher(svc)
+	}
 
 	// Build the GRE session manager.  The flush func emits a match.game_ended
 	// DaemonEvent carrying the accumulated GRE entries as the raw payload.
@@ -144,7 +164,9 @@ func (s *Service) runUpdateCheck(ctx context.Context) {
 // Run starts the daemon, blocks until ctx is cancelled.
 func (s *Service) Run(ctx context.Context) error {
 	// Phase 1: ensure we have a valid JWT before starting event dispatch.
-	if s.cfg.SyncEnabled && s.cfg.JWTNeedsRefresh() && s.cfg.APIKey != "" {
+	// Skipped when cfg.Keychain is true — the PKCE flow's api_key does not
+	// expire and the legacy /api/daemon/register endpoint is not mounted.
+	if !s.cfg.Keychain && s.cfg.SyncEnabled && s.cfg.JWTNeedsRefresh() && s.cfg.APIKey != "" {
 		if _, err := s.register(ctx); err != nil {
 			// Non-fatal: log and continue; the dispatcher will retry on 401.
 			log.Printf("[daemon] warn: startup registration failed: %v", err)
@@ -217,7 +239,8 @@ func (s *Service) Run(ctx context.Context) error {
 			return nil
 
 		case <-jwtTicker.C:
-			if s.cfg.SyncEnabled && s.cfg.JWTNeedsRefresh() && s.cfg.APIKey != "" {
+			// Skip in keychain (PKCE) mode — api_key does not expire.
+			if !s.cfg.Keychain && s.cfg.SyncEnabled && s.cfg.JWTNeedsRefresh() && s.cfg.APIKey != "" {
 				log.Printf("[daemon] JWT within refresh window — re-registering")
 				if _, err := s.register(ctx); err != nil {
 					log.Printf("[daemon] warn: periodic JWT refresh failed: %v", err)

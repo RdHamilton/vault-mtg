@@ -30,7 +30,10 @@ func Check(ctx context.Context, baseURL string, currentVersion string) {
 	reqCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()
 
-	req, err := http.NewRequestWithContext(reqCtx, http.MethodGet, baseURL+"/api/v1/daemon/version", nil)
+	// baseURL is cfg.CloudAPIURL which already contains the /api/v1 prefix
+	// (e.g. https://staging-api.vaultmtg.app/api/v1) — append only the
+	// path segment, not a redundant /api/v1.
+	req, err := http.NewRequestWithContext(reqCtx, http.MethodGet, baseURL+"/daemon/version", nil)
 	if err != nil {
 		log.Printf("[updatecheck] failed to build request: %v", err)
 		return
