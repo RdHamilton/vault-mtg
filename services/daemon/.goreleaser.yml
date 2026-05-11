@@ -114,6 +114,11 @@ project_name: vaultmtg-daemon
 # ---------------------------------------------------------------------------
 builds:
   - id: daemon
+    # dir sets the working directory for the go build command.
+    # GoReleaser is invoked from the repo root (--config services/daemon/.goreleaser.yml)
+    # so main paths must be relative to the repo root, or dir must be set so that
+    # ./cmd/daemon resolves correctly to services/daemon/cmd/daemon.
+    dir: services/daemon
     main: ./cmd/daemon
     binary: vaultmtg-daemon
     env:
