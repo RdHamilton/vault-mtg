@@ -123,7 +123,10 @@ jobs:
 
     env:
       APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
-      BINARY: vaultmtg-daemon-darwin-universal
+      # The artifact download-artifact@v4 places the binary at bin/<filename>
+      # where <filename> is the binary name GoReleaser built ('vaultmtg-daemon'),
+      # NOT the artifact name ('vaultmtg-daemon-darwin-universal').
+      BINARY: vaultmtg-daemon
       PKG: vaultmtg-daemon-darwin-universal.pkg
       DMG: vaultmtg-daemon-darwin-universal.dmg
 
