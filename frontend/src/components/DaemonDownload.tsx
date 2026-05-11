@@ -1,9 +1,12 @@
 import { useMemo } from 'react';
 import { trackEvent } from '@/services/analytics';
+import { useFeatureFlag } from '@/hooks/useFeatureFlag';
 import './DaemonDownload.css';
 
 const RELEASES_BASE =
   'https://github.com/RdHamilton/MTGA-Companion/releases/latest/download';
+
+const WAITLIST_URL = 'https://vaultmtg.app/#waitlist';
 
 interface DownloadOption {
   label: string;
@@ -84,8 +87,48 @@ function buildDownloadUrl(option: DownloadOption): string {
   return `${RELEASES_BASE}/mtga-companion-daemon-${option.platform}.${option.ext}`;
 }
 
+/** Skeleton placeholder shown while the PostHog feature flag loads. */
+function DownloadButtonsSkeleton() {
+  return (
+    <div
+      className="daemon-download-skeleton"
+      data-testid="daemon-download-skeleton"
+      aria-label="Loading download options"
+      aria-busy="true"
+    >
+      <div className="daemon-download-skeleton-bar" />
+      <div className="daemon-download-skeleton-bar" />
+      <div className="daemon-download-skeleton-bar" />
+    </div>
+  );
+}
+
+/** CTA rendered when the daemon_download_enabled flag is off. */
+function DownloadComingSoon() {
+  return (
+    <div
+      className="daemon-download-coming-soon"
+      data-testid="daemon-download-coming-soon"
+    >
+      <p className="daemon-download-coming-soon-message">
+        The daemon installer will be available at beta launch.{' '}
+        <a
+          href={WAITLIST_URL}
+          className="daemon-download-coming-soon-link"
+          data-testid="daemon-download-waitlist-link"
+          target="_blank"
+          rel="noopener noreferrer"
+        >
+          Join the waitlist to get notified.
+        </a>
+      </p>
+    </div>
+  );
+}
+
 const DaemonDownload = () => {
   const detectedPlatform = useMemo(() => detectPlatform(), []);
+  const { enabled: downloadEnabled } = useFeatureFlag('daemon_download_enabled');
 
   return (
     <section className="daemon-download" data-testid="daemon-download-section">
@@ -99,36 +142,42 @@ const DaemonDownload = () => {
         </p>
       </div>
 
-      <div className="daemon-download-buttons" data-testid="daemon-download-buttons">
-        {DOWNLOAD_OPTIONS.map((option) => {
-          const isDetected = option.platform === detectedPlatform;
-          const href = buildDownloadUrl(option);
-          return (
-            <a
-              key={option.platform}
-              href={href}
-              className={`daemon-download-button ${isDetected ? 'daemon-download-button--primary' : 'daemon-download-button--secondary'}`}
-              data-testid={`download-link-${option.platform}`}
-              download
-              onClick={() => {
-                trackEvent({
-                  name: 'funnel_daemon_download_started',
-                  properties: {
-                    os: option.platform,
-                    download_source: 'download_page',
-                  },
-                });
-              }}
-            >
-              <span className="daemon-download-button-label">{option.label}</span>
-              {isDetected && (
-                <span className="daemon-download-button-recommended">Recommended</span>
-              )}
-              <span className="daemon-download-button-desc">{option.description}</span>
-            </a>
-          );
-        })}
-      </div>
+      {downloadEnabled === null && <DownloadButtonsSkeleton />}
+
+      {downloadEnabled === true && (
+        <div className="daemon-download-buttons" data-testid="daemon-download-buttons">
+          {DOWNLOAD_OPTIONS.map((option) => {
+            const isDetected = option.platform === detectedPlatform;
+            const href = buildDownloadUrl(option);
+            return (
+              <a
+                key={option.platform}
+                href={href}
+                className={`daemon-download-button ${isDetected ? 'daemon-download-button--primary' : 'daemon-download-button--secondary'}`}
+                data-testid={`download-link-${option.platform}`}
+                download
+                onClick={() => {
+                  trackEvent({
+                    name: 'funnel_daemon_download_started',
+                    properties: {
+                      os: option.platform,
+                      download_source: 'download_page',
+                    },
+                  });
+                }}
+              >
+                <span className="daemon-download-button-label">{option.label}</span>
+                {isDetected && (
+                  <span className="daemon-download-button-recommended">Recommended</span>
+                )}
+                <span className="daemon-download-button-desc">{option.description}</span>
+              </a>
+            );
+          })}
+        </div>
+      )}
+
+      {downloadEnabled === false && <DownloadComingSoon />}
 
       <div className="daemon-getting-started" data-testid="daemon-getting-started">
         <h2 className="daemon-getting-started-title">Getting Started</h2>

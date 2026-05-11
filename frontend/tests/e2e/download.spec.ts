@@ -4,6 +4,29 @@ const RELEASES_BASE =
   'https://github.com/RdHamilton/MTGA-Companion/releases/latest/download';
 
 /**
+ * Intercept the PostHog /decide endpoint to set feature flag values.
+ * PostHog calls /decide?v=3 (or similar) to fetch flag payloads.
+ */
+async function mockPostHogFlag(
+  page: import('@playwright/test').Page,
+  flagKey: string,
+  enabled: boolean
+) {
+  await page.route('**/decide**', async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({
+        featureFlags: {
+          [flagKey]: enabled,
+        },
+        featureFlagPayloads: {},
+      }),
+    });
+  });
+}
+
+/**
  * Download Page E2E Tests
  *
  * Verifies the daemon download section is visible, download links have correct
@@ -11,6 +34,7 @@ const RELEASES_BASE =
  */
 test.describe('Download Page', () => {
   test.beforeEach(async ({ page }) => {
+    await mockPostHogFlag(page, 'daemon_download_enabled', true);
     await page.goto('/download');
     await expect(page.locator('[data-testid="app-container"]')).toBeVisible();
   });
@@ -105,5 +129,38 @@ test.describe('Download Page', () => {
 
     // Verify download section is visible
     await expect(page.locator('[data-testid="daemon-download-section"]')).toBeVisible();
+  });
+});
+
+test.describe('Download Page — feature flag OFF (coming soon)', () => {
+  test.beforeEach(async ({ page }) => {
+    await mockPostHogFlag(page, 'daemon_download_enabled', false);
+    await page.goto('/download');
+    await expect(page.locator('[data-testid="app-container"]')).toBeVisible();
+  });
+
+  test('@smoke should show coming-soon CTA when daemon_download_enabled flag is off', async ({ page }) => {
+    await expect(page.locator('[data-testid="daemon-download-coming-soon"]')).toBeVisible();
+  });
+
+  test('should display beta launch message in CTA', async ({ page }) => {
+    await expect(
+      page.getByText(/The daemon installer will be available at beta launch/i)
+    ).toBeVisible();
+  });
+
+  test('should display the waitlist link', async ({ page }) => {
+    const link = page.locator('[data-testid="daemon-download-waitlist-link"]');
+    await expect(link).toBeVisible();
+    await expect(link).toHaveAttribute('href', 'https://vaultmtg.app/#waitlist');
+  });
+
+  test('should NOT show the download buttons when flag is off', async ({ page }) => {
+    await expect(page.locator('[data-testid="daemon-download-buttons"]')).not.toBeVisible();
+  });
+
+  test('should still show the download section header and getting-started steps', async ({ page }) => {
+    await expect(page.locator('[data-testid="daemon-download-title"]')).toBeVisible();
+    await expect(page.locator('[data-testid="daemon-getting-started"]')).toBeVisible();
   });
 });

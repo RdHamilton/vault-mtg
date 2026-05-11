@@ -5,8 +5,183 @@ import DaemonDownload from './DaemonDownload';
 const RELEASES_BASE =
   'https://github.com/RdHamilton/MTGA-Companion/releases/latest/download';
 
+// Mock useFeatureFlag so we can control the flag state per test suite.
+vi.mock('@/hooks/useFeatureFlag', () => ({
+  useFeatureFlag: vi.fn(),
+}));
+
+import { useFeatureFlag } from '@/hooks/useFeatureFlag';
+
+const mockUseFeatureFlag = vi.mocked(useFeatureFlag);
+
 describe('DaemonDownload', () => {
-  describe('Section Structure', () => {
+  describe('Feature flag — enabled (download buttons visible)', () => {
+    beforeEach(() => {
+      mockUseFeatureFlag.mockReturnValue({ enabled: true });
+    });
+
+    describe('Section Structure', () => {
+      it('should render the download section container', () => {
+        render(<DaemonDownload />);
+        expect(screen.getByTestId('daemon-download-section')).toBeInTheDocument();
+      });
+
+      it('should render the page title', () => {
+        render(<DaemonDownload />);
+        const title = screen.getByTestId('daemon-download-title');
+        expect(title).toBeInTheDocument();
+        expect(title).toHaveTextContent('Get Started with MTGA Companion');
+      });
+
+      it('should render the download buttons container', () => {
+        render(<DaemonDownload />);
+        expect(screen.getByTestId('daemon-download-buttons')).toBeInTheDocument();
+      });
+
+      it('should render the getting started section', () => {
+        render(<DaemonDownload />);
+        expect(screen.getByTestId('daemon-getting-started')).toBeInTheDocument();
+      });
+
+      it('should not render the coming-soon CTA', () => {
+        render(<DaemonDownload />);
+        expect(screen.queryByTestId('daemon-download-coming-soon')).not.toBeInTheDocument();
+      });
+
+      it('should not render the skeleton', () => {
+        render(<DaemonDownload />);
+        expect(screen.queryByTestId('daemon-download-skeleton')).not.toBeInTheDocument();
+      });
+    });
+
+    describe('Download Links', () => {
+      it('should render a link for Windows (amd64)', () => {
+        render(<DaemonDownload />);
+        const link = screen.getByTestId('download-link-windows-amd64');
+        expect(link).toBeInTheDocument();
+        expect(link).toHaveAttribute(
+          'href',
+          `${RELEASES_BASE}/mtga-companion-daemon-windows-amd64.exe`
+        );
+      });
+
+      it('should render a link for macOS Apple Silicon (arm64)', () => {
+        render(<DaemonDownload />);
+        const link = screen.getByTestId('download-link-darwin-arm64');
+        expect(link).toBeInTheDocument();
+        expect(link).toHaveAttribute(
+          'href',
+          `${RELEASES_BASE}/mtga-companion-daemon-darwin-arm64.dmg`
+        );
+      });
+
+      it('should render a link for macOS Intel (amd64)', () => {
+        render(<DaemonDownload />);
+        const link = screen.getByTestId('download-link-darwin-amd64');
+        expect(link).toBeInTheDocument();
+        expect(link).toHaveAttribute(
+          'href',
+          `${RELEASES_BASE}/mtga-companion-daemon-darwin-amd64.dmg`
+        );
+      });
+
+      it('should render exactly 3 download links', () => {
+        render(<DaemonDownload />);
+        const buttons = screen.getByTestId('daemon-download-buttons');
+        const links = buttons.querySelectorAll('a');
+        expect(links).toHaveLength(3);
+      });
+
+      it('each download link should have the download attribute', () => {
+        render(<DaemonDownload />);
+        const buttons = screen.getByTestId('daemon-download-buttons');
+        const links = buttons.querySelectorAll('a');
+        links.forEach((link) => {
+          expect(link).toHaveAttribute('download');
+        });
+      });
+
+      it('should display platform labels', () => {
+        render(<DaemonDownload />);
+        expect(screen.getByText('Windows (amd64)')).toBeInTheDocument();
+        expect(screen.getByText('macOS (Apple Silicon)')).toBeInTheDocument();
+        expect(screen.getByText('macOS (Intel)')).toBeInTheDocument();
+      });
+
+      it('should display platform descriptions', () => {
+        render(<DaemonDownload />);
+        expect(screen.getByText('Windows 10/11 64-bit')).toBeInTheDocument();
+        expect(screen.getByText('macOS 12+ on M1/M2/M3')).toBeInTheDocument();
+        expect(screen.getByText('macOS 12+ on Intel')).toBeInTheDocument();
+      });
+    });
+
+    describe('OS Detection — Windows', () => {
+      beforeEach(() => {
+        Object.defineProperty(navigator, 'platform', {
+          value: 'Win32',
+          configurable: true,
+        });
+        Object.defineProperty(navigator, 'userAgent', {
+          value:
+            'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/123.0',
+          configurable: true,
+        });
+      });
+
+      it('should mark Windows as recommended on Windows platform', () => {
+        render(<DaemonDownload />);
+        const windowsLink = screen.getByTestId('download-link-windows-amd64');
+        expect(windowsLink).toHaveClass('daemon-download-button--primary');
+      });
+
+      it('should mark macOS links as secondary on Windows platform', () => {
+        render(<DaemonDownload />);
+        const arm64Link = screen.getByTestId('download-link-darwin-arm64');
+        const amd64Link = screen.getByTestId('download-link-darwin-amd64');
+        expect(arm64Link).toHaveClass('daemon-download-button--secondary');
+        expect(amd64Link).toHaveClass('daemon-download-button--secondary');
+      });
+
+      it('should show Recommended label on Windows link', () => {
+        render(<DaemonDownload />);
+        const windowsLink = screen.getByTestId('download-link-windows-amd64');
+        expect(windowsLink).toHaveTextContent('Recommended');
+      });
+    });
+
+    describe('OS Detection — macOS Intel', () => {
+      beforeEach(() => {
+        Object.defineProperty(navigator, 'platform', {
+          value: 'MacIntel',
+          configurable: true,
+        });
+        Object.defineProperty(navigator, 'userAgent', {
+          value:
+            'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 Chrome/123.0',
+          configurable: true,
+        });
+      });
+
+      it('should mark macOS Intel as recommended', () => {
+        render(<DaemonDownload />);
+        const amd64Link = screen.getByTestId('download-link-darwin-amd64');
+        expect(amd64Link).toHaveClass('daemon-download-button--primary');
+      });
+
+      it('should not mark arm64 as recommended on Intel Mac', () => {
+        render(<DaemonDownload />);
+        const arm64Link = screen.getByTestId('download-link-darwin-arm64');
+        expect(arm64Link).toHaveClass('daemon-download-button--secondary');
+      });
+    });
+  });
+
+  describe('Feature flag — disabled (coming soon CTA visible)', () => {
+    beforeEach(() => {
+      mockUseFeatureFlag.mockReturnValue({ enabled: false });
+    });
+
     it('should render the download section container', () => {
       render(<DaemonDownload />);
       expect(screen.getByTestId('daemon-download-section')).toBeInTheDocument();
@@ -14,145 +189,95 @@ describe('DaemonDownload', () => {
 
     it('should render the page title', () => {
       render(<DaemonDownload />);
-      const title = screen.getByTestId('daemon-download-title');
-      expect(title).toBeInTheDocument();
-      expect(title).toHaveTextContent('Get Started with MTGA Companion');
+      expect(screen.getByTestId('daemon-download-title')).toHaveTextContent(
+        'Get Started with MTGA Companion'
+      );
     });
 
-    it('should render the download buttons container', () => {
+    it('should render the coming-soon CTA', () => {
       render(<DaemonDownload />);
-      expect(screen.getByTestId('daemon-download-buttons')).toBeInTheDocument();
+      expect(screen.getByTestId('daemon-download-coming-soon')).toBeInTheDocument();
     });
 
-    it('should render the getting started section', () => {
+    it('should display the coming-soon message text', () => {
+      render(<DaemonDownload />);
+      expect(
+        screen.getByText(/The daemon installer will be available at beta launch/i)
+      ).toBeInTheDocument();
+    });
+
+    it('should render the waitlist link', () => {
+      render(<DaemonDownload />);
+      const link = screen.getByTestId('daemon-download-waitlist-link');
+      expect(link).toBeInTheDocument();
+      expect(link).toHaveAttribute('href', 'https://vaultmtg.app/#waitlist');
+    });
+
+    it('should NOT render the download buttons', () => {
+      render(<DaemonDownload />);
+      expect(screen.queryByTestId('daemon-download-buttons')).not.toBeInTheDocument();
+    });
+
+    it('should NOT render any download link anchors', () => {
+      render(<DaemonDownload />);
+      expect(screen.queryByTestId('download-link-windows-amd64')).not.toBeInTheDocument();
+      expect(screen.queryByTestId('download-link-darwin-arm64')).not.toBeInTheDocument();
+      expect(screen.queryByTestId('download-link-darwin-amd64')).not.toBeInTheDocument();
+    });
+
+    it('should NOT render the skeleton', () => {
+      render(<DaemonDownload />);
+      expect(screen.queryByTestId('daemon-download-skeleton')).not.toBeInTheDocument();
+    });
+
+    it('should still render the getting started section', () => {
       render(<DaemonDownload />);
       expect(screen.getByTestId('daemon-getting-started')).toBeInTheDocument();
     });
   });
 
-  describe('Download Links', () => {
-    it('should render a link for Windows (amd64)', () => {
-      render(<DaemonDownload />);
-      const link = screen.getByTestId('download-link-windows-amd64');
-      expect(link).toBeInTheDocument();
-      expect(link).toHaveAttribute(
-        'href',
-        `${RELEASES_BASE}/mtga-companion-daemon-windows-amd64.exe`
-      );
-    });
-
-    it('should render a link for macOS Apple Silicon (arm64)', () => {
-      render(<DaemonDownload />);
-      const link = screen.getByTestId('download-link-darwin-arm64');
-      expect(link).toBeInTheDocument();
-      expect(link).toHaveAttribute(
-        'href',
-        `${RELEASES_BASE}/mtga-companion-daemon-darwin-arm64.dmg`
-      );
-    });
-
-    it('should render a link for macOS Intel (amd64)', () => {
-      render(<DaemonDownload />);
-      const link = screen.getByTestId('download-link-darwin-amd64');
-      expect(link).toBeInTheDocument();
-      expect(link).toHaveAttribute(
-        'href',
-        `${RELEASES_BASE}/mtga-companion-daemon-darwin-amd64.dmg`
-      );
-    });
-
-    it('should render exactly 3 download links', () => {
-      render(<DaemonDownload />);
-      const buttons = screen.getByTestId('daemon-download-buttons');
-      const links = buttons.querySelectorAll('a');
-      expect(links).toHaveLength(3);
-    });
-
-    it('each download link should have the download attribute', () => {
-      render(<DaemonDownload />);
-      const buttons = screen.getByTestId('daemon-download-buttons');
-      const links = buttons.querySelectorAll('a');
-      links.forEach((link) => {
-        expect(link).toHaveAttribute('download');
-      });
-    });
-
-    it('should display platform labels', () => {
-      render(<DaemonDownload />);
-      expect(screen.getByText('Windows (amd64)')).toBeInTheDocument();
-      expect(screen.getByText('macOS (Apple Silicon)')).toBeInTheDocument();
-      expect(screen.getByText('macOS (Intel)')).toBeInTheDocument();
-    });
-
-    it('should display platform descriptions', () => {
-      render(<DaemonDownload />);
-      expect(screen.getByText('Windows 10/11 64-bit')).toBeInTheDocument();
-      expect(screen.getByText('macOS 12+ on M1/M2/M3')).toBeInTheDocument();
-      expect(screen.getByText('macOS 12+ on Intel')).toBeInTheDocument();
-    });
-  });
-
-  describe('OS Detection — Windows', () => {
+  describe('Feature flag — loading (skeleton visible)', () => {
     beforeEach(() => {
-      Object.defineProperty(navigator, 'platform', {
-        value: 'Win32',
-        configurable: true,
-      });
-      Object.defineProperty(navigator, 'userAgent', {
-        value:
-          'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/123.0',
-        configurable: true,
-      });
+      mockUseFeatureFlag.mockReturnValue({ enabled: null });
     });
 
-    it('should mark Windows as recommended on Windows platform', () => {
+    it('should render the skeleton', () => {
       render(<DaemonDownload />);
-      const windowsLink = screen.getByTestId('download-link-windows-amd64');
-      expect(windowsLink).toHaveClass('daemon-download-button--primary');
+      expect(screen.getByTestId('daemon-download-skeleton')).toBeInTheDocument();
     });
 
-    it('should mark macOS links as secondary on Windows platform', () => {
+    it('should NOT render the download buttons', () => {
       render(<DaemonDownload />);
-      const arm64Link = screen.getByTestId('download-link-darwin-arm64');
-      const amd64Link = screen.getByTestId('download-link-darwin-amd64');
-      expect(arm64Link).toHaveClass('daemon-download-button--secondary');
-      expect(amd64Link).toHaveClass('daemon-download-button--secondary');
+      expect(screen.queryByTestId('daemon-download-buttons')).not.toBeInTheDocument();
     });
 
-    it('should show Recommended label on Windows link', () => {
+    it('should NOT render the coming-soon CTA', () => {
       render(<DaemonDownload />);
-      const windowsLink = screen.getByTestId('download-link-windows-amd64');
-      expect(windowsLink).toHaveTextContent('Recommended');
-    });
-  });
-
-  describe('OS Detection — macOS Intel', () => {
-    beforeEach(() => {
-      Object.defineProperty(navigator, 'platform', {
-        value: 'MacIntel',
-        configurable: true,
-      });
-      Object.defineProperty(navigator, 'userAgent', {
-        value:
-          'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 Chrome/123.0',
-        configurable: true,
-      });
+      expect(screen.queryByTestId('daemon-download-coming-soon')).not.toBeInTheDocument();
     });
 
-    it('should mark macOS Intel as recommended', () => {
+    it('should render aria-busy on the skeleton', () => {
       render(<DaemonDownload />);
-      const amd64Link = screen.getByTestId('download-link-darwin-amd64');
-      expect(amd64Link).toHaveClass('daemon-download-button--primary');
+      const skeleton = screen.getByTestId('daemon-download-skeleton');
+      expect(skeleton).toHaveAttribute('aria-busy', 'true');
     });
 
-    it('should not mark arm64 as recommended on Intel Mac', () => {
+    it('should still render the page title', () => {
       render(<DaemonDownload />);
-      const arm64Link = screen.getByTestId('download-link-darwin-arm64');
-      expect(arm64Link).toHaveClass('daemon-download-button--secondary');
+      expect(screen.getByTestId('daemon-download-title')).toBeInTheDocument();
+    });
+
+    it('should still render the getting started section', () => {
+      render(<DaemonDownload />);
+      expect(screen.getByTestId('daemon-getting-started')).toBeInTheDocument();
     });
   });
 
   describe('Getting Started Steps', () => {
+    beforeEach(() => {
+      mockUseFeatureFlag.mockReturnValue({ enabled: true });
+    });
+
     it('should render all 4 steps', () => {
       render(<DaemonDownload />);
       for (let i = 1; i <= 4; i++) {
@@ -195,6 +320,10 @@ describe('DaemonDownload', () => {
   });
 
   describe('Accessibility', () => {
+    beforeEach(() => {
+      mockUseFeatureFlag.mockReturnValue({ enabled: true });
+    });
+
     it('should render main title as h1', () => {
       render(<DaemonDownload />);
       const h1 = screen.getByRole('heading', { level: 1 });

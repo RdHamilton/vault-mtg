@@ -93,6 +93,60 @@
   opacity: 0.75;
 }
 
+/* Skeleton — shown while feature flag loads */
+.daemon-download-skeleton {
+  display: flex;
+  gap: 16px;
+  justify-content: center;
+  flex-wrap: wrap;
+  margin-bottom: 56px;
+}
+
+.daemon-download-skeleton-bar {
+  height: 96px;
+  min-width: 200px;
+  border-radius: 8px;
+  background: linear-gradient(90deg, #2d2d2d 25%, #3a3a3a 50%, #2d2d2d 75%);
+  background-size: 200% 100%;
+  animation: daemon-skeleton-shimmer 1.4s ease-in-out infinite;
+}
+
+@keyframes daemon-skeleton-shimmer {
+  0% {
+    background-position: 200% 0;
+  }
+  100% {
+    background-position: -200% 0;
+  }
+}
+
+/* Coming soon CTA — shown when daemon_download_enabled flag is off */
+.daemon-download-coming-soon {
+  margin-bottom: 56px;
+  padding: 32px;
+  background-color: #2d2d2d;
+  border: 1px solid #3d3d3d;
+  border-radius: 12px;
+  text-align: center;
+}
+
+.daemon-download-coming-soon-message {
+  font-size: 16px;
+  color: #aaaaaa;
+  margin: 0;
+  line-height: 1.6;
+}
+
+.daemon-download-coming-soon-link {
+  color: #7b2fff;
+  text-decoration: underline;
+  font-weight: 600;
+}
+
+.daemon-download-coming-soon-link:hover {
+  color: #9147ff;
+}
+
 /* Getting started steps */
 .daemon-getting-started {
   background-color: #2d2d2d;
