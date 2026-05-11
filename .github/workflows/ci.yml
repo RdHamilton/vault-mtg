@@ -71,7 +71,7 @@ jobs:
 
       - name: Cache actionlint binary
         id: cache-actionlint
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: ~/go/bin/actionlint
           key: actionlint-${{ runner.os }}-latest
@@ -236,7 +236,7 @@ jobs:
 
     - name: Cache gofumpt binary
       id: cache-gofumpt
-      uses: actions/cache@v4
+      uses: actions/cache@v5
       with:
         path: ~/go/bin/gofumpt
         key: gofumpt-${{ runner.os }}-latest
@@ -423,7 +423,7 @@ jobs:
 
     - name: Cache Playwright browsers
       id: playwright-cache
-      uses: actions/cache@v4
+      uses: actions/cache@v5
       with:
         path: ~/.cache/ms-playwright
         key: playwright-${{ runner.os }}-${{ hashFiles('frontend/package-lock.json') }}
