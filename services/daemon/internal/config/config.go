@@ -124,6 +124,14 @@ func Load(path string) (*Config, error) {
 
 	applyEnv(cfg)
 
+	// One-time migration: rewrite the old IngestPath ("/v1/ingest/events") to
+	// the new BFF-aligned path. The BFF now mounts the ingest route under
+	// /api/v1/ to match nginx routing; cloud_api_url already contains /api/v1
+	// so the relative IngestPath drops the /v1/ prefix.
+	if cfg.IngestPath == "/v1/ingest/events" {
+		cfg.IngestPath = "/ingest/events"
+	}
+
 	if err := cfg.validate(); err != nil {
 		return nil, fmt.Errorf("invalid config: %w", err)
 	}
@@ -208,7 +216,7 @@ func defaults() *Config {
 		SyncEnabled:              true,
 		PollInterval:             2 * time.Second,
 		UseFSNotify:              true,
-		IngestPath:               "/v1/ingest/events",
+		IngestPath:               "/ingest/events",
 		LogPreserveOnStart:       true,
 		LogArchiveMaxAge:         7 * 24 * time.Hour,
 		LogArchiveDir:            archiveDir,

@@ -64,7 +64,7 @@ func TestDefaults(t *testing.T) {
 
 	cfg, err := config.Load("")
 	require.NoError(t, err)
-	assert.Equal(t, "/v1/ingest/events", cfg.IngestPath)
+	assert.Equal(t, "/ingest/events", cfg.IngestPath)
 	assert.True(t, cfg.UseFSNotify)
 }
 
@@ -141,7 +141,7 @@ func TestLoadFromFileAllFields(t *testing.T) {
 		"api_key":               "tok-abc123",
 		"sync_enabled":          false,
 		"log_path":              "/tmp/Player.log",
-		"ingest_path":           "/v1/ingest/events",
+		"ingest_path":           "/ingest/events",
 		"account_id":            "acc-42",
 		"log_archive_dir":       "/tmp/archives",
 		"log_preserve_on_start": false
@@ -154,7 +154,7 @@ func TestLoadFromFileAllFields(t *testing.T) {
 	assert.Equal(t, "tok-abc123", cfg.APIKey)
 	assert.False(t, cfg.SyncEnabled)
 	assert.Equal(t, "/tmp/Player.log", cfg.LogPath)
-	assert.Equal(t, "/v1/ingest/events", cfg.IngestPath)
+	assert.Equal(t, "/ingest/events", cfg.IngestPath)
 	assert.Equal(t, "acc-42", cfg.AccountID)
 	assert.Equal(t, "/tmp/archives", cfg.LogArchiveDir)
 	assert.False(t, cfg.LogPreserveOnStart)
@@ -609,4 +609,21 @@ func TestAPIKeyOmittedFromJSONWhenKeychain(t *testing.T) {
 	data, err := os.ReadFile(path)
 	require.NoError(t, err)
 	assert.NotContains(t, string(data), `"api_key"`)
+}
+
+func TestLoadMigratesOldIngestPath(t *testing.T) {
+	tmp := t.TempDir()
+	path := tmp + "/daemon.json"
+	body := `{"cloud_api_url":"https://api.example.com/api/v1","ingest_path":"/v1/ingest/events","sync_enabled":true}`
+	if err := os.WriteFile(path, []byte(body), 0o600); err != nil {
+		t.Fatalf("write: %v", err)
+	}
+
+	cfg, err := config.Load(path)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if cfg.IngestPath != "/ingest/events" {
+		t.Fatalf("IngestPath migration: got %q, want /ingest/events", cfg.IngestPath)
+	}
 }

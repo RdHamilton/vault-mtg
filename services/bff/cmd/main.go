@@ -438,12 +438,13 @@ func BuildRouter(cfg *config.Config, deps RouterDeps) http.Handler {
 		}
 	}
 
-	// POST /v1/ingest/events — API-key auth; falls back to unguarded in dev mode.
+	// POST /api/v1/ingest/events — API-key auth; falls back to unguarded in dev mode.
+	// Mounted under /api/v1/ so nginx (which only forwards /api/v1/*) can reach it.
 	if deps.IngestHandler != nil {
 		if deps.APIKeyAuthMiddl != nil {
-			r.With(deps.APIKeyAuthMiddl).Post("/v1/ingest/events", deps.IngestHandler.IngestEvent)
+			r.With(deps.APIKeyAuthMiddl).Post("/api/v1/ingest/events", deps.IngestHandler.IngestEvent)
 		} else {
-			r.Post("/v1/ingest/events", deps.IngestHandler.IngestEvent)
+			r.Post("/api/v1/ingest/events", deps.IngestHandler.IngestEvent)
 		}
 	}
 
