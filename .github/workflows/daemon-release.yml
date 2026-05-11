@@ -238,7 +238,8 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          TAG="${GITHUB_REF#refs/tags/}"
+          RAW="${GITHUB_REF#refs/tags/}"
+          TAG="${RAW#daemon/}"
           gh release upload "$TAG" \
             "${{ env.PKG }}" \
             "${{ env.DMG }}" \
