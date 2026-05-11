@@ -49,6 +49,10 @@ jobs:
         run: npm ci
         working-directory: frontend
 
+      - name: Build Storybook
+        run: npm run build-storybook
+        working-directory: frontend
+
       - name: Run Chromatic
         # REQUIRES: CHROMATIC_PROJECT_TOKEN secret must be set in GitHub Actions secrets.
         # To provision:
@@ -56,11 +60,8 @@ jobs:
         #   2. Copy the project token from the project settings
         #   3. Add it as a GitHub Actions secret named CHROMATIC_PROJECT_TOKEN
         #      at https://github.com/RdHamilton/MTGA-Companion/settings/secrets/actions
-        uses: chromaui/action@latest
-        with:
-          workingDir: frontend
-          projectToken: ${{ secrets.CHROMATIC_PROJECT_TOKEN }}
-          buildScriptName: build-storybook
-          # Only exit with error on actual visual regressions (diffs), not on
-          # new stories that need baseline approval.
-          exitOnceUploaded: true
+        #
+        # --exit-zero-on-changes: CI stays green when visual changes need review;
+        # the Chromatic dashboard is the review surface, not CI red/green.
+        run: npx chromatic --storybook-build-dir=storybook-static --exit-zero-on-changes --project-token=${{ secrets.CHROMATIC_PROJECT_TOKEN }}
+        working-directory: frontend
