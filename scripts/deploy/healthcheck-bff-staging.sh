@@ -1,6 +1,6 @@
 #!/bin/sh
 # healthcheck-bff-staging.sh
-# Polls the staging BFF /healthz endpoint (port 8081) until it responds 200
+# Polls the staging BFF /healthz endpoint (port 8080) until it responds 200
 # or the retry limit is reached. Runs ON the EC2 instance via SSM RunShellScript.
 
 set -e
@@ -10,7 +10,7 @@ SLEEP=5
 
 i=0
 while [ "$i" -lt "$RETRIES" ]; do
-  if curl -sf http://127.0.0.1:8081/healthz > /dev/null; then
+  if curl -sf http://127.0.0.1:8080/healthz > /dev/null; then
     echo "staging healthz OK"
     exit 0
   fi
