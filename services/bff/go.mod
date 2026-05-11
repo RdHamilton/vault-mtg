@@ -6,7 +6,7 @@ toolchain go1.25.10
 
 require (
 	github.com/RdHamilton/MTGA-Companion/services/contract v0.1.0
-	github.com/clerk/clerk-sdk-go/v2 v2.5.1
+	github.com/clerk/clerk-sdk-go/v2 v2.6.0
 	github.com/getsentry/sentry-go v0.46.2
 	github.com/go-chi/chi/v5 v5.2.5
 	github.com/go-chi/cors v1.2.2

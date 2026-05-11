@@ -4,8 +4,8 @@ github.com/Microsoft/go-winio v0.6.2 h1:F2VQgta7ecxGYO8k3ZZz3RS8fVIXVxONVUPlNERo
 github.com/Microsoft/go-winio v0.6.2/go.mod h1:yd8OoFMLzJbo9gZq8j5qaps8bJ9aShtEA8Ipt1oGCvU=
 github.com/RdHamilton/MTGA-Companion/services/contract v0.1.0 h1:e8TpnKZGNHyT5ZuLCn9vFIx9KIKJGjbomW8gV9VpW3Q=
 github.com/RdHamilton/MTGA-Companion/services/contract v0.1.0/go.mod h1:yF9HioPBk5KyrAoocEF9JWXBezAQFqgV0DC3whrhCQo=
-github.com/clerk/clerk-sdk-go/v2 v2.5.1 h1:RsakGNW6ie83b9KIRtKzqDXBJ//cURy9SJUbGhrsIKg=
-github.com/clerk/clerk-sdk-go/v2 v2.5.1/go.mod h1:ncFmsPwmD5WpGCNW5bJve862j/HQfpkzsshXYV/quJ8=
+github.com/clerk/clerk-sdk-go/v2 v2.6.0 h1:OgxysA1iHcL9mZp3ie/F8e5sBmX4xKRXR7p0BVbut98=
+github.com/clerk/clerk-sdk-go/v2 v2.6.0/go.mod h1:ncFmsPwmD5WpGCNW5bJve862j/HQfpkzsshXYV/quJ8=
 github.com/containerd/errdefs v1.0.0 h1:tg5yIfIlQIrxYtu9ajqY42W3lpS19XqdxRQeEwYG8PI=
 github.com/containerd/errdefs v1.0.0/go.mod h1:+YBYIdtsnF4Iw6nWZhJcqGSg/dwvV7tyJ/kCkyJ2k+M=
 github.com/containerd/errdefs/pkg v0.3.0 h1:9IKJ06FvyNlexW690DXuQNx2KA2cUJXx151Xdx3ZPPE=
