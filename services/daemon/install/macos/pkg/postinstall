@@ -40,11 +40,24 @@ CONFIG_FILE="${CONFIG_DIR}/daemon.json"
 
 LOG_FILE="${REAL_HOME}/Library/Logs/vaultmtg-daemon.log"
 
-# Baked in at build time by the CI workflow. Defaults are production values.
-CLOUD_API_URL="${VAULTMTG_CLOUD_API_URL:-https://api.vaultmtg.app/api/v1}"
-CLERK_FRONTEND_API="${CLERK_FRONTEND_API:-https://clerk.vaultmtg.app}"
-CLERK_PUBLISHABLE_KEY="${CLERK_PUBLISHABLE_KEY:-pk_live_Y2xlcmsudmF1bHRtdGcuYXBwJA}"
-CLERK_OAUTH_CLIENT_ID="${CLERK_OAUTH_CLIENT_ID:-}"
+# Values are substituted at build time by .github/workflows/daemon-release.yml
+# using `sed` BEFORE pkgbuild is invoked. pkgbuild does NOT propagate env vars
+# from CI to the installed postinstall script — the postinstall runs in macOS
+# Installer's own (empty) environment on the user's machine, so `${VAR:-default}`
+# expansions here would always resolve to the default. Substituting placeholders
+# at build time is the only reliable way to inject build-specific values.
+CLOUD_API_URL="__VAULTMTG_CLOUD_API_URL__"
+CLERK_FRONTEND_API="__CLERK_FRONTEND_API__"
+CLERK_PUBLISHABLE_KEY="__CLERK_PUBLISHABLE_KEY__"
+CLERK_OAUTH_CLIENT_ID="__CLERK_OAUTH_CLIENT_ID__"
+
+# Fail loudly if placeholders were not substituted at build time.
+case "$CLOUD_API_URL" in
+  __*__)
+    echo "[postinstall] ERROR: build-time substitution did not run; placeholders are still present" >&2
+    exit 1
+    ;;
+esac
 
 # ---------------------------------------------------------------------------
 # 1. Clear quarantine attribute (ADR-020 §macOS Quarantine Clearing).
