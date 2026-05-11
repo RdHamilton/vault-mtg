@@ -137,14 +137,18 @@ describe('OnboardingModal', () => {
       expect(screen.getByTestId('onboarding-platform-windows')).toBeInTheDocument();
     });
 
-    it('shows macOS install text', () => {
+    it('shows macOS install text referencing .dmg and notarization', () => {
       goToStep2();
-      expect(screen.getByTestId('onboarding-platform-mac')).toHaveTextContent('install.sh');
+      const macSection = screen.getByTestId('onboarding-platform-mac');
+      expect(macSection).toHaveTextContent('.dmg');
+      expect(macSection).toHaveTextContent(/notarized by Apple/i);
     });
 
-    it('shows Windows install text', () => {
+    it('shows Windows install text referencing .exe and Azure Trusted Signing', () => {
       goToStep2();
-      expect(screen.getByTestId('onboarding-platform-windows')).toHaveTextContent('.exe');
+      const windowsSection = screen.getByTestId('onboarding-platform-windows');
+      expect(windowsSection).toHaveTextContent('.exe');
+      expect(windowsSection).toHaveTextContent(/azure trusted signing/i);
     });
 
     it('goes back to step 1 when Back is clicked', () => {

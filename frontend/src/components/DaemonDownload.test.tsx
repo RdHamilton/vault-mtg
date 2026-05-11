@@ -55,41 +55,31 @@ describe('DaemonDownload', () => {
     });
 
     describe('Download Links', () => {
-      it('should render a link for Windows (amd64)', () => {
+      it('should render a link for Windows', () => {
         render(<DaemonDownload />);
-        const link = screen.getByTestId('download-link-windows-amd64');
+        const link = screen.getByTestId('download-link-vaultmtg-daemon-windows-amd64');
         expect(link).toBeInTheDocument();
         expect(link).toHaveAttribute(
           'href',
-          `${RELEASES_BASE}/mtga-companion-daemon-windows-amd64.exe`
+          `${RELEASES_BASE}/vaultmtg-daemon-windows-amd64.exe`
         );
       });
 
-      it('should render a link for macOS Apple Silicon (arm64)', () => {
+      it('should render a link for macOS Universal', () => {
         render(<DaemonDownload />);
-        const link = screen.getByTestId('download-link-darwin-arm64');
+        const link = screen.getByTestId('download-link-vaultmtg-daemon-darwin-universal');
         expect(link).toBeInTheDocument();
         expect(link).toHaveAttribute(
           'href',
-          `${RELEASES_BASE}/mtga-companion-daemon-darwin-arm64.dmg`
+          `${RELEASES_BASE}/vaultmtg-daemon-darwin-universal.dmg`
         );
       });
 
-      it('should render a link for macOS Intel (amd64)', () => {
-        render(<DaemonDownload />);
-        const link = screen.getByTestId('download-link-darwin-amd64');
-        expect(link).toBeInTheDocument();
-        expect(link).toHaveAttribute(
-          'href',
-          `${RELEASES_BASE}/mtga-companion-daemon-darwin-amd64.dmg`
-        );
-      });
-
-      it('should render exactly 3 download links', () => {
+      it('should render exactly 2 download links', () => {
         render(<DaemonDownload />);
         const buttons = screen.getByTestId('daemon-download-buttons');
         const links = buttons.querySelectorAll('a');
-        expect(links).toHaveLength(3);
+        expect(links).toHaveLength(2);
       });
 
       it('each download link should have the download attribute', () => {
@@ -103,16 +93,14 @@ describe('DaemonDownload', () => {
 
       it('should display platform labels', () => {
         render(<DaemonDownload />);
-        expect(screen.getByText('Windows (amd64)')).toBeInTheDocument();
-        expect(screen.getByText('macOS (Apple Silicon)')).toBeInTheDocument();
-        expect(screen.getByText('macOS (Intel)')).toBeInTheDocument();
+        expect(screen.getByText('Windows (64-bit)')).toBeInTheDocument();
+        expect(screen.getByText('macOS (Universal)')).toBeInTheDocument();
       });
 
       it('should display platform descriptions', () => {
         render(<DaemonDownload />);
         expect(screen.getByText('Windows 10/11 64-bit')).toBeInTheDocument();
-        expect(screen.getByText('macOS 12+ on M1/M2/M3')).toBeInTheDocument();
-        expect(screen.getByText('macOS 12+ on Intel')).toBeInTheDocument();
+        expect(screen.getByText('macOS 12+ — Apple Silicon and Intel')).toBeInTheDocument();
       });
     });
 
@@ -131,26 +119,24 @@ describe('DaemonDownload', () => {
 
       it('should mark Windows as recommended on Windows platform', () => {
         render(<DaemonDownload />);
-        const windowsLink = screen.getByTestId('download-link-windows-amd64');
+        const windowsLink = screen.getByTestId('download-link-vaultmtg-daemon-windows-amd64');
         expect(windowsLink).toHaveClass('daemon-download-button--primary');
       });
 
-      it('should mark macOS links as secondary on Windows platform', () => {
+      it('should mark macOS link as secondary on Windows platform', () => {
         render(<DaemonDownload />);
-        const arm64Link = screen.getByTestId('download-link-darwin-arm64');
-        const amd64Link = screen.getByTestId('download-link-darwin-amd64');
-        expect(arm64Link).toHaveClass('daemon-download-button--secondary');
-        expect(amd64Link).toHaveClass('daemon-download-button--secondary');
+        const macLink = screen.getByTestId('download-link-vaultmtg-daemon-darwin-universal');
+        expect(macLink).toHaveClass('daemon-download-button--secondary');
       });
 
       it('should show Recommended label on Windows link', () => {
         render(<DaemonDownload />);
-        const windowsLink = screen.getByTestId('download-link-windows-amd64');
+        const windowsLink = screen.getByTestId('download-link-vaultmtg-daemon-windows-amd64');
         expect(windowsLink).toHaveTextContent('Recommended');
       });
     });
 
-    describe('OS Detection — macOS Intel', () => {
+    describe('OS Detection — macOS', () => {
       beforeEach(() => {
         Object.defineProperty(navigator, 'platform', {
           value: 'MacIntel',
@@ -163,16 +149,16 @@ describe('DaemonDownload', () => {
         });
       });
 
-      it('should mark macOS Intel as recommended', () => {
+      it('should mark macOS Universal as recommended on macOS', () => {
         render(<DaemonDownload />);
-        const amd64Link = screen.getByTestId('download-link-darwin-amd64');
-        expect(amd64Link).toHaveClass('daemon-download-button--primary');
+        const macLink = screen.getByTestId('download-link-vaultmtg-daemon-darwin-universal');
+        expect(macLink).toHaveClass('daemon-download-button--primary');
       });
 
-      it('should not mark arm64 as recommended on Intel Mac', () => {
+      it('should mark Windows link as secondary on macOS', () => {
         render(<DaemonDownload />);
-        const arm64Link = screen.getByTestId('download-link-darwin-arm64');
-        expect(arm64Link).toHaveClass('daemon-download-button--secondary');
+        const windowsLink = screen.getByTestId('download-link-vaultmtg-daemon-windows-amd64');
+        expect(windowsLink).toHaveClass('daemon-download-button--secondary');
       });
     });
   });

@@ -227,9 +227,9 @@ function Step2Install({ onBack, onNext }: Step2Props) {
             <span className="onboarding-platform-name">macOS</span>
           </div>
           <ol className="onboarding-install-steps">
-            <li>Open the downloaded <code>.tar.gz</code> archive</li>
-            <li>Run the <code>install.sh</code> script from Terminal</li>
-            <li>If prompted, grant permission in System Settings &gt; Privacy &amp; Security</li>
+            <li>Open the downloaded <code>.dmg</code> file</li>
+            <li>Drag the VaultMTG daemon to Applications</li>
+            <li>Launch it — the installer is notarized by Apple, so no security bypass is needed</li>
             <li>The daemon will start automatically</li>
           </ol>
         </div>
@@ -246,8 +246,7 @@ function Step2Install({ onBack, onNext }: Step2Props) {
           </div>
           <ol className="onboarding-install-steps">
             <li>Run the downloaded <code>.exe</code> installer</li>
-            <li>If Windows Defender SmartScreen appears, click <em>More info</em> then <em>Run anyway</em></li>
-            <li>Follow the installer wizard</li>
+            <li>Follow the installer wizard (Next &rarr; Next &rarr; Finish) — the installer is signed with Microsoft Azure Trusted Signing, so no SmartScreen bypass is needed</li>
             <li>The daemon will start automatically on completion</li>
           </ol>
         </div>

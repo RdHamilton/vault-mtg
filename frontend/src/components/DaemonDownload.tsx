@@ -10,29 +10,28 @@ const WAITLIST_URL = 'https://vaultmtg.app/#waitlist';
 
 interface DownloadOption {
   label: string;
-  platform: string;
+  /** Artifact filename (without extension) as it appears on the GitHub release. */
+  artifact: string;
+  /** Logical platform key used for OS detection matching. */
+  platform: 'windows' | 'macos';
   ext: string;
   description: string;
 }
 
 const DOWNLOAD_OPTIONS: DownloadOption[] = [
   {
-    label: 'Windows (amd64)',
-    platform: 'windows-amd64',
+    label: 'Windows (64-bit)',
+    artifact: 'vaultmtg-daemon-windows-amd64',
+    platform: 'windows',
     ext: 'exe',
     description: 'Windows 10/11 64-bit',
   },
   {
-    label: 'macOS (Apple Silicon)',
-    platform: 'darwin-arm64',
+    label: 'macOS (Universal)',
+    artifact: 'vaultmtg-daemon-darwin-universal',
+    platform: 'macos',
     ext: 'dmg',
-    description: 'macOS 12+ on M1/M2/M3',
-  },
-  {
-    label: 'macOS (Intel)',
-    platform: 'darwin-amd64',
-    ext: 'dmg',
-    description: 'macOS 12+ on Intel',
+    description: 'macOS 12+ — Apple Silicon and Intel',
   },
 ];
 
@@ -61,7 +60,7 @@ const GETTING_STARTED_STEPS = [
   },
 ];
 
-function detectPlatform(): string {
+function detectPlatform(): 'windows' | 'macos' {
   const ua = navigator.userAgent.toLowerCase();
   const platform =
     typeof navigator.platform === 'string'
@@ -69,22 +68,14 @@ function detectPlatform(): string {
       : '';
 
   if (platform.includes('win') || ua.includes('windows')) {
-    return 'windows-amd64';
+    return 'windows';
   }
-  if (platform.includes('mac') || ua.includes('mac')) {
-    // Detect Apple Silicon via userAgentData or processor hint
-    const isAppleSilicon =
-      (navigator as Navigator & { userAgentData?: { platform?: string } })
-        .userAgentData?.platform === 'macOS' &&
-      !ua.includes('intel');
-    return isAppleSilicon ? 'darwin-arm64' : 'darwin-amd64';
-  }
-  // Default to macOS arm64 as a reasonable fallback
-  return 'darwin-arm64';
+  // Default to macOS (covers Mac + unknown)
+  return 'macos';
 }
 
 function buildDownloadUrl(option: DownloadOption): string {
-  return `${RELEASES_BASE}/mtga-companion-daemon-${option.platform}.${option.ext}`;
+  return `${RELEASES_BASE}/${option.artifact}.${option.ext}`;
 }
 
 /** Skeleton placeholder shown while the PostHog feature flag loads. */
@@ -151,16 +142,16 @@ const DaemonDownload = () => {
             const href = buildDownloadUrl(option);
             return (
               <a
-                key={option.platform}
+                key={option.artifact}
                 href={href}
                 className={`daemon-download-button ${isDetected ? 'daemon-download-button--primary' : 'daemon-download-button--secondary'}`}
-                data-testid={`download-link-${option.platform}`}
+                data-testid={`download-link-${option.artifact}`}
                 download
                 onClick={() => {
                   trackEvent({
                     name: 'funnel_daemon_download_started',
                     properties: {
-                      os: option.platform,
+                      os: option.artifact,
                       download_source: 'download_page',
                     },
                   });

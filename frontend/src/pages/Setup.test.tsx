@@ -83,10 +83,17 @@ describe('Setup — page structure', () => {
     expect(link).toHaveAttribute('href', '/download');
   });
 
-  it('explains why unsigned beta is normal for indie software', () => {
+  it('download page link opens in a new tab', () => {
+    renderSetup();
+    const link = screen.getByTestId('download-page-link');
+    expect(link).toHaveAttribute('target', '_blank');
+    expect(link).toHaveAttribute('rel', 'noopener noreferrer');
+  });
+
+  it('explains the daemon is signed and notarized', () => {
     renderSetup();
     const container = screen.getByTestId('setup-container');
-    expect(container.textContent).toMatch(/indie beta software/i);
+    expect(container.textContent).toMatch(/signed and notarized/i);
   });
 });
 
@@ -106,42 +113,34 @@ describe('Setup — macOS platform', () => {
     vi.clearAllMocks();
   });
 
-  it('shows Gatekeeper warning on macOS', () => {
+  it('shows Gatekeeper info section on macOS', () => {
     renderSetup();
     expect(screen.getByTestId('gatekeeper-warning')).toBeInTheDocument();
   });
 
-  it('Gatekeeper warning contains right-click instruction', () => {
+  it('Gatekeeper section states no bypass is needed', () => {
     renderSetup();
     const section = screen.getByTestId('gatekeeper-warning');
-    expect(section).toHaveTextContent(/right-click/i);
+    expect(section).toHaveTextContent(/no security bypass needed/i);
   });
 
-  it('Gatekeeper warning contains Open Anyway instruction', () => {
+  it('Gatekeeper section mentions Apple notarization', () => {
     renderSetup();
     const section = screen.getByTestId('gatekeeper-warning');
-    expect(section).toHaveTextContent(/open anyway/i);
+    expect(section).toHaveTextContent(/notarized by Apple/i);
   });
 
-  it('SmartScreen warning is in a collapsed details element on macOS', () => {
+  it('SmartScreen info section is in a collapsed details element on macOS', () => {
     renderSetup();
     expect(screen.getByTestId('smartscreen-details')).toBeInTheDocument();
   });
 
-  it('does not render top-level SmartScreen warning on macOS', () => {
+  it('does not render top-level SmartScreen section on macOS', () => {
     renderSetup();
-    // The top-level testid should not be present (only inside details)
     const topLevel = screen
       .getAllByTestId('smartscreen-warning')
       .filter((el) => !el.closest('details'));
     expect(topLevel).toHaveLength(0);
-  });
-
-  it('renders a Gatekeeper screenshot image in the Gatekeeper warning section', () => {
-    renderSetup();
-    const img = screen.getByTestId('gatekeeper-screenshot');
-    expect(img).toBeInTheDocument();
-    expect(img).toHaveAttribute('alt', 'macOS Gatekeeper security warning dialog');
   });
 });
 
@@ -164,34 +163,26 @@ describe('Setup — Windows platform', () => {
     vi.clearAllMocks();
   });
 
-  it('shows SmartScreen warning on Windows', () => {
+  it('shows SmartScreen info section on Windows', () => {
     renderSetup();
-    // At least one direct (non-details) SmartScreen warning
     expect(screen.getByTestId('smartscreen-warning')).toBeInTheDocument();
   });
 
-  it('SmartScreen warning contains More info instruction', () => {
+  it('SmartScreen section states no bypass is needed', () => {
     renderSetup();
     const section = screen.getByTestId('smartscreen-warning');
-    expect(section).toHaveTextContent(/more info/i);
+    expect(section).toHaveTextContent(/no security bypass needed/i);
   });
 
-  it('SmartScreen warning contains Run anyway instruction', () => {
+  it('SmartScreen section mentions Azure Trusted Signing', () => {
     renderSetup();
     const section = screen.getByTestId('smartscreen-warning');
-    expect(section).toHaveTextContent(/run anyway/i);
+    expect(section).toHaveTextContent(/azure trusted signing/i);
   });
 
-  it('Gatekeeper warning is in a collapsed details element on Windows', () => {
+  it('Gatekeeper info section is in a collapsed details element on Windows', () => {
     renderSetup();
     expect(screen.getByTestId('gatekeeper-details')).toBeInTheDocument();
-  });
-
-  it('renders a SmartScreen screenshot image in the SmartScreen warning section', () => {
-    renderSetup();
-    const img = screen.getByTestId('smartscreen-screenshot');
-    expect(img).toBeInTheDocument();
-    expect(img).toHaveAttribute('alt', 'Windows SmartScreen protection dialog');
   });
 });
 

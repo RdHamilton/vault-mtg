@@ -19,8 +19,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { trackEvent, type Platform } from '@/services/analytics';
-import gatekeeperScreenshot from '@/assets/gatekeeper-warning.svg';
-import smartscreenScreenshot from '@/assets/smartscreen-warning.svg';
 import './Setup.css';
 
 function detectPlatform(): Platform {
@@ -60,45 +58,23 @@ async function fetchDaemonHealth(): Promise<DaemonHealthResponse> {
 function GatekeeperWarning() {
   return (
     <div className="setup-warning-section" data-testid="gatekeeper-warning">
-      <div className="setup-warning-icon" aria-hidden="true">
+      <div className="setup-warning-icon setup-warning-icon--success" aria-hidden="true">
         <svg width="24" height="24" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-          <circle cx="12" cy="12" r="10" stroke="#f59e0b" strokeWidth="2" />
-          <path d="M12 8v4m0 4h.01" stroke="#f59e0b" strokeWidth="2" strokeLinecap="round" />
+          <circle cx="12" cy="12" r="10" stroke="#22c55e" strokeWidth="2" />
+          <path d="M8 12l3 3 5-5" stroke="#22c55e" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
         </svg>
       </div>
       <div className="setup-warning-content">
-        <h3 className="setup-warning-title">macOS Gatekeeper Warning</h3>
+        <h3 className="setup-warning-title">macOS — No Security Bypass Needed</h3>
         <p className="setup-warning-body">
-          When you open the VaultMTG daemon for the first time, macOS may show a message
-          like <em>"cannot be opened because it is from an unidentified developer"</em>.
-          This is expected for unsigned beta software — the app is safe.
+          The VaultMTG daemon is notarized by Apple using a Developer ID Application
+          certificate. macOS Gatekeeper will recognize it as trusted software and open
+          it without warnings.
         </p>
-        <p className="setup-warning-body">
-          To allow it, use either of these methods:
-        </p>
-        <ol className="setup-warning-steps">
-          <li>
-            <strong>Right-click method:</strong> Right-click (or Control-click) the app
-            icon and choose <strong>Open</strong>. Click <strong>Open</strong> again in
-            the dialog that appears.
-          </li>
-          <li>
-            <strong>System Settings method:</strong> Open{' '}
-            <strong>System Settings → Privacy &amp; Security</strong>. Scroll down to
-            the Security section and click <strong>Open Anyway</strong> next to the
-            VaultMTG daemon entry.
-          </li>
-        </ol>
         <p className="setup-warning-note">
-          You only need to do this once. After the first approval, macOS will remember
-          your choice and open the daemon normally on every subsequent launch.
+          Simply open the <code>.dmg</code>, drag the daemon to Applications, and
+          launch it. No right-click workarounds required.
         </p>
-        <img
-          src={gatekeeperScreenshot}
-          alt="macOS Gatekeeper security warning dialog"
-          className="setup-warning-screenshot"
-          data-testid="gatekeeper-screenshot"
-        />
       </div>
     </div>
   );
@@ -107,43 +83,25 @@ function GatekeeperWarning() {
 function SmartScreenWarning() {
   return (
     <div className="setup-warning-section" data-testid="smartscreen-warning">
-      <div className="setup-warning-icon" aria-hidden="true">
+      <div className="setup-warning-icon setup-warning-icon--success" aria-hidden="true">
         <svg width="24" height="24" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-          <circle cx="12" cy="12" r="10" stroke="#f59e0b" strokeWidth="2" />
-          <path d="M12 8v4m0 4h.01" stroke="#f59e0b" strokeWidth="2" strokeLinecap="round" />
+          <circle cx="12" cy="12" r="10" stroke="#22c55e" strokeWidth="2" />
+          <path d="M8 12l3 3 5-5" stroke="#22c55e" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
         </svg>
       </div>
       <div className="setup-warning-content">
-        <h3 className="setup-warning-title">Windows SmartScreen Warning</h3>
+        <h3 className="setup-warning-title">Windows — No Security Bypass Needed</h3>
         <p className="setup-warning-body">
-          Windows Defender SmartScreen may show a blue dialog that says{' '}
-          <em>"Windows protected your PC"</em>. This is expected for unsigned beta
-          software from a new publisher — the installer is safe.
+          The VaultMTG daemon installer is signed with Microsoft Azure Trusted Signing.
+          Windows will recognize it as trusted software and install it without SmartScreen
+          warnings.
         </p>
-        <p className="setup-warning-body">
-          To continue with installation:
-        </p>
-        <ol className="setup-warning-steps">
-          <li>
-            Click <strong>More info</strong> in the SmartScreen dialog.
-          </li>
-          <li>
-            Click <strong>Run anyway</strong>.
-          </li>
-          <li>
-            Complete the installer (Next → Next → Finish).
-          </li>
-        </ol>
         <p className="setup-warning-note">
-          You only need to do this once. SmartScreen will not prompt again for the
-          same installer on your machine.
+          Run the <code>.exe</code> installer and follow the wizard (Next &rarr; Next &rarr;
+          Finish). On your very first install, Windows may briefly show a reputation check
+          while SmartScreen learns the new certificate — this is normal and resolves within
+          a few seconds.
         </p>
-        <img
-          src={smartscreenScreenshot}
-          alt="Windows SmartScreen protection dialog"
-          className="setup-warning-screenshot"
-          data-testid="smartscreen-screenshot"
-        />
       </div>
     </div>
   );
@@ -273,6 +231,8 @@ export default function Setup() {
             href="/download"
             className="setup-link"
             data-testid="download-page-link"
+            target="_blank"
+            rel="noopener noreferrer"
           >
             download page
           </a>
@@ -280,12 +240,12 @@ export default function Setup() {
         </p>
       </section>
 
-      {/* Step 2: Platform-specific install warnings */}
+      {/* Step 2: Platform-specific install notes */}
       <section className="setup-section" data-testid="setup-warnings-section">
-        <h2 className="setup-section-title">Step 2 — Bypass the Security Warning</h2>
+        <h2 className="setup-section-title">Step 2 — Install</h2>
         <p className="setup-section-body">
-          Because VaultMTG is indie beta software, your OS may show a security warning
-          on first run. This is normal — follow the instructions below to allow it.
+          The VaultMTG daemon is signed and notarized for both macOS and Windows.
+          No security bypass is required.
         </p>
 
         {/* Always show both sections; highlight the detected platform */}
