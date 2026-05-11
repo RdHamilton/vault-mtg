@@ -11,7 +11,7 @@ require (
 	github.com/go-chi/chi/v5 v5.2.5
 	github.com/go-chi/cors v1.2.2
 	github.com/golang-migrate/migrate/v4 v4.19.1
-	github.com/jackc/pgx/v5 v5.7.5
+	github.com/jackc/pgx/v5 v5.9.2
 	github.com/posthog/posthog-go v1.12.4
 	github.com/stretchr/testify v1.11.1
 	golang.org/x/crypto v0.50.0
