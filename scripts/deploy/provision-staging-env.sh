@@ -55,7 +55,15 @@ write_param ALLOWED_ORIGINS         /mtga-companion/staging/ALLOWED_ORIGINS
 write_param CLERK_PUBLISHABLE_KEY   /mtga-companion/staging/CLERK_PUBLISHABLE_KEY
 write_param CLERK_SECRET_KEY        /mtga-companion/staging/CLERK_SECRET_KEY --with-decryption
 write_param CLERK_FRONTEND_API      /mtga-companion/staging/CLERK_FRONTEND_API
-write_param DATABASE_URL            /mtga-companion/staging/database-url      --with-decryption
+
+# DB_SECRET_ARN causes the BFF to fetch credentials from Secrets Manager at
+# startup, so the env file never holds a password that can go stale after
+# an RDS rotation.  DATABASE_URL provides only the host/port/dbname.
+write_param DB_SECRET_ARN           /mtga-companion/staging/db-secret-arn
+DB_ENDPOINT=$(aws ssm get-parameter --name /mtga-companion/staging/db-endpoint --region "$REGION" --query Parameter.Value --output text)
+DB_NAME=$(aws ssm get-parameter --name /mtga-companion/staging/db-name --region "$REGION" --query Parameter.Value --output text)
+printf 'DATABASE_URL=postgresql://%s:5432/%s?sslmode=require\n' "$DB_ENDPOINT" "$DB_NAME" >> "$ENV_FILE"
+echo "DATABASE_URL provisioned (credentials omitted; resolved via DB_SECRET_ARN at startup)."
 
 # VaultMTG service keys
 write_param RESEND_API_KEY          /vaultmtg/staging/resend-api-key         --with-decryption

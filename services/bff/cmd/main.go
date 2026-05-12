@@ -77,6 +77,21 @@ func main() {
 		log.Fatalf("config: %v", err)
 	}
 
+	// If DB_SECRET_ARN is set, fetch the current RDS credentials from Secrets
+	// Manager and splice them into DATABASE_URL. This ensures the binary always
+	// uses the up-to-date password even after an automatic RDS rotation —
+	// without requiring manual env-file updates between deploys.
+	if secretARN := os.Getenv("DB_SECRET_ARN"); secretARN != "" {
+		secretCtx, secretCancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer secretCancel()
+		resolved, resolveErr := resolveDBURL(secretCtx, fetchCredsFromAWS, secretARN, cfg.DatabaseURL)
+		if resolveErr != nil {
+			log.Fatalf("DB_SECRET_ARN: %v", resolveErr)
+		}
+		cfg.DatabaseURL = resolved
+		log.Printf("DB credentials resolved from Secrets Manager (arn=...%s)", secretARN[len(secretARN)-12:])
+	}
+
 	// Initialise Sentry error monitoring.  The DSN is read from SENTRY_DSN
 	// (sourced from SSM /vaultmtg/prod/sentry-bff-dsn at deploy time).
 	// When empty, Sentry is disabled — all SDK calls become no-ops.

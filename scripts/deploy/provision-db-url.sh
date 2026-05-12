@@ -1,10 +1,11 @@
 #!/bin/sh
 # provision-db-url.sh
-# Fetches RDS credentials from Secrets Manager and writes DATABASE_URL into
+# Writes DB_SECRET_ARN and a credential-free DATABASE_URL into
 # /etc/mtga-companion/env.  Runs ON the EC2 instance via SSM RunShellScript.
 #
-# All inputs are read from SSM Parameter Store so no secrets ever touch the
-# GitHub Actions runner or appear in workflow logs.
+# The BFF binary reads DB_SECRET_ARN at startup and fetches the current
+# credentials from Secrets Manager, so the env file never holds a password
+# that can go stale after an RDS rotation.
 #
 # Required SSM parameters (must exist before the deploy workflow runs):
 #   /mtga-companion/production/db-secret-arn  - ARN of the Secrets Manager secret
@@ -34,22 +35,18 @@ DB_NAME=$(aws ssm get-parameter \
   --query Parameter.Value \
   --output text)
 
-# Fetch the JSON secret from Secrets Manager.
-SECRET=$(aws secretsmanager get-secret-value \
-  --secret-id "$DB_SECRET_ARN" \
-  --region "$REGION" \
-  --query SecretString \
-  --output text)
-
-# Extract username and URL-encode the password so special characters are safe.
-DB_USER=$(printf '%s' "$SECRET" | python3 -c 'import sys,json; print(json.load(sys.stdin)["username"])')
-DB_PASS=$(printf '%s' "$SECRET" | python3 -c 'import sys,json,urllib.parse; print(urllib.parse.quote(json.load(sys.stdin)["password"], safe=""))')
-
-DATABASE_URL="postgres://${DB_USER}:${DB_PASS}@${DB_ENDPOINT}:5432/${DB_NAME}"
+DATABASE_URL="postgresql://${DB_ENDPOINT}:5432/${DB_NAME}?sslmode=require"
 
 mkdir -p /etc/mtga-companion
 
-# Upsert: replace existing line or append if absent.
+# Upsert DB_SECRET_ARN.
+if grep -q '^DB_SECRET_ARN=' "$ENV_FILE" 2>/dev/null; then
+  sed -i "s|^DB_SECRET_ARN=.*|DB_SECRET_ARN=${DB_SECRET_ARN}|" "$ENV_FILE"
+else
+  printf 'DB_SECRET_ARN=%s\n' "$DB_SECRET_ARN" >> "$ENV_FILE"
+fi
+
+# Upsert credential-free DATABASE_URL (credentials resolved at BFF startup).
 if grep -q '^DATABASE_URL=' "$ENV_FILE" 2>/dev/null; then
   sed -i "s|^DATABASE_URL=.*|DATABASE_URL=${DATABASE_URL}|" "$ENV_FILE"
 else
@@ -57,4 +54,4 @@ else
 fi
 
 chmod 600 "$ENV_FILE"
-echo "DATABASE_URL provisioned."
+echo "DB_SECRET_ARN and DATABASE_URL provisioned (credentials resolved at startup)."

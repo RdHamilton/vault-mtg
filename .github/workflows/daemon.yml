@@ -55,6 +55,9 @@ jobs:
         run: |
           git config --global url."https://${GITHUB_TOKEN}@github.com/".insteadOf "https://github.com/"
 
+      - name: Install systray system dependencies
+        run: sudo apt-get update -qq && sudo apt-get install -y libayatana-appindicator3-dev
+
       - name: Download dependencies
         working-directory: services/daemon
         env:

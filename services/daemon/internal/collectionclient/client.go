@@ -33,7 +33,7 @@ type Client struct {
 
 // New returns a Client using the default socket path.
 func New() *Client {
-	return &Client{socketPath: SocketPath, timeout: 60 * time.Second}
+	return &Client{socketPath: SocketPath, timeout: 10 * time.Second}
 }
 
 // IsHelperRunning returns true if the helper socket is present and accepts connections.

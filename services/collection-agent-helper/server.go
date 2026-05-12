@@ -11,8 +11,8 @@ import (
 )
 
 // SocketPath is the Unix domain socket the helper listens on.
-// Owned by root:wheel 0600 so only root can write; the daemon reads via a
-// world-readable path but sends requests — see client-side for conn setup.
+// Permissions are 0666 so the unprivileged daemon process can connect;
+// the helper itself validates every request and runs the scan as root.
 const SocketPath = "/tmp/com.vaultmtg.collection-helper.sock"
 
 // ScanRequest is sent by the daemon to request a collection scan.
@@ -32,8 +32,10 @@ func runServer() error {
 		return fmt.Errorf("remove stale socket: %w", err)
 	}
 
-	// Set restrictive umask so the socket is created 0600; restore afterward.
-	old := syscall.Umask(0o077)
+	// Strip only execute bits so the socket is created 0666 (world r/w).
+	// The unprivileged daemon must be able to connect; the helper validates
+	// every request and performs the privileged scan itself.
+	old := syscall.Umask(0o111)
 	ln, err := net.Listen("unix", SocketPath)
 	syscall.Umask(old)
 	if err != nil {
@@ -41,8 +43,7 @@ func runServer() error {
 	}
 	defer func() { _ = ln.Close() }()
 
-	// Belt-and-suspenders: chmod in case the umask was externally overridden.
-	if err := os.Chmod(SocketPath, 0o600); err != nil {
+	if err := os.Chmod(SocketPath, 0o666); err != nil {
 		return fmt.Errorf("chmod socket: %w", err)
 	}
 
@@ -60,7 +61,7 @@ func runServer() error {
 func handleConn(conn net.Conn) {
 	defer func() { _ = conn.Close() }()
 
-	_ = conn.SetDeadline(time.Now().Add(30 * time.Second))
+	_ = conn.SetDeadline(time.Now().Add(10 * time.Second))
 
 	var req ScanRequest
 	if err := json.NewDecoder(conn).Decode(&req); err != nil {

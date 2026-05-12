@@ -229,7 +229,7 @@ jobs:
         GONOSUMDB: github.com/RdHamilton/MTGA-Companion
         GOPRIVATE: github.com/RdHamilton/MTGA-Companion
       run: |
-        for mod in services/bff services/daemon services/sync services/contract pkg/logparse; do
+        for mod in services/bff services/sync services/contract pkg/logparse; do
           echo "=== go vet $mod ==="
           (cd "$mod" && go vet ./...)
         done
@@ -247,7 +247,7 @@ jobs:
 
     - name: gofumpt check — all modules
       run: |
-        OUT=$(gofumpt -l services/bff services/daemon services/sync services/contract pkg/logparse)
+        OUT=$(gofumpt -l services/bff services/sync services/contract pkg/logparse)
         if [ -n "$OUT" ]; then
           echo "gofumpt formatting violations:"
           echo "$OUT"
@@ -372,7 +372,7 @@ jobs:
         GOPRIVATE: github.com/RdHamilton/MTGA-Companion
       run: |
         cd services/bff
-        go build -o ../../bin/mtga-bff ./cmd/main.go
+        go build -o ../../bin/mtga-bff ./cmd/
 
     - name: Upload BFF binary artifact
       uses: actions/upload-artifact@v4

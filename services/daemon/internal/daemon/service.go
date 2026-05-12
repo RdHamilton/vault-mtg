@@ -37,6 +37,11 @@ var updateCheckInterval = 24 * time.Hour
 // It is a variable so tests can shorten it.
 var heartbeatInterval = 30 * time.Second
 
+// helperCheckInterval is how often the run loop probes the collection helper
+// socket to keep the tray state in sync (e.g. if the user installs or stops
+// the helper outside of the Grant Access flow).
+var helperCheckInterval = 30 * time.Second
+
 // Service is the top-level daemon service.
 type Service struct {
 	cfg        *config.Config
@@ -301,6 +306,12 @@ func (s *Service) Run(ctx context.Context) error {
 	heartbeatTicker := time.NewTicker(heartbeatInterval)
 	defer heartbeatTicker.Stop()
 
+	// Periodic helper status check: probe the collection helper socket so the
+	// tray reflects current state if the helper is installed or stopped outside
+	// of the Grant Access flow.
+	helperCheckTicker := time.NewTicker(helperCheckInterval)
+	defer helperCheckTicker.Stop()
+
 	for {
 		select {
 		case <-ctx.Done():
@@ -340,6 +351,9 @@ func (s *Service) Run(ctx context.Context) error {
 				log.Printf("[daemon] warn: heartbeat dispatch: %v", sendErr)
 			}
 			cancel()
+
+		case <-helperCheckTicker.C:
+			go s.checkHelperOnStartup(ctx)
 
 		case <-s.trayHooks.SyncNow:
 			go func() {
