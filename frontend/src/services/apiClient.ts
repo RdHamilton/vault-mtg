@@ -72,11 +72,48 @@ export function setApiKey(key: string): void {
   }
 }
 
+// ---------------------------------------------------------------------------
+// Clerk token provider
+// ---------------------------------------------------------------------------
+//
+// The BFF mounts user-facing routes (matches, decks, cards, drafts, history)
+// under RequireClerkAuth — those routes only accept a Clerk session JWT, never
+// the legacy BFF API key. The SPA cannot import Clerk hooks from this module
+// (no React context here), so we accept a token provider callback registered
+// at app boot from a component that does have access to useAuth().getToken.
+//
+// When a provider is registered and returns a non-empty token, that token is
+// sent as the Bearer credential. Otherwise we fall back to the legacy API key
+// for backwards compatibility during the migration.
+
+type ClerkTokenProvider = () => Promise<string | null>;
+
+let clerkTokenProvider: ClerkTokenProvider | null = null;
+
 /**
- * Build the Authorization header object when an API key is stored.
- * Returns an empty object when no key is present so callers can spread safely.
+ * Register a callback that returns the current Clerk session JWT.
+ * Called once at app boot from a component that has access to useAuth().
+ * Pass `null` to clear the provider (e.g. on sign-out).
  */
-function authHeaders(): Record<string, string> {
+export function setClerkTokenProvider(provider: ClerkTokenProvider | null): void {
+  clerkTokenProvider = provider;
+}
+
+/**
+ * Build the Authorization header. Prefers a Clerk session JWT when a token
+ * provider is registered; falls back to the legacy API key otherwise.
+ */
+async function authHeaders(): Promise<Record<string, string>> {
+  if (clerkTokenProvider) {
+    try {
+      const token = await clerkTokenProvider();
+      if (token) {
+        return { Authorization: `Bearer ${token}` };
+      }
+    } catch {
+      // Provider failure → fall through to legacy key.
+    }
+  }
   const key = getApiKey();
   return key ? { Authorization: `Bearer ${key}` } : {};
 }
@@ -127,11 +164,12 @@ async function request<T>(
   const timeoutId = setTimeout(() => controller.abort(), config.timeout);
 
   try {
+    const headers = await authHeaders();
     const response = await fetch(url, {
       method,
       headers: {
         'Content-Type': 'application/json',
-        ...authHeaders(),
+        ...headers,
         ...options.headers,
       },
       body: body ? JSON.stringify(body) : undefined,
@@ -237,11 +275,12 @@ export async function getRaw<T>(path: string, options: RequestInit = {}): Promis
   const timeoutId = setTimeout(() => controller.abort(), config.timeout);
 
   try {
+    const headers = await authHeaders();
     const response = await fetch(url, {
       method: 'GET',
       headers: {
         'Content-Type': 'application/json',
-        ...authHeaders(),
+        ...headers,
         ...options.headers,
       },
       signal: controller.signal,
@@ -287,10 +326,14 @@ export async function getRaw<T>(path: string, options: RequestInit = {}): Promis
 
 /**
  * Check if the API server is reachable.
+ *
+ * Hits /healthz (not /health) because prod + staging nginx both proxy /healthz
+ * to the BFF with CORS headers attached, whereas /health has historically only
+ * been wired on the prod vhost.
  */
 export async function healthCheck(): Promise<boolean> {
   try {
-    const response = await fetch(`${config.baseUrl.replace('/api/v1', '')}/health`, {
+    const response = await fetch(`${config.baseUrl.replace('/api/v1', '')}/healthz`, {
       method: 'GET',
     });
     return response.ok;

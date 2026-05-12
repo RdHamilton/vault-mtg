@@ -11,6 +11,7 @@ import {
   cloudClient,
   getApiKey,
   setApiKey,
+  setClerkTokenProvider,
   createSSEConnection,
 } from '../apiClient';
 
@@ -33,6 +34,7 @@ describe('apiClient', () => {
   afterEach(() => {
     vi.clearAllMocks();
     localStorage.clear();
+    setClerkTokenProvider(null);
   });
 
   describe('configureApi', () => {
@@ -143,6 +145,95 @@ describe('apiClient', () => {
       const [, init] = mockFetch.mock.calls[0] as [string, RequestInit];
       const headers = init.headers as Record<string, string>;
       expect(headers['Authorization']).toBe('Bearer del-key');
+    });
+  });
+
+  describe('Clerk token provider', () => {
+    it('prefers a Clerk session JWT over the legacy API key', async () => {
+      setApiKey('legacy-key');
+      setClerkTokenProvider(async () => 'clerk-jwt-xyz');
+
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        json: async () => ({ data: {} }),
+      });
+
+      await get('/test');
+
+      const [, init] = mockFetch.mock.calls[0] as [string, RequestInit];
+      const headers = init.headers as Record<string, string>;
+      expect(headers['Authorization']).toBe('Bearer clerk-jwt-xyz');
+    });
+
+    it('falls back to the legacy API key when provider returns null', async () => {
+      setApiKey('legacy-key');
+      setClerkTokenProvider(async () => null);
+
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        json: async () => ({ data: {} }),
+      });
+
+      await get('/test');
+
+      const [, init] = mockFetch.mock.calls[0] as [string, RequestInit];
+      const headers = init.headers as Record<string, string>;
+      expect(headers['Authorization']).toBe('Bearer legacy-key');
+    });
+
+    it('falls back to the legacy API key when provider throws', async () => {
+      setApiKey('legacy-key');
+      setClerkTokenProvider(async () => {
+        throw new Error('clerk-error');
+      });
+
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        json: async () => ({ data: {} }),
+      });
+
+      await get('/test');
+
+      const [, init] = mockFetch.mock.calls[0] as [string, RequestInit];
+      const headers = init.headers as Record<string, string>;
+      expect(headers['Authorization']).toBe('Bearer legacy-key');
+    });
+
+    it('sends no Authorization header when provider returns null and no legacy key is stored', async () => {
+      setClerkTokenProvider(async () => null);
+
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        json: async () => ({ data: {} }),
+      });
+
+      await get('/test');
+
+      const [, init] = mockFetch.mock.calls[0] as [string, RequestInit];
+      const headers = init.headers as Record<string, string>;
+      expect(headers['Authorization']).toBeUndefined();
+    });
+
+    it('reverts to legacy-key behavior after setClerkTokenProvider(null)', async () => {
+      setApiKey('legacy-key');
+      setClerkTokenProvider(async () => 'clerk-jwt');
+      setClerkTokenProvider(null);
+
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        json: async () => ({ data: {} }),
+      });
+
+      await get('/test');
+
+      const [, init] = mockFetch.mock.calls[0] as [string, RequestInit];
+      const headers = init.headers as Record<string, string>;
+      expect(headers['Authorization']).toBe('Bearer legacy-key');
     });
   });
 
@@ -302,6 +393,20 @@ describe('apiClient', () => {
 
       const result = await healthCheck();
       expect(result).toBe(true);
+    });
+
+    it('hits /healthz with the /api/v1 prefix stripped', async () => {
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+      });
+
+      await healthCheck();
+
+      expect(mockFetch).toHaveBeenCalledWith(
+        'http://localhost:8080/healthz',
+        expect.objectContaining({ method: 'GET' })
+      );
     });
 
     it('should return false when server is unreachable', async () => {

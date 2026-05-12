@@ -1,6 +1,6 @@
 import { BrowserRouter as Router, Routes, Route, Navigate, useNavigate } from 'react-router-dom';
 import { useEffect, useState } from 'react';
-import { useUser } from '@clerk/react';
+import { useAuth, useUser } from '@clerk/react';
 import * as Sentry from '@sentry/react';
 import Layout from './components/Layout';
 import ToastContainer from './components/ToastContainer';
@@ -27,6 +27,7 @@ import Setup from './pages/Setup';
 import KeyboardShortcutsHandler from './components/KeyboardShortcutsHandler';
 import ProtectedRoute from './components/ProtectedRoute';
 import { EventsOn } from './services/adapter';
+import { setClerkTokenProvider } from './services/apiClient';
 import { updateReplayState } from './utils/replayState';
 import { gui } from '@/types/models';
 import './App.css';
@@ -35,6 +36,21 @@ import './App.css';
 // eslint-disable-next-line react-refresh/only-export-components
 export { getReplayState, subscribeToReplayState } from './utils/replayState';
 export type { ReplayState } from './utils/replayState';
+
+// Registers a Clerk token provider with apiClient so every BFF call sends the
+// current Clerk session JWT as Bearer instead of the legacy daemon API key.
+// Without this, every Clerk-protected BFF route (matches, decks, cards, etc.)
+// returns 401. Re-runs whenever Clerk swaps the getToken identity.
+function ClerkApiClientSync() {
+  const { getToken } = useAuth();
+
+  useEffect(() => {
+    setClerkTokenProvider(() => getToken());
+    return () => setClerkTokenProvider(null);
+  }, [getToken]);
+
+  return null;
+}
 
 // Syncs the authenticated Clerk user into Sentry context.
 // Sets user id when signed in; clears it on sign-out.
@@ -147,6 +163,7 @@ function ReplayEventHandler() {
 function App() {
   return (
     <Router>
+      <ClerkApiClientSync />
       <SentryUserSync />
       <ReplayEventHandler />
       <KeyboardShortcutsHandler />
