@@ -2,13 +2,18 @@
  * SSE client for real-time event handling.
  *
  * Uses fetch-based SSE (not EventSource) so we can send the
- * Authorization: Bearer <api-key> header that the BFF requires.
+ * Authorization: Bearer <jwt> header that the BFF requires.  The fetch
+ * transport means we don't need the ?token= query-param fallback that the
+ * EventSource path in useDraftEventStream uses (issue #1904).
+ *
+ * Auth: pulls the Clerk session JWT from apiClient.getClerkToken() on every
+ * (re)connect so rotated tokens get picked up by the existing backoff loop.
  *
  * The public API (EventsOn, EventsOff, EventsEmit, connect, disconnect)
  * is identical to the old WebSocket client so every call site works unchanged.
  */
 
-import { getApiKey } from './apiClient';
+import { getClerkToken } from './apiClient';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -131,20 +136,24 @@ export function connect(): Promise<void> {
     isIntentionalClose = false;
     abortController = new AbortController();
 
-    const headers: Record<string, string> = {
-      Accept: 'text/event-stream',
-    };
+    // Resolve the Clerk JWT before opening the stream so the BFF's
+    // RequireClerkAuthForSSE middleware can verify it.  When no provider is
+    // registered (e.g. tests, or Clerk not yet hydrated) we send no
+    // Authorization header and the BFF replies 401, which the existing
+    // reconnect path will retry once Clerk is ready.
+    getClerkToken().then((token) => {
+      const headers: Record<string, string> = {
+        Accept: 'text/event-stream',
+      };
+      if (token) {
+        headers['Authorization'] = `Bearer ${token}`;
+      }
 
-    const apiKey = getApiKey();
-    if (apiKey) {
-      headers['Authorization'] = `Bearer ${apiKey}`;
-    }
-
-    fetch(config.url, {
-      method: 'GET',
-      headers,
-      signal: abortController.signal,
-    })
+      fetch(config.url, {
+        method: 'GET',
+        headers,
+        signal: abortController!.signal,
+      })
       .then((response) => {
         if (!response.ok || !response.body) {
           throw new Error(`[SSE] Bad response: ${response.status}`);
@@ -230,6 +239,7 @@ export function connect(): Promise<void> {
           scheduleReconnect();
         }
       });
+    });
   });
 }
 

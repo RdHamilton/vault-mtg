@@ -3,10 +3,14 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 // Unmock so we test the real SSE implementation
 vi.unmock('@/services/websocketClient');
 
-// Mock apiClient so getApiKey() returns a known value without localStorage
+// Mock apiClient — websocketClient now reads the Clerk JWT via getClerkToken()
+// (the legacy getApiKey path was retired with issue #1904).  Default returns
+// a stable test JWT so all tests get an Authorization header by default;
+// individual tests can override via `vi.mocked(getClerkToken).mockResolvedValueOnce(...)`.
 vi.mock('@/services/apiClient', () => ({
   getApiKey: vi.fn(() => 'test-api-key'),
   setApiKey: vi.fn(),
+  getClerkToken: vi.fn(() => Promise.resolve('test-clerk-jwt')),
   configureApi: vi.fn(),
   getApiConfig: vi.fn(() => ({ baseUrl: 'http://localhost:8080/api/v1' })),
   healthCheck: vi.fn(() => Promise.resolve(true)),
@@ -272,7 +276,7 @@ describe('SSE client (websocketClient)', () => {
       vi.unstubAllGlobals();
     });
 
-    it('sends Authorization: Bearer header when API key is set', async () => {
+    it('sends Authorization: Bearer header with the Clerk JWT', async () => {
       const fetchMock = vi.fn().mockResolvedValue({
         ok: true,
         body: {
@@ -289,10 +293,33 @@ describe('SSE client (websocketClient)', () => {
         expect.any(String),
         expect.objectContaining({
           headers: expect.objectContaining({
-            Authorization: 'Bearer test-api-key',
+            Authorization: 'Bearer test-clerk-jwt',
           }),
         }),
       );
+
+      vi.unstubAllGlobals();
+    });
+
+    it('omits Authorization header when getClerkToken returns null', async () => {
+      const { getClerkToken } = await import('@/services/apiClient');
+      vi.mocked(getClerkToken).mockResolvedValueOnce(null);
+
+      const fetchMock = vi.fn().mockResolvedValue({
+        ok: true,
+        body: {
+          getReader: () => ({
+            read: vi.fn().mockResolvedValue({ done: true, value: undefined }),
+          }),
+        },
+      });
+      vi.stubGlobal('fetch', fetchMock);
+
+      await connect();
+
+      const callArgs = fetchMock.mock.calls[0];
+      const headers = callArgs[1].headers as Record<string, string>;
+      expect(headers.Authorization).toBeUndefined();
 
       vi.unstubAllGlobals();
     });

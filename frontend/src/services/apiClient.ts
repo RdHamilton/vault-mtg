@@ -100,6 +100,20 @@ export function setClerkTokenProvider(provider: ClerkTokenProvider | null): void
 }
 
 /**
+ * Return the current Clerk session JWT, or null when no provider is registered
+ * or the provider returns null/throws.  Used by non-React modules
+ * (e.g. websocketClient) that can't call useAuth().getToken directly.
+ */
+export async function getClerkToken(): Promise<string | null> {
+  if (!clerkTokenProvider) return null;
+  try {
+    return await clerkTokenProvider();
+  } catch {
+    return null;
+  }
+}
+
+/**
  * Build the Authorization header. Prefers a Clerk session JWT when a token
  * provider is registered; falls back to the legacy API key otherwise.
  */
