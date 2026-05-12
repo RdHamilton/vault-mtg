@@ -8,6 +8,25 @@
 **RICE score**: [if applicable]
 -->
 
+## 2026-05-11 — Wave 9 pre-beta hardening: first two tickets filed
+**Triggered by**: User request — file daemon uninstall + daemon bug reporting tickets ahead of Wave 9 kickoff
+**Decision**: Created Wave 9 milestone (#72 — "Wave 9 — Pre-Beta Hardening") and new labels (`wave-9`, `pre-beta`, `observability`). Filed two tickets pre-kickoff:
+  - #1831 — bundled daemon uninstall.sh for macOS .pkg + Windows NSIS verification (infrastructure-owned)
+  - #1832 — Sentry crash capture in Go daemon + Copy Diagnostics button in SPA settings (backend + frontend co-owned)
+Both decisions are locked: uninstall is script-only (no daemon subcommand, no SPA button); bug reporting is Sentry + clipboard JSON only (no in-app feedback form — Discord/email remains channel). Wave 9 kickoff doc + board placement deferred — tickets are tagged `wave-9` and will roll into the kickoff doc when it lands.
+**Output**:
+  - GitHub issues #1831, #1832 on milestone #72
+  - docs/product/milestones/wave-9/project-manager-instructions.md (canonical spec for future kickoff doc)
+  - New labels: wave-9, pre-beta, observability
+**RICE score**: N/A — pre-beta operational hardening, sequenced by closed beta gate (2026-08-18), not RICE
+
+## 2026-05-10 — v0.3.2 ticket list finalized after Ray's 6 decisions
+**Triggered by**: User request — Ray resolved all 6 blocking decisions for the rename milestone
+**Decision**: Updated ticket-list.md to reflect final scope: 34 tickets (was 31), spanning 8 waves (Wave 0, 0.5, 1, 2, 3, 4, 5, 6). Key changes: (1) Repo rename moved out of Wave 6 into a new Wave 0.5 sequenced before all downstream waves so docs/code/CI reference the canonical new URL from the start. (2) Companion repo tickets added: V32-W3-6 for `mtga-companion-infra` and V32-W5-4 for `mtga-companion-web`. (3) DB rename ACs trimmed — no maintenance window per Ray (no users yet). (4) 17lands ticket V32-W1-6 description clarified — rename only, no outreach. (5) rhamiltoneng CFN tag rename to `vaultmtg` made explicit in V32-W3-5 (no portfolio-specific alternative). (6) New ticket V32-W5-5 for PostHog event rename `mtga_companion.*` → `vaultmtg.*` with no continuity preservation. Wave 6 is now 3 tickets (DB rename, GONOSUMDB workflow update, final sweep) — repo rename gone from there.
+**Output**: `docs/product/milestones/v0.3.2/ticket-list.md` (updated, 34 tickets), `docs/product/milestones/v0.3.2/project-manager-instructions.md` (updated handoff brief with the 6 decisions baked in)
+**RICE score**: N/A — milestone scoping
+**Handoff status**: PM Najah cannot dispatch the project-manager agent directly (no Agent/Task tool in this session's function list). Handoff brief at `docs/product/milestones/v0.3.2/project-manager-instructions.md` is ready — Ray (or main session) needs to invoke project-manager pointing to that brief.
+
 ## 2026-05-10 — v0.3.2 milestone setup (MTGA-Companion → VaultMTG rename)
 **Triggered by**: User request — orchestrate full v0.3.2 milestone (project, tickets, arch review, PRD) from architect's rename audit + Ray's 4 decisions (VaultMTG casing, repo rename yes, DB rename yes, archive rewrite).
 **Decision**: Created GitHub Project #34 ("v0.3.2 — mtga-companion rename", `PVT_kwHOABsZ684BXSA8`) and milestone #71 (v0.3.2). Synthesized 31 tickets across 6 waves from the 1,134-match audit. ADR-021 gates all work. Wave 1 (8 docs/strings) and Wave 2 (5 code) parallel-safe; Wave 3 (5 SSM/EC2) and Wave 4 (5 daemon — highest user risk) parallel-safe; Wave 5 (3 S3/Vercel) → Wave 6 (4 repo+DB+CI). Wrote arch-review.md flagging 7 risks: highest are (1) two daemons running simultaneously after macOS migration bug, (2) SSM cutover ordering, (3) Go module path mismatch with not-yet-renamed repo (recommended moving repo rename to Wave 0.5). PRD documents 6 user stories, 10 risks/mitigations, 3-week wall-clock estimate fitting before 2026-08-18 closed beta. Did NOT create GitHub issues directly (per rule #13) — handoff to project-manager prepared.

@@ -8,6 +8,17 @@
 **Summary**: One sentence summary of what was done and why.
 -->
 
+## 2026-05-11 — Bug fix: daemon download page (no issue)
+**PR**: #1810
+**Files changed**:
+- `frontend/src/components/DaemonDownload.tsx` — updated artifact names to match actual GoReleaser output (vaultmtg-daemon-* prefix, darwin-universal replaces arm64/amd64 split); collapsed to 2 download options
+- `frontend/src/components/DaemonDownload.test.tsx` — updated assertions for new artifact names and 2-option list
+- `frontend/src/pages/Setup.tsx` — added target="_blank" rel="noopener noreferrer" to download page link; replaced Gatekeeper bypass steps with Apple notarization messaging; removed unused SVG imports
+- `frontend/src/pages/Setup.test.tsx` — updated assertions for new-tab link and signed-software content
+- `frontend/src/components/OnboardingModal.tsx` — Step 2 macOS/Windows install instructions updated to reflect signed software (no bypass needed)
+- `frontend/src/components/OnboardingModal.test.tsx` — updated macOS/Windows install text assertions
+**Summary**: Fixed three staging bugs: wrong download artifact names causing 404s, download page link opening in same tab, and Gatekeeper/SmartScreen bypass instructions that are no longer correct now that both macOS and Windows installers are signed.
+
 ## 2026-05-10 — Issues #1697, #1698, #1699, #1700: Wave 5 — daemon empty states + onboarding analytics
 **PR**: #1723
 **Files changed**:

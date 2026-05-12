@@ -44,6 +44,7 @@ Icon.png
 # Claude Code agent worktrees (temporary workspaces, never committed)
 .claude/worktrees/
 .claude/settings.local.json
+.claude/scheduled_tasks.lock
 
 # Root-level node_modules (tooling deps not tied to frontend/)
 node_modules/

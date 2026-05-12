@@ -1,8 +1,0 @@
-target: product-manager
----
-## 2026-05-10 — v0.3.2 ticket list finalized after Ray's 6 decisions
-**Triggered by**: User request — Ray resolved all 6 blocking decisions for the rename milestone
-**Decision**: Updated ticket-list.md to reflect final scope: 34 tickets (was 31), spanning 8 waves (Wave 0, 0.5, 1, 2, 3, 4, 5, 6). Key changes: (1) Repo rename moved out of Wave 6 into a new Wave 0.5 sequenced before all downstream waves so docs/code/CI reference the canonical new URL from the start. (2) Companion repo tickets added: V32-W3-6 for `mtga-companion-infra` and V32-W5-4 for `mtga-companion-web`. (3) DB rename ACs trimmed — no maintenance window per Ray (no users yet). (4) 17lands ticket V32-W1-6 description clarified — rename only, no outreach. (5) rhamiltoneng CFN tag rename to `vaultmtg` made explicit in V32-W3-5 (no portfolio-specific alternative). (6) New ticket V32-W5-5 for PostHog event rename `mtga_companion.*` → `vaultmtg.*` with no continuity preservation. Wave 6 is now 3 tickets (DB rename, GONOSUMDB workflow update, final sweep) — repo rename gone from there.
-**Output**: `docs/product/milestones/v0.3.2/ticket-list.md` (updated, 34 tickets), `docs/product/milestones/v0.3.2/project-manager-instructions.md` (updated handoff brief with the 6 decisions baked in)
-**RICE score**: N/A — milestone scoping
-**Handoff status**: PM Najah cannot dispatch the project-manager agent directly (no Agent/Task tool in this session's function list). Handoff brief at `docs/product/milestones/v0.3.2/project-manager-instructions.md` is ready — Ray (or main session) needs to invoke project-manager pointing to that brief.
