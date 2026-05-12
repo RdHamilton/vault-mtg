@@ -431,17 +431,7 @@ func TestDraftsFeedback_StubsAreNoOp(t *testing.T) {
 	}
 }
 
-// ─── STUBs ─────────────────────────────────────────────────────────────────
-
-func TestDraftsGradePick_StubReturnsShape(t *testing.T) {
-	h := handlers.NewDraftsHandler(&stubDraftsReader{}, &draftsAccountLookup{accountID: 7, found: true})
-	req := authedDraftsRequest(t, http.MethodPost, "/api/v1/drafts/grade-pick", []byte(`{}`), 168)
-	rr := httptest.NewRecorder()
-	h.GradePick(rr, req)
-	if rr.Code != http.StatusOK {
-		t.Fatalf("status: %d", rr.Code)
-	}
-}
+// ─── Auth ──────────────────────────────────────────────────────────────────
 
 func TestDraftsAuth_Unauthorized(t *testing.T) {
 	h := handlers.NewDraftsHandler(&stubDraftsReader{}, &draftsAccountLookup{})

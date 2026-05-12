@@ -704,10 +704,11 @@ func BuildRouter(cfg *config.Config, deps RouterDeps) http.Handler {
 			r.With(auth).Get("/api/v1/drafts/community-comparison", d.AllCommunityComparisons)
 			r.With(auth).Post("/api/v1/drafts/trends", d.Trends)
 			r.With(auth).Get("/api/v1/drafts/learning-curve/{setCode}", d.LearningCurve)
-			// STUBs (no session id)
-			r.With(auth).Post("/api/v1/drafts/grade-pick", d.GradePick)
+			// STUBs (no session id). grade-pick + win-probability moved to
+			// the daemon's localapi in PR #17b (live-state only the
+			// daemon can serve); the SPA already targets daemonClient
+			// for both since PR #1886.
 			r.With(auth).Post("/api/v1/drafts/insights", d.Insights)
-			r.With(auth).Post("/api/v1/drafts/win-probability", d.WinProbability)
 			r.With(auth).Post("/api/v1/drafts/recalculate-set-grades", d.RecalculateSetGrades)
 			// Per-session: literal sub-paths first
 			r.With(auth).Get("/api/v1/drafts/{sessionId}/picks", d.Picks)
@@ -716,7 +717,8 @@ func BuildRouter(cfg *config.Config, deps RouterDeps) http.Handler {
 			r.With(auth).Get("/api/v1/drafts/{sessionId}/colors", d.Colors)
 			r.With(auth).Get("/api/v1/drafts/{sessionId}/analysis", d.DraftGrade)
 			r.With(auth).Post("/api/v1/drafts/{sessionId}/analyze-picks", d.AnalyzeSessionPickQuality)
-			r.With(auth).Get("/api/v1/drafts/{sessionId}/current-pack", d.CurrentPackWithRecommendation)
+			// current-pack moved to the daemon's localapi in PR #17b —
+			// the SPA already calls daemonClient for it since PR #1886.
 			r.With(auth).Get("/api/v1/drafts/{sessionId}/deck-metrics", d.DeckMetrics)
 			r.With(auth).Post("/api/v1/drafts/{sessionId}/calculate-prediction", d.CalculatePrediction)
 			r.With(auth).Post("/api/v1/drafts/{sessionId}/calculate-grade", d.CalculateGrade)

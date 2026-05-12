@@ -683,17 +683,6 @@ func (h *DraftsHandler) FeedbackOutcome(w http.ResponseWriter, r *http.Request) 
 
 // ─── handlers — STUBs (ML / grading pipeline) ──────────────────────────────
 
-// GradePick handles POST /api/v1/drafts/grade-pick. STUB.
-func (h *DraftsHandler) GradePick(w http.ResponseWriter, r *http.Request) {
-	if !h.requireAuth(w, r) {
-		return
-	}
-	writeMatchesJSON(w, map[string]any{
-		"grade": "C", "rank": 0, "pack_best_gihwr": 0.0, "picked_card_gihwr": 0.0,
-		"alternatives": []any{},
-	})
-}
-
 // Insights handles POST /api/v1/drafts/insights. STUB returns empty
 // FormatInsights shape (snake_case per insights.FormatInsights).
 func (h *DraftsHandler) Insights(w http.ResponseWriter, r *http.Request) {
@@ -711,14 +700,6 @@ func (h *DraftsHandler) Insights(w http.ResponseWriter, r *http.Request) {
 		"top_removal": []any{}, "top_creatures": []any{}, "top_commons": []any{},
 		"format_speed": map[string]any{},
 	})
-}
-
-// WinProbability handles POST /api/v1/drafts/win-probability. STUB.
-func (h *DraftsHandler) WinProbability(w http.ResponseWriter, r *http.Request) {
-	if !h.requireAuth(w, r) {
-		return
-	}
-	writeMatchesJSON(w, map[string]any{"probability": 0.0})
 }
 
 // CalculatePrediction handles POST /api/v1/drafts/{sessionId}/calculate-prediction. STUB.
@@ -755,16 +736,6 @@ func (h *DraftsHandler) AnalyzeSessionPickQuality(w http.ResponseWriter, r *http
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
-}
-
-// CurrentPackWithRecommendation handles GET /api/v1/drafts/{sessionId}/current-pack. STUB.
-func (h *DraftsHandler) CurrentPackWithRecommendation(w http.ResponseWriter, r *http.Request) {
-	if !h.requireAuth(w, r) {
-		return
-	}
-	writeMatchesJSON(w, map[string]any{
-		"pack": []any{}, "recommendation": nil, "session_id": chi.URLParam(r, "sessionId"),
-	})
 }
 
 // RecalculateSetGrades handles POST /api/v1/drafts/recalculate-set-grades. STUB.
