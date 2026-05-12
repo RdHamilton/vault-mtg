@@ -92,8 +92,8 @@ tests + lint/format gates.
 |10 | drafts/* — full module incl. `/decks/*` and `/feedback/*` strays (~38 endpoints; sessions + 17lands + community + trends real, grading/recs stubs) | 38 | ✅ **Merged** 2026-05-11 | PR #1882 |
 |11 | mlSuggestions/* (11 endpoints — 3 alias to notes/, 8 net-new; process-history + play-patterns/update stubs) | 11 | ✅ **Merged** 2026-05-12 | PR #1883 |
 |12 | settings/* — cloud-backed key/value (4 endpoints + new user_settings JSONB table) | 4 | ✅ **Merged** 2026-05-12 | PR #1884 |
-|13 | system.ts cleanup — delete 6 dead wrappers + orphaned LLM/Clear UI (~1500 LOC) | -6 | ⏳ **In progress** | `feat/phase2-pr13-system-cleanup` |
-|14 | drafts/* Bucket C — live-state stays on daemon (current-pack, in-flight grading) | ~3 | Pending | — |
+|13 | system.ts cleanup — delete 6 dead wrappers + orphaned LLM/Clear UI (~1500 LOC) | -6 | ✅ **Merged** 2026-05-12 | PR #1885 |
+|14 | drafts/* Bucket C — flip 3 live-state wrappers (`current-pack`, `grade-pick`, `win-probability`) back to daemonClient; BFF stubs retained pending daemon impl | 3 | ⏳ **In progress** | `feat/phase2-pr14-drafts-bucket-c` |
 |15 | Frontend cleanup — drop unused `daemonClient` exports if empty | — | Pending | — |
 |16 | Audit doc PR — land `feat/phase2-audit-and-bucket-a` on main for reviewers | — | Pending | branch already pushed |
 
@@ -324,6 +324,24 @@ authenticated user's accounts. camelCase JSON wire format.
   current-pack, etc.) are documented STUBs pending the ML pipeline.
   drafts.ts + 2 drafts.test.ts files + 2 msw handlers: import-only
   swap to apiClient / BFF_BASE.
+- **2026-05-12** — PR #13 merged (#1885). Starting PR #14 (drafts/*
+  Bucket C). Audit doc on `feat/phase2-audit-and-bucket-a` confirms 3
+  drafts.ts wrappers depend on live MTGA log state (current pack /
+  in-flight pick + match):
+    - `getCurrentPackWithRecommendation` → `GET /drafts/{id}/current-pack`
+    - `gradePick` + `getPickAlternatives` → `POST /drafts/grade-pick`
+    - `predictWinProbability` → `POST /drafts/win-probability`
+  All three flipped from `apiClient` back to `daemonClient`. BFF stubs
+  from PR #10 retained (harmless dead routes) — a follow-up cleanup PR
+  will retire them once the daemon grows real implementations. The
+  remaining 35 drafts.ts wrappers stay on `apiClient` (cloud BFF).
+  Imports the daemon `get`/`post` aliased as `daemonGet`/`daemonPost`
+  to make the boundary explicit in code. Tests updated:
+  `__tests__/drafts.test.ts` mocks both clients, flipped specs for
+  `getPickAlternatives` + `getCurrentPackWithRecommendation`, added
+  new specs for `gradePick` + `predictWinProbability` (previously
+  uncovered). decks Bucket C (build-around / suggest-next /
+  classify-draft-pool) deferred — user kept this PR drafts-only.
 - **2026-05-12** — PR #12 merged (#1884). Starting PR #13 (system.ts
   cleanup). 6 dead wrappers deleted from system.ts: `clearAllData`
   (`/export/clear`), `checkOllamaStatus`, `getAvailableOllamaModels`,

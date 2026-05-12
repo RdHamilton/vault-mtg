@@ -8,10 +8,25 @@
  * /feedback/* endpoints this file wraps are also served by the same
  * BFF handler (see services/bff/internal/api/handlers/drafts.go).
  *
+ * Phase 2 PR #14 (Bucket C): three live-state endpoints stay on the
+ * local daemon because they need real-time MTGA pack/match state read
+ * from the player's game log:
+ *   - GET  /drafts/{id}/current-pack  (current pack + pick recommendation)
+ *   - POST /drafts/grade-pick         (in-flight pick quality)
+ *   - POST /drafts/win-probability    (in-flight win probability)
+ * Those three wrappers import from `daemonClient`; everything else stays
+ * on `apiClient`. The BFF currently exposes stub handlers for these paths
+ * (PR #10) — a follow-up cleanup PR will retire them once the daemon
+ * grows the real implementations.
+ *
  * Plan tracker: .claude/plans/spa-route-migration.md
  */
 
 import { get, post } from '../apiClient';
+import {
+  get as daemonGet,
+  post as daemonPost,
+} from '../daemonClient';
 import { models, gui, grading, metrics, insights, pickquality, prediction, analytics } from '@/types/models';
 
 // Re-export types for convenience
@@ -133,9 +148,13 @@ export async function getRecentDrafts(limit?: number): Promise<DraftSession[]> {
 
 /**
  * Grade a draft pick.
+ *
+ * Bucket C — stays on the daemon. The daemon owns the live MTGA pack +
+ * pool state from the player's log; the BFF can't grade a pick without
+ * that context.
  */
 export async function gradePick(request: GradePickRequest): Promise<DraftGrade> {
-  return post<DraftGrade>('/drafts/grade-pick', request);
+  return daemonPost<DraftGrade>('/drafts/grade-pick', request);
 }
 
 /**
@@ -147,11 +166,14 @@ export async function getDraftInsights(request: DraftInsightsRequest): Promise<F
 
 /**
  * Predict win probability for a draft.
+ *
+ * Bucket C — stays on the daemon. Win-probability prediction reads from
+ * the in-progress match state the daemon tracks via the MTGA log.
  */
 export async function predictWinProbability(
   request: WinProbabilityRequest
 ): Promise<{ probability: number }> {
-  return post<{ probability: number }>('/drafts/win-probability', request);
+  return daemonPost<{ probability: number }>('/drafts/win-probability', request);
 }
 
 /**
@@ -191,13 +213,16 @@ export async function analyzeSessionPickQuality(sessionId: string): Promise<void
 
 /**
  * Get pick alternatives for a specific pick.
+ *
+ * Bucket C — shares the daemon's /drafts/grade-pick endpoint with
+ * gradePick above; same live-state dependency.
  */
 export async function getPickAlternatives(
   sessionId: string,
   packNumber: number,
   pickNumber: number
 ): Promise<pickquality.PickQuality> {
-  return post<pickquality.PickQuality>('/drafts/grade-pick', {
+  return daemonPost<pickquality.PickQuality>('/drafts/grade-pick', {
     session_id: sessionId,
     pack_number: packNumber,
     pick_number: pickNumber,
@@ -220,11 +245,15 @@ export async function calculateDraftGrade(sessionId: string): Promise<DraftGrade
 
 /**
  * Get current pack with recommendation.
+ *
+ * Bucket C — stays on the daemon. "Current pack" only exists while a
+ * draft is in progress in MTGA, and only the daemon (watching the
+ * Player.log) knows what that pack is.
  */
 export async function getCurrentPackWithRecommendation(
   sessionId: string
 ): Promise<gui.CurrentPackResponse> {
-  return get<gui.CurrentPackResponse>(`/drafts/${sessionId}/current-pack`);
+  return daemonGet<gui.CurrentPackResponse>(`/drafts/${sessionId}/current-pack`);
 }
 
 /**

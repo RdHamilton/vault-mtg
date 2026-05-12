@@ -7,7 +7,16 @@ vi.mock('../../apiClient', () => ({
   post: vi.fn(),
 }));
 
+// Mock the daemonClient — Phase 2 PR #14 routes 3 live-state Bucket C
+// endpoints (current-pack, grade-pick, win-probability) through the
+// local daemon.
+vi.mock('../../daemonClient', () => ({
+  get: vi.fn(),
+  post: vi.fn(),
+}));
+
 import { get, post } from '../../apiClient';
+import { get as daemonGet, post as daemonPost } from '../../daemonClient';
 
 describe('drafts API', () => {
   beforeEach(() => {
@@ -173,17 +182,18 @@ describe('drafts API', () => {
   });
 
   describe('getPickAlternatives', () => {
-    it('should call post with correct path and params', async () => {
+    it('should call daemonClient.post (Bucket C live-state)', async () => {
       const mockAlternatives = { picked: {}, alternatives: [] };
-      vi.mocked(post).mockResolvedValue(mockAlternatives);
+      vi.mocked(daemonPost).mockResolvedValue(mockAlternatives);
 
       const result = await drafts.getPickAlternatives('session-123', 1, 5);
 
-      expect(post).toHaveBeenCalledWith('/drafts/grade-pick', {
+      expect(daemonPost).toHaveBeenCalledWith('/drafts/grade-pick', {
         session_id: 'session-123',
         pack_number: 1,
         pick_number: 5,
       });
+      expect(post).not.toHaveBeenCalled();
       expect(result).toEqual(mockAlternatives);
     });
   });
@@ -213,13 +223,14 @@ describe('drafts API', () => {
   });
 
   describe('getCurrentPackWithRecommendation', () => {
-    it('should call get with correct path', async () => {
+    it('should call daemonClient.get (Bucket C live-state)', async () => {
       const mockPack = { cards: [], recommendation: {} };
-      vi.mocked(get).mockResolvedValue(mockPack);
+      vi.mocked(daemonGet).mockResolvedValue(mockPack);
 
       const result = await drafts.getCurrentPackWithRecommendation('session-123');
 
-      expect(get).toHaveBeenCalledWith('/drafts/session-123/current-pack');
+      expect(daemonGet).toHaveBeenCalledWith('/drafts/session-123/current-pack');
+      expect(get).not.toHaveBeenCalled();
       expect(result).toEqual(mockPack);
     });
   });
@@ -233,6 +244,42 @@ describe('drafts API', () => {
 
       expect(post).toHaveBeenCalledWith('/drafts/session-123/calculate-prediction');
       expect(result).toEqual(mockPrediction);
+    });
+  });
+
+  describe('gradePick', () => {
+    it('should call daemonClient.post (Bucket C live-state)', async () => {
+      const mockGrade = { grade: 'A', score: 92 };
+      vi.mocked(daemonPost).mockResolvedValue(mockGrade);
+
+      const request = {
+        session_id: 'session-123',
+        pick_number: 3,
+        picked_card_id: 12345,
+        available_card_ids: [12345, 67890],
+      };
+      const result = await drafts.gradePick(request);
+
+      expect(daemonPost).toHaveBeenCalledWith('/drafts/grade-pick', request);
+      expect(post).not.toHaveBeenCalled();
+      expect(result).toEqual(mockGrade);
+    });
+  });
+
+  describe('predictWinProbability', () => {
+    it('should call daemonClient.post (Bucket C live-state)', async () => {
+      const mockProb = { probability: 0.63 };
+      vi.mocked(daemonPost).mockResolvedValue(mockProb);
+
+      const result = await drafts.predictWinProbability({
+        session_id: 'session-123',
+      });
+
+      expect(daemonPost).toHaveBeenCalledWith('/drafts/win-probability', {
+        session_id: 'session-123',
+      });
+      expect(post).not.toHaveBeenCalled();
+      expect(result).toEqual(mockProb);
     });
   });
 
