@@ -40,6 +40,7 @@ import (
 	"github.com/ramonehamilton/mtga-daemon/internal/daemon"
 	"github.com/ramonehamilton/mtga-daemon/internal/keychain"
 	"github.com/ramonehamilton/mtga-daemon/internal/pkce"
+	"github.com/ramonehamilton/mtga-daemon/internal/tray"
 )
 
 // Version is the build-time version string injected via -ldflags -X main.Version=<ver>.
@@ -86,17 +87,33 @@ func main() {
 		}
 	}
 
-	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
-	defer cancel()
+	ctx, cancel := context.WithCancel(context.Background())
 
 	svc := daemon.New(cfg)
 	svc.WithVersion(Version)
 	log.Printf("[mtga-daemon] starting, cloud_api=%s", cfg.CloudAPIURL)
 
-	if err := svc.Run(ctx); err != nil {
-		fmt.Fprintf(os.Stderr, "fatal: %v\n", err)
-		os.Exit(1)
-	}
+	// systray.Run must own the main OS thread (macOS Cocoa requirement).
+	// onReady starts the daemon service in a goroutine; onQuit cancels the context.
+	app := tray.New("https://app.vaultmtg.app", pkce.OpenBrowser, cancel)
+
+	// Handle OS signals: forward SIGTERM/SIGINT to systray so onQuit fires cleanly.
+	sigCh := make(chan os.Signal, 1)
+	signal.Notify(sigCh, os.Interrupt, syscall.SIGTERM)
+	go func() {
+		<-sigCh
+		app.Quit()
+	}()
+
+	app.Run(func() {
+		app.SetStatus(tray.StatusConnected)
+		go func() {
+			if err := svc.Run(ctx); err != nil {
+				log.Printf("[mtga-daemon] fatal: %v", err)
+			}
+			app.Quit()
+		}()
+	})
 }
 
 // handleMissingConfig is called when no daemon.json exists (first install).
