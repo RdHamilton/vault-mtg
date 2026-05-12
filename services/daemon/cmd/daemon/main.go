@@ -97,6 +97,13 @@ func main() {
 	// onReady starts the daemon service in a goroutine; onQuit cancels the context.
 	app := tray.New("https://app.vaultmtg.app", pkce.OpenBrowser, cancel)
 
+	svc.WithTray(daemon.TrayHooks{
+		SyncNow:            app.SyncNow,
+		GrantAccess:        app.GrantAccess,
+		SetHelperInstalled: app.SetHelperInstalled,
+		SetLastSync:        app.SetLastSync,
+	})
+
 	// Handle OS signals: forward SIGTERM/SIGINT to systray so onQuit fires cleanly.
 	sigCh := make(chan os.Signal, 1)
 	signal.Notify(sigCh, os.Interrupt, syscall.SIGTERM)
