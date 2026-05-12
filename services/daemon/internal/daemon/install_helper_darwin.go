@@ -23,6 +23,15 @@ func runHelperInstaller(helperBinary, scriptDir string) error {
 	}
 	defer os.RemoveAll(stagingDir)
 
+	// Stage the helper binary too — the root shell can't cp from ~/Documents.
+	stagedBinary := filepath.Join(stagingDir, "collection-helper")
+	if err := stageFile(helperBinary, stagedBinary); err != nil {
+		return fmt.Errorf("stage collection-helper: %w", err)
+	}
+	if err := os.Chmod(stagedBinary, 0o755); err != nil {
+		return fmt.Errorf("chmod collection-helper: %w", err)
+	}
+
 	for _, name := range []string{"install-helper.sh", "com.vaultmtg.collection-helper.plist"} {
 		if err := stageFile(filepath.Join(scriptDir, name), filepath.Join(stagingDir, name)); err != nil {
 			return fmt.Errorf("stage %s: %w", name, err)
@@ -32,7 +41,7 @@ func runHelperInstaller(helperBinary, scriptDir string) error {
 		return fmt.Errorf("chmod install script: %w", err)
 	}
 
-	script := buildOsaScript(helperBinary, stagingDir)
+	script := buildOsaScript(stagedBinary, stagingDir)
 	out, err := exec.Command("osascript", "-e", script).CombinedOutput()
 	if err != nil {
 		return fmt.Errorf("osascript: %w — %s", err, string(out))
