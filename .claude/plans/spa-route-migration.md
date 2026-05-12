@@ -93,8 +93,8 @@ tests + lint/format gates.
 |11 | mlSuggestions/* (11 endpoints — 3 alias to notes/, 8 net-new; process-history + play-patterns/update stubs) | 11 | ✅ **Merged** 2026-05-12 | PR #1883 |
 |12 | settings/* — cloud-backed key/value (4 endpoints + new user_settings JSONB table) | 4 | ✅ **Merged** 2026-05-12 | PR #1884 |
 |13 | system.ts cleanup — delete 6 dead wrappers + orphaned LLM/Clear UI (~1500 LOC) | -6 | ✅ **Merged** 2026-05-12 | PR #1885 |
-|14 | drafts/* Bucket C — flip 3 live-state wrappers (`current-pack`, `grade-pick`, `win-probability`) back to daemonClient; BFF stubs retained pending daemon impl | 3 | ⏳ **In progress** | `feat/phase2-pr14-drafts-bucket-c` |
-|15 | Frontend cleanup — drop unused `daemonClient` exports if empty | — | Pending | — |
+|14 | drafts/* Bucket C — flip 3 live-state wrappers (`current-pack`, `grade-pick`, `win-probability`) back to daemonClient; BFF stubs retained pending daemon impl | 3 | ✅ **Merged** 2026-05-12 | PR #1886 |
+|15 | Frontend cleanup — strip dead `daemonClient` exports (configure/getConfig/put/patch/del/getRaw/SSE); keep only `get` + `post` | — | ⏳ **In progress** | `feat/phase2-pr15-daemonclient-cleanup` |
 |16 | Audit doc PR — land `feat/phase2-audit-and-bucket-a` on main for reviewers | — | Pending | branch already pushed |
 
 ---
@@ -324,6 +324,16 @@ authenticated user's accounts. camelCase JSON wire format.
   current-pack, etc.) are documented STUBs pending the ML pipeline.
   drafts.ts + 2 drafts.test.ts files + 2 msw handlers: import-only
   swap to apiClient / BFF_BASE.
+- **2026-05-12** — PR #14 merged (#1886). Starting PR #15 (daemonClient
+  cleanup). Audit: only `get` and `post` from `daemonClient.ts` had
+  production callers (system.ts + drafts.ts). Deleted unused exports:
+  `configureDaemonApi`, `getDaemonApiConfig`, `put`, `patch`, `del`,
+  `getRaw`, `createDaemonSSEConnection`. daemonClient.ts shrunk
+  222 → 122 LOC. Tests trimmed to match (kept get/post/auth-header/204/
+  timeout coverage; the timeout test now rejects with AbortError
+  directly instead of relying on `configureDaemonApi({ timeout: 1 })`).
+  Future daemon endpoints that need a verb beyond GET/POST should add
+  it back deliberately rather than carry dead helpers.
 - **2026-05-12** — PR #13 merged (#1885). Starting PR #14 (drafts/*
   Bucket C). Audit doc on `feat/phase2-audit-and-bucket-a` confirms 3
   drafts.ts wrappers depend on live MTGA log state (current pack /
