@@ -1,9 +1,17 @@
 /**
  * Drafts API service.
- * Replaces Wails draft-related function bindings.
+ *
+ * Phase 2 PR #10: cloud-data draft session reads + 17lands export +
+ * community comparison + temporal trends + learning curve all hit the
+ * BFF directly via apiClient. Recommendation/grading endpoints are
+ * documented BFF stubs pending the ML pipeline. The /decks/* and
+ * /feedback/* endpoints this file wraps are also served by the same
+ * BFF handler (see services/bff/internal/api/handlers/drafts.go).
+ *
+ * Plan tracker: .claude/plans/spa-route-migration.md
  */
 
-import { get, post } from '../daemonClient';
+import { get, post } from '../apiClient';
 import { models, gui, grading, metrics, insights, pickquality, prediction, analytics } from '@/types/models';
 
 // Re-export types for convenience

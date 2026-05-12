@@ -184,6 +184,7 @@ func main() {
 		notesHandler          *handlers.NotesHandler
 		cardsHandler          *handlers.CardsHandler
 		decksHandler          *handlers.DecksHandler
+		draftsHandler         *handlers.DraftsHandler
 	)
 
 	// projCtx is cancelled on SIGTERM so the projection worker exits cleanly.
@@ -264,6 +265,13 @@ func main() {
 		// permutations, import/export, library + STUBs for the deck-builder
 		// + recommendation pipeline).
 		decksHandler = handlers.NewDecksHandler(repository.NewDecksRepository(sqlDB), accountRepo)
+
+		// Phase 2 PR #10 — /api/v1/drafts/* surface (sessions, picks,
+		// stats, 17lands export, community comparison, temporal trends,
+		// learning curve) plus the /decks/* and /feedback/* strays from
+		// drafts.ts. Recommendation/grading endpoints stubbed pending
+		// the ML pipeline.
+		draftsHandler = handlers.NewDraftsHandler(repository.NewDraftsRepository(sqlDB), accountRepo)
 
 		// ListV2Handler provides cursor-paginated v2 endpoints for matches,
 		// drafts, decks, and collection (ADR-018).
@@ -359,6 +367,7 @@ func main() {
 		NotesHandler:          notesHandler,
 		CardsHandler:          cardsHandler,
 		DecksHandler:          decksHandler,
+		DraftsHandler:         draftsHandler,
 		HealthzHandler:        healthzHandler,
 		ClerkAuthMiddl:        clerkAuthMiddl,
 		ClerkAuthSSEMiddl:     clerkAuthSSEMiddl,
@@ -459,6 +468,11 @@ type RouterDeps struct {
 	// deck-builder + recommendation pipeline). Protected by
 	// DaemonAPIKeyAuth.
 	DecksHandler *handlers.DecksHandler
+	// DraftsHandler serves the Phase 2 /api/v1/drafts/* surface
+	// (sessions, picks, stats, 17lands export, community comparison,
+	// trends, learning curve) + the /decks/* + /feedback/* strays.
+	// Protected by DaemonAPIKeyAuth.
+	DraftsHandler *handlers.DraftsHandler
 	// HealthzHandler serves GET /healthz — intentionally public (no auth).
 	HealthzHandler *handlers.HealthzHandler
 	ClerkAuthMiddl func(http.Handler) http.Handler
@@ -634,6 +648,58 @@ func BuildRouter(cfg *config.Config, deps RouterDeps) http.Handler {
 			r.With(auth).Get("/api/v1/gameplays/game/{gameId}", gp.PlaysByGame)
 		} else {
 			log.Println("WARN: gameplays routes disabled — DaemonAPIKeyAuth middleware not configured")
+		}
+	}
+
+	// Phase 2 PR #10 — /api/v1/drafts/* surface. Plus the /decks/* and
+	// /feedback/* strays from drafts.ts. Recommendation + grading
+	// endpoints are documented STUBs.
+	if deps.DraftsHandler != nil {
+		if deps.DaemonAPIKeyAuthMiddl != nil {
+			d := deps.DraftsHandler
+			auth := deps.DaemonAPIKeyAuthMiddl
+			// Sessions / lists / lookups
+			r.With(auth).Post("/api/v1/drafts", d.List)
+			r.With(auth).Get("/api/v1/drafts/formats", d.Formats)
+			r.With(auth).Get("/api/v1/drafts/recent", d.Recent)
+			r.With(auth).Get("/api/v1/drafts/exportable", d.Exportable)
+			// Stats / community / trends / learning curve
+			r.With(auth).Post("/api/v1/drafts/stats", d.Stats)
+			r.With(auth).Get("/api/v1/drafts/community-comparison/{setCode}", d.CommunityComparisonByGet)
+			r.With(auth).Post("/api/v1/drafts/community-comparison", d.CommunityComparisonByPost)
+			r.With(auth).Get("/api/v1/drafts/community-comparison", d.AllCommunityComparisons)
+			r.With(auth).Post("/api/v1/drafts/trends", d.Trends)
+			r.With(auth).Get("/api/v1/drafts/learning-curve/{setCode}", d.LearningCurve)
+			// STUBs (no session id)
+			r.With(auth).Post("/api/v1/drafts/grade-pick", d.GradePick)
+			r.With(auth).Post("/api/v1/drafts/insights", d.Insights)
+			r.With(auth).Post("/api/v1/drafts/win-probability", d.WinProbability)
+			r.With(auth).Post("/api/v1/drafts/recalculate-set-grades", d.RecalculateSetGrades)
+			// Per-session: literal sub-paths first
+			r.With(auth).Get("/api/v1/drafts/{sessionId}/picks", d.Picks)
+			r.With(auth).Get("/api/v1/drafts/{sessionId}/pool", d.Pool)
+			r.With(auth).Get("/api/v1/drafts/{sessionId}/curve", d.Curve)
+			r.With(auth).Get("/api/v1/drafts/{sessionId}/colors", d.Colors)
+			r.With(auth).Get("/api/v1/drafts/{sessionId}/analysis", d.DraftGrade)
+			r.With(auth).Post("/api/v1/drafts/{sessionId}/analyze-picks", d.AnalyzeSessionPickQuality)
+			r.With(auth).Get("/api/v1/drafts/{sessionId}/current-pack", d.CurrentPackWithRecommendation)
+			r.With(auth).Get("/api/v1/drafts/{sessionId}/deck-metrics", d.DeckMetrics)
+			r.With(auth).Post("/api/v1/drafts/{sessionId}/calculate-prediction", d.CalculatePrediction)
+			r.With(auth).Post("/api/v1/drafts/{sessionId}/calculate-grade", d.CalculateGrade)
+			r.With(auth).Get("/api/v1/drafts/{sessionId}/export/17lands", d.Export17Lands)
+			// Per-session catch-all GET last so literal sub-paths win.
+			r.With(auth).Get("/api/v1/drafts/{sessionId}", d.Get)
+			// /decks/* strays from drafts.ts
+			r.With(auth).Post("/api/v1/decks/recommendations", d.DecksRecommendations)
+			r.With(auth).Post("/api/v1/decks/explain-recommendation", d.DecksExplainRecommendation)
+			r.With(auth).Post("/api/v1/decks/classify-draft-pool", d.DecksClassifyDraftPool)
+			// /feedback/* strays from drafts.ts
+			r.With(auth).Get("/api/v1/feedback/stats", d.FeedbackStats)
+			r.With(auth).Post("/api/v1/feedback/recommendation", d.FeedbackRecommendation)
+			r.With(auth).Post("/api/v1/feedback/action", d.FeedbackAction)
+			r.With(auth).Post("/api/v1/feedback/outcome", d.FeedbackOutcome)
+		} else {
+			log.Println("WARN: /api/v1/drafts/* disabled — DaemonAPIKeyAuth middleware not configured")
 		}
 	}
 

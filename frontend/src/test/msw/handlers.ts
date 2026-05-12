@@ -453,7 +453,7 @@ export const handlers = [
   }),
 
   // Draft export to 17Lands endpoint
-  http.get(`${API_BASE}/drafts/:sessionID/export/17lands`, ({ params }) => {
+  http.get(`${BFF_BASE}/drafts/:sessionID/export/17lands`, ({ params }) => {
     const sessionID = params.sessionID as string;
     return successResponse({
       session_id: sessionID,
@@ -491,7 +491,7 @@ export const handlers = [
   }),
 
   // Exportable drafts endpoint
-  http.get(`${API_BASE}/drafts/exportable`, () => {
+  http.get(`${BFF_BASE}/drafts/exportable`, () => {
     return successResponse([
       {
         ID: 'test-session-123',

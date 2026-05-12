@@ -1,13 +1,13 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import * as drafts from '../drafts';
 
-// Mock the daemonClient (drafts routes go to the local daemon)
-vi.mock('../../daemonClient', () => ({
+// Mock the apiClient — Phase 2 PR #10 routes drafts.* through the BFF.
+vi.mock('../../apiClient', () => ({
   get: vi.fn(),
   post: vi.fn(),
 }));
 
-import { get, post } from '../../daemonClient';
+import { get, post } from '../../apiClient';
 
 describe('drafts API', () => {
   beforeEach(() => {

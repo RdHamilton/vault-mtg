@@ -88,8 +88,8 @@ tests + lint/format gates.
 | 6 | opponents/* + analytics + archetypes-expected (5 endpoints across 4 URL prefixes) | 5 | ✅ **Merged** 2026-05-11 | PR #1878 |
 | 7 | notes/* + suggestions (10 endpoints across 3 URL prefixes; generate stubbed) | 10 | ✅ **Merged** 2026-05-11 | PR #1879 |
 | 8 | cards/* (16 endpoints; refresh-ratings stubbed pending scrape pipeline) | 16 | ✅ **Merged** 2026-05-11 | PR #1880 |
-| 9 | decks/* (~50 endpoints; CRUD + cards + tags + permutations + import/export real, deck-builder + recommendation stubs) | 50 | ⏳ **In progress** | `feat/phase2-pr9-decks` |
-|10 | drafts/* — full module incl. `/decks/*` and `/feedback/*` strays (31 paths, minus Bucket C) | 28 | Pending | — |
+| 9 | decks/* (~50 endpoints; CRUD + cards + tags + permutations + import/export real, deck-builder + recommendation stubs) | 50 | ✅ **Merged** 2026-05-11 | PR #1881 |
+|10 | drafts/* — full module incl. `/decks/*` and `/feedback/*` strays (~38 endpoints; sessions + 17lands + community + trends real, grading/recs stubs) | 38 | ⏳ **In progress** | `feat/phase2-pr10-drafts` |
 |11 | mlSuggestions/* (8 paths)             | 8     | Pending       | — |
 |12 | settings/* — implement cloud-backed settings on BFF | 1+ | Pending | — |
 |13 | system.ts cleanup — delete dead paths (`/llm/*`, `/feedback/dashboard`, `/export/clear`) | — | Pending | — |
@@ -308,3 +308,19 @@ authenticated user's accounts. camelCase JSON wire format.
   export renders back to Arena format. STUBs documented inline pending
   the ML / archetype-matching pipeline. decks.ts + decks.test.ts +
   4 msw deck handlers: import-only swap to apiClient / BFF_BASE.
+- **2026-05-11** — PR #9 merged. Starting PR #10 (drafts/*).
+- **2026-05-11** — PR #10 (drafts/*) built one-shot. ~38 endpoints
+  across draft sessions, picks, stats, formats, recent, exportable,
+  17lands export (renders draft_picks → SPA's SeventeenLandsDraftExport),
+  community comparison (single + all + by-format), temporal trends,
+  learning curve, plus the /decks/* (recommendations,
+  explain-recommendation, classify-draft-pool) and /feedback/*
+  (recommendation, action, outcome, stats) strays from drafts.ts.
+  Real impls back the session/picks/stats/community/trends queries
+  via new DraftsRepository (draft_sessions + draft_picks +
+  draft_temporal_trends + draft_community_comparison +
+  recommendation_feedback). Grading + ML endpoints (grade-pick,
+  win-probability, calculate-prediction, calculate-grade,
+  current-pack, etc.) are documented STUBs pending the ML pipeline.
+  drafts.ts + 2 drafts.test.ts files + 2 msw handlers: import-only
+  swap to apiClient / BFF_BASE.
