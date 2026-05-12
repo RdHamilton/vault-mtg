@@ -149,21 +149,27 @@ func (s *Service) installCollectionHelper() {
 }
 
 // locateHelperFiles returns the path to the collection-helper binary and the
-// directory containing the install script. Both are expected to live alongside
-// the daemon binary.
+// directory containing the install script.
+//
+// In production both files live alongside the daemon binary.
+// In development, set MTGA_COLLECTION_HELPER_DIR to the
+// services/collection-agent-helper directory so GoLand / go run can find them.
 func locateHelperFiles() (helperBinary, scriptDir string, err error) {
-	exe, err := os.Executable()
-	if err != nil {
-		return "", "", err
+	dir := os.Getenv("MTGA_COLLECTION_HELPER_DIR")
+	if dir == "" {
+		exe, exeErr := os.Executable()
+		if exeErr != nil {
+			return "", "", exeErr
+		}
+		dir = filepath.Dir(exe)
 	}
-	dir := filepath.Dir(exe)
 	helperBinary = filepath.Join(dir, "collection-helper")
 	scriptDir = filepath.Join(dir, "install")
 	if _, statErr := os.Stat(helperBinary); statErr != nil {
-		return "", "", statErr
+		return "", "", fmt.Errorf("collection-helper binary not found in %s (set MTGA_COLLECTION_HELPER_DIR to override): %w", dir, statErr)
 	}
 	if _, statErr := os.Stat(scriptDir); statErr != nil {
-		return "", "", fmt.Errorf("install directory not found: %w", statErr)
+		return "", "", fmt.Errorf("install directory not found in %s: %w", dir, statErr)
 	}
 	return helperBinary, scriptDir, nil
 }
