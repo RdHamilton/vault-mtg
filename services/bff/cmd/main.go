@@ -537,6 +537,23 @@ type RouterDeps struct {
 	E2EUnguardedSSE bool
 }
 
+// composeClerkAuth chains the Clerk JWT verifier with the user resolver into a
+// single middleware so SPA-facing route blocks can keep the
+// `r.With(auth).Method(path, handler)` pattern they had under
+// DaemonAPIKeyAuth.  The user resolver maps the (string) Clerk user_id from
+// the JWT to the int64 users.id every downstream handler reads via
+// UserIDFromContext.  Pass a nil userResolver in test contexts that have no
+// database — Clerk verification still runs but UserIDFromContext returns 0.
+func composeClerkAuth(authMiddl, userResolver func(http.Handler) http.Handler) func(http.Handler) http.Handler {
+	return func(next http.Handler) http.Handler {
+		h := next
+		if userResolver != nil {
+			h = userResolver(h)
+		}
+		return authMiddl(h)
+	}
+}
+
 // BuildRouter constructs and returns the chi router for the BFF service.
 // It is a standalone function (not a method) so that tests can call it
 // directly without spawning a real HTTP server.
@@ -598,14 +615,14 @@ func BuildRouter(cfg *config.Config, deps RouterDeps) http.Handler {
 	}
 
 	// ── Phase 2 — /api/v1/matches/* (camelCase API, full filter support) ─────
-	// Replaces the SPA's daemonClient /matches calls. Protected by
-	// DaemonAPIKeyAuth so the daemon's keychain-stored api_key authenticates;
-	// the same scheme used by /api/v1/ingest/events.  See
+	// Replaces the SPA's daemonClient /matches calls.  Browser-facing, so
+	// protected by Clerk session auth (not the daemon's machine credential):
+	// the SPA holds a Clerk JWT, not the daemon's keychain api_key.  See
 	// docs/product/milestones/v0.3.1/daemon-local-api-phase2-audit.md.
 	if deps.MatchesHandler != nil {
-		if deps.DaemonAPIKeyAuthMiddl != nil {
+		if deps.ClerkAuthMiddl != nil {
 			m := deps.MatchesHandler
-			auth := deps.DaemonAPIKeyAuthMiddl
+			auth := composeClerkAuth(deps.ClerkAuthMiddl, deps.ClerkUserResolver)
 			// List + lookup
 			r.With(auth).Post("/api/v1/matches", m.List)
 			r.With(auth).Get("/api/v1/matches/{matchId}", m.Get)
@@ -630,7 +647,7 @@ func BuildRouter(cfg *config.Config, deps RouterDeps) http.Handler {
 			r.With(auth).Post("/api/v1/matches/compare/decks", m.CompareDecks)
 			r.With(auth).Post("/api/v1/matches/compare/time-periods", m.CompareTimePeriods)
 		} else {
-			log.Println("WARN: /api/v1/matches/* disabled — DaemonAPIKeyAuth middleware not configured")
+			log.Println("WARN: /api/v1/matches/* disabled — Clerk auth middleware not configured")
 		}
 	}
 
@@ -639,31 +656,31 @@ func BuildRouter(cfg *config.Config, deps RouterDeps) http.Handler {
 	// /collection calls (only the live wrappers — dead Wails-era functions
 	// were dropped on the SPA side in this PR).
 	if deps.CollectionHandler != nil {
-		if deps.DaemonAPIKeyAuthMiddl != nil {
+		if deps.ClerkAuthMiddl != nil {
 			c := deps.CollectionHandler
-			auth := deps.DaemonAPIKeyAuthMiddl
+			auth := composeClerkAuth(deps.ClerkAuthMiddl, deps.ClerkUserResolver)
 			r.With(auth).Post("/api/v1/collection", c.List)
 			r.With(auth).Get("/api/v1/collection/stats", c.Stats)
 			r.With(auth).Get("/api/v1/collection/sets", c.Sets)
 			r.With(auth).Get("/api/v1/collection/value", c.Value)
 		} else {
-			log.Println("WARN: /api/v1/collection/* disabled — DaemonAPIKeyAuth middleware not configured")
+			log.Println("WARN: /api/v1/collection/* disabled — Clerk auth middleware not configured")
 		}
 	}
 
 	// Phase 2 PR #3 — /api/v1/quests surface (active/history/wins/stats).
 	// Same auth + envelope contract.
 	if deps.QuestsHandler != nil {
-		if deps.DaemonAPIKeyAuthMiddl != nil {
+		if deps.ClerkAuthMiddl != nil {
 			q := deps.QuestsHandler
-			auth := deps.DaemonAPIKeyAuthMiddl
+			auth := composeClerkAuth(deps.ClerkAuthMiddl, deps.ClerkUserResolver)
 			r.With(auth).Get("/api/v1/quests/active", q.Active)
 			r.With(auth).Get("/api/v1/quests/history", q.History)
 			r.With(auth).Get("/api/v1/quests/wins/daily", q.DailyWins)
 			r.With(auth).Get("/api/v1/quests/wins/weekly", q.WeeklyWins)
 			r.With(auth).Get("/api/v1/quests/stats", q.Stats)
 		} else {
-			log.Println("WARN: /api/v1/quests/* disabled — DaemonAPIKeyAuth middleware not configured")
+			log.Println("WARN: /api/v1/quests/* disabled — Clerk auth middleware not configured")
 		}
 	}
 
@@ -671,9 +688,9 @@ func BuildRouter(cfg *config.Config, deps RouterDeps) http.Handler {
 	// extend the matches surface, plus the dedicated /api/v1/gameplays/game
 	// path. Same auth + envelope contract.
 	if deps.GamePlaysHandler != nil {
-		if deps.DaemonAPIKeyAuthMiddl != nil {
+		if deps.ClerkAuthMiddl != nil {
 			gp := deps.GamePlaysHandler
-			auth := deps.DaemonAPIKeyAuthMiddl
+			auth := composeClerkAuth(deps.ClerkAuthMiddl, deps.ClerkUserResolver)
 			r.With(auth).Get("/api/v1/matches/{matchId}/plays", gp.MatchPlays)
 			r.With(auth).Get("/api/v1/matches/{matchId}/plays/timeline", gp.MatchTimeline)
 			r.With(auth).Get("/api/v1/matches/{matchId}/plays/summary", gp.MatchPlaySummary)
@@ -681,7 +698,7 @@ func BuildRouter(cfg *config.Config, deps RouterDeps) http.Handler {
 			r.With(auth).Get("/api/v1/matches/{matchId}/snapshots", gp.MatchSnapshots)
 			r.With(auth).Get("/api/v1/gameplays/game/{gameId}", gp.PlaysByGame)
 		} else {
-			log.Println("WARN: gameplays routes disabled — DaemonAPIKeyAuth middleware not configured")
+			log.Println("WARN: gameplays routes disabled — Clerk auth middleware not configured")
 		}
 	}
 
@@ -689,9 +706,9 @@ func BuildRouter(cfg *config.Config, deps RouterDeps) http.Handler {
 	// /feedback/* strays from drafts.ts. Recommendation + grading
 	// endpoints are documented STUBs.
 	if deps.DraftsHandler != nil {
-		if deps.DaemonAPIKeyAuthMiddl != nil {
+		if deps.ClerkAuthMiddl != nil {
 			d := deps.DraftsHandler
-			auth := deps.DaemonAPIKeyAuthMiddl
+			auth := composeClerkAuth(deps.ClerkAuthMiddl, deps.ClerkUserResolver)
 			// Sessions / lists / lookups
 			r.With(auth).Post("/api/v1/drafts", d.List)
 			r.With(auth).Get("/api/v1/drafts/formats", d.Formats)
@@ -735,7 +752,7 @@ func BuildRouter(cfg *config.Config, deps RouterDeps) http.Handler {
 			r.With(auth).Post("/api/v1/feedback/action", d.FeedbackAction)
 			r.With(auth).Post("/api/v1/feedback/outcome", d.FeedbackOutcome)
 		} else {
-			log.Println("WARN: /api/v1/drafts/* disabled — DaemonAPIKeyAuth middleware not configured")
+			log.Println("WARN: /api/v1/drafts/* disabled — Clerk auth middleware not configured")
 		}
 	}
 
@@ -743,9 +760,9 @@ func BuildRouter(cfg *config.Config, deps RouterDeps) http.Handler {
 	// permutations + import/export are real; deck-builder + recommendation
 	// endpoints are documented STUBs pending the ML pipeline.
 	if deps.DecksHandler != nil {
-		if deps.DaemonAPIKeyAuthMiddl != nil {
+		if deps.ClerkAuthMiddl != nil {
 			d := deps.DecksHandler
-			auth := deps.DaemonAPIKeyAuthMiddl
+			auth := composeClerkAuth(deps.ClerkAuthMiddl, deps.ClerkUserResolver)
 			// List + CRUD
 			r.With(auth).Get("/api/v1/decks", d.List)
 			r.With(auth).Post("/api/v1/decks", d.Create)
@@ -801,7 +818,7 @@ func BuildRouter(cfg *config.Config, deps RouterDeps) http.Handler {
 			r.With(auth).Put("/api/v1/decks/{deckId}", d.Update)
 			r.With(auth).Delete("/api/v1/decks/{deckId}", d.Delete)
 		} else {
-			log.Println("WARN: /api/v1/decks/* disabled — DaemonAPIKeyAuth middleware not configured")
+			log.Println("WARN: /api/v1/decks/* disabled — Clerk auth middleware not configured")
 		}
 	}
 
@@ -809,9 +826,9 @@ func BuildRouter(cfg *config.Config, deps RouterDeps) http.Handler {
 	// (cards/sets/ratings/CFB); /collection-quantities and
 	// /search-with-collection are the two account-scoped endpoints.
 	if deps.CardsHandler != nil {
-		if deps.DaemonAPIKeyAuthMiddl != nil {
+		if deps.ClerkAuthMiddl != nil {
 			c := deps.CardsHandler
-			auth := deps.DaemonAPIKeyAuthMiddl
+			auth := composeClerkAuth(deps.ClerkAuthMiddl, deps.ClerkUserResolver)
 			r.With(auth).Get("/api/v1/cards", c.Search)
 			r.With(auth).Get("/api/v1/cards/sets", c.AllSets)
 			r.With(auth).Get("/api/v1/cards/sets/{setCode}/cards", c.SetCards)
@@ -830,22 +847,22 @@ func BuildRouter(cfg *config.Config, deps RouterDeps) http.Handler {
 			// Single-card lookup last so the literal /sets and /cfb prefixes win.
 			r.With(auth).Get("/api/v1/cards/{arenaId}", c.GetByArenaID)
 		} else {
-			log.Println("WARN: /api/v1/cards/* disabled — DaemonAPIKeyAuth middleware not configured")
+			log.Println("WARN: /api/v1/cards/* disabled — Clerk auth middleware not configured")
 		}
 	}
 
 	// Phase 2 PR #12 — /api/v1/settings[/{key}] surface
 	// (account-scoped JSONB key/value store).
 	if deps.SettingsHandler != nil {
-		if deps.DaemonAPIKeyAuthMiddl != nil {
+		if deps.ClerkAuthMiddl != nil {
 			s := deps.SettingsHandler
-			auth := deps.DaemonAPIKeyAuthMiddl
+			auth := composeClerkAuth(deps.ClerkAuthMiddl, deps.ClerkUserResolver)
 			r.With(auth).Get("/api/v1/settings", s.GetSettings)
 			r.With(auth).Put("/api/v1/settings", s.UpdateSettings)
 			r.With(auth).Get("/api/v1/settings/{key}", s.GetSetting)
 			r.With(auth).Put("/api/v1/settings/{key}", s.UpdateSetting)
 		} else {
-			log.Println("WARN: /api/v1/settings/* disabled — DaemonAPIKeyAuth middleware not configured")
+			log.Println("WARN: /api/v1/settings/* disabled — Clerk auth middleware not configured")
 		}
 	}
 
@@ -855,9 +872,9 @@ func BuildRouter(cfg *config.Config, deps RouterDeps) http.Handler {
 	// /api/v1/ml/*. Three of the eleven routes are aliases for notes-side
 	// list/generate/dismiss with the richer MLSuggestion response shape.
 	if deps.MLHandler != nil {
-		if deps.DaemonAPIKeyAuthMiddl != nil {
+		if deps.ClerkAuthMiddl != nil {
 			m := deps.MLHandler
-			auth := deps.DaemonAPIKeyAuthMiddl
+			auth := composeClerkAuth(deps.ClerkAuthMiddl, deps.ClerkUserResolver)
 			r.With(auth).Get("/api/v1/decks/{deckId}/ml-suggestions", m.ListMLSuggestions)
 			r.With(auth).Post("/api/v1/decks/{deckId}/ml-suggestions/generate", m.GenerateMLSuggestions)
 			r.With(auth).Put("/api/v1/ml-suggestions/{suggestionId}/dismiss", m.DismissMLSuggestion)
@@ -870,16 +887,16 @@ func BuildRouter(cfg *config.Config, deps RouterDeps) http.Handler {
 			r.With(auth).Post("/api/v1/ml/play-patterns/update", m.UpdateUserPlayPatterns)
 			r.With(auth).Delete("/api/v1/ml/learned-data", m.ClearLearnedData)
 		} else {
-			log.Println("WARN: ml-suggestions routes disabled — DaemonAPIKeyAuth middleware not configured")
+			log.Println("WARN: ml-suggestions routes disabled — Clerk auth middleware not configured")
 		}
 	}
 
 	// Phase 2 PR #7 — notes + suggestions surface (deck_notes CRUD,
 	// matches.notes/rating column, ml_suggestions list/dismiss/stub-generate).
 	if deps.NotesHandler != nil {
-		if deps.DaemonAPIKeyAuthMiddl != nil {
+		if deps.ClerkAuthMiddl != nil {
 			n := deps.NotesHandler
-			auth := deps.DaemonAPIKeyAuthMiddl
+			auth := composeClerkAuth(deps.ClerkAuthMiddl, deps.ClerkUserResolver)
 			r.With(auth).Get("/api/v1/decks/{deckId}/notes", n.ListDeckNotes)
 			r.With(auth).Get("/api/v1/decks/{deckId}/notes/{noteId}", n.GetDeckNote)
 			r.With(auth).Post("/api/v1/decks/{deckId}/notes", n.CreateDeckNote)
@@ -891,7 +908,7 @@ func BuildRouter(cfg *config.Config, deps RouterDeps) http.Handler {
 			r.With(auth).Post("/api/v1/decks/{deckId}/suggestions/generate", n.GenerateSuggestions)
 			r.With(auth).Put("/api/v1/suggestions/{suggestionId}/dismiss", n.DismissSuggestion)
 		} else {
-			log.Println("WARN: notes/suggestions routes disabled — DaemonAPIKeyAuth middleware not configured")
+			log.Println("WARN: notes/suggestions routes disabled — Clerk auth middleware not configured")
 		}
 	}
 
@@ -899,26 +916,26 @@ func BuildRouter(cfg *config.Config, deps RouterDeps) http.Handler {
 	// Mixed scope: match-bound and per-account routes are scoped via
 	// matches.account_id; archetypes/{name}/expected-cards is global.
 	if deps.OpponentsHandler != nil {
-		if deps.DaemonAPIKeyAuthMiddl != nil {
+		if deps.ClerkAuthMiddl != nil {
 			o := deps.OpponentsHandler
-			auth := deps.DaemonAPIKeyAuthMiddl
+			auth := composeClerkAuth(deps.ClerkAuthMiddl, deps.ClerkUserResolver)
 			r.With(auth).Get("/api/v1/matches/{matchId}/opponent-analysis", o.OpponentAnalysis)
 			r.With(auth).Get("/api/v1/opponents/decks", o.ListDecks)
 			r.With(auth).Get("/api/v1/analytics/matchups", o.MatchupStats)
 			r.With(auth).Get("/api/v1/analytics/opponent-history", o.OpponentHistory)
 			r.With(auth).Get("/api/v1/archetypes/{name}/expected-cards", o.ExpectedCardsByArchetype)
 		} else {
-			log.Println("WARN: opponents routes disabled — DaemonAPIKeyAuth middleware not configured")
+			log.Println("WARN: opponents routes disabled — Clerk auth middleware not configured")
 		}
 	}
 
 	// Phase 2 PR #5b — /api/v1/meta surface. Account-agnostic (meta data is
-	// global), but still gated behind DaemonAPIKeyAuth so anonymous callers
-	// can't enumerate the archetype catalogue.
+	// global), but still gated behind Clerk auth so anonymous callers can't
+	// enumerate the archetype catalogue.
 	if deps.MetaHandler != nil {
-		if deps.DaemonAPIKeyAuthMiddl != nil {
+		if deps.ClerkAuthMiddl != nil {
 			m := deps.MetaHandler
-			auth := deps.DaemonAPIKeyAuthMiddl
+			auth := composeClerkAuth(deps.ClerkAuthMiddl, deps.ClerkUserResolver)
 			r.With(auth).Get("/api/v1/meta/archetypes", m.Archetypes)
 			r.With(auth).Get("/api/v1/meta/tier", m.Tier)
 			r.With(auth).Get("/api/v1/meta/archetypes/cards", m.ArchetypeCards)
@@ -927,17 +944,17 @@ func BuildRouter(cfg *config.Config, deps RouterDeps) http.Handler {
 			r.With(auth).Get("/api/v1/meta/insights", m.FormatInsights)
 			r.With(auth).Post("/api/v1/meta/refresh", m.Refresh)
 		} else {
-			log.Println("WARN: /api/v1/meta/* disabled — DaemonAPIKeyAuth middleware not configured")
+			log.Println("WARN: /api/v1/meta/* disabled — Clerk auth middleware not configured")
 		}
 	}
 
 	// Phase 2 PR #4 — /api/v1/standard surface. Mixed scope: sets / config /
 	// card-legality are global; rotation / affected-decks / validate are
-	// per-account. Same envelope + DaemonAPIKeyAuth contract.
+	// per-account. Same envelope + Clerk auth contract.
 	if deps.StandardHandler != nil {
-		if deps.DaemonAPIKeyAuthMiddl != nil {
+		if deps.ClerkAuthMiddl != nil {
 			s := deps.StandardHandler
-			auth := deps.DaemonAPIKeyAuthMiddl
+			auth := composeClerkAuth(deps.ClerkAuthMiddl, deps.ClerkUserResolver)
 			r.With(auth).Get("/api/v1/standard/sets", s.Sets)
 			r.With(auth).Get("/api/v1/standard/config", s.Config)
 			r.With(auth).Get("/api/v1/standard/rotation", s.Rotation)
@@ -945,7 +962,7 @@ func BuildRouter(cfg *config.Config, deps RouterDeps) http.Handler {
 			r.With(auth).Post("/api/v1/standard/validate/{deckId}", s.ValidateDeck)
 			r.With(auth).Get("/api/v1/standard/cards/{arenaId}/legality", s.CardLegality)
 		} else {
-			log.Println("WARN: /api/v1/standard/* disabled — DaemonAPIKeyAuth middleware not configured")
+			log.Println("WARN: /api/v1/standard/* disabled — Clerk auth middleware not configured")
 		}
 	}
 
