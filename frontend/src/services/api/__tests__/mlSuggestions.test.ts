@@ -1,17 +1,17 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import * as ml from '../mlSuggestions';
 
-// Mock daemonClient — ML routes go to the local daemon
-vi.mock('../../daemonClient', () => ({
+// Phase 2 PR #11 — ML routes now hit the BFF via apiClient.
+vi.mock('../../apiClient', () => ({
   get: vi.fn(),
   post: vi.fn(),
   put: vi.fn(),
   del: vi.fn(),
 }));
 
-import { get, post, put, del } from '../../daemonClient';
+import { get, post, put, del } from '../../apiClient';
 
-describe('mlSuggestions API (daemon routes)', () => {
+describe('mlSuggestions API (BFF routes)', () => {
   beforeEach(() => {
     vi.clearAllMocks();
   });

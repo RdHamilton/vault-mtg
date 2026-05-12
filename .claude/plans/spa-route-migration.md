@@ -89,8 +89,8 @@ tests + lint/format gates.
 | 7 | notes/* + suggestions (10 endpoints across 3 URL prefixes; generate stubbed) | 10 | ✅ **Merged** 2026-05-11 | PR #1879 |
 | 8 | cards/* (16 endpoints; refresh-ratings stubbed pending scrape pipeline) | 16 | ✅ **Merged** 2026-05-11 | PR #1880 |
 | 9 | decks/* (~50 endpoints; CRUD + cards + tags + permutations + import/export real, deck-builder + recommendation stubs) | 50 | ✅ **Merged** 2026-05-11 | PR #1881 |
-|10 | drafts/* — full module incl. `/decks/*` and `/feedback/*` strays (~38 endpoints; sessions + 17lands + community + trends real, grading/recs stubs) | 38 | ⏳ **In progress** | `feat/phase2-pr10-drafts` |
-|11 | mlSuggestions/* (8 paths)             | 8     | Pending       | — |
+|10 | drafts/* — full module incl. `/decks/*` and `/feedback/*` strays (~38 endpoints; sessions + 17lands + community + trends real, grading/recs stubs) | 38 | ✅ **Merged** 2026-05-11 | PR #1882 |
+|11 | mlSuggestions/* (8 paths)             | 8     | ⏳ **In progress** | `feat/phase2-pr11-ml-suggestions` |
 |12 | settings/* — implement cloud-backed settings on BFF | 1+ | Pending | — |
 |13 | system.ts cleanup — delete dead paths (`/llm/*`, `/feedback/dashboard`, `/export/clear`) | — | Pending | — |
 |14 | drafts/* Bucket C — live-state stays on daemon (current-pack, in-flight grading) | ~3 | Pending | — |
@@ -324,3 +324,19 @@ authenticated user's accounts. camelCase JSON wire format.
   current-pack, etc.) are documented STUBs pending the ML pipeline.
   drafts.ts + 2 drafts.test.ts files + 2 msw handlers: import-only
   swap to apiClient / BFF_BASE.
+- **2026-05-11** — PR #10 merged (#1882). Starting PR #11
+  (mlSuggestions/*). Audit revealed 11 endpoints in mlSuggestions.ts,
+  not 8 — three of them (list / generate / dismiss) overlapped with
+  PR #7's /api/v1/decks/{id}/suggestions* surface. Resolved by
+  mounting alias routes under /ml-suggestions/* that reuse the
+  NotesRepository read+dismiss methods, paired with a new
+  MLRepository for the 8 net-new endpoints (apply, synergy-report,
+  card-synergies, combinations, process-history STUB,
+  play-patterns read + STUB update, learned-data wipe). Aliases
+  emit the richer MLSuggestion shape (confidence/cardId/swap fields/
+  apply timestamps) so the SPA panel renders properly. learned-data
+  DELETE is account-scoped: wipes the user's ml_suggestions +
+  user_play_patterns only — global card_combination_stats survives.
+  mlSuggestions.ts + mlSuggestions.test.ts: import-only swap to
+  apiClient (no MSW handlers touched — component test mocks the
+  whole module via apiMock).
