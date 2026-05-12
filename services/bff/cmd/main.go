@@ -181,6 +181,7 @@ func main() {
 		gamePlaysHandler      *handlers.GamePlaysHandler
 		metaHandler           *handlers.MetaHandler
 		opponentsHandler      *handlers.OpponentsHandler
+		notesHandler          *handlers.NotesHandler
 	)
 
 	// projCtx is cancelled on SIGTERM so the projection worker exits cleanly.
@@ -245,6 +246,11 @@ func main() {
 		// Reads opponent_deck_profiles, matchup_statistics,
 		// archetype_expected_cards, opponent_cards_observed.
 		opponentsHandler = handlers.NewOpponentsHandler(repository.NewOpponentsRepository(sqlDB), accountRepo)
+
+		// Phase 2 PR #7 — notes + suggestions surface (deck_notes CRUD,
+		// matches.notes/rating column, ml_suggestions read+dismiss).
+		// generate-suggestions stubbed pending the ML pipeline.
+		notesHandler = handlers.NewNotesHandler(repository.NewNotesRepository(sqlDB), accountRepo)
 
 		// ListV2Handler provides cursor-paginated v2 endpoints for matches,
 		// drafts, decks, and collection (ADR-018).
@@ -337,6 +343,7 @@ func main() {
 		GamePlaysHandler:      gamePlaysHandler,
 		MetaHandler:           metaHandler,
 		OpponentsHandler:      opponentsHandler,
+		NotesHandler:          notesHandler,
 		HealthzHandler:        healthzHandler,
 		ClerkAuthMiddl:        clerkAuthMiddl,
 		ClerkAuthSSEMiddl:     clerkAuthSSEMiddl,
@@ -423,6 +430,10 @@ type RouterDeps struct {
 	// analytics/matchups, analytics/opponent-history,
 	// archetypes/{name}/expected-cards). Protected by DaemonAPIKeyAuth.
 	OpponentsHandler *handlers.OpponentsHandler
+	// NotesHandler serves the Phase 2 notes + suggestions surface
+	// (deck-notes CRUD, match-notes GET/PUT, suggestions list/generate/
+	// dismiss). Protected by DaemonAPIKeyAuth.
+	NotesHandler *handlers.NotesHandler
 	// HealthzHandler serves GET /healthz — intentionally public (no auth).
 	HealthzHandler *handlers.HealthzHandler
 	ClerkAuthMiddl func(http.Handler) http.Handler
@@ -598,6 +609,27 @@ func BuildRouter(cfg *config.Config, deps RouterDeps) http.Handler {
 			r.With(auth).Get("/api/v1/gameplays/game/{gameId}", gp.PlaysByGame)
 		} else {
 			log.Println("WARN: gameplays routes disabled — DaemonAPIKeyAuth middleware not configured")
+		}
+	}
+
+	// Phase 2 PR #7 — notes + suggestions surface (deck_notes CRUD,
+	// matches.notes/rating column, ml_suggestions list/dismiss/stub-generate).
+	if deps.NotesHandler != nil {
+		if deps.DaemonAPIKeyAuthMiddl != nil {
+			n := deps.NotesHandler
+			auth := deps.DaemonAPIKeyAuthMiddl
+			r.With(auth).Get("/api/v1/decks/{deckId}/notes", n.ListDeckNotes)
+			r.With(auth).Get("/api/v1/decks/{deckId}/notes/{noteId}", n.GetDeckNote)
+			r.With(auth).Post("/api/v1/decks/{deckId}/notes", n.CreateDeckNote)
+			r.With(auth).Put("/api/v1/decks/{deckId}/notes/{noteId}", n.UpdateDeckNote)
+			r.With(auth).Delete("/api/v1/decks/{deckId}/notes/{noteId}", n.DeleteDeckNote)
+			r.With(auth).Get("/api/v1/matches/{matchId}/notes", n.GetMatchNotes)
+			r.With(auth).Put("/api/v1/matches/{matchId}/notes", n.UpdateMatchNotes)
+			r.With(auth).Get("/api/v1/decks/{deckId}/suggestions", n.ListSuggestions)
+			r.With(auth).Post("/api/v1/decks/{deckId}/suggestions/generate", n.GenerateSuggestions)
+			r.With(auth).Put("/api/v1/suggestions/{suggestionId}/dismiss", n.DismissSuggestion)
+		} else {
+			log.Println("WARN: notes/suggestions routes disabled — DaemonAPIKeyAuth middleware not configured")
 		}
 	}
 

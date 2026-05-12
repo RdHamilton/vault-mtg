@@ -1,9 +1,16 @@
 /**
  * Notes and Suggestions API service.
- * Handles deck notes, match notes, and improvement suggestions.
+ *
+ * Phase 2 PR #7: cloud-data deck-notes / match-notes / improvement-
+ * suggestions reads + writes now hit the BFF directly via apiClient.
+ * Routes mount under /api/v1/decks/{id}/notes[/{noteId}],
+ * /api/v1/matches/{id}/notes, /api/v1/decks/{id}/suggestions[/generate],
+ * and /api/v1/suggestions/{id}/dismiss. URL paths unchanged in this file.
+ *
+ * Plan tracker: .claude/plans/spa-route-migration.md
  */
 
-import { get, post, put, del } from '../daemonClient';
+import { get, post, put, del } from '../apiClient';
 
 /**
  * Note category types.

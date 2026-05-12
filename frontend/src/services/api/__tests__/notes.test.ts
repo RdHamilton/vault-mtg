@@ -1,15 +1,15 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import * as notes from '../notes';
 
-// Mock daemonClient — notes routes go to the local daemon
-vi.mock('../../daemonClient', () => ({
+// Mock apiClient — Phase 2 PR #7 routes notes.* through the BFF.
+vi.mock('../../apiClient', () => ({
   get: vi.fn(),
   post: vi.fn(),
   put: vi.fn(),
   del: vi.fn(),
 }));
 
-import { get, post, put, del } from '../../daemonClient';
+import { get, post, put, del } from '../../apiClient';
 
 describe('notes API (daemon routes)', () => {
   beforeEach(() => {
