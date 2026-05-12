@@ -1,4 +1,11 @@
-import { get } from '../daemonClient';
+// Phase 2 PR #6: cloud-data opponents/analytics/archetype-expected reads
+// now hit the BFF directly via apiClient. Routes mount across four URL
+// prefixes (matches/{id}/opponent-analysis, opponents/decks,
+// analytics/matchups, analytics/opponent-history,
+// archetypes/{name}/expected-cards). URL paths unchanged in this file.
+//
+// Plan tracker: .claude/plans/spa-route-migration.md
+import { get } from '../apiClient';
 
 // Types for opponent analysis
 

@@ -574,7 +574,7 @@ export const handlers = [
   }),
 
   // Opponent analysis endpoint
-  http.get(`${API_BASE}/matches/:matchID/opponent-analysis`, () => {
+  http.get(`${BFF_BASE}/matches/:matchID/opponent-analysis`, () => {
     return successResponse({
       profile: {
         id: 1,
@@ -659,7 +659,7 @@ export const handlers = [
   }),
 
   // Opponent decks list endpoint
-  http.get(`${API_BASE}/opponents/decks`, () => {
+  http.get(`${BFF_BASE}/opponents/decks`, () => {
     return successResponse({
       profiles: [
         {
@@ -681,7 +681,7 @@ export const handlers = [
   }),
 
   // Matchup stats endpoint
-  http.get(`${API_BASE}/analytics/matchups`, () => {
+  http.get(`${BFF_BASE}/analytics/matchups`, () => {
     return successResponse({
       matchups: [
         {
@@ -705,7 +705,7 @@ export const handlers = [
   }),
 
   // Opponent history endpoint
-  http.get(`${API_BASE}/analytics/opponent-history`, () => {
+  http.get(`${BFF_BASE}/analytics/opponent-history`, () => {
     return successResponse({
       totalOpponents: 20,
       uniqueArchetypes: 8,
@@ -725,7 +725,7 @@ export const handlers = [
   }),
 
   // Expected cards for archetype endpoint
-  http.get(`${API_BASE}/archetypes/:name/expected-cards`, () => {
+  http.get(`${BFF_BASE}/archetypes/:name/expected-cards`, () => {
     return successResponse({
       archetype: 'Mono Red Aggro',
       format: 'Standard',
