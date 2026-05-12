@@ -86,8 +86,8 @@ tests + lint/format gates.
 | 5a | gameplays/* (6 endpoints — backed by game_plays, game_state_snapshots, opponent_cards_observed tables) | 6 | ✅ **Merged** 2026-05-11 | PR #1876 |
 | 5b | meta/* (7 endpoints; 3 real reads from mtgzone_* + 4 shape-stubs pending ML/scrape infra) | 7 | ✅ **Merged** 2026-05-11 | PR #1877 |
 | 6 | opponents/* + analytics + archetypes-expected (5 endpoints across 4 URL prefixes) | 5 | ✅ **Merged** 2026-05-11 | PR #1878 |
-| 7 | notes/* + suggestions (10 endpoints across 3 URL prefixes; generate stubbed) | 10 | ⏳ **In progress** | `feat/phase2-pr7-notes` |
-| 8 | cards/* (13 paths)                    | 13    | Pending       | — |
+| 7 | notes/* + suggestions (10 endpoints across 3 URL prefixes; generate stubbed) | 10 | ✅ **Merged** 2026-05-11 | PR #1879 |
+| 8 | cards/* (16 endpoints; refresh-ratings stubbed pending scrape pipeline) | 16 | ⏳ **In progress** | `feat/phase2-pr8-cards` |
 | 9 | decks/* cloud paths (33 paths)        | 33    | Pending       | — |
 |10 | drafts/* — full module incl. `/decks/*` and `/feedback/*` strays (31 paths, minus Bucket C) | 28 | Pending | — |
 |11 | mlSuggestions/* (8 paths)             | 8     | Pending       | — |
@@ -279,3 +279,16 @@ authenticated user's accounts. camelCase JSON wire format.
   >=0.4 medium, else low); cardReferences encoded as JSON object
   for the SPA's parseEvidence helper. notes.ts + notes.test.ts:
   import-only swap.
+- **2026-05-11** — PR #7 merged. Starting PR #8 (cards/*).
+- **2026-05-11** — PR #8 (cards/*) built. Plan said "13 paths"; actual
+  is 16 endpoints. New CardsRepository + CardsHandler covering
+  search/lookup/sets, 17Lands ratings (with X-Cache-Age-Hours +
+  X-Cache-Degraded headers from the staleness check), color ratings,
+  and ChannelFireball ratings (CRUD + arena-id linking). Two
+  account-scoped endpoints (collection-quantities,
+  search-with-collection) join card_inventory. refresh-ratings is
+  a documented stub: bumps cached_at on draft_card_ratings rows
+  but doesn't actually scrape 17Lands (that lives in services/sync).
+  Tier letter derived from gihwr (S/A/B/C/D/F bucketing). cards.ts
+  + cards.test.ts + msw cards/sets handler: import-only swap to
+  apiClient / BFF_BASE.

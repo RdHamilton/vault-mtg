@@ -146,7 +146,7 @@ export const handlers = [
   }),
 
   // Cards/sets endpoint
-  http.get(`${API_BASE}/cards/sets`, () => {
+  http.get(`${BFF_BASE}/cards/sets`, () => {
     return successResponse([
       createMockSetInfo({ code: 'sta', name: 'Strixhaven Mystical Archive' }),
       createMockSetInfo({ code: 'dsk', name: 'Duskmourn' }),

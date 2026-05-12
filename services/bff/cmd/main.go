@@ -182,6 +182,7 @@ func main() {
 		metaHandler           *handlers.MetaHandler
 		opponentsHandler      *handlers.OpponentsHandler
 		notesHandler          *handlers.NotesHandler
+		cardsHandler          *handlers.CardsHandler
 	)
 
 	// projCtx is cancelled on SIGTERM so the projection worker exits cleanly.
@@ -251,6 +252,12 @@ func main() {
 		// matches.notes/rating column, ml_suggestions read+dismiss).
 		// generate-suggestions stubbed pending the ML pipeline.
 		notesHandler = handlers.NewNotesHandler(repository.NewNotesRepository(sqlDB), accountRepo)
+
+		// Phase 2 PR #8 — /api/v1/cards/* surface (search/lookup/sets/
+		// ratings/CFB/import). Mostly global catalog reads;
+		// /collection-quantities + /search-with-collection are the two
+		// account-scoped endpoints.
+		cardsHandler = handlers.NewCardsHandler(repository.NewCardsRepository(sqlDB), accountRepo)
 
 		// ListV2Handler provides cursor-paginated v2 endpoints for matches,
 		// drafts, decks, and collection (ADR-018).
@@ -344,6 +351,7 @@ func main() {
 		MetaHandler:           metaHandler,
 		OpponentsHandler:      opponentsHandler,
 		NotesHandler:          notesHandler,
+		CardsHandler:          cardsHandler,
 		HealthzHandler:        healthzHandler,
 		ClerkAuthMiddl:        clerkAuthMiddl,
 		ClerkAuthSSEMiddl:     clerkAuthSSEMiddl,
@@ -434,6 +442,11 @@ type RouterDeps struct {
 	// (deck-notes CRUD, match-notes GET/PUT, suggestions list/generate/
 	// dismiss). Protected by DaemonAPIKeyAuth.
 	NotesHandler *handlers.NotesHandler
+	// CardsHandler serves the Phase 2 /api/v1/cards/* surface — card
+	// metadata, sets, 17Lands ratings (with staleness + refresh stub),
+	// CFB ratings (CRUD + arena-id linking), and the two account-scoped
+	// collection-aware endpoints. Protected by DaemonAPIKeyAuth.
+	CardsHandler *handlers.CardsHandler
 	// HealthzHandler serves GET /healthz — intentionally public (no auth).
 	HealthzHandler *handlers.HealthzHandler
 	ClerkAuthMiddl func(http.Handler) http.Handler
@@ -609,6 +622,35 @@ func BuildRouter(cfg *config.Config, deps RouterDeps) http.Handler {
 			r.With(auth).Get("/api/v1/gameplays/game/{gameId}", gp.PlaysByGame)
 		} else {
 			log.Println("WARN: gameplays routes disabled — DaemonAPIKeyAuth middleware not configured")
+		}
+	}
+
+	// Phase 2 PR #8 — /api/v1/cards/* surface. Mostly global catalog reads
+	// (cards/sets/ratings/CFB); /collection-quantities and
+	// /search-with-collection are the two account-scoped endpoints.
+	if deps.CardsHandler != nil {
+		if deps.DaemonAPIKeyAuthMiddl != nil {
+			c := deps.CardsHandler
+			auth := deps.DaemonAPIKeyAuthMiddl
+			r.With(auth).Get("/api/v1/cards", c.Search)
+			r.With(auth).Get("/api/v1/cards/sets", c.AllSets)
+			r.With(auth).Get("/api/v1/cards/sets/{setCode}/cards", c.SetCards)
+			r.With(auth).Get("/api/v1/cards/ratings/{setCode}/colors", c.ColorRatings)
+			r.With(auth).Get("/api/v1/cards/ratings/{setCode}/{format}/staleness", c.RatingsStaleness)
+			r.With(auth).Get("/api/v1/cards/ratings/{setCode}/{format}", c.CardRatings)
+			r.With(auth).Post("/api/v1/cards/ratings/{setCode}/refresh", c.RefreshRatings)
+			r.With(auth).Post("/api/v1/cards/collection-quantities", c.CollectionQuantities)
+			r.With(auth).Post("/api/v1/cards/search-with-collection", c.SearchWithCollection)
+			r.With(auth).Get("/api/v1/cards/cfb/{setCode}/count", c.CFBRatingsCount)
+			r.With(auth).Get("/api/v1/cards/cfb/{setCode}/card/{cardName}", c.CFBRatingByCard)
+			r.With(auth).Get("/api/v1/cards/cfb/{setCode}", c.CFBRatings)
+			r.With(auth).Post("/api/v1/cards/cfb/import", c.ImportCFB)
+			r.With(auth).Post("/api/v1/cards/cfb/{setCode}/link-arena-ids", c.LinkCFBArenaIds)
+			r.With(auth).Delete("/api/v1/cards/cfb/{setCode}", c.DeleteCFB)
+			// Single-card lookup last so the literal /sets and /cfb prefixes win.
+			r.With(auth).Get("/api/v1/cards/{arenaId}", c.GetByArenaID)
+		} else {
+			log.Println("WARN: /api/v1/cards/* disabled — DaemonAPIKeyAuth middleware not configured")
 		}
 	}
 

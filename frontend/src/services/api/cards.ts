@@ -1,9 +1,16 @@
 /**
  * Cards API service.
- * Replaces Wails card-related function bindings.
+ *
+ * Phase 2 PR #8: cloud-data card metadata, set catalog, 17Lands ratings,
+ * and ChannelFireball ratings now hit the BFF directly via apiClient.
+ * /collection-quantities and /search-with-collection are the two
+ * account-scoped endpoints. refresh-ratings is a documented BFF stub
+ * pending the scrape pipeline. URL paths unchanged in this file.
+ *
+ * Plan tracker: .claude/plans/spa-route-migration.md
  */
 
-import { get, post, del, getRaw } from '../daemonClient';
+import { get, post, del, getRaw } from '../apiClient';
 import { models, gui, seventeenlands } from '@/types/models';
 
 // Re-export types for convenience
