@@ -3,8 +3,7 @@ import { screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { render } from '../test/utils/testUtils';
 import Layout from './Layout';
-import { mockSystem, mockMatches } from '@/test/mocks/apiMock';
-import { mockEventEmitter } from '@/test/mocks/websocketMock';
+import { mockMatches } from '@/test/mocks/apiMock';
 
 // Mock Sentry so Layout tests don't need a real DSN
 vi.mock('@sentry/react', async (importOriginal) => {
@@ -35,11 +34,6 @@ vi.mock('@/context/DownloadContext', () => ({
 describe('Layout Component', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    mockEventEmitter.clear();
-    mockSystem.getStatus.mockResolvedValue({
-      status: 'standalone',
-      connected: false,
-    });
   });
 
   describe('Navigation Tabs', () => {
@@ -118,54 +112,18 @@ describe('Layout Component', () => {
   });
 
   describe('Connection Status', () => {
-    it('should display connection status indicator', async () => {
-      mockSystem.getStatus.mockResolvedValue({
-        status: 'connected',
-        connected: true,
-      });
-
+    it('should render the connection status indicator container with DaemonHealthIndicator', () => {
       render(
         <Layout>
           <div>Test Content</div>
         </Layout>
       );
 
-      await waitFor(() => {
-        const statusBadge = screen.getByTestId('connection-status-badge');
-        expect(statusBadge).toBeInTheDocument();
-        expect(statusBadge).toHaveClass('status-connected');
-      });
-    });
-
-    it('should update connection status when daemon:connected event fires', async () => {
-      mockSystem.getStatus
-        .mockResolvedValueOnce({
-          status: 'standalone',
-          connected: false,
-        })
-        .mockResolvedValueOnce({
-          status: 'connected',
-          connected: true,
-        });
-
-      render(
-        <Layout>
-          <div>Test Content</div>
-        </Layout>
-      );
-
-      await waitFor(() => {
-        const statusBadge = screen.getByTestId('connection-status-badge');
-        expect(statusBadge).toHaveClass('status-standalone');
-      });
-
-      // Trigger daemon:connected event
-      mockEventEmitter.emit('daemon:connected');
-
-      await waitFor(() => {
-        const statusBadge = screen.getByTestId('connection-status-badge');
-        expect(statusBadge).toHaveClass('status-connected');
-      });
+      // connection-status-indicator is the single status area in the nav bar.
+      // The old status-badge-compact (standalone/connected dot) has been removed —
+      // DaemonHealthIndicator owns daemon status via /api/v1/health/daemon polling.
+      expect(screen.getByTestId('app-container')).toBeInTheDocument();
+      expect(screen.queryByTestId('connection-status-badge')).not.toBeInTheDocument();
     });
   });
 
@@ -219,9 +177,7 @@ describe('Layout Component', () => {
   });
 
   describe('Error Handling', () => {
-    it('should handle connection status load error gracefully', async () => {
-      mockSystem.getStatus.mockRejectedValue(new Error('Failed to load'));
-
+    it('should render nav tabs even when API calls fail', async () => {
       render(
         <Layout>
           <div>Test Content</div>
@@ -232,9 +188,7 @@ describe('Layout Component', () => {
       expect(screen.getByTestId('nav-tab-match-history')).toBeInTheDocument();
     });
 
-    it('should handle connection status error without crashing', async () => {
-      mockSystem.getStatus.mockRejectedValue(new Error('Connection error'));
-
+    it('should not throw on mount', async () => {
       expect(() => {
         render(
           <Layout>

@@ -1,13 +1,10 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useCallback } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { useAuth } from '@clerk/react';
 import Footer from './Footer';
 import AuthBar from './AuthBar';
 import DaemonHealthIndicator, { type DaemonHealthState } from './DaemonHealthIndicator';
 import { OnboardingModal } from './OnboardingModal';
-import { system } from '@/services/api';
-import { EventsOn, EventsOff } from '@/services/websocketClient';
-import { gui } from '@/types/models';
 import { usePostHogIdentity } from '@/hooks/usePostHogIdentity';
 import { useDaemonOnboarding } from '@/hooks/useDaemonOnboarding';
 import ReportBugButton from './ReportBugButton';
@@ -34,15 +31,6 @@ const Layout = ({ children }: LayoutProps) => {
     setDaemonStatus(status);
   }, []);
 
-  const [connectionStatus, setConnectionStatus] = useState<gui.ConnectionStatus>(
-    new gui.ConnectionStatus({
-      status: 'standalone',
-      connected: false,
-      mode: 'standalone',
-      url: '',
-      port: 0,
-    })
-  );
   const isActive = (path: string) => location.pathname === path;
 
   // Derive activeTab from current route (computed value, not state)
@@ -70,32 +58,6 @@ const Layout = ({ children }: LayoutProps) => {
   const activeTab = getActiveTab();
 
 
-
-  // Load connection status on mount
-  useEffect(() => {
-    const loadConnectionStatus = async () => {
-      try {
-        const status = await system.getStatus();
-        setConnectionStatus(gui.ConnectionStatus.createFrom(status));
-      } catch (error) {
-        console.error('Failed to load connection status:', error);
-      }
-    };
-
-    loadConnectionStatus();
-
-    // Listen for daemon events
-    const handleDaemonStatus = () => loadConnectionStatus();
-    const handleDaemonConnected = () => loadConnectionStatus();
-
-    EventsOn('daemon:status', handleDaemonStatus);
-    EventsOn('daemon:connected', handleDaemonConnected);
-
-    return () => {
-      EventsOff('daemon:status');
-      EventsOff('daemon:connected');
-    };
-  }, []);
 
   return (
     <div className="app-container" data-testid="app-container">
@@ -174,9 +136,6 @@ const Layout = ({ children }: LayoutProps) => {
               onOpenOnboarding={openOnboarding}
               onStatusChange={handleDaemonStatusChange}
             />
-            <div className={`status-badge-compact status-${connectionStatus.status}`} title={connectionStatus.status} data-testid="connection-status-badge">
-              <span className="status-dot-compact"></span>
-            </div>
           </div>
         </div>
       </div>

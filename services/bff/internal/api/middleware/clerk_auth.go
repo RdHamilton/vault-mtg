@@ -195,3 +195,12 @@ func (s *statusCapture) Write(b []byte) (int, error) {
 
 	return s.ResponseWriter.Write(b)
 }
+
+// Flush delegates to the underlying ResponseWriter's Flush method when it
+// supports http.Flusher.  Without this, SSE handlers that do w.(http.Flusher)
+// get (nil, false) and return 500 "streaming not supported".
+func (s *statusCapture) Flush() {
+	if f, ok := s.ResponseWriter.(http.Flusher); ok {
+		f.Flush()
+	}
+}
