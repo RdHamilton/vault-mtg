@@ -740,3 +740,88 @@ func TestWithVersion(t *testing.T) {
 	svc.WithVersion("")
 	assert.Equal(t, "1.2.3", svc.version)
 }
+
+// ---------------------------------------------------------------------------
+// Heartbeat ticker tests
+// ---------------------------------------------------------------------------
+
+// TestRunSendsHeartbeatWhenAccountIDSet verifies that the run loop dispatches a
+// daemon.heartbeat event on each ticker fire when AccountID is non-empty.
+func TestRunSendsHeartbeatWhenAccountIDSet(t *testing.T) {
+	var heartbeatCalls atomic.Int32
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/v1/ingest/events" {
+			body, err := io.ReadAll(r.Body)
+			require.NoError(t, err)
+			var evt contract.DaemonEvent
+			require.NoError(t, json.Unmarshal(body, &evt))
+			if evt.Type == "daemon.heartbeat" {
+				heartbeatCalls.Add(1)
+			}
+		}
+		w.WriteHeader(http.StatusAccepted)
+	}))
+	defer srv.Close()
+
+	cfg := &config.Config{
+		CloudAPIURL: srv.URL,
+		IngestPath:  "/v1/ingest/events",
+		APIKey:      "test-key",
+		AccountID:   "acc-heartbeat",
+		LogPath:     "/dev/null",
+	}
+	svc := New(cfg)
+
+	oldInterval := heartbeatInterval
+	heartbeatInterval = 10 * time.Millisecond
+	t.Cleanup(func() { heartbeatInterval = oldInterval })
+
+	ctx, cancel := context.WithTimeout(context.Background(), 150*time.Millisecond)
+	defer cancel()
+
+	_ = svc.Run(ctx)
+
+	assert.GreaterOrEqual(t, heartbeatCalls.Load(), int32(1),
+		"expected at least one daemon.heartbeat event when AccountID is set")
+}
+
+// TestRunSkipsHeartbeatWhenAccountIDEmpty verifies that no heartbeat is sent
+// when the daemon has no AccountID (not yet authenticated).
+func TestRunSkipsHeartbeatWhenAccountIDEmpty(t *testing.T) {
+	var heartbeatCalls atomic.Int32
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/v1/ingest/events" {
+			body, err := io.ReadAll(r.Body)
+			require.NoError(t, err)
+			var evt contract.DaemonEvent
+			if json.Unmarshal(body, &evt) == nil && evt.Type == "daemon.heartbeat" {
+				heartbeatCalls.Add(1)
+			}
+		}
+		w.WriteHeader(http.StatusAccepted)
+	}))
+	defer srv.Close()
+
+	cfg := &config.Config{
+		CloudAPIURL: srv.URL,
+		IngestPath:  "/v1/ingest/events",
+		APIKey:      "test-key",
+		AccountID:   "", // not authenticated
+		LogPath:     "/dev/null",
+	}
+	svc := New(cfg)
+
+	oldInterval := heartbeatInterval
+	heartbeatInterval = 10 * time.Millisecond
+	t.Cleanup(func() { heartbeatInterval = oldInterval })
+
+	ctx, cancel := context.WithTimeout(context.Background(), 150*time.Millisecond)
+	defer cancel()
+
+	_ = svc.Run(ctx)
+
+	assert.Equal(t, int32(0), heartbeatCalls.Load(),
+		"heartbeat must not be sent when AccountID is empty")
+}

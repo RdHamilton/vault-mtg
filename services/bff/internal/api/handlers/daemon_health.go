@@ -14,11 +14,10 @@ import (
 // daemon is connected.  A daemon_events row with received_at within this
 // window means the daemon is actively polling.
 //
-// 5 minutes: the daemon sends a startup burst (collection, inventory, etc.)
-// then goes quiet until the next MTGA activity.  60 s was too short —
-// the icon turned red during normal idle gaps between game events.
-// Once the daemon gains a periodic heartbeat event the window can shrink.
-const daemonHealthWindow = 5 * time.Minute
+// 90 s: the daemon sends a daemon.heartbeat event every 30 s, so three missed
+// beats before the indicator flips — enough buffer for transient network hiccups
+// without leaving the UI stale for long.
+const daemonHealthWindow = 90 * time.Second
 
 // DaemonHealthChecker is the minimal interface DaemonHealthHandler needs.
 type DaemonHealthChecker interface {

@@ -32,6 +32,11 @@ var jwtRefreshInterval = time.Hour
 // It is a variable so tests can shorten it.
 var updateCheckInterval = 24 * time.Hour
 
+// heartbeatInterval is how often the run loop sends a daemon.heartbeat event to
+// the BFF so the health check has a liveness signal even when MTGA is idle.
+// It is a variable so tests can shorten it.
+var heartbeatInterval = 30 * time.Second
+
 // Service is the top-level daemon service.
 type Service struct {
 	cfg        *config.Config
@@ -279,6 +284,11 @@ func (s *Service) Run(ctx context.Context) error {
 	updateTicker := time.NewTicker(updateCheckInterval)
 	defer updateTicker.Stop()
 
+	// Periodic liveness heartbeat: every 30 seconds, send a daemon.heartbeat
+	// event so the BFF health check has a signal even when MTGA is idle.
+	heartbeatTicker := time.NewTicker(heartbeatInterval)
+	defer heartbeatTicker.Stop()
+
 	for {
 		select {
 		case <-ctx.Done():
@@ -302,6 +312,22 @@ func (s *Service) Run(ctx context.Context) error {
 		case <-updateTicker.C:
 			// Run non-blocking; errors are swallowed inside runUpdateCheck.
 			go s.runUpdateCheck(ctx)
+
+		case <-heartbeatTicker.C:
+			// Skip when AccountID is not yet set (daemon not authenticated).
+			if s.cfg.AccountID == "" {
+				continue
+			}
+			evt, err := dispatch.BuildEvent("daemon.heartbeat", s.cfg.AccountID, s.sessionID, struct{}{})
+			if err != nil {
+				log.Printf("[daemon] warn: build heartbeat event: %v", err)
+				continue
+			}
+			dispatchCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
+			if sendErr := s.dispatcher.Send(dispatchCtx, evt); sendErr != nil {
+				log.Printf("[daemon] warn: heartbeat dispatch: %v", sendErr)
+			}
+			cancel()
 
 		case err, ok := <-errs:
 			if !ok {
