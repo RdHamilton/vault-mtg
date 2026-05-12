@@ -185,6 +185,7 @@ func main() {
 		cardsHandler          *handlers.CardsHandler
 		decksHandler          *handlers.DecksHandler
 		draftsHandler         *handlers.DraftsHandler
+		mlHandler             *handlers.MLHandler
 	)
 
 	// projCtx is cancelled on SIGTERM so the projection worker exits cleanly.
@@ -272,6 +273,18 @@ func main() {
 		// drafts.ts. Recommendation/grading endpoints stubbed pending
 		// the ML pipeline.
 		draftsHandler = handlers.NewDraftsHandler(repository.NewDraftsRepository(sqlDB), accountRepo)
+
+		// Phase 2 PR #11 — /api/v1/ml-suggestions/* + /api/v1/ml/*
+		// surface (list/generate/dismiss/apply, synergy report,
+		// card synergies, combinations, play patterns, learned-data
+		// wipe). Reuses NotesRepository for the suggestion list/dismiss
+		// reads; the new MLRepository owns apply + synergy + play
+		// patterns + scoped clear.
+		mlHandler = handlers.NewMLHandler(
+			repository.NewNotesRepository(sqlDB),
+			repository.NewMLRepository(sqlDB),
+			accountRepo,
+		)
 
 		// ListV2Handler provides cursor-paginated v2 endpoints for matches,
 		// drafts, decks, and collection (ADR-018).
@@ -368,6 +381,7 @@ func main() {
 		CardsHandler:          cardsHandler,
 		DecksHandler:          decksHandler,
 		DraftsHandler:         draftsHandler,
+		MLHandler:             mlHandler,
 		HealthzHandler:        healthzHandler,
 		ClerkAuthMiddl:        clerkAuthMiddl,
 		ClerkAuthSSEMiddl:     clerkAuthSSEMiddl,
@@ -473,6 +487,12 @@ type RouterDeps struct {
 	// trends, learning curve) + the /decks/* + /feedback/* strays.
 	// Protected by DaemonAPIKeyAuth.
 	DraftsHandler *handlers.DraftsHandler
+	// MLHandler serves the Phase 2 ml-suggestions + synergy +
+	// play-patterns surface. Reuses NotesRepository for the
+	// list/generate/dismiss aliases; the new MLRepository owns
+	// apply / synergy / play-patterns / account-scoped clear.
+	// Protected by DaemonAPIKeyAuth.
+	MLHandler *handlers.MLHandler
 	// HealthzHandler serves GET /healthz — intentionally public (no auth).
 	HealthzHandler *handlers.HealthzHandler
 	ClerkAuthMiddl func(http.Handler) http.Handler
@@ -795,6 +815,31 @@ func BuildRouter(cfg *config.Config, deps RouterDeps) http.Handler {
 			r.With(auth).Get("/api/v1/cards/{arenaId}", c.GetByArenaID)
 		} else {
 			log.Println("WARN: /api/v1/cards/* disabled — DaemonAPIKeyAuth middleware not configured")
+		}
+	}
+
+	// Phase 2 PR #11 — ml-suggestions + synergy + play-patterns surface.
+	// Mounts under /api/v1/ml-suggestions/*, /api/v1/decks/{id}/ml-suggestions,
+	// /api/v1/decks/{id}/synergy-report, /api/v1/cards/{id}/synergies, and
+	// /api/v1/ml/*. Three of the eleven routes are aliases for notes-side
+	// list/generate/dismiss with the richer MLSuggestion response shape.
+	if deps.MLHandler != nil {
+		if deps.DaemonAPIKeyAuthMiddl != nil {
+			m := deps.MLHandler
+			auth := deps.DaemonAPIKeyAuthMiddl
+			r.With(auth).Get("/api/v1/decks/{deckId}/ml-suggestions", m.ListMLSuggestions)
+			r.With(auth).Post("/api/v1/decks/{deckId}/ml-suggestions/generate", m.GenerateMLSuggestions)
+			r.With(auth).Put("/api/v1/ml-suggestions/{suggestionId}/dismiss", m.DismissMLSuggestion)
+			r.With(auth).Put("/api/v1/ml-suggestions/{suggestionId}/apply", m.ApplyMLSuggestion)
+			r.With(auth).Get("/api/v1/decks/{deckId}/synergy-report", m.SynergyReport)
+			r.With(auth).Get("/api/v1/cards/{cardId}/synergies", m.CardSynergies)
+			r.With(auth).Get("/api/v1/ml/combinations", m.CombinationStats)
+			r.With(auth).Post("/api/v1/ml/process-history", m.ProcessMatchHistory)
+			r.With(auth).Get("/api/v1/ml/play-patterns", m.GetUserPlayPatterns)
+			r.With(auth).Post("/api/v1/ml/play-patterns/update", m.UpdateUserPlayPatterns)
+			r.With(auth).Delete("/api/v1/ml/learned-data", m.ClearLearnedData)
+		} else {
+			log.Println("WARN: ml-suggestions routes disabled — DaemonAPIKeyAuth middleware not configured")
 		}
 	}
 

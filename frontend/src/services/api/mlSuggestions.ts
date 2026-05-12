@@ -1,9 +1,20 @@
 /**
  * ML Suggestions API service.
- * Handles ML-powered card suggestions based on synergy analysis.
+ *
+ * Phase 2 PR #11: ml-suggestions list/generate/dismiss/apply, synergy
+ * report, card-pair stats, and play patterns now hit the BFF directly
+ * via apiClient. Routes mount under /api/v1/ml-suggestions/*,
+ * /api/v1/decks/{id}/ml-suggestions, /api/v1/decks/{id}/synergy-report,
+ * /api/v1/cards/{id}/synergies, and /api/v1/ml/*. URL paths in this
+ * file are unchanged — apiClient's baseURL contains the /api/v1 prefix.
+ *
+ * generate-suggestions, process-history, and play-patterns/update are
+ * documented STUBs on the BFF until the analytics + ML pipeline lands.
+ *
+ * Plan tracker: .claude/plans/spa-route-migration.md
  */
 
-import { del, get, post, put } from '../daemonClient';
+import { del, get, post, put } from '../apiClient';
 
 /**
  * ML suggestion types.
