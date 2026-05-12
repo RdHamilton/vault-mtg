@@ -1,0 +1,4233 @@
+syntax = "proto2";
+package wotc.mtgo.gre.external.messaging;
+
+// Proto extractor compiled unit - https://github.com/HearthSim/proto-extractor
+
+
+// ref: Wotc.Mtgo.Gre.External.Messaging.ActionType
+enum ActionType {
+	action_type__none = 0;
+	action_type__cast = 1;
+	action_type__activate = 2;
+	action_type__play = 3;
+	action_type__activate__mana = 4;
+	action_type__pass = 5;
+	action_type__activate__test = 6;
+	action_type__special = 7;
+	action_type__special__turn_face_up = 8;
+	action_type__resolution_cost = 9;
+	action_type__cast_left = 10;
+	action_type__cast_right = 11;
+	action_type__make__payment = 12;
+	action_type__combat_cost = 14;
+	action_type__opening_hand_action = 15;
+	action_type__cast_adventure = 16;
+	action_type__float_mana = 17;
+	action_type__cast_mdfc = 18;
+	action_type__play_mdfc = 19;
+	action_type__special__payment = 20;
+	action_type__cast_prototype = 21;
+	action_type__placeholder22 = 22;
+	action_type__placeholder23 = 23;
+	action_type__placeholder24 = 24;
+}
+
+// ref: Wotc.Mtgo.Gre.External.Messaging.AllowCancel
+enum AllowCancel {
+	allow_cancel__none = 0;
+	allow_cancel__continue = 1;
+	allow_cancel__abort = 2;
+	allow_cancel__no = 3;
+}
+
+// ref: Wotc.Mtgo.Gre.External.Messaging.AllowFailToFind
+enum AllowFailToFind {
+	allow_fail_to_find__none = 0;
+	allow_fail_to_find__any = 1;
+	allow_fail_to_find__zero = 2;
+}
+
+// ref: Wotc.Mtgo.Gre.External.Messaging.AnnotationType
+enum AnnotationType {
+	annotation_type__none = 0;
+	annotation_type__zone_transfer = 1;
+	annotation_type__loss_of_game = 2;
+	annotation_type__damage_dealt = 3;
+	annotation_type__tapped_untapped_permanent = 4;
+	annotation_type__modified_power = 5;
+	annotation_type__modified_toughness = 6;
+	annotation_type__modified_color = 7;
+	annotation_type__phase_or_step_modified = 8;
+	annotation_type__add_ability = 9;
+	annotation_type__modified_life = 10;
+	annotation_type__create_attachment = 11;
+	annotation_type__remove_attachment = 12;
+	annotation_type__object_id_changed = 13;
+	annotation_type__counter = 14;
+	annotation_type__controller_changed = 15;
+	annotation_type__counter_added = 16;
+	annotation_type__counter_removed = 17;
+	annotation_type__layered_effect_created = 18;
+	annotation_type__layered_effect_destroyed = 19;
+	annotation_type__attachment = 20;
+	annotation_type__haunt = 21;
+	annotation_type__copied_object = 22;
+	annotation_type__remove_ability = 23;
+	annotation_type__win_the_game = 24;
+	annotation_type__modified_type = 25;
+	annotation_type__target_spec = 26;
+	annotation_type__text_change = 27;
+	annotation_type__face_down = 28;
+	annotation_type__turn_permanent = 29;
+	annotation_type__dynamic_ability = 30;
+	annotation_type__objects_selected = 31;
+	annotation_type__triggering_object = 32;
+	annotation_type__damage_source = 33;
+	annotation_type__mana_paid = 34;
+	annotation_type__token_created = 35;
+	annotation_type__ability_instance_created = 36;
+	annotation_type__ability_instance_deleted = 37;
+	annotation_type__display_card_under_card = 38;
+	annotation_type__ability_word_active = 39;
+	annotation_type__link_info = 40;
+	annotation_type__token_deleted = 41;
+	annotation_type__qualification = 42;
+	annotation_type__resolution_start = 43;
+	annotation_type__resolution_complete = 44;
+	annotation_type__designation = 45;
+	annotation_type__gain_designation = 46;
+	annotation_type__card_revealed = 47;
+	annotation_type__new_turn_started = 48;
+	annotation_type__mana_details = 49;
+	annotation_type__disqualified_effect = 50;
+	annotation_type__layered_effect = 51;
+	annotation_type__misc_continuous_effect = 52;
+	annotation_type__shouldnt_play = 53;
+	annotation_type__use_or_costs_mana_cost = 54;
+	annotation_type__remaining_selections = 55;
+	annotation_type__shuffle = 56;
+	annotation_type__coin_flip = 57;
+	annotation_type__choice_result = 58;
+	annotation_type__revealed_card_created = 59;
+	annotation_type__revealed_card_deleted = 60;
+	annotation_type__suspend_like = 61;
+	annotation_type__replacement_effect = 62;
+	annotation_type__entered_zone_this_turn = 63;
+	annotation_type__casting_time_option = 64;
+	annotation_type__scry = 65;
+	annotation_type__predicted_direct_damage = 66;
+	annotation_type__switch_power_toughness = 67;
+	annotation_type__supplemental_text = 68;
+	annotation_type__pending_effect = 69;
+	annotation_type__attachment_created = 70;
+	annotation_type__power_toughness_mod_created = 71;
+	annotation_type__synthetic_event = 72;
+	annotation_type__user_action_taken = 73;
+	annotation_type__delayed_trigger_affectees = 74;
+	annotation_type__instance_revealed_to_opponent = 75;
+	annotation_type__modified_name = 76;
+	annotation_type__replacement_effect_applied = 77;
+	annotation_type__referenced_objects = 78;
+	annotation_type__choosing_attachments = 79;
+	annotation_type__temporary_permanent = 80;
+	annotation_type__gamewide_history_count = 81;
+	annotation_type__ability_exhausted = 82;
+	annotation_type__multistep_effect_started = 83;
+	annotation_type__multistep_effect_complete = 84;
+	annotation_type__die_roll = 85;
+	annotation_type__dungeon_status = 86;
+	annotation_type__linked_damage = 87;
+	annotation_type__class_level = 88;
+	annotation_type__token_immediately_died = 89;
+	annotation_type__damaged_this_turn = 90;
+	annotation_type__referenced_card_names = 91;
+	annotation_type__player_selecting_targets = 92;
+	annotation_type__player_submitted_targets = 93;
+	annotation_type__crewed_this_turn = 94;
+	annotation_type__phased_out = 95;
+	annotation_type__phased_in = 96;
+	annotation_type__loyalty_activations_remaining = 97;
+	annotation_type__grouped_ids = 98;
+	annotation_type__regenerate_pending = 99;
+	annotation_type__permanent_regenerated = 100;
+	annotation_type__objects_to_distinguish = 101;
+	annotation_type__boon_info = 102;
+	annotation_type__lose_designation = 103;
+}
+
+// ref: Wotc.Mtgo.Gre.External.Messaging.Answer
+enum Answer {
+	answer__none = 0;
+	answer__yes = 1;
+	answer__no = 2;
+}
+
+// ref: Wotc.Mtgo.Gre.External.Messaging.AttackState
+enum AttackState {
+	attack_state__none = 0;
+	attack_state__declared = 1;
+	attack_state__attacking = 2;
+}
+
+// ref: Wotc.Mtgo.Gre.External.Messaging.AttackWarningType
+enum AttackWarningType {
+	attack_warning_type__none = 0;
+	attack_warning_type__must_attack_with_at_least_one = 1;
+	attack_warning_type__cannot_attack_alone = 2;
+	attack_warning_type__must_attack = 3;
+	attack_warning_type__unpayable_effect_cost = 4;
+	attack_warning_type__cannot_be_attacked_by_more_than_one = 5;
+}
+
+// ref: Wotc.Mtgo.Gre.External.Messaging.AutoPassOption
+enum AutoPassOption {
+	auto_pass_option__none = 0;
+	auto_pass_option__turn = 1;
+	auto_pass_option__unless_action = 2;
+	auto_pass_option__end_step = 3;
+	auto_pass_option__clear = 4;
+	auto_pass_option__unless_opponent_action = 5;
+	auto_pass_option__resolve_my_stack_effects = 6;
+	auto_pass_option__full_control = 7;
+	auto_pass_option__resolve_all = 9;
+}
+
+// ref: Wotc.Mtgo.Gre.External.Messaging.AutoPassPriority
+enum AutoPassPriority {
+	auto_pass_priority__none = 0;
+	auto_pass_priority__no = 1;
+	auto_pass_priority__yes = 2;
+}
+
+// ref: Wotc.Mtgo.Gre.External.Messaging.AutoTapStopsSetting
+enum AutoTapStopsSetting {
+	auto_tap_stops_setting__none = 0;
+	auto_tap_stops_setting__enable = 1;
+	auto_tap_stops_setting__disable = 2;
+}
+
+// ref: Wotc.Mtgo.Gre.External.Messaging.BlockState
+enum BlockState {
+	block_state__none = 0;
+	block_state__declared = 1;
+	block_state__blocking = 2;
+	block_state__blocked = 3;
+	block_state__unblocked = 4;
+}
+
+// ref: Wotc.Mtgo.Gre.External.Messaging.BlockWarningType
+enum BlockWarningType {
+	block_warning_type__none = 0;
+	block_warning_type__insufficient_blockers = 1;
+	block_warning_type__cannot_block_alone = 2;
+	block_warning_type__must_be_blocked = 3;
+	block_warning_type__must_block = 4;
+	block_warning_type__must_be_blocked_by_all = 5;
+}
+
+// ref: Wotc.Mtgo.Gre.External.Messaging.CardColor
+enum CardColor {
+	card_color__colorless = 0;
+	card_color__white = 1;
+	card_color__blue = 2;
+	card_color__black = 3;
+	card_color__red = 4;
+	card_color__green = 5;
+	card_color__land = 6;
+	card_color__artifact = 7;
+}
+
+// ref: Wotc.Mtgo.Gre.External.Messaging.CardMechanicType
+enum CardMechanicType {
+	card_mechanic_type__none = 0;
+	card_mechanic_type__add_ability = 2;
+	card_mechanic_type__add_attachment = 3;
+	card_mechanic_type__deal_damage = 4;
+	card_mechanic_type__destroy_permanent = 5;
+	card_mechanic_type__discard = 6;
+	card_mechanic_type__draw_card = 7;
+	card_mechanic_type__loss_of_game = 8;
+	card_mechanic_type__set_color = 9;
+	card_mechanic_type__pay_life = 10;
+	card_mechanic_type__modify_power = 11;
+	card_mechanic_type__modify_toughness = 12;
+	card_mechanic_type__phase_or_step_transition = 13;
+	card_mechanic_type__put_counter_on_object = 14;
+	card_mechanic_type__create_token = 15;
+	card_mechanic_type__remove_counter_from_object = 16;
+	card_mechanic_type__resolve_ability = 17;
+	card_mechanic_type__reveal = 18;
+	card_mechanic_type__tap_permanent = 19;
+	card_mechanic_type__untap_permanent = 21;
+	card_mechanic_type__zone_transfer = 22;
+	card_mechanic_type__regenerate_permanent = 23;
+	card_mechanic_type__sacrifice_permanent = 24;
+	card_mechanic_type__set_controller = 25;
+	card_mechanic_type__declared_attacker = 26;
+	card_mechanic_type__declared_blocker = 27;
+	card_mechanic_type__become_target = 28;
+	card_mechanic_type__add_to_mana_pool = 29;
+	card_mechanic_type__enter_zone = 30;
+	card_mechanic_type__shuffle_library = 31;
+	card_mechanic_type__counter_object_on_stack = 32;
+	card_mechanic_type__exile_game_object = 33;
+	card_mechanic_type__damage_dealt = 34;
+	card_mechanic_type__phase_in_permanent = 35;
+	card_mechanic_type__phase_out_permanent = 36;
+	card_mechanic_type__attacker_blocked = 37;
+	card_mechanic_type__attackers_submitted = 38;
+	card_mechanic_type__blockers_determined = 39;
+	card_mechanic_type__set_power = 40;
+	card_mechanic_type__set_toughness = 41;
+	card_mechanic_type__begin_turn = 42;
+	card_mechanic_type__turn_face_up = 43;
+	card_mechanic_type__transform = 44;
+	card_mechanic_type__dredge = 45;
+	card_mechanic_type__explore = 46;
+	card_mechanic_type__provoke = 47;
+	card_mechanic_type__riot = 48;
+	card_mechanic_type__mutate = 49;
+	card_mechanic_type__graveyard_exile = 50;
+	card_mechanic_type__exert = 51;
+	card_mechanic_type__put_top_or_bottom = 52;
+	card_mechanic_type__placeholder53 = 53;
+	card_mechanic_type__placeholder54 = 54;
+	card_mechanic_type__placeholder55 = 55;
+	card_mechanic_type__placeholder56 = 56;
+}
+
+// ref: Wotc.Mtgo.Gre.External.Messaging.CardType
+enum CardType {
+	card_type__none = 0;
+	card_type__artifact = 1;
+	card_type__creature = 2;
+	card_type__enchantment = 3;
+	card_type__instant = 4;
+	card_type__land = 5;
+	card_type__phenomenon = 6;
+	card_type__plane = 7;
+	card_type__planeswalker = 8;
+	card_type__scheme = 9;
+	card_type__sorcery = 10;
+	card_type__tribal = 11;
+	card_type__vanguard = 12;
+	card_type__dungeon = 13;
+	card_type__battle = 14;
+}
+
+// ref: Wotc.Mtgo.Gre.External.Messaging.CastingTimeOptionType
+enum CastingTimeOptionType {
+	casting_time_option_type__none = 0;
+	casting_time_option_type__done = 1;
+	casting_time_option_type__choose_x = 2;
+	casting_time_option_type__kicker = 3;
+	casting_time_option_type__multikicker = 4;
+	casting_time_option_type__additional_cost = 5;
+	casting_time_option_type__optional_cost = 6;
+	casting_time_option_type__replicate = 7;
+	casting_time_option_type__conspire = 8;
+	casting_time_option_type__mana_type = 9;
+	casting_time_option_type__modal = 10;
+	casting_time_option_type__choose_or_cost = 11;
+	casting_time_option_type__selection = 12;
+	casting_time_option_type__cast_through_ability = 13;
+	casting_time_option_type__timing_permission = 14;
+	casting_time_option_type__casualty = 15;
+	casting_time_option_type__specialize = 16;
+	casting_time_option_type__bargain = 17;
+}
+
+// ref: Wotc.Mtgo.Gre.External.Messaging.ChoicePersistence
+enum ChoicePersistence {
+	choice_persistence__none = 0;
+	choice_persistence__choose_once = 1;
+	choice_persistence__choose_always = 2;
+}
+
+// ref: Wotc.Mtgo.Gre.External.Messaging.ClientMessageType
+enum ClientMessageType {
+	client_message_type__none = 0;
+	client_message_type__connect_req = 1;
+	client_message_type__cancel_action_req = 5;
+	client_message_type__concede_req = 7;
+	client_message_type__enter_sideboarding_req = 8;
+	client_message_type__force_draw_req = 9;
+	client_message_type__get_settings_req = 11;
+	client_message_type__group_resp = 12;
+	client_message_type__mulligan_resp = 13;
+	client_message_type__order_resp = 14;
+	client_message_type__perform_action_resp = 15;
+	client_message_type__control_req = 17;
+	client_message_type__select_nresp = 18;
+	client_message_type__set_settings_req = 20;
+	client_message_type__undo_req = 22;
+	client_message_type__choose_starting_player_resp = 24;
+	client_message_type__optional_action_resp = 25;
+	client_message_type__allow_force_draw_resp = 26;
+	client_message_type__reveal_hand_resp = 28;
+	client_message_type__declare_attackers_resp = 30;
+	client_message_type__submit_attackers_req = 31;
+	client_message_type__declare_blockers_resp = 32;
+	client_message_type__submit_blockers_req = 33;
+	client_message_type__order_combat_damage_resp = 34;
+	client_message_type__assign_damage_resp = 35;
+	client_message_type__select_targets_resp = 36;
+	client_message_type__submit_targets_req = 37;
+	client_message_type__draw_card_resp = 38;
+	client_message_type__select_replacement_resp = 39;
+	client_message_type__select_ngroup_resp = 40;
+	client_message_type__distribution_resp = 42;
+	client_message_type__numeric_input_resp = 43;
+	client_message_type__search_resp = 44;
+	client_message_type__effect_cost_resp = 45;
+	client_message_type__casting_time_options_resp = 46;
+	client_message_type__select_from_groups_resp = 48;
+	client_message_type__search_from_groups_resp = 49;
+	client_message_type__gather_resp = 50;
+	client_message_type__auto_resp = 52;
+	client_message_type__uimessage = 53;
+	client_message_type__submit_deck_resp = 54;
+	client_message_type__take_timeout_req = 55;
+	client_message_type__perform_auto_tap_actions_resp = 56;
+	client_message_type__string_input_resp = 57;
+	client_message_type__select_counters_resp = 58;
+	client_message_type__prediction_req = 59;
+}
+
+// ref: Wotc.Mtgo.Gre.External.Messaging.ClientToMatchServiceMessageType
+enum ClientToMatchServiceMessageType {
+	client_to_match_service_message_type__none = 0;
+	client_to_match_service_message_type__client_to_match_door_connect_request = 1;
+	client_to_match_service_message_type__client_to_gremessage = 2;
+	client_to_match_service_message_type__client_to_greuimessage = 3;
+	client_to_match_service_message_type__authenticate_request = 4;
+	client_to_match_service_message_type__create_match_game_room_request = 5;
+	client_to_match_service_message_type__echo_request = 8;
+}
+
+// ref: Wotc.Mtgo.Gre.External.Messaging.ClientType
+enum ClientType {
+	client_type__invalid = 0;
+	client_type__user = 1;
+	client_type__service = 2;
+	client_type__familiar = 3;
+}
+
+// ref: Wotc.Mtgo.Gre.External.Messaging.ConnectionState
+enum ConnectionState {
+	connection_state__invalid = 0;
+	connection_state__open = 1;
+	connection_state__closed = 2;
+	connection_state__connecting = 3;
+	connection_state__closing = 4;
+}
+
+// ref: Wotc.Mtgo.Gre.External.Messaging.ConnectionStatus
+enum ConnectionStatus {
+	connection_status__none = 0;
+	connection_status__success = 1;
+	connection_status__grpversion_incompat = 2;
+	connection_status__proto_version_incompat = 3;
+}
+
+// ref: Wotc.Mtgo.Gre.External.Messaging.ControllerType
+enum ControllerType {
+	controller_type__none = 0;
+	controller_type__player = 1;
+	controller_type__ai = 2;
+	controller_type__ai__goldfish = 3;
+	controller_type__ai__pet_rock = 4;
+}
+
+// ref: Wotc.Mtgo.Gre.External.Messaging.CostType
+enum CostType {
+	cost_type__none = 0;
+	cost_type__mana = 1;
+	cost_type__tap_self = 2;
+	cost_type__sac_self = 3;
+	cost_type__effect = 4;
+	cost_type__loyalty = 5;
+	cost_type__discard_self = 6;
+	cost_type__life = 7;
+	cost_type__exile_self = 8;
+	cost_type__untap_self = 9;
+	cost_type__or = 10;
+	cost_type__and = 11;
+}
+
+// ref: Wotc.Mtgo.Gre.External.Messaging.CounterType
+enum CounterType {
+	counter_type__none = 0;
+	counter_type__p1_p1 = 1;
+	counter_type__m1_m1 = 2;
+	counter_type__poison = 3;
+	counter_type__wind = 4;
+	counter_type__time = 5;
+	counter_type__fade = 6;
+	counter_type__loyalty = 7;
+	counter_type__wish = 8;
+	counter_type__age = 9;
+	counter_type__aim = 10;
+	counter_type__arrow = 11;
+	counter_type__arrowhead = 12;
+	counter_type__awakening = 13;
+	counter_type__blaze = 14;
+	counter_type__blood = 15;
+	counter_type__bounty = 16;
+	counter_type__bribery = 17;
+	counter_type__carrion = 18;
+	counter_type__charge = 19;
+	counter_type__control = 20;
+	counter_type__corpse = 21;
+	counter_type__credit = 22;
+	counter_type__cube = 23;
+	counter_type__currency = 24;
+	counter_type__death = 25;
+	counter_type__delay = 26;
+	counter_type__depletion = 27;
+	counter_type__despair = 28;
+	counter_type__devotion = 29;
+	counter_type__divinity = 30;
+	counter_type__doom = 31;
+	counter_type__dream = 32;
+	counter_type__echo = 33;
+	counter_type__elixir = 34;
+	counter_type__energy = 35;
+	counter_type__eon = 36;
+	counter_type__eyeball = 37;
+	counter_type__fate = 38;
+	counter_type__feather = 39;
+	counter_type__filibuster = 40;
+	counter_type__flame = 41;
+	counter_type__flood = 42;
+	counter_type__fungus = 43;
+	counter_type__fuse = 44;
+	counter_type__glyph = 45;
+	counter_type__gold = 46;
+	counter_type__growth = 47;
+	counter_type__hatchling = 48;
+	counter_type__healing = 49;
+	counter_type__hoofprint = 50;
+	counter_type__hourglass = 51;
+	counter_type__hunger = 52;
+	counter_type__ice = 53;
+	counter_type__infection = 54;
+	counter_type__intervention = 55;
+	counter_type__javelin = 56;
+	counter_type__ki = 57;
+	counter_type__level = 58;
+	counter_type__luck = 59;
+	counter_type__magnet = 60;
+	counter_type__mannequin = 61;
+	counter_type__matrix = 62;
+	counter_type__may = 63;
+	counter_type__mine = 64;
+	counter_type__mining = 65;
+	counter_type__mire = 66;
+	counter_type__muster = 67;
+	counter_type__net = 68;
+	counter_type__omen = 69;
+	counter_type__ore = 70;
+	counter_type__page = 71;
+	counter_type__pain = 72;
+	counter_type__paralyzation = 73;
+	counter_type__petal = 74;
+	counter_type__petrification = 75;
+	counter_type__phylactery = 76;
+	counter_type__pin = 77;
+	counter_type__plague = 78;
+	counter_type__polyp = 79;
+	counter_type__pressure = 80;
+	counter_type__pupa = 81;
+	counter_type__quest = 82;
+	counter_type__scream = 83;
+	counter_type__scroll = 84;
+	counter_type__shell = 85;
+	counter_type__shield = 86;
+	counter_type__shred = 87;
+	counter_type__sleep = 88;
+	counter_type__sleight = 89;
+	counter_type__slime = 90;
+	counter_type__soot = 91;
+	counter_type__spell = 92;
+	counter_type__spore = 93;
+	counter_type__storage = 94;
+	counter_type__strife = 95;
+	counter_type__study = 96;
+	counter_type__theft = 97;
+	counter_type__tide = 98;
+	counter_type__tower = 100;
+	counter_type__training = 101;
+	counter_type__trap = 102;
+	counter_type__treasure = 103;
+	counter_type__verse = 104;
+	counter_type__vitality = 105;
+	counter_type__wage = 106;
+	counter_type__winch = 107;
+	counter_type__lore = 108;
+	counter_type__p1_p2 = 109;
+	counter_type__p0_p1 = 110;
+	counter_type__p0_p2 = 111;
+	counter_type__p1_p0 = 112;
+	counter_type__p2_p2 = 113;
+	counter_type__m0_m1 = 114;
+	counter_type__m0_m2 = 115;
+	counter_type__m1_m0 = 116;
+	counter_type__m2_m1 = 117;
+	counter_type__m2_m2 = 118;
+	counter_type__manifestation = 119;
+	counter_type__gem = 120;
+	counter_type__crystal = 121;
+	counter_type__isolation = 122;
+	counter_type__hour = 123;
+	counter_type__unity = 124;
+	counter_type__velocity = 125;
+	counter_type__brick = 126;
+	counter_type__landmark = 127;
+	counter_type__prey = 128;
+	counter_type__silver = 129;
+	counter_type__egg = 130;
+	counter_type__hit = 131;
+	counter_type__knowledge = 132;
+	counter_type__task = 133;
+	counter_type__coin = 134;
+	counter_type__deathtouch = 135;
+	counter_type__first_strike = 136;
+	counter_type__flying = 137;
+	counter_type__hexproof = 138;
+	counter_type__lifelink = 139;
+	counter_type__menace = 140;
+	counter_type__reach = 141;
+	counter_type__trample = 142;
+	counter_type__vigilance = 143;
+	counter_type__foreshadow = 144;
+	counter_type__incarnation = 145;
+	counter_type__soul = 146;
+	counter_type__voyage = 147;
+	counter_type__ghostform = 148;
+	counter_type__night = 149;
+	counter_type__indestructible = 150;
+	counter_type__hone = 151;
+	counter_type__book = 152;
+	counter_type__point = 153;
+	counter_type__enlightened = 154;
+	counter_type__harmony = 155;
+	counter_type__void = 156;
+	counter_type__ember = 157;
+	counter_type__ritual = 158;
+	counter_type__valor = 159;
+	counter_type__judgment = 160;
+	counter_type__invitation = 161;
+	counter_type__croak = 162;
+	counter_type__bloodline = 163;
+	counter_type__suspect = 164;
+	counter_type__acorn = 165;
+	counter_type__hatching = 166;
+	counter_type__stash = 167;
+	counter_type__collection = 168;
+	counter_type__rope = 169;
+	counter_type__ingenuity = 170;
+	counter_type__phyresis = 171;
+	counter_type__stun = 172;
+	counter_type__oil = 173;
+	counter_type__defense = 174;
+	counter_type__experience = 175;
+	counter_type__slumber = 176;
+	counter_type__rejection = 177;
+	counter_type__burden = 178;
+	counter_type__hope = 179;
+	counter_type__influence = 180;
+	counter_type__skewer = 181;
+	counter_type__bore = 182;
+	counter_type__chorus = 183;
+	counter_type__dread = 184;
+	counter_type__finality = 185;
+	counter_type__bloodstain = 186;
+	counter_type__impostor = 187;
+	counter_type__unlock = 188;
+	counter_type__fetch = 189;
+	counter_type__phct190 = 190;
+}
+
+// ref: Wotc.Mtgo.Gre.External.Messaging.DamageRecType
+enum DamageRecType {
+	damage_rec_type__none = 0;
+	damage_rec_type__team = 1;
+	damage_rec_type__player = 2;
+	damage_rec_type__planes_walker = 3;
+}
+
+// ref: Wotc.Mtgo.Gre.External.Messaging.EffectCostType
+enum EffectCostType {
+	effect_cost_type__none = 0;
+	effect_cost_type__select = 1;
+	effect_cost_type__select_counter = 2;
+	effect_cost_type__autoselect = 3;
+	effect_cost_type__select_from_groups = 4;
+	effect_cost_type__gather_counters = 5;
+}
+
+// ref: Wotc.Mtgo.Gre.External.Messaging.FailureReason
+enum FailureReason {
+	failure_reason__none = 0;
+	failure_reason__expired = 1;
+	failure_reason__out_of_turn = 2;
+	failure_reason__req_resp_mismatch = 3;
+	failure_reason__action_not_batchable = 4;
+	failure_reason__action_invalid = 5;
+	failure_reason__incomplete_message = 6;
+	failure_reason__illegal_option = 7;
+	failure_reason__unrecognized_value = 8;
+	failure_reason__targets_unavailable = 9;
+	failure_reason__target_index_out_of_range = 10;
+	failure_reason__target_illegal = 11;
+	failure_reason__unrecognized_mana_id = 12;
+	failure_reason__invalid_option_selection = 13;
+	failure_reason__unexpected_message = 14;
+	failure_reason__limit_violation = 15;
+	failure_reason__restriction_violated = 16;
+	failure_reason__requirement_violated = 17;
+	failure_reason__unpayable_cost = 18;
+	failure_reason__invalid_seat_id = 19;
+	failure_reason__invalid_team_id = 20;
+	failure_reason__invalid_match_state = 21;
+	failure_reason__invalid_match_scope = 22;
+	failure_reason__invalid_deck = 23;
+	failure_reason__invalid_cancel_state = 24;
+	failure_reason__invalid_undo_state = 25;
+	failure_reason__permission_denied = 26;
+	failure_reason__no_timeout = 27;
+	failure_reason__invalid_color = 28;
+	failure_reason__invalid_mana_color = 29;
+	failure_reason__invalid_coin_face = 30;
+	failure_reason__invalid_card = 31;
+	failure_reason__invalid_card_name = 32;
+	failure_reason__invalid_card_type = 33;
+	failure_reason__invalid_sub_type = 34;
+	failure_reason__invalid_super_type = 35;
+	failure_reason__invalid_counter_type = 36;
+	failure_reason__invalid_ability_type = 37;
+	failure_reason__invalid_basic_land_type = 38;
+	failure_reason__invalid_option_index = 39;
+	failure_reason__invalid_option_context = 40;
+	failure_reason__invalid_sideboard = 41;
+	failure_reason__invalid_commander = 42;
+	failure_reason__duplicate_attacker = 43;
+	failure_reason__unexpected_damage_recipient = 44;
+	failure_reason__invalid_attacker = 45;
+	failure_reason__redundant_attacker = 46;
+	failure_reason__invalid_batch_attack = 47;
+	failure_reason__missing_damage_recipient = 48;
+	failure_reason__invalid_damage_recipient = 49;
+	failure_reason__invalid_objective = 50;
+	failure_reason__invalid_alternative_attack = 51;
+	failure_reason__missing_attackers = 52;
+	failure_reason__unexpected_attackers = 53;
+	failure_reason__invalid_parity = 54;
+	failure_reason__invalid_alternative_attack_modification = 55;
+	failure_reason__disallowed_value = 56;
+	failure_reason__invalid_type_kind = 57;
+	failure_reason__invalid_wish_card = 58;
+	failure_reason__invalid_controller = 59;
+	failure_reason__invalid_card_color = 60;
+}
+
+// ref: Wotc.Mtgo.Gre.External.Messaging.GameObjectType
+enum GameObjectType {
+	game_object_type__none = 0;
+	game_object_type__card = 1;
+	game_object_type__token = 2;
+	game_object_type__ability = 3;
+	game_object_type__emblem = 4;
+	game_object_type__split_card = 5;
+	game_object_type__split_left = 6;
+	game_object_type__split_right = 7;
+	game_object_type__revealed_card = 8;
+	game_object_type__trigger_holder = 9;
+	game_object_type__adventure = 10;
+	game_object_type__mdfcback = 11;
+	game_object_type__disturb_back = 12;
+	game_object_type__boon = 13;
+	game_object_type__prototype_facet = 14;
+	game_object_type__placeholder15 = 15;
+	game_object_type__placeholder16 = 16;
+}
+
+// ref: Wotc.Mtgo.Gre.External.Messaging.GameStage
+enum GameStage {
+	game_stage__none = 0;
+	game_stage__start = 1;
+	game_stage__play = 2;
+	game_stage__game_over = 3;
+}
+
+// ref: Wotc.Mtgo.Gre.External.Messaging.GameStateType
+enum GameStateType {
+	game_state_type__none = 0;
+	game_state_type__full = 1;
+	game_state_type__diff = 2;
+	game_state_type__binary = 3;
+}
+
+// ref: Wotc.Mtgo.Gre.External.Messaging.GameStateUpdate
+enum GameStateUpdate {
+	game_state_update__none = 0;
+	game_state_update__send = 1;
+	game_state_update__send_and_record = 2;
+	game_state_update__send_hi_fi = 3;
+	game_state_update__undo = 4;
+	game_state_update__restore = 5;
+}
+
+// ref: Wotc.Mtgo.Gre.External.Messaging.GameType
+enum GameType {
+	game_type__none = 0;
+	game_type__duel = 1;
+	game_type__multi_player = 2;
+	game_type__solitaire = 3;
+}
+
+// ref: Wotc.Mtgo.Gre.External.Messaging.GameVariant
+enum GameVariant {
+	game_variant__none = 0;
+	game_variant__normal = 1;
+	game_variant__planechase = 2;
+	game_variant__vanguard = 3;
+	game_variant__commander = 4;
+	game_variant__archenemy = 5;
+	game_variant__team_vs_team = 6;
+	game_variant__two_headed_giant = 7;
+	game_variant__brawl = 8;
+	game_variant__placeholder9 = 9;
+	game_variant__placeholder10 = 10;
+	game_variant__placeholder11 = 11;
+	game_variant__placeholder12 = 12;
+	game_variant__placeholder13 = 13;
+}
+
+// ref: Wotc.Mtgo.Gre.External.Messaging.GREMessageType
+enum GREMessageType {
+	gremessage_type__none = 0;
+	gremessage_type__game_state_message = 1;
+	gremessage_type__actions_available_req = 2;
+	gremessage_type__choose_starting_player_req = 6;
+	gremessage_type__connect_resp = 7;
+	gremessage_type__get_settings_resp = 9;
+	gremessage_type__set_settings_resp = 10;
+	gremessage_type__group_req = 11;
+	gremessage_type__illegal_request = 12;
+	gremessage_type__mulligan_req = 15;
+	gremessage_type__order_req = 17;
+	gremessage_type__prompt_req = 18;
+	gremessage_type__reveal_hand_req = 21;
+	gremessage_type__select_nreq = 22;
+	gremessage_type__allow_force_draw = 24;
+	gremessage_type__binary_game_state = 25;
+	gremessage_type__declare_attackers_req = 26;
+	gremessage_type__submit_attackers_resp = 27;
+	gremessage_type__declare_blockers_req = 28;
+	gremessage_type__submit_blockers_resp = 29;
+	gremessage_type__assign_damage_req = 30;
+	gremessage_type__assign_damage_confirmation = 31;
+	gremessage_type__order_combat_damage_req = 32;
+	gremessage_type__order_damage_confirmation = 33;
+	gremessage_type__select_targets_req = 34;
+	gremessage_type__submit_targets_resp = 35;
+	gremessage_type__pay_costs_req = 36;
+	gremessage_type__intermission_req = 37;
+	gremessage_type__die_roll_results_resp = 38;
+	gremessage_type__select_replacement_req = 39;
+	gremessage_type__select_ngroup_req = 40;
+	gremessage_type__distribution_req = 42;
+	gremessage_type__numeric_input_req = 43;
+	gremessage_type__search_req = 44;
+	gremessage_type__optional_action_message = 45;
+	gremessage_type__casting_time_options_req = 46;
+	gremessage_type__select_from_groups_req = 48;
+	gremessage_type__search_from_groups_req = 49;
+	gremessage_type__gather_req = 50;
+	gremessage_type__queued_game_state_message = 51;
+	gremessage_type__uimessage = 52;
+	gremessage_type__submit_deck_req = 53;
+	gremessage_type__edictal_message = 54;
+	gremessage_type__timeout_message = 55;
+	gremessage_type__timer_state_message = 56;
+	gremessage_type__submit_deck_confirmation = 57;
+	gremessage_type__string_input_req = 58;
+	gremessage_type__select_counters_req = 59;
+	gremessage_type__prediction_resp = 60;
+}
+
+// ref: Wotc.Mtgo.Gre.External.Messaging.GroupingContext
+enum GroupingContext {
+	grouping_context__none = 0;
+	grouping_context__scry = 1;
+	grouping_context__surveil = 2;
+	grouping_context__london_mulligan = 3;
+}
+
+// ref: Wotc.Mtgo.Gre.External.Messaging.GroupingStyle
+enum GroupingStyle {
+	grouping_style__none = 0;
+	grouping_style__single_group = 1;
+	grouping_style__all_groups = 2;
+	grouping_style__mixed = 3;
+}
+
+// ref: Wotc.Mtgo.Gre.External.Messaging.GroupType
+enum GroupType {
+	group_type__none = 0;
+	group_type__ordered = 1;
+	group_type__arbitrary = 2;
+}
+
+// ref: Wotc.Mtgo.Gre.External.Messaging.HighlightType
+enum HighlightType {
+	highlight_type__none = 0;
+	highlight_type__cold = 1;
+	highlight_type__tepid = 2;
+	highlight_type__hot = 3;
+	highlight_type__counterspell = 4;
+	highlight_type__random = 5;
+	highlight_type__copy_spell = 6;
+	highlight_type__replace_role = 7;
+}
+
+// ref: Wotc.Mtgo.Gre.External.Messaging.IdType
+enum IdType {
+	id_type__none = 0;
+	id_type__instance_id = 1;
+	id_type__prompt_parameter_index = 2;
+	id_type__zone_instance_id = 3;
+	id_type__card_grp_id = 4;
+	id_type__ability_grp_id = 5;
+	id_type__card_grp_id_index = 6;
+	id_type__mana_id = 7;
+}
+
+// ref: Wotc.Mtgo.Gre.External.Messaging.KeyValuePairValueType
+enum KeyValuePairValueType {
+	key_value_pair_value_type__none = 0;
+	key_value_pair_value_type_uint32 = 1;
+	key_value_pair_value_type_int32 = 2;
+	key_value_pair_value_type_uint64 = 3;
+	key_value_pair_value_type_int64 = 4;
+	key_value_pair_value_type_bool = 5;
+	key_value_pair_value_type_string = 6;
+	key_value_pair_value_type_float = 7;
+	key_value_pair_value_type_double = 8;
+}
+
+// ref: Wotc.Mtgo.Gre.External.Messaging.ManaColor
+enum ManaColor {
+	mana_color__none = 0;
+	mana_color__white = 1;
+	mana_color__blue = 2;
+	mana_color__black = 3;
+	mana_color__red = 4;
+	mana_color__green = 5;
+	mana_color__phyrexian = 6;
+	mana_color__generic = 7;
+	mana_color__x = 8;
+	mana_color__y = 9;
+	mana_color__two_generic = 10;
+	mana_color__any_color = 11;
+	mana_color__colorless = 12;
+	mana_color__snow = 13;
+}
+
+// ref: Wotc.Mtgo.Gre.External.Messaging.ManaPaymentConditionType
+enum ManaPaymentConditionType {
+	mana_payment_condition_type__none = 0;
+	mana_payment_condition_type__threshold = 1;
+	mana_payment_condition_type__maximum = 2;
+	mana_payment_condition_type__diversity = 3;
+	mana_payment_condition_type__uniformity = 4;
+}
+
+// ref: Wotc.Mtgo.Gre.External.Messaging.ManaPaymentStrategyType
+enum ManaPaymentStrategyType {
+	mana_payment_strategy_type__none = 0;
+	mana_payment_strategy_type__auto = 1;
+	mana_payment_strategy_type__manual = 2;
+	mana_payment_strategy_type__legacy = 3;
+}
+
+// ref: Wotc.Mtgo.Gre.External.Messaging.ManaSelectionType
+enum ManaSelectionType {
+	mana_selection_type__none = 0;
+	mana_selection_type__auto = 1;
+	mana_selection_type__manual = 2;
+}
+
+// ref: Wotc.Mtgo.Gre.External.Messaging.ManaSpecType
+enum ManaSpecType {
+	mana_spec_type__none = 0;
+	mana_spec_type__from_basic = 1;
+	mana_spec_type__predictive = 2;
+	mana_spec_type__restricted = 3;
+	mana_spec_type__trigger = 4;
+	mana_spec_type__from_creature = 5;
+	mana_spec_type__from_snow = 6;
+	mana_spec_type__does_not_empty = 7;
+	mana_spec_type__additional_effect = 8;
+	mana_spec_type__from_treasure = 9;
+	mana_spec_type__from_cave = 10;
+	mana_spec_type__cant_be_countered = 11;
+}
+
+// ref: Wotc.Mtgo.Gre.External.Messaging.MatchCompletedReasonType
+enum MatchCompletedReasonType {
+	match_completed_reason_type__invalid = 0;
+	match_completed_reason_type__success = 1;
+	match_completed_reason_type__force_result_request = 2;
+	match_completed_reason_type__canceled = 3;
+	match_completed_reason_type__player_join_timeout = 10;
+	match_completed_reason_type__player_inactivity_timeout = 11;
+	match_completed_reason_type__player_disconnect_timeout = 12;
+	match_completed_reason_type__system_shutdown = 30;
+	match_completed_reason_type__gre_error = 31;
+	match_completed_reason_type__service_fabric_error = 33;
+	match_completed_reason_type__code_contract_error = 34;
+	match_completed_reason_type__unknown_server_error = 40;
+}
+
+// ref: Wotc.Mtgo.Gre.External.Messaging.MatchGameRoomStateType
+enum MatchGameRoomStateType {
+	match_game_room_state_type__invalid = 0;
+	match_game_room_state_type__waiting_for_players_to_join = 1;
+	match_game_room_state_type__start_pending = 2;
+	match_game_room_state_type__waiting_for_gre_connections = 3;
+	match_game_room_state_type__playing = 5;
+	match_game_room_state_type__match_completed = 15;
+	match_game_room_state_type__match_results_processed = 20;
+	match_game_room_state_type__game_room_closing = 21;
+	match_game_room_state_type__game_room_closed = 22;
+}
+
+// ref: Wotc.Mtgo.Gre.External.Messaging.MatchScope
+enum MatchScope {
+	match_scope__none = 0;
+	match_scope__game = 1;
+	match_scope__match = 2;
+}
+
+// ref: Wotc.Mtgo.Gre.External.Messaging.MatchServiceErrorCode
+enum MatchServiceErrorCode {
+	match_service_error_code__invalid = 0;
+	match_service_error_code__success = 1;
+	match_service_error_code__gre_error = 100;
+	match_service_error_code__operation_canceled = 101;
+	match_service_error_code__invalid_user = 102;
+	match_service_error_code__invalid_state = 103;
+	match_service_error_code__create_room_failed = 104;
+	match_service_error_code__auth_required = 105;
+	match_service_error_code__not_found = 106;
+	match_service_error_code__service_fabric_transaction_error = 107;
+	match_service_error_code__bad_request = 108;
+	match_service_error_code__game_room_full = 110;
+	match_service_error_code__not_authorized = 111;
+	match_service_error_code__buffer_overflow = 112;
+	match_service_error_code__immutable_property = 113;
+	match_service_error_code__server_busy = 114;
+	match_service_error_code__request_queue_overflow = 115;
+	match_service_error_code__unknown_server_error = 500;
+}
+
+// ref: Wotc.Mtgo.Gre.External.Messaging.MatchState
+enum MatchState {
+	match_state__none = 0;
+	match_state__game_in_progress = 1;
+	match_state__game_complete = 2;
+	match_state__match_complete = 3;
+	match_state__sideboarding = 4;
+}
+
+// ref: Wotc.Mtgo.Gre.External.Messaging.MatchWinCondition
+enum MatchWinCondition {
+	match_win_condition__none = 0;
+	match_win_condition__single_elimination = 1;
+	match_win_condition__best2of3 = 2;
+	match_win_condition__best3of5 = 3;
+}
+
+// ref: Wotc.Mtgo.Gre.External.Messaging.MulliganOption
+enum MulliganOption {
+	mulligan_option__none = 0;
+	mulligan_option__mulligan = 1;
+	mulligan_option__accept_hand = 2;
+}
+
+// ref: Wotc.Mtgo.Gre.External.Messaging.MulliganType
+enum MulliganType {
+	mulligan_type__none = 0;
+	mulligan_type__paris = 1;
+	mulligan_type__vancouver = 2;
+	mulligan_type__london = 3;
+}
+
+// ref: Wotc.Mtgo.Gre.External.Messaging.NumericInputType
+enum NumericInputType {
+	numeric_input_type__none = 0;
+	numeric_input_type__choose_x = 1;
+	numeric_input_type__choose_any_amount = 2;
+	numeric_input_type__debug_code = 3;
+	numeric_input_type__choose_die_roll = 4;
+}
+
+// ref: Wotc.Mtgo.Gre.External.Messaging.OptionContext
+enum OptionContext {
+	option_context__none = 0;
+	option_context__mana_ability = 1;
+	option_context__payment = 2;
+	option_context__stacking = 3;
+	option_context__targeting = 4;
+	option_context__resolution = 5;
+	option_context__turn_based = 6;
+	option_context__replacement = 7;
+	option_context__activate_cast = 8;
+	option_context__special = 9;
+}
+
+// ref: Wotc.Mtgo.Gre.External.Messaging.OptionResponse
+enum OptionResponse {
+	option_response__cancel = -1;
+	option_response__none = 0;
+	option_response__allow__yes = 1;
+	option_response__cancel__no = 2;
+}
+
+// ref: Wotc.Mtgo.Gre.External.Messaging.OrderCombatDamageType
+enum OrderCombatDamageType {
+	order_combat_damage_type__none = 0;
+	order_combat_damage_type__attacker = 1;
+	order_combat_damage_type__blocker = 2;
+}
+
+// ref: Wotc.Mtgo.Gre.External.Messaging.OrderingContext
+enum OrderingContext {
+	ordering_context__none = 0;
+	ordering_context__ordering_for_bottom = 1;
+	ordering_context__ordering_for_top = 2;
+}
+
+// ref: Wotc.Mtgo.Gre.External.Messaging.OrderingType
+enum OrderingType {
+	ordering_type__none = 0;
+	ordering_type__order_as_indicated = 1;
+	ordering_type__order_arbitrary_once = 2;
+	ordering_type__order_arbitrary_always = 3;
+	ordering_type__prompt_always = 4;
+}
+
+// ref: Wotc.Mtgo.Gre.External.Messaging.ParameterType
+enum ParameterType {
+	parameter_type__none = 0;
+	parameter_type__non_localized_string = 1;
+	parameter_type__number = 2;
+	parameter_type__reference = 3;
+	parameter_type__prompt_id = 5;
+}
+
+// ref: Wotc.Mtgo.Gre.External.Messaging.Phase
+enum Phase {
+	phase__none = 0;
+	phase__beginning = 1;
+	phase__main1 = 2;
+	phase__combat = 3;
+	phase__main2 = 4;
+	phase__ending = 5;
+}
+
+// ref: Wotc.Mtgo.Gre.External.Messaging.ProtoVersion
+enum ProtoVersion {
+	proto_version__none = 0;
+	proto_version__hi_fi_game_states = 1;
+	proto_version__previous_game_state_id = 2;
+	proto_version__timers = 3;
+	proto_version__mana_requirement = 4;
+	proto_version__auto_tap_actions = 5;
+	proto_version__uimessages = 6;
+	proto_version__auto_tap_stops_setting = 7;
+	proto_version__sideboarding = 8;
+	proto_version__auto_optional_payment_cancellation_setting = 9;
+	proto_version__cost_category = 10;
+	proto_version__timers_v2 = 11;
+	proto_version__control = 12;
+	proto_version__timers_v3 = 13;
+	proto_version__auto_accept_hand = 14;
+	proto_version__timers_v4 = 15;
+	proto_version__timers_v5 = 16;
+	proto_version__mana_payment_strategy_type = 17;
+	proto_version__timers_v6 = 18;
+	proto_version__timers_v7 = 19;
+	proto_version__timers_v8 = 20;
+	proto_version__transient_stops = 21;
+	proto_version__cosmetics = 22;
+	proto_version__result_spec = 23;
+	proto_version__result_reason = 24;
+	proto_version__super_format = 25;
+	proto_version__auto_select_replacement_setting = 26;
+	proto_version__mulligan_type = 27;
+	proto_version__pending_message_type = 28;
+	proto_version__auto_declare_attackers_that_must_attack_setting = 29;
+	proto_version__deceptive_actions = 30;
+	proto_version__perform_auto_tap_actions = 31;
+	proto_version__mulligan_req = 32;
+	proto_version__auto_tap_solution = 33;
+	proto_version__mana_payment_deprecated = 34;
+	proto_version__select_from_group_resp_groups = 35;
+	proto_version__persistent_annotations = 36;
+}
+
+// ref: Wotc.Mtgo.Gre.External.Messaging.ReferenceType
+enum ReferenceType {
+	reference_type__none = 0;
+	reference_type__instance_id = 1;
+	reference_type__catalog_id = 2;
+	reference_type__localization_id = 3;
+	reference_type__player_seat_id = 4;
+}
+
+// ref: Wotc.Mtgo.Gre.External.Messaging.ResultCode
+enum ResultCode {
+	result_code__none = 0;
+	result_code__success = 1;
+	result_code__failure = 2;
+	result_code__cannot_attack = 3;
+	result_code__attack_cost_unpaid = 4;
+	result_code__cannot_block = 5;
+	result_code__illegal_block = 6;
+	result_code__order_mismatch = 7;
+	result_code__missing_damage_source = 8;
+	result_code__invalid_damage_source = 9;
+	result_code__nonlethal_assignment = 10;
+	result_code__invalid_assignment = 11;
+	result_code__too_many_targets = 12;
+	result_code__not_enough_targets = 13;
+	result_code__illegal_target = 14;
+	result_code__restriction_violated = 15;
+	result_code__requirement_violated = 16;
+}
+
+// ref: Wotc.Mtgo.Gre.External.Messaging.ResultReason
+enum ResultReason {
+	result_reason__none = 0;
+	result_reason__game = 1;
+	result_reason__concede = 2;
+	result_reason__timeout = 3;
+	result_reason__loop = 4;
+	result_reason__force = 5;
+}
+
+// ref: Wotc.Mtgo.Gre.External.Messaging.ResultType
+enum ResultType {
+	result_type__none = 0;
+	result_type__suspended = 1;
+	result_type__draw = 2;
+	result_type__win_loss = 3;
+}
+
+// ref: Wotc.Mtgo.Gre.External.Messaging.SelectAction
+enum SelectAction {
+	select_action__none = 0;
+	select_action__select = 1;
+	select_action__unselect = 2;
+}
+
+// ref: Wotc.Mtgo.Gre.External.Messaging.SelectionContext
+enum SelectionContext {
+	selection_context__none = 0;
+	selection_context__discard = 1;
+	selection_context__mana_pool = 2;
+	selection_context__resolution = 3;
+	selection_context__triggered_ability = 4;
+	selection_context__modal = 5;
+	selection_context__replacement = 6;
+	selection_context__non_mana__payment = 7;
+	selection_context__mana_from_ability = 8;
+}
+
+// ref: Wotc.Mtgo.Gre.External.Messaging.SelectionListType
+enum SelectionListType {
+	selection_list_type__none = 0;
+	selection_list_type__static = 1;
+	selection_list_type__dynamic = 2;
+	selection_list_type__static_subset = 3;
+}
+
+// ref: Wotc.Mtgo.Gre.External.Messaging.SelectionValidationType
+enum SelectionValidationType {
+	selection_validation_type__none = 0;
+	selection_validation_type__non_repeatable = 1;
+	selection_validation_type__arbitrary_repeats = 2;
+	selection_validation_type__constrained_repeats = 3;
+}
+
+// ref: Wotc.Mtgo.Gre.External.Messaging.Setting
+enum Setting {
+	setting__none = 0;
+	setting__enable = 1;
+	setting__disable = 2;
+}
+
+// ref: Wotc.Mtgo.Gre.External.Messaging.SettingKey
+enum SettingKey {
+	setting_key__none = 0;
+	setting_key__by_ability = 1;
+	setting_key__by_card_title = 2;
+}
+
+// ref: Wotc.Mtgo.Gre.External.Messaging.SettingScope
+enum SettingScope {
+	setting_scope__none = 0;
+	setting_scope__any_player = 1;
+	setting_scope__opponents = 2;
+	setting_scope__team = 3;
+}
+
+// ref: Wotc.Mtgo.Gre.External.Messaging.SettingStatus
+enum SettingStatus {
+	setting_status__none = 0;
+	setting_status__set = 1;
+	setting_status__clear = 2;
+}
+
+// ref: Wotc.Mtgo.Gre.External.Messaging.ShuffleRestriction
+enum ShuffleRestriction {
+	shuffle_restriction__none = 0;
+	shuffle_restriction__opening_hand = 1;
+	shuffle_restriction__all = 2;
+}
+
+// ref: Wotc.Mtgo.Gre.External.Messaging.SmartStopsSetting
+enum SmartStopsSetting {
+	smart_stops_setting__none = 0;
+	smart_stops_setting__enable = 1;
+	smart_stops_setting__disable = 2;
+}
+
+// ref: Wotc.Mtgo.Gre.External.Messaging.StaticList
+enum StaticList {
+	static_list__none = 0;
+	static_list__card_colors = 1;
+	static_list__mana_colors = 2;
+	static_list__super_types = 3;
+	static_list__card_types = 4;
+	static_list__sub_types = 5;
+	static_list__colors = 6;
+	static_list__coin_faces = 7;
+	static_list__wish_cards = 8;
+	static_list__basic_land_types = 9;
+	static_list__creature_types = 10;
+	static_list__counter_types = 11;
+	static_list__keywords = 12;
+	static_list__card_names = 13;
+	static_list__parities = 14;
+	static_list__type_kinds = 15;
+}
+
+// ref: Wotc.Mtgo.Gre.External.Messaging.Step
+enum Step {
+	step__none = 0;
+	step__untap = 1;
+	step__upkeep = 2;
+	step__draw = 3;
+	step__begin_combat = 4;
+	step__declare_attack = 5;
+	step__declare_block = 6;
+	step__combat_damage = 7;
+	step__end_combat = 8;
+	step__end = 9;
+	step__cleanup = 10;
+	step__first_strike_damage = 11;
+}
+
+// ref: Wotc.Mtgo.Gre.External.Messaging.StopType
+enum StopType {
+	stop_type__none = 0;
+	stop_type__upkeep_step = 1;
+	stop_type__draw_step = 2;
+	stop_type__precombat_main_phase = 3;
+	stop_type__begin_combat_step = 4;
+	stop_type__declare_attackers_step = 5;
+	stop_type__declare_blockers_step = 6;
+	stop_type__combat_damage_step = 7;
+	stop_type__end_combat_step = 8;
+	stop_type__postcombat_main_phase = 9;
+	stop_type__end_step = 10;
+	stop_type__first_strike_damage_step = 11;
+}
+
+// ref: Wotc.Mtgo.Gre.External.Messaging.SubType
+enum SubType {
+	sub_type__none = 0;
+	sub_type__angel = 1;
+	sub_type__archer = 2;
+	sub_type__archon = 3;
+	sub_type__artificer = 4;
+	sub_type__assassin = 5;
+	sub_type__aura = 6;
+	sub_type__basilisk = 7;
+	sub_type__bat = 8;
+	sub_type__bear = 9;
+	sub_type__beast = 10;
+	sub_type__berserker = 11;
+	sub_type__bird = 12;
+	sub_type__boar = 13;
+	sub_type__cat = 14;
+	sub_type__chandra = 15;
+	sub_type__cleric = 16;
+	sub_type__construct = 17;
+	sub_type__crocodile = 18;
+	sub_type__demon = 19;
+	sub_type__djinn = 20;
+	sub_type__dragon = 21;
+	sub_type__drake = 22;
+	sub_type__druid = 23;
+	sub_type__fish = 24;
+	sub_type__elemental = 25;
+	sub_type__elephant = 26;
+	sub_type__elf = 27;
+	sub_type__equipment = 28;
+	sub_type__forest = 29;
+	sub_type__garruk = 30;
+	sub_type__gate = 31;
+	sub_type__giant = 32;
+	sub_type__gideon = 33;
+	sub_type__goblin = 34;
+	sub_type__golem = 35;
+	sub_type__griffin = 36;
+	sub_type__horse = 37;
+	sub_type__human = 39;
+	sub_type__hydra = 40;
+	sub_type__illusion = 41;
+	sub_type__insect = 42;
+	sub_type__island = 43;
+	sub_type__jace = 44;
+	sub_type__knight = 45;
+	sub_type__merfolk = 46;
+	sub_type__minotaur = 47;
+	sub_type__monk = 48;
+	sub_type__mountain = 49;
+	sub_type__ogre = 50;
+	sub_type__ooze = 51;
+	sub_type__pegasus = 52;
+	sub_type__phoenix = 53;
+	sub_type__plains = 54;
+	sub_type__rhino = 55;
+	sub_type__rogue = 56;
+	sub_type__salamander = 57;
+	sub_type__scout = 58;
+	sub_type__serpent = 59;
+	sub_type__shade = 60;
+	sub_type__shaman = 61;
+	sub_type__siren = 62;
+	sub_type__skeleton = 63;
+	sub_type__soldier = 64;
+	sub_type__sorin = 65;
+	sub_type__sphinx = 66;
+	sub_type__spider = 67;
+	sub_type__spirit = 68;
+	sub_type__swamp = 69;
+	sub_type__tower = 70;
+	sub_type__treefolk = 71;
+	sub_type__troll = 72;
+	sub_type__urzas = 73;
+	sub_type__vampire = 74;
+	sub_type__vedalken = 75;
+	sub_type__wall = 76;
+	sub_type__warrior = 77;
+	sub_type__wizard = 78;
+	sub_type__wolf = 79;
+	sub_type__wurm = 80;
+	sub_type__zombie = 81;
+	sub_type__mine = 82;
+	sub_type__power__plant = 83;
+	sub_type__saproling = 84;
+	sub_type__avatar = 85;
+	sub_type__sliver = 86;
+	sub_type__samurai = 87;
+	sub_type__pest = 88;
+	sub_type__thalakos = 89;
+	sub_type__dauthi = 90;
+	sub_type__minion = 91;
+	sub_type__advisor = 92;
+	sub_type__ajani = 93;
+	sub_type__alara = 94;
+	sub_type__ally = 95;
+	sub_type__antelope = 97;
+	sub_type__ape = 98;
+	sub_type__arcane = 99;
+	sub_type__arkhos = 100;
+	sub_type__ashiok = 101;
+	sub_type__assembly_worker = 102;
+	sub_type__atog = 103;
+	sub_type__aurochs = 104;
+	sub_type__azgol = 105;
+	sub_type__badger = 106;
+	sub_type__barbarian = 107;
+	sub_type__beeble = 108;
+	sub_type__belenon = 109;
+	sub_type__bolas = 110;
+	sub_type__bolass = 111;
+	sub_type__bringer = 112;
+	sub_type__brushwagg = 113;
+	sub_type__camel = 114;
+	sub_type__carrier = 115;
+	sub_type__centaur = 116;
+	sub_type__cephalid = 117;
+	sub_type__chimera = 118;
+	sub_type__cockatrice = 119;
+	sub_type__crab = 120;
+	sub_type__curse = 121;
+	sub_type__cyclops = 122;
+	sub_type__desert = 123;
+	sub_type__devil = 124;
+	sub_type__dominaria = 125;
+	sub_type__domri = 126;
+	sub_type__dreadnought = 127;
+	sub_type__drone = 128;
+	sub_type__dryad = 129;
+	sub_type__dwarf = 130;
+	sub_type__efreet = 131;
+	sub_type__elder = 132;
+	sub_type__eldrazi = 133;
+	sub_type__elk = 134;
+	sub_type__elspeth = 135;
+	sub_type__equilor = 136;
+	sub_type__ergamon = 137;
+	sub_type__eye = 138;
+	sub_type__fabacin = 139;
+	sub_type__faerie = 140;
+	sub_type__ferret = 141;
+	sub_type__flagbearer = 142;
+	sub_type__fortification = 143;
+	sub_type__fox = 144;
+	sub_type__frog = 145;
+	sub_type__fungus = 146;
+	sub_type__gargoyle = 147;
+	sub_type__gnome = 148;
+	sub_type__goat = 149;
+	sub_type__god = 150;
+	sub_type__gorgon = 151;
+	sub_type__gremlin = 152;
+	sub_type__hag = 153;
+	sub_type__harpy = 154;
+	sub_type__hellion = 155;
+	sub_type__hippo = 156;
+	sub_type__hippogriff = 157;
+	sub_type__homarid = 158;
+	sub_type__homunculus = 159;
+	sub_type__horror = 160;
+	sub_type__hyena = 161;
+	sub_type__imp = 162;
+	sub_type__incarnation = 163;
+	sub_type__innistrad = 164;
+	sub_type__iquatana = 165;
+	sub_type__ir = 166;
+	sub_type__jellyfish = 167;
+	sub_type__juggernaut = 168;
+	sub_type__kaldheim = 169;
+	sub_type__kamigawa = 170;
+	sub_type__karn = 171;
+	sub_type__karsus = 172;
+	sub_type__kavu = 173;
+	sub_type__kephalai = 174;
+	sub_type__kirin = 175;
+	sub_type__kithkin = 176;
+	sub_type__kobold = 177;
+	sub_type__kolbahan = 178;
+	sub_type__kor = 179;
+	sub_type__koth = 180;
+	sub_type__kraken = 181;
+	sub_type__kyneth = 182;
+	sub_type__lair = 183;
+	sub_type__lammasu = 184;
+	sub_type__leech = 185;
+	sub_type__leviathan = 186;
+	sub_type__lhurgoyf = 187;
+	sub_type__licid = 188;
+	sub_type__liliana = 189;
+	sub_type__lizard = 190;
+	sub_type__locus = 191;
+	sub_type__lorwyn = 192;
+	sub_type__luvion = 193;
+	sub_type__manticore = 194;
+	sub_type__masticore = 195;
+	sub_type__meditation = 196;
+	sub_type__mercadia = 197;
+	sub_type__mercenary = 198;
+	sub_type__metathran = 199;
+	sub_type__mirrodin = 200;
+	sub_type__moag = 201;
+	sub_type__monger = 202;
+	sub_type__mongoose = 203;
+	sub_type__mongseng = 204;
+	sub_type__moonfolk = 205;
+	sub_type__muraganda = 206;
+	sub_type__mutant = 207;
+	sub_type__myr = 208;
+	sub_type__mystic = 209;
+	sub_type__nautilus = 210;
+	sub_type__nephilim = 211;
+	sub_type__new = 212;
+	sub_type__nightmare = 213;
+	sub_type__nightstalker = 214;
+	sub_type__ninja = 215;
+	sub_type__nissa = 216;
+	sub_type__noggle = 217;
+	sub_type__nomad = 218;
+	sub_type__nymph = 219;
+	sub_type__octopus = 220;
+	sub_type__orc = 221;
+	sub_type__orgg = 222;
+	sub_type__ouphe = 223;
+	sub_type__ox = 224;
+	sub_type__oyster = 225;
+	sub_type__phelddagrif = 226;
+	sub_type__phyrexia = 227;
+	sub_type__pirate = 228;
+	sub_type__plant = 229;
+	sub_type__praetor = 230;
+	sub_type__pyrulea = 231;
+	sub_type__rabbit = 232;
+	sub_type__rabiah = 233;
+	sub_type__ral = 234;
+	sub_type__rat = 235;
+	sub_type__rath = 236;
+	sub_type__ravnica = 237;
+	sub_type__realm = 238;
+	sub_type__rebel = 239;
+	sub_type__regatha = 240;
+	sub_type__rigger = 241;
+	sub_type__sable = 242;
+	sub_type__sarkhan = 243;
+	sub_type__satyr = 244;
+	sub_type__scarecrow = 245;
+	sub_type__scorpion = 246;
+	sub_type__segovia = 247;
+	sub_type__serras = 248;
+	sub_type__shadowmoor = 249;
+	sub_type__shandalar = 250;
+	sub_type__shapeshifter = 251;
+	sub_type__sheep = 252;
+	sub_type__shrine = 253;
+	sub_type__slith = 254;
+	sub_type__slug = 255;
+	sub_type__snake = 256;
+	sub_type__soltari = 257;
+	sub_type__spawn = 258;
+	sub_type__specter = 259;
+	sub_type__spellshaper = 260;
+	sub_type__spike = 261;
+	sub_type__sponge = 262;
+	sub_type__squid = 263;
+	sub_type__squirrel = 264;
+	sub_type__starfish = 265;
+	sub_type__surrakar = 266;
+	sub_type__tamiyo = 267;
+	sub_type__tezzeret = 268;
+	sub_type__thopter = 269;
+	sub_type__thrull = 270;
+	sub_type__tibalt = 271;
+	sub_type__trap = 272;
+	sub_type__turtle = 273;
+	sub_type__ulgrotha = 274;
+	sub_type__unicorn = 275;
+	sub_type__valla = 276;
+	sub_type__venser = 277;
+	sub_type__viashino = 278;
+	sub_type__volver = 279;
+	sub_type__vraska = 280;
+	sub_type__vryn = 281;
+	sub_type__weird = 282;
+	sub_type__werewolf = 283;
+	sub_type__whale = 284;
+	sub_type__wildfire = 285;
+	sub_type__wolverine = 286;
+	sub_type__wombat = 287;
+	sub_type__worm = 288;
+	sub_type__wraith = 289;
+	sub_type__xenagos = 290;
+	sub_type__xerex = 291;
+	sub_type__yeti = 292;
+	sub_type__zendikar = 293;
+	sub_type__zubera = 294;
+	sub_type__germ = 295;
+	sub_type__contraption = 296;
+	sub_type__citizen = 297;
+	sub_type__coward = 298;
+	sub_type__deserter = 299;
+	sub_type__prism = 300;
+	sub_type__reflection = 301;
+	sub_type__sand = 302;
+	sub_type__serf = 303;
+	sub_type__dack = 304;
+	sub_type__kiora = 305;
+	sub_type__all_creature_types = 306;
+	sub_type__blinkmoth = 307;
+	sub_type__camarid = 308;
+	sub_type__caribou = 309;
+	sub_type__graveborn = 310;
+	sub_type__lamia = 311;
+	sub_type__orb = 312;
+	sub_type__pentavite = 313;
+	sub_type__pincher = 314;
+	sub_type__splinter = 315;
+	sub_type__survivor = 316;
+	sub_type__tetravite = 317;
+	sub_type__triskelavite = 318;
+	sub_type__scion = 319;
+	sub_type__processor = 320;
+	sub_type__arlinn = 321;
+	sub_type__mole = 322;
+	sub_type__nahiri = 323;
+	sub_type__clue = 324;
+	sub_type__teferi = 325;
+	sub_type__daretti = 326;
+	sub_type__freyalise = 327;
+	sub_type__nixilis = 328;
+	sub_type__narset = 329;
+	sub_type__ugin = 330;
+	sub_type__vehicle = 331;
+	sub_type__servo = 332;
+	sub_type__dovin = 333;
+	sub_type__saheeli = 334;
+	sub_type__monkey = 335;
+	sub_type__aetherborn = 336;
+	sub_type__pilot = 337;
+	sub_type__jackal = 338;
+	sub_type__naga = 339;
+	sub_type__cartouche = 340;
+	sub_type__samut = 341;
+	sub_type__dinosaur = 342;
+	sub_type__treasure = 343;
+	sub_type__huatli = 344;
+	sub_type__angrath = 345;
+	sub_type__trilobite = 346;
+	sub_type__saga = 347;
+	sub_type__jaya = 348;
+	sub_type__vivien = 349;
+	sub_type__egg = 350;
+	sub_type__kaya = 351;
+	sub_type__aminatou = 352;
+	sub_type__estrid = 353;
+	sub_type__rowan = 354;
+	sub_type__will = 355;
+	sub_type__windgrace = 356;
+	sub_type__yanggu = 357;
+	sub_type__yanling = 358;
+	sub_type__army = 359;
+	sub_type__teyo = 360;
+	sub_type__kasmina = 361;
+	sub_type__davriel = 362;
+	sub_type__food = 363;
+	sub_type__mouse = 364;
+	sub_type__noble = 365;
+	sub_type__peasant = 366;
+	sub_type__oko = 367;
+	sub_type__warlock = 368;
+	sub_type__adventure = 369;
+	sub_type__demigod = 370;
+	sub_type__gold = 371;
+	sub_type__tentacle = 372;
+	sub_type__azra = 373;
+	sub_type__pangolin = 374;
+	sub_type__calix = 375;
+	sub_type__lukka = 376;
+	sub_type__otter = 377;
+	sub_type__shark = 378;
+	sub_type__dog = 379;
+	sub_type__basri = 380;
+	sub_type__rune = 381;
+	sub_type__tyvar = 382;
+	sub_type__phyrexian = 383;
+	sub_type__niko = 384;
+	sub_type__shard = 385;
+	sub_type__inkling = 386;
+	sub_type__fractal = 387;
+	sub_type__lesson = 388;
+	sub_type__bard = 389;
+	sub_type__beholder = 390;
+	sub_type__gnoll = 391;
+	sub_type__hamster = 392;
+	sub_type__halfling = 393;
+	sub_type__tiefling = 394;
+	sub_type__bahamut = 395;
+	sub_type__ellywick = 396;
+	sub_type__lolth = 397;
+	sub_type__mordenkainen = 398;
+	sub_type__zariel = 399;
+	sub_type__class = 400;
+	sub_type__ranger = 401;
+	sub_type__wrenn = 402;
+	sub_type__blood = 403;
+	sub_type__serra = 404;
+	sub_type__kaito = 405;
+	sub_type__raccoon = 406;
+	sub_type__gith = 407;
+	sub_type__minsc = 408;
+	sub_type__tasha = 409;
+	sub_type__walrus = 410;
+	sub_type__powerstone = 411;
+	sub_type__urza = 412;
+	sub_type__mite = 413;
+	sub_type__sphere = 414;
+	sub_type__incubator = 415;
+	sub_type__siege = 416;
+	sub_type__role = 417;
+	sub_type__capybara = 418;
+	sub_type__cave = 419;
+	sub_type__llama = 420;
+	sub_type__map = 421;
+	sub_type__quintorius = 422;
+	sub_type__snail = 423;
+	sub_type__case = 424;
+	sub_type__detective = 425;
+	sub_type__placeholder_sub_type426 = 426;
+	sub_type__chorus = 427;
+	sub_type__placeholder_sub_type428 = 428;
+	sub_type__placeholder_sub_type429 = 429;
+	sub_type__placeholder_sub_type430 = 430;
+	sub_type__placeholder_sub_type431 = 431;
+	sub_type__placeholder_sub_type432 = 432;
+	sub_type__placeholder_sub_type433 = 433;
+	sub_type__placeholder_sub_type434 = 434;
+}
+
+// ref: Wotc.Mtgo.Gre.External.Messaging.SubZoneType
+enum SubZoneType {
+	sub_zone_type__none = 0;
+	sub_zone_type__top = 1;
+	sub_zone_type__bottom = 2;
+}
+
+// ref: Wotc.Mtgo.Gre.External.Messaging.SuperFormat
+enum SuperFormat {
+	super_format__none = 0;
+	super_format__limited = 1;
+	super_format__constructed = 2;
+}
+
+// ref: Wotc.Mtgo.Gre.External.Messaging.SuperType
+enum SuperType {
+	super_type__none = 0;
+	super_type__basic = 1;
+	super_type__legendary = 2;
+	super_type__ongoing = 3;
+	super_type__snow = 4;
+	super_type__world = 5;
+}
+
+// ref: Wotc.Mtgo.Gre.External.Messaging.TargetType
+enum TargetType {
+	target_type__none = 0;
+	target_type__player = 1;
+	target_type__game_object = 2;
+}
+
+// ref: Wotc.Mtgo.Gre.External.Messaging.TeamType
+enum TeamType {
+	team_type__none = 0;
+	team_type__individual = 1;
+	team_type__shared_team = 2;
+}
+
+// ref: Wotc.Mtgo.Gre.External.Messaging.TimeoutType
+enum TimeoutType {
+	timeout_type__none = 0;
+	timeout_type__chess_clock = 1;
+	timeout_type__inactivity = 2;
+}
+
+// ref: Wotc.Mtgo.Gre.External.Messaging.TimerBehavior
+enum TimerBehavior {
+	timer_behavior__none = 0;
+	timer_behavior__timeout = 1;
+	timer_behavior__auto_respond = 2;
+	timer_behavior__take_control = 3;
+	timer_behavior__release_control = 4;
+	timer_behavior__start = 5;
+	timer_behavior__restart = 6;
+	timer_behavior__stop = 7;
+	timer_behavior__reset = 8;
+	timer_behavior__activate = 9;
+	timer_behavior__deactivate = 10;
+	timer_behavior__start_delayed_timer = 11;
+}
+
+// ref: Wotc.Mtgo.Gre.External.Messaging.TimerEvent
+enum TimerEvent {
+	timer_event__none = 0;
+	timer_event__on_request_sent = 1;
+	timer_event__on_response_received = 2;
+	timer_event__on_expiration = 3;
+	timer_event__on_match_start = 4;
+	timer_event__on_game_start = 5;
+	timer_event__on_play_start = 6;
+	timer_event__on_turn_changed = 7;
+	timer_event__on_active_player = 8;
+	timer_event__on_non_active_player = 9;
+	timer_event__beginning = 10;
+	timer_event__main1 = 11;
+	timer_event__combat = 12;
+	timer_event__main2 = 13;
+	timer_event__ending = 14;
+	timer_event__on_win = 15;
+	timer_event__on_loss = 16;
+	timer_event__on_draw = 17;
+	timer_event__on_game_over = 18;
+	timer_event__on_match_over = 19;
+	timer_event__on_turn_over = 20;
+	timer_event__upkeep = 21;
+	timer_event__draw = 22;
+	timer_event__begin_combat = 23;
+	timer_event__declare_attack = 24;
+	timer_event__declare_block = 25;
+	timer_event__combat_damage = 26;
+	timer_event__end_combat = 27;
+	timer_event__end = 28;
+	timer_event__cleanup = 29;
+	timer_event__first_strike_damage = 30;
+}
+
+// ref: Wotc.Mtgo.Gre.External.Messaging.TimerPackage
+enum TimerPackage {
+	timer_package__none = 0;
+	timer_package__v1 = 1;
+	timer_package__v2 = 2;
+	timer_package__v3 = 3;
+	timer_package__v4 = 4;
+	timer_package__v5 = 5;
+	timer_package__direct_challenge = 6;
+	timer_package__default = 7;
+	timer_package__best_of_three = 8;
+	timer_package__best_of_one_match_clock = 9;
+}
+
+// ref: Wotc.Mtgo.Gre.External.Messaging.TimerType
+enum TimerType {
+	timer_type__none = 0;
+	timer_type__decision = 1;
+	timer_type__inactivity = 2;
+	timer_type__active_player = 3;
+	timer_type__non_active_player = 4;
+	timer_type__prologue = 5;
+	timer_type__epilogue = 6;
+	timer_type__delay = 7;
+	timer_type__match_clock = 8;
+}
+
+// ref: Wotc.Mtgo.Gre.External.Messaging.Visibility
+enum Visibility {
+	visibility__none = 0;
+	visibility__public = 1;
+	visibility__private = 2;
+	visibility__hidden = 3;
+	visibility__deceptive = 4;
+}
+
+// ref: Wotc.Mtgo.Gre.External.Messaging.ZoneType
+enum ZoneType {
+	zone_type__none = 0;
+	zone_type__library = 1;
+	zone_type__hand = 2;
+	zone_type__battlefield = 3;
+	zone_type__stack = 4;
+	zone_type__graveyard = 5;
+	zone_type__exile = 6;
+	zone_type__command = 7;
+	zone_type__revealed = 8;
+	zone_type__limbo = 9;
+	zone_type__sideboard = 10;
+	zone_type__pending = 11;
+	zone_type__phased_out = 12;
+	zone_type__suppressed = 13;
+}
+
+// ref: Wotc.Mtgo.Gre.External.Messaging.Action
+message Action {
+	optional ActionType action_type = 1;
+	optional uint32 grp_id = 2;
+	optional uint32 instance_id = 3;
+	optional uint32 facet_id = 4;
+	optional uint32 ability_grp_id = 6;
+	optional uint32 source_id = 8;
+	optional uint32 alternative_grp_id = 9;
+	repeated ManaPaymentOption mana_payment_options = 10;
+	repeated ManaRequirement mana_cost = 11;
+	optional bool should_stop = 12;
+	optional uint32 disqualifying_source_id = 13;
+	optional uint32 selection_type = 14;
+	optional uint32 selection = 15;
+	optional uint32 alternative_source_zcid = 17;
+	optional Visibility visibility = 18;
+	repeated TargetSelection targets = 19;
+	repeated ManaPaymentCondition mana_payment_conditions = 20;
+	optional AutoTapSolution auto_tap_solution = 21;
+	optional uint32 max_activations = 24;
+	optional bool is_batchable = 25;
+	optional ManaRequirement twobrid_generic_mana_cost = 26;
+	optional HighlightType highlight = 27;
+	repeated Cost costs = 28;
+	optional uint32 timing_source_grpid = 30;
+	optional uint32 unique_ability_id = 31;
+	repeated uint32 consumable_cost_adjustment_qualification_ids = 32 [packed=true];
+	optional bool is_mana_ability_with_side_effect = 33;
+	optional bool assume_can_be_paid_for = 34;
+}
+
+// ref: Wotc.Mtgo.Gre.External.Messaging.ActionInfo
+message ActionInfo {
+	optional uint32 action_id = 1;
+	optional uint32 seat_id = 2;
+	optional Action action = 3;
+}
+
+// ref: Wotc.Mtgo.Gre.External.Messaging.ActionsAvailableReq
+message ActionsAvailableReq {
+	repeated Action actions = 1;
+	repeated Action inactive_actions = 2;
+}
+
+// ref: Wotc.Mtgo.Gre.External.Messaging.AIConfig
+message AIConfig {
+	optional MatchConfig match_config = 1;
+	optional SettingsMessage default_settings = 2;
+	repeated DeckConfig deck_configs = 3;
+}
+
+// ref: Wotc.Mtgo.Gre.External.Messaging.AndCost
+message AndCost {
+	repeated Cost costs = 1;
+}
+
+// ref: Wotc.Mtgo.Gre.External.Messaging.AnnotationInfo
+message AnnotationInfo {
+	optional uint32 id = 1;
+	optional uint32 affector_id = 2;
+	repeated uint32 affected_ids = 3 [packed=true];
+	repeated AnnotationType type = 4;
+	repeated KeyValuePairInfo details = 6;
+	optional bool redact_affector = 7;
+	repeated uint32 excluded_seat_ids = 8 [packed=true];
+	optional bool redact_affected = 9;
+}
+
+// ref: Wotc.Mtgo.Gre.External.Messaging.AnyMessage
+message AnyMessage {
+	// ref: Wotc.Mtgo.Gre.External.Messaging.AnyMessage/MessageOneofCase
+	enum MessageOneofCase {
+		none = 0;
+		server_to_gremessage = 2;
+		greto_server_message = 3;
+		client_to_gremessage = 4;
+		greto_client_message = 5;
+	}
+
+	optional int64 timestamp = 1;
+	optional ServerToGREMessage server_to_gremessage = 2;
+	optional GREToServerMessage greto_server_message = 3;
+	optional ClientToGREMessage client_to_gremessage = 4;
+	optional GREToClientMessage greto_client_message = 5;
+}
+
+// ref: Wotc.Mtgo.Gre.External.Messaging.AnyToGREMessage
+message AnyToGREMessage {
+	// ref: Wotc.Mtgo.Gre.External.Messaging.AnyToGREMessage/MessageOneofCase
+	enum MessageOneofCase {
+		none = 0;
+		server_to_gremessage = 2;
+		client_to_gremessage = 3;
+	}
+
+	optional int64 timestamp = 1;
+	optional ServerToGREMessage server_to_gremessage = 2;
+	optional ClientToGREMessage client_to_gremessage = 3;
+}
+
+// ref: Wotc.Mtgo.Gre.External.Messaging.AssignDamageConfirmation
+message AssignDamageConfirmation {
+	optional ResultCode result = 1;
+}
+
+// ref: Wotc.Mtgo.Gre.External.Messaging.AssignDamageReq
+message AssignDamageReq {
+	repeated DamageAssigner damage_assigners = 1;
+}
+
+// ref: Wotc.Mtgo.Gre.External.Messaging.AssignDamageResp
+message AssignDamageResp {
+	repeated DamageAssigner assigners = 1;
+}
+
+// ref: Wotc.Mtgo.Gre.External.Messaging.Attacker
+message Attacker {
+	optional uint32 attacker_instance_id = 1;
+	repeated DamageRecipient legal_damage_recipients = 2;
+	optional DamageRecipient selected_damage_recipient = 3;
+	optional uint32 alternative_grp_id = 4;
+	optional bool must_attack = 6;
+}
+
+// ref: Wotc.Mtgo.Gre.External.Messaging.AttackInfo
+message AttackInfo {
+	optional uint32 target_id = 1;
+	optional bool damage_ordered = 2;
+	optional bool damage_assigned = 3;
+	repeated OrderedDamageAssignment ordered_blockers = 4;
+	optional uint32 alternative_grp_id = 5;
+}
+
+// ref: Wotc.Mtgo.Gre.External.Messaging.AttackWarning
+message AttackWarning {
+	optional uint32 instance_id = 1;
+	optional AttackWarningType type = 2;
+	optional uint32 warning_prompt_id = 3;
+}
+
+// ref: Wotc.Mtgo.Gre.External.Messaging.AuthenticateRequest
+message AuthenticateRequest {
+	optional string client_id = 1;
+	optional bytes client_auth_token = 2;
+	optional string player_name = 3;
+	optional string play_fab_session_ticket = 4;
+	optional int32 inactivity_timeout_ms = 5;
+	optional ClientInfo client_info = 10;
+}
+
+// ref: Wotc.Mtgo.Gre.External.Messaging.AuthenticateResponse
+message AuthenticateResponse {
+	optional string client_id = 1;
+	optional string session_id = 2;
+	optional int32 inactivity_timeout_ms = 3;
+	optional string screen_name = 10;
+}
+
+// ref: Wotc.Mtgo.Gre.External.Messaging.AutoAnswer
+message AutoAnswer {
+	optional uint32 prompt_grp_id = 1;
+	optional uint32 ability_grp_id = 2;
+	optional uint32 card_title_id = 3;
+	optional SettingScope applies_to = 4;
+	optional SettingStatus status = 5;
+	optional Answer answer = 6;
+}
+
+// ref: Wotc.Mtgo.Gre.External.Messaging.AutoRespondPermission
+message AutoRespondPermission {
+	repeated uint32 seat_ids = 1 [packed=true];
+}
+
+// ref: Wotc.Mtgo.Gre.External.Messaging.AutoTapAction
+message AutoTapAction {
+	optional uint32 instance_id = 1;
+	optional uint32 ability_grp_id = 2;
+	optional uint32 mana_id = 3;
+	optional ManaPaymentOption mana_payment_option = 4;
+}
+
+// ref: Wotc.Mtgo.Gre.External.Messaging.AutoTapActionsAvailableReq
+message AutoTapActionsAvailableReq {
+	repeated AutoTapSolution auto_tap_solutions = 2;
+}
+
+// ref: Wotc.Mtgo.Gre.External.Messaging.AutoTapManaPayment
+message AutoTapManaPayment {
+	optional ManaColor mana_color = 1;
+	optional uint32 mana_spec_type_bits = 2;
+}
+
+// ref: Wotc.Mtgo.Gre.External.Messaging.AutoTapSolution
+message AutoTapSolution {
+	repeated AutoTapAction auto_tap_actions = 1;
+	repeated ManaPaymentCondition mana_payment_conditions = 2;
+	repeated ManaColor selected_mana_colors = 3;
+	repeated AutoTapManaPayment mana_payments = 4;
+}
+
+// ref: Wotc.Mtgo.Gre.External.Messaging.AutoYield
+message AutoYield {
+	optional uint32 ability_grp_id = 1;
+	optional uint32 card_title_id = 2;
+	optional SettingScope applies_to = 3;
+	optional SettingStatus status = 4;
+}
+
+// ref: Wotc.Mtgo.Gre.External.Messaging.BinaryGameState
+message BinaryGameState {
+	optional GameStateMessage game_state_msg = 1;
+	optional bytes instance_data = 2;
+	optional bytes internal_gredata = 4;
+}
+
+// ref: Wotc.Mtgo.Gre.External.Messaging.Blocker
+message Blocker {
+	optional uint32 blocker_instance_id = 1;
+	repeated uint32 attacker_instance_ids = 2 [packed=true];
+	repeated uint32 selected_attacker_instance_ids = 3 [packed=true];
+	optional uint32 min_attackers = 4;
+	optional uint32 max_attackers = 5;
+	optional bool must_block = 6;
+}
+
+// ref: Wotc.Mtgo.Gre.External.Messaging.BlockInfo
+message BlockInfo {
+	repeated uint32 attacker_ids = 1 [packed=true];
+	optional bool damage_ordered = 2;
+	optional bool damage_assigned = 3;
+	repeated OrderedDamageAssignment ordered_attackers = 4;
+}
+
+// ref: Wotc.Mtgo.Gre.External.Messaging.BlockWarning
+message BlockWarning {
+	optional uint32 instance_id = 1;
+	optional BlockWarningType type = 2;
+	optional uint32 warning_prompt_id = 3;
+}
+
+// ref: Wotc.Mtgo.Gre.External.Messaging.BoolValue
+message BoolValue {
+	optional bool value = 1;
+}
+
+// ref: Wotc.Mtgo.Gre.External.Messaging.BoolValues
+message BoolValues {
+	repeated bool values = 1 [packed=true];
+}
+
+// ref: Wotc.Mtgo.Gre.External.Messaging.CancelActionReq
+message CancelActionReq {
+}
+
+// ref: Wotc.Mtgo.Gre.External.Messaging.CardConfig
+message CardConfig {
+	optional uint32 count = 1;
+	optional string title = 2;
+	optional string expansion_code = 3;
+	optional string rarity = 4;
+	optional string card_pool_file_path = 5;
+}
+
+// ref: Wotc.Mtgo.Gre.External.Messaging.CardSkinTuple
+message CardSkinTuple {
+	optional uint32 catalog_id = 1;
+	optional string skin_code = 2;
+}
+
+// ref: Wotc.Mtgo.Gre.External.Messaging.CastingTimeOptionReq
+message CastingTimeOptionReq {
+	// ref: Wotc.Mtgo.Gre.External.Messaging.CastingTimeOptionReq/MessageOneofCase
+	enum MessageOneofCase {
+		none = 0;
+		numeric_input_req = 9;
+		select_mana_type_req = 10;
+		modal_req = 11;
+		select_nreq = 12;
+	}
+
+	optional uint32 cto_id = 1;
+	optional CastingTimeOptionType casting_time_option_type = 2;
+	optional uint32 affected_id = 3;
+	optional uint32 affector_id = 4;
+	optional uint32 grp_id = 5;
+	optional uint32 player_id_to_prompt = 6;
+	optional bool is_required = 7;
+	optional Prompt prompt = 8;
+	optional NumericInputReq numeric_input_req = 9;
+	optional SelectManaTypeReq select_mana_type_req = 10;
+	optional ModalReq modal_req = 11;
+	optional SelectNReq select_nreq = 12;
+	repeated ManaRequirement mana_cost = 13;
+	optional AutoTapSolution auto_tap_solution = 15;
+}
+
+// ref: Wotc.Mtgo.Gre.External.Messaging.CastingTimeOptionResp
+message CastingTimeOptionResp {
+	// ref: Wotc.Mtgo.Gre.External.Messaging.CastingTimeOptionResp/MessageOneofCase
+	enum MessageOneofCase {
+		none = 0;
+		numeric_input_resp = 3;
+		select_mana_type_resp = 4;
+		choose_modal_resp = 5;
+		select_nresp = 6;
+	}
+
+	optional uint32 cto_id = 1;
+	optional CastingTimeOptionType casting_time_option_type = 2;
+	optional NumericInputResp numeric_input_resp = 3;
+	optional SelectManaTypeResp select_mana_type_resp = 4;
+	optional ChooseModalResp choose_modal_resp = 5;
+	optional SelectNResp select_nresp = 6;
+}
+
+// ref: Wotc.Mtgo.Gre.External.Messaging.CastingTimeOptionsReq
+message CastingTimeOptionsReq {
+	repeated CastingTimeOptionReq casting_time_option_req = 1;
+}
+
+// ref: Wotc.Mtgo.Gre.External.Messaging.CastingTimeOptionsResp
+message CastingTimeOptionsResp {
+	optional CastingTimeOptionResp casting_time_option_resp = 1;
+	repeated CastingTimeOptionResp casting_time_option_resps = 2;
+}
+
+// ref: Wotc.Mtgo.Gre.External.Messaging.CheckpointConfiguration
+message CheckpointConfiguration {
+	optional bool enabled = 1;
+}
+
+// ref: Wotc.Mtgo.Gre.External.Messaging.ChooseModalResp
+message ChooseModalResp {
+	repeated uint32 grp_ids = 2 [packed=true];
+}
+
+// ref: Wotc.Mtgo.Gre.External.Messaging.ChooseStartingPlayerReq
+message ChooseStartingPlayerReq {
+	optional TeamType team_type = 1;
+	repeated uint32 system_seat_ids = 2 [packed=true];
+	repeated uint32 team_ids = 3 [packed=true];
+	optional Prompt prompt = 4;
+}
+
+// ref: Wotc.Mtgo.Gre.External.Messaging.ChooseStartingPlayerResp
+message ChooseStartingPlayerResp {
+	optional TeamType team_type = 1;
+	optional uint32 system_seat_id = 2;
+	optional uint32 team_id = 3;
+}
+
+// ref: Wotc.Mtgo.Gre.External.Messaging.ClientInfo
+message ClientInfo {
+	optional string client_id = 1;
+	optional ClientType client_type = 2;
+	optional string client_version = 10;
+	optional string client_location = 11;
+	optional string client_language = 12;
+}
+
+// ref: Wotc.Mtgo.Gre.External.Messaging.ClientSessionInfo
+message ClientSessionInfo {
+	optional string client_id = 1;
+	optional string session_id = 2;
+	repeated string roles = 3;
+	optional string user_name = 4;
+	optional string screen_name = 5;
+	optional ClientInfo client_info = 10;
+}
+
+// ref: Wotc.Mtgo.Gre.External.Messaging.ClientToGREMessage
+message ClientToGREMessage {
+	// ref: Wotc.Mtgo.Gre.External.Messaging.ClientToGREMessage/MessageOneofCase
+	enum MessageOneofCase {
+		none = 0;
+		connect_req = 5;
+		cancel_action_req = 6;
+		concede_req = 8;
+		force_draw_req = 9;
+		group_resp = 10;
+		mulligan_resp = 11;
+		optional_resp = 12;
+		order_resp = 13;
+		perform_action_resp = 14;
+		select_nresp = 15;
+		set_settings_req = 16;
+		choose_starting_player_resp = 21;
+		declare_attackers_resp = 22;
+		declare_blockers_resp = 23;
+		order_combat_damage_resp = 24;
+		assign_damage_resp = 25;
+		select_targets_resp = 26;
+		select_replacement_resp = 27;
+		select_ngroup_resp = 28;
+		distribution_resp = 30;
+		numeric_input_resp = 31;
+		search_resp = 32;
+		effect_cost_resp = 33;
+		casting_time_options_resp = 34;
+		select_from_groups_resp = 36;
+		search_from_groups_resp = 37;
+		gather_resp = 38;
+		ui_message = 40;
+		submit_deck_resp = 41;
+		control_req = 42;
+		perform_auto_tap_actions_resp = 43;
+		string_input_resp = 44;
+		select_counters_resp = 45;
+		prediction_req = 46;
+	}
+
+	optional ClientMessageType type = 1;
+	optional uint32 system_seat_id = 2;
+	optional uint32 game_state_id = 3;
+	optional uint32 resp_id = 4;
+	optional ConnectReq connect_req = 5;
+	optional CancelActionReq cancel_action_req = 6;
+	optional ConcedeReq concede_req = 8;
+	optional ForceDrawReq force_draw_req = 9;
+	optional GroupResp group_resp = 10;
+	optional MulliganResp mulligan_resp = 11;
+	optional OptionalResp optional_resp = 12;
+	optional OrderResp order_resp = 13;
+	optional PerformActionResp perform_action_resp = 14;
+	optional SelectNResp select_nresp = 15;
+	optional SetSettingsReq set_settings_req = 16;
+	optional ChooseStartingPlayerResp choose_starting_player_resp = 21;
+	optional DeclareAttackersResp declare_attackers_resp = 22;
+	optional DeclareBlockersResp declare_blockers_resp = 23;
+	optional OrderCombatDamageResp order_combat_damage_resp = 24;
+	optional AssignDamageResp assign_damage_resp = 25;
+	optional SelectTargetsResp select_targets_resp = 26;
+	optional SelectReplacementResp select_replacement_resp = 27;
+	optional SelectNGroupResp select_ngroup_resp = 28;
+	optional DistributionResp distribution_resp = 30;
+	optional NumericInputResp numeric_input_resp = 31;
+	optional SearchResp search_resp = 32;
+	optional EffectCostResp effect_cost_resp = 33;
+	optional CastingTimeOptionsResp casting_time_options_resp = 34;
+	optional SelectFromGroupsResp select_from_groups_resp = 36;
+	optional SearchFromGroupsResp search_from_groups_resp = 37;
+	optional GatherResp gather_resp = 38;
+	optional UIMessage ui_message = 40;
+	optional SubmitDeckResp submit_deck_resp = 41;
+	optional ControlReq control_req = 42;
+	optional PerformAutoTapActionsResp perform_auto_tap_actions_resp = 43;
+	optional StringInputResp string_input_resp = 44;
+	optional SelectCountersResp select_counters_resp = 45;
+	optional PredictionReq prediction_req = 46;
+	optional uint32 timer_id = 100;
+}
+
+// ref: Wotc.Mtgo.Gre.External.Messaging.ClientToMatchDoorConnectRequest
+message ClientToMatchDoorConnectRequest {
+	optional string match_id = 1;
+	optional string mc_fabric_uri = 2;
+	optional bytes client_to_gre_message_bytes = 10;
+}
+
+// ref: Wotc.Mtgo.Gre.External.Messaging.ClientToMatchServiceMessage
+message ClientToMatchServiceMessage {
+	optional int32 request_id = 1;
+	optional ClientToMatchServiceMessageType client_to_match_service_message_type = 2;
+	optional int64 timestamp = 3;
+	optional string transaction_id = 4;
+	optional bytes payload = 100;
+}
+
+// ref: Wotc.Mtgo.Gre.External.Messaging.CLIPSConfiguration
+message CLIPSConfiguration {
+	optional bool enable_watch = 1;
+	optional bool enable_metrics = 2;
+	optional bool enable_logging = 3;
+	optional string init_file = 4;
+	optional int32 max_firing_limit = 5;
+	optional int32 warning_firing_limit = 6;
+	optional string metrics_file = 7;
+	optional string log_file = 8;
+	optional bool metrics_file_append = 9;
+	optional bool log_file_append = 10;
+}
+
+// ref: Wotc.Mtgo.Gre.External.Messaging.CombatDamageOrder
+message CombatDamageOrder {
+	optional uint32 instance_id = 1;
+	optional OrderReq recipients = 2;
+	optional Prompt decision_prompt = 3;
+}
+
+// ref: Wotc.Mtgo.Gre.External.Messaging.CombatDamageOrderAssignment
+message CombatDamageOrderAssignment {
+	optional uint32 instance_id = 1;
+	optional OrderResp recipients = 2;
+	optional Prompt decision_prompt = 3;
+}
+
+// ref: Wotc.Mtgo.Gre.External.Messaging.ConcedeReq
+message ConcedeReq {
+	optional MatchScope scope = 1;
+	optional uint32 game_number = 2;
+}
+
+// ref: Wotc.Mtgo.Gre.External.Messaging.ConnectReq
+message ConnectReq {
+	optional SettingsMessage default_settings = 5;
+	optional ProtoVersion proto_ver = 6;
+	optional Version grp_version = 8;
+	optional uint32 grp_changelist = 9;
+}
+
+// ref: Wotc.Mtgo.Gre.External.Messaging.ConnectResp
+message ConnectResp {
+	optional ConnectionStatus status = 1;
+	optional ProtoVersion proto_ver = 6;
+	optional SettingsMessage settings = 8;
+	optional DeckMessage deck_message = 9;
+	optional Version grp_version = 10;
+	optional Version gre_version = 11;
+	repeated CardSkinTuple skins = 12;
+	optional uint32 grp_changelist = 13;
+	optional uint32 gre_changelist = 14;
+}
+
+// ref: Wotc.Mtgo.Gre.External.Messaging.ContinuationToken
+message ContinuationToken {
+	// ref: Wotc.Mtgo.Gre.External.Messaging.ContinuationToken/MessageOneofCase
+	enum MessageOneofCase {
+		none = 0;
+		timestamp = 5;
+	}
+
+	optional int64 timestamp = 5;
+}
+
+// ref: Wotc.Mtgo.Gre.External.Messaging.ControlReq
+message ControlReq {
+	optional ControllerType type = 1;
+	optional uint32 controller_id = 2;
+}
+
+// ref: Wotc.Mtgo.Gre.External.Messaging.CorrelationInfo
+message CorrelationInfo {
+	optional string correlation_id = 1;
+}
+
+// ref: Wotc.Mtgo.Gre.External.Messaging.CosmeticConfig
+message CosmeticConfig {
+	optional uint32 seat_id = 1;
+	optional string data = 2;
+}
+
+// ref: Wotc.Mtgo.Gre.External.Messaging.CosmeticInfo
+message CosmeticInfo {
+	optional uint32 seat_id = 1;
+	optional string data = 2;
+}
+
+// ref: Wotc.Mtgo.Gre.External.Messaging.Cost
+message Cost {
+	// ref: Wotc.Mtgo.Gre.External.Messaging.Cost/MessageOneofCase
+	enum MessageOneofCase {
+		none = 0;
+		mana_cost = 7;
+		effect_cost = 8;
+		life_cost = 9;
+		loyalty_cost = 10;
+		or_cost = 11;
+		and_cost = 12;
+	}
+
+	optional CostType type = 1;
+	optional uint32 id = 2;
+	optional uint32 object_id = 3;
+	optional uint32 ability_grp_id = 4;
+	optional uint32 index = 5;
+	optional ManaCost mana_cost = 7;
+	optional EffectCost effect_cost = 8;
+	optional LifeCost life_cost = 9;
+	optional LoyaltyCost loyalty_cost = 10;
+	optional OrCost or_cost = 11;
+	optional AndCost and_cost = 12;
+}
+
+// ref: Wotc.Mtgo.Gre.External.Messaging.Counter
+message Counter {
+	optional uint32 id = 1;
+	optional CounterType type = 2;
+	optional uint32 count = 3;
+	optional uint32 source_id = 4;
+}
+
+// ref: Wotc.Mtgo.Gre.External.Messaging.CounterPair
+message CounterPair {
+	optional uint32 instance_id = 1;
+	optional CounterType counter_type = 2;
+	optional uint32 count = 3;
+}
+
+// ref: Wotc.Mtgo.Gre.External.Messaging.CreateMatchGameRoomRequest
+message CreateMatchGameRoomRequest {
+	optional MatchGameRoomConfig game_room_config = 1;
+}
+
+// ref: Wotc.Mtgo.Gre.External.Messaging.CreateMatchGameRoomResponseV2
+message CreateMatchGameRoomResponseV2 {
+	optional string mc_fabric_uri = 1;
+}
+
+// ref: Wotc.Mtgo.Gre.External.Messaging.CubeConfig
+message CubeConfig {
+	repeated uint32 card_ids = 1 [packed=true];
+}
+
+// ref: Wotc.Mtgo.Gre.External.Messaging.DamageAssigner
+message DamageAssigner {
+	optional uint32 instance_id = 1;
+	optional uint32 total_damage = 2;
+	repeated DamageAssignment assignments = 3;
+	optional Prompt decision_prompt = 4;
+	optional bool can_ignore_blockers = 5;
+	optional bool force_prompt_assignment = 6;
+}
+
+// ref: Wotc.Mtgo.Gre.External.Messaging.DamageAssignment
+message DamageAssignment {
+	optional uint32 instance_id = 1;
+	optional uint32 min_damage = 2;
+	optional uint32 max_damage = 3;
+	optional uint32 assigned_damage = 4;
+}
+
+// ref: Wotc.Mtgo.Gre.External.Messaging.DamageRecipient
+message DamageRecipient {
+	// ref: Wotc.Mtgo.Gre.External.Messaging.DamageRecipient/IdOneofCase
+	enum IdOneofCase {
+		none = 0;
+		team_id = 2;
+		player_system_seat_id = 3;
+		planeswalker_instance_id = 4;
+	}
+
+	optional DamageRecType type = 1;
+	optional uint32 team_id = 2;
+	optional uint32 player_system_seat_id = 3;
+	optional uint32 planeswalker_instance_id = 4;
+}
+
+// ref: Wotc.Mtgo.Gre.External.Messaging.DeckConfig
+message DeckConfig {
+	optional uint32 seat_id = 1;
+	repeated CardConfig deck_cards = 2;
+	repeated CardConfig sideboard_cards = 3;
+	repeated CardConfig commander_cards = 4;
+	optional string deck_file_path = 5;
+}
+
+// ref: Wotc.Mtgo.Gre.External.Messaging.DeckConstraintInfo
+message DeckConstraintInfo {
+	optional uint32 min_deck_size = 1;
+	optional uint32 max_deck_size = 2;
+	optional uint32 min_sideboard_size = 3;
+	optional uint32 max_sideboard_size = 4;
+	optional uint32 min_commander_size = 5;
+	optional uint32 max_commander_size = 6;
+}
+
+// ref: Wotc.Mtgo.Gre.External.Messaging.DeckMessage
+message DeckMessage {
+	repeated uint32 deck_cards = 1 [packed=true];
+	repeated uint32 sideboard_cards = 2 [packed=true];
+	repeated uint32 commander_cards = 3 [packed=true];
+	optional uint32 deck_message_field_four = 4;
+}
+
+// ref: Wotc.Mtgo.Gre.External.Messaging.DeclareAttackersReq
+message DeclareAttackersReq {
+	repeated Attacker attackers = 1;
+	optional bool has_requirements = 2;
+	optional bool has_restrictions = 3;
+	repeated AttackWarning attack_warnings = 4;
+	repeated ManaRequirement mana_cost = 5;
+	repeated Attacker qualified_attackers = 7;
+	optional bool can_submit_attackers = 8;
+}
+
+// ref: Wotc.Mtgo.Gre.External.Messaging.DeclareAttackersResp
+message DeclareAttackersResp {
+	repeated Attacker selected_attackers = 1;
+	optional bool auto_declare = 2;
+	optional DamageRecipient auto_declare_damage_recipient = 3;
+}
+
+// ref: Wotc.Mtgo.Gre.External.Messaging.DeclareBlockersReq
+message DeclareBlockersReq {
+	repeated Blocker blockers = 1;
+	optional bool has_requirements = 2;
+	optional bool has_restrictions = 3;
+	repeated BlockWarning block_warnings = 4;
+}
+
+// ref: Wotc.Mtgo.Gre.External.Messaging.DeclareBlockersResp
+message DeclareBlockersResp {
+	repeated Blocker selected_blockers = 1;
+}
+
+// ref: Wotc.Mtgo.Gre.External.Messaging.DieRollResultsResp
+message DieRollResultsResp {
+	repeated PlayerDieRoll player_die_rolls = 1;
+}
+
+// ref: Wotc.Mtgo.Gre.External.Messaging.Distribution
+message Distribution {
+	optional uint32 instance_id = 1;
+	optional uint32 amount = 2;
+}
+
+// ref: Wotc.Mtgo.Gre.External.Messaging.DistributionReq
+message DistributionReq {
+	optional uint32 min_amount = 2;
+	optional uint32 max_amount = 3;
+	optional uint32 min_per_target = 4;
+	repeated uint32 target_ids = 5 [packed=true];
+	repeated uint32 existing_distribution_values = 6 [packed=true];
+	repeated uint32 required_distribution_values = 7 [packed=true];
+	repeated uint32 valid_selected_target_ids = 8 [packed=true];
+	optional uint32 source_id = 9;
+}
+
+// ref: Wotc.Mtgo.Gre.External.Messaging.DistributionResp
+message DistributionResp {
+	repeated Distribution distributions = 2;
+}
+
+// ref: Wotc.Mtgo.Gre.External.Messaging.DoubleValue
+message DoubleValue {
+	optional double value = 1;
+}
+
+// ref: Wotc.Mtgo.Gre.External.Messaging.DoubleValues
+message DoubleValues {
+	repeated double values = 1 [packed=true];
+}
+
+// ref: Wotc.Mtgo.Gre.External.Messaging.EchoRequest
+message EchoRequest {
+	optional string message = 1;
+}
+
+// ref: Wotc.Mtgo.Gre.External.Messaging.EchoResponse
+message EchoResponse {
+	optional string message = 1;
+}
+
+// ref: Wotc.Mtgo.Gre.External.Messaging.EdictalMessage
+message EdictalMessage {
+	optional ClientToGREMessage edict_message = 1;
+}
+
+// ref: Wotc.Mtgo.Gre.External.Messaging.EffectCost
+message EffectCost {
+	repeated CardMechanicType card_mechanic_types = 1;
+	optional EffectCostType effect_cost_type = 2;
+	optional int32 count = 3;
+}
+
+// ref: Wotc.Mtgo.Gre.External.Messaging.EffectCostReq
+message EffectCostReq {
+	// ref: Wotc.Mtgo.Gre.External.Messaging.EffectCostReq/MessageOneofCase
+	enum MessageOneofCase {
+		none = 0;
+		cost_selection = 4;
+		counter_selection = 5;
+		group_selection = 6;
+		gather_req = 7;
+	}
+
+	optional EffectCostType effect_cost_type = 3;
+	optional SelectNReq cost_selection = 4;
+	optional SelectCountersReq counter_selection = 5;
+	optional SelectFromGroupsReq group_selection = 6;
+	optional GatherReq gather_req = 7;
+}
+
+// ref: Wotc.Mtgo.Gre.External.Messaging.EffectCostResp
+message EffectCostResp {
+	// ref: Wotc.Mtgo.Gre.External.Messaging.EffectCostResp/MessageOneofCase
+	enum MessageOneofCase {
+		none = 0;
+		cost_selection = 3;
+		counter_selection = 4;
+		group_selection = 5;
+		gather_resp = 38;
+	}
+
+	optional EffectCostType effect_cost_type = 2;
+	optional SelectNResp cost_selection = 3;
+	optional SelectCountersResp counter_selection = 4;
+	optional SelectFromGroupsResp group_selection = 5;
+	optional GatherResp gather_resp = 38;
+}
+
+// ref: Wotc.Mtgo.Gre.External.Messaging.FinalMatchResult
+message FinalMatchResult {
+	optional string match_id = 1;
+	optional ResultSpec match_force_result = 2;
+	optional MatchCompletedReasonType match_completed_reason = 3;
+	repeated ResultSpec result_list = 5;
+	optional string error_message = 10;
+}
+
+// ref: Wotc.Mtgo.Gre.External.Messaging.FloatValue
+message FloatValue {
+	optional float value = 1;
+}
+
+// ref: Wotc.Mtgo.Gre.External.Messaging.FloatValues
+message FloatValues {
+	repeated float values = 1 [packed=true];
+}
+
+// ref: Wotc.Mtgo.Gre.External.Messaging.ForceDrawReq
+message ForceDrawReq {
+	optional MatchScope scope = 1;
+}
+
+// ref: Wotc.Mtgo.Gre.External.Messaging.GameInfo
+message GameInfo {
+	optional string match_id = 1;
+	optional uint32 game_number = 3;
+	optional GameStage stage = 5;
+	optional GameType type = 6;
+	optional GameVariant variant = 7;
+	optional MatchState match_state = 8;
+	optional MatchWinCondition match_win_condition = 9;
+	optional uint32 max_timeout_count = 10;
+	optional uint32 max_pip_count = 11;
+	optional uint32 timeout_duration_sec = 12;
+	repeated ResultSpec results = 13;
+	optional SuperFormat super_format = 14;
+	optional MulliganType mulligan_type = 15;
+	optional uint32 free_mulligan_count = 16;
+	optional DeckConstraintInfo deck_constraint_info = 17;
+	optional bool sideboard_loading_enabled = 18;
+}
+
+// ref: Wotc.Mtgo.Gre.External.Messaging.GameMetrics
+message GameMetrics {
+	repeated PlayerMetrics player_metrics = 1;
+}
+
+// ref: Wotc.Mtgo.Gre.External.Messaging.GameObjectInfo
+message GameObjectInfo {
+	optional uint32 instance_id = 1;
+	optional uint32 grp_id = 2;
+	optional GameObjectType type = 4;
+	optional uint32 zone_id = 5;
+	optional Visibility visibility = 6;
+	optional uint32 owner_seat_id = 7;
+	optional uint32 controller_seat_id = 8;
+	repeated SuperType super_types = 9;
+	repeated CardType card_types = 10;
+	repeated SubType subtypes = 11;
+	repeated CardColor color = 12;
+	optional Int32Value power = 13;
+	optional Int32Value toughness = 14;
+	optional bool is_copy = 16;
+	optional bool is_tapped = 17;
+	optional bool has_summoning_sickness = 18;
+	optional AttackState attack_state = 19;
+	optional BlockState block_state = 20;
+	optional uint32 damage = 23;
+	optional AttackInfo attack_info = 24;
+	optional BlockInfo block_info = 25;
+	repeated uint32 viewers = 26;
+	optional UInt32Value loyalty = 27;
+	optional uint32 object_source_grp_id = 28;
+	optional uint32 name = 29;
+	repeated uint32 abilities = 30;
+	optional uint32 parent_id = 31;
+	optional uint32 overlay_grp_id = 32;
+	optional bool is_facedown = 33;
+	optional string skin_code = 34;
+	optional UInt32Value loyalty_used = 35;
+	repeated uint32 ability_original_card_grp_ids = 36 [packed=true];
+	optional string base_skin_code = 37;
+	repeated SubType removed_subtypes = 38;
+	optional UInt32Value defense = 39;
+	optional uint32 otherside_grp_id = 40;
+}
+
+// ref: Wotc.Mtgo.Gre.External.Messaging.GameStateMessage
+message GameStateMessage {
+	optional GameStateType type = 1;
+	optional uint32 game_state_id = 2;
+	optional GameInfo game_info = 3;
+	repeated TeamInfo teams = 4;
+	repeated PlayerInfo players = 5;
+	optional TurnInfo turn_info = 6;
+	repeated ZoneInfo zones = 7;
+	repeated GameObjectInfo game_objects = 8;
+	repeated AnnotationInfo annotations = 9;
+	repeated uint32 diff_deleted_instance_ids = 10 [packed=true];
+	optional uint32 pending_message_count = 11;
+	optional uint32 prev_game_state_id = 12;
+	repeated TimerInfo timers = 13;
+	optional GameStateUpdate update = 14;
+	repeated ActionInfo actions = 15;
+	repeated AnnotationInfo persistent_annotations = 16;
+	repeated uint32 diff_deleted_persistent_annotation_ids = 17;
+}
+
+// ref: Wotc.Mtgo.Gre.External.Messaging.GameStateRedactorConfiguration
+message GameStateRedactorConfiguration {
+	optional bool enable_redaction = 1;
+	optional bool enable_force_diff = 2;
+	optional bool enable_zone_redaction = 3;
+}
+
+// ref: Wotc.Mtgo.Gre.External.Messaging.Gathering
+message Gathering {
+	optional uint32 instance_id = 1;
+	optional uint32 amount = 2;
+}
+
+// ref: Wotc.Mtgo.Gre.External.Messaging.GatherReq
+message GatherReq {
+	optional uint32 destination_id = 2;
+	repeated GatherSource sources = 3;
+	optional uint32 amount_to_gather = 4;
+}
+
+// ref: Wotc.Mtgo.Gre.External.Messaging.GatherResp
+message GatherResp {
+	repeated Gathering gatherings = 2;
+}
+
+// ref: Wotc.Mtgo.Gre.External.Messaging.GatherSource
+message GatherSource {
+	optional uint32 source_id = 1;
+	optional uint32 min_amount = 2;
+	optional uint32 max_amount = 3;
+}
+
+// ref: Wotc.Mtgo.Gre.External.Messaging.GetSettingsResp
+message GetSettingsResp {
+	optional SettingsMessage settings = 1;
+}
+
+// ref: Wotc.Mtgo.Gre.External.Messaging.GRECancelScheduledMessage
+message GRECancelScheduledMessage {
+	optional uint32 timer_id = 1;
+}
+
+// ref: Wotc.Mtgo.Gre.External.Messaging.GRECheckpointRequest
+message GRECheckpointRequest {
+}
+
+// ref: Wotc.Mtgo.Gre.External.Messaging.GREConfigRequest
+message GREConfigRequest {
+	optional GREConfiguration gre_configuration = 1;
+}
+
+// ref: Wotc.Mtgo.Gre.External.Messaging.GREConfiguration
+message GREConfiguration {
+	optional GameStateRedactorConfiguration game_state_redactor_configuration = 1;
+	optional CLIPSConfiguration clips_configuration = 2;
+	optional CheckpointConfiguration checkpoint_configuration = 3;
+}
+
+// ref: Wotc.Mtgo.Gre.External.Messaging.GRECreateRequest
+message GRECreateRequest {
+	optional string match_id = 2;
+}
+
+// ref: Wotc.Mtgo.Gre.External.Messaging.GREDestroyRequest
+message GREDestroyRequest {
+}
+
+// ref: Wotc.Mtgo.Gre.External.Messaging.GREElapseTimeRequest
+message GREElapseTimeRequest {
+	optional uint32 timer_id = 1;
+	optional uint32 time_ms = 2;
+}
+
+// ref: Wotc.Mtgo.Gre.External.Messaging.GREExpireTimerRequest
+message GREExpireTimerRequest {
+	optional uint32 timer_id = 1;
+}
+
+// ref: Wotc.Mtgo.Gre.External.Messaging.GREForceResultRequest
+message GREForceResultRequest {
+	optional ResultSpec result = 1;
+}
+
+// ref: Wotc.Mtgo.Gre.External.Messaging.GREInterpretRequest
+message GREInterpretRequest {
+	optional string clips = 1;
+}
+
+// ref: Wotc.Mtgo.Gre.External.Messaging.GREMetrics
+message GREMetrics {
+	repeated KeyValuePair kvps = 1;
+}
+
+// ref: Wotc.Mtgo.Gre.External.Messaging.GREResumeMatchRequest
+message GREResumeMatchRequest {
+	optional BinaryGameState binary_game_state = 1;
+}
+
+// ref: Wotc.Mtgo.Gre.External.Messaging.GREScheduledMessage
+message GREScheduledMessage {
+	optional uint32 timer_id = 1;
+	optional int32 delay_ms = 2;
+	optional ServerToGREMessage message = 3;
+}
+
+// ref: Wotc.Mtgo.Gre.External.Messaging.GREStartDelayedTimerMessage
+message GREStartDelayedTimerMessage {
+	optional uint32 seat_id = 1;
+}
+
+// ref: Wotc.Mtgo.Gre.External.Messaging.GREStartMatchRequest
+message GREStartMatchRequest {
+	optional MatchConfig match_config = 1;
+}
+
+// ref: Wotc.Mtgo.Gre.External.Messaging.GRETickMessage
+message GRETickMessage {
+}
+
+// ref: Wotc.Mtgo.Gre.External.Messaging.GRETimeoutMessage
+message GRETimeoutMessage {
+	optional uint32 seat_id = 1;
+	optional TimeoutType type = 2;
+}
+
+// ref: Wotc.Mtgo.Gre.External.Messaging.GRETimerExpiredMessage
+message GRETimerExpiredMessage {
+	// ref: Wotc.Mtgo.Gre.External.Messaging.GRETimerExpiredMessage/MessageOneofCase
+	enum MessageOneofCase {
+		none = 0;
+		server_to_gremessage = 2;
+		client_to_gremessage = 3;
+	}
+
+	optional uint32 expired_timer_id = 1;
+	optional ServerToGREMessage server_to_gremessage = 2;
+	optional ClientToGREMessage client_to_gremessage = 3;
+}
+
+// ref: Wotc.Mtgo.Gre.External.Messaging.GREToAnyMessage
+message GREToAnyMessage {
+	// ref: Wotc.Mtgo.Gre.External.Messaging.GREToAnyMessage/MessageOneofCase
+	enum MessageOneofCase {
+		none = 0;
+		greto_server_message = 2;
+		greto_client_message = 3;
+	}
+
+	optional int64 timestamp = 1;
+	optional GREToServerMessage greto_server_message = 2;
+	optional GREToClientMessage greto_client_message = 3;
+}
+
+// ref: Wotc.Mtgo.Gre.External.Messaging.GreToClientEvent
+message GreToClientEvent {
+	repeated GREToClientMessage gre_to_client_messages = 1;
+}
+
+// ref: Wotc.Mtgo.Gre.External.Messaging.GREToClientMessage
+message GREToClientMessage {
+	// ref: Wotc.Mtgo.Gre.External.Messaging.GREToClientMessage/MessageOneofCase
+	enum MessageOneofCase {
+		none = 0;
+		game_state_message = 5;
+		choose_starting_player_req = 7;
+		optional_action_message = 8;
+		actions_available_req = 9;
+		order_req = 10;
+		group_req = 11;
+		select_nreq = 12;
+		mulligan_req = 14;
+		get_settings_resp = 16;
+		set_settings_resp = 17;
+		connect_resp = 18;
+		illegal_request_message = 19;
+		binary_game_state = 23;
+		declare_attackers_req = 24;
+		submit_attackers_resp = 25;
+		declare_blockers_req = 26;
+		submit_blockers_resp = 27;
+		assign_damage_req = 28;
+		assign_damage_confirmation = 29;
+		order_combat_damage_req = 30;
+		order_damage_confirmation = 31;
+		select_targets_req = 32;
+		submit_targets_resp = 33;
+		pay_costs_req = 34;
+		intermission_req = 36;
+		die_roll_results_resp = 37;
+		select_replacement_req = 38;
+		select_ngroup_req = 39;
+		distribution_req = 41;
+		numeric_input_req = 42;
+		search_req = 43;
+		casting_time_options_req = 44;
+		select_from_groups_req = 47;
+		search_from_groups_req = 48;
+		gather_req = 49;
+		ui_message = 51;
+		submit_deck_req = 52;
+		edictal_message = 53;
+		timeout_message = 54;
+		timer_state_message = 55;
+		string_input_req = 57;
+		select_counters_req = 58;
+		prediction_resp = 59;
+	}
+
+	optional GREMessageType type = 1;
+	repeated uint32 system_seat_ids = 2 [packed=true];
+	optional uint32 msg_id = 3;
+	optional uint32 game_state_id = 4;
+	optional GameStateMessage game_state_message = 5;
+	optional Prompt prompt = 6;
+	optional ChooseStartingPlayerReq choose_starting_player_req = 7;
+	optional OptionalActionMessage optional_action_message = 8;
+	optional ActionsAvailableReq actions_available_req = 9;
+	optional OrderReq order_req = 10;
+	optional GroupReq group_req = 11;
+	optional SelectNReq select_nreq = 12;
+	optional MulliganReq mulligan_req = 14;
+	optional GetSettingsResp get_settings_resp = 16;
+	optional SetSettingsResp set_settings_resp = 17;
+	optional ConnectResp connect_resp = 18;
+	optional IllegalRequestMessage illegal_request_message = 19;
+	optional BinaryGameState binary_game_state = 23;
+	optional DeclareAttackersReq declare_attackers_req = 24;
+	optional SubmitAttackersResp submit_attackers_resp = 25;
+	optional DeclareBlockersReq declare_blockers_req = 26;
+	optional SubmitBlockersResp submit_blockers_resp = 27;
+	optional AssignDamageReq assign_damage_req = 28;
+	optional AssignDamageConfirmation assign_damage_confirmation = 29;
+	optional OrderCombatDamageReq order_combat_damage_req = 30;
+	optional OrderDamageConfirmation order_damage_confirmation = 31;
+	optional SelectTargetsReq select_targets_req = 32;
+	optional SubmitTargetsResp submit_targets_resp = 33;
+	optional PayCostsReq pay_costs_req = 34;
+	optional IntermissionReq intermission_req = 36;
+	optional DieRollResultsResp die_roll_results_resp = 37;
+	optional SelectReplacementReq select_replacement_req = 38;
+	optional SelectNGroupReq select_ngroup_req = 39;
+	optional DistributionReq distribution_req = 41;
+	optional NumericInputReq numeric_input_req = 42;
+	optional SearchReq search_req = 43;
+	optional CastingTimeOptionsReq casting_time_options_req = 44;
+	optional bool informational_use_only = 45;
+	optional SelectFromGroupsReq select_from_groups_req = 47;
+	optional SearchFromGroupsReq search_from_groups_req = 48;
+	optional GatherReq gather_req = 49;
+	optional AllowCancel allow_cancel = 50;
+	optional UIMessage ui_message = 51;
+	optional SubmitDeckReq submit_deck_req = 52;
+	optional EdictalMessage edictal_message = 53;
+	optional TimeoutMessage timeout_message = 54;
+	optional TimerStateMessage timer_state_message = 55;
+	optional bool allow_undo = 56;
+	optional StringInputReq string_input_req = 57;
+	optional SelectCountersReq select_counters_req = 58;
+	optional PredictionResp prediction_resp = 59;
+	optional bool allow_prediction = 60;
+}
+
+// ref: Wotc.Mtgo.Gre.External.Messaging.GREToServerMessage
+message GREToServerMessage {
+	// ref: Wotc.Mtgo.Gre.External.Messaging.GREToServerMessage/MessageOneofCase
+	enum MessageOneofCase {
+		none = 0;
+		binary_game_state = 2;
+		report_result_message = 3;
+		scheduled_message = 4;
+		cancel_scheduled_message = 5;
+		game_metrics = 6;
+		gre_metrics = 7;
+	}
+
+	optional uint32 msg_id = 1;
+	optional BinaryGameState binary_game_state = 2;
+	optional ReportResultMessage report_result_message = 3;
+	optional GREScheduledMessage scheduled_message = 4;
+	optional GRECancelScheduledMessage cancel_scheduled_message = 5;
+	optional GameMetrics game_metrics = 6;
+	optional GREMetrics gre_metrics = 7;
+}
+
+// ref: Wotc.Mtgo.Gre.External.Messaging.Group
+message Group {
+	repeated uint32 ids = 1 [packed=true];
+	optional int32 group_id = 2;
+	optional ZoneType zone_type = 3;
+	optional SubZoneType sub_zone_type = 4;
+	optional int32 min_select = 5;
+	optional int32 max_select = 6;
+	optional bool is_facedown = 7;
+}
+
+// ref: Wotc.Mtgo.Gre.External.Messaging.GroupReq
+message GroupReq {
+	repeated uint32 instance_ids = 1 [packed=true];
+	repeated GroupSpecification group_specs = 2;
+	optional uint32 total_selected = 3;
+	optional GroupType group_type = 5;
+	optional GroupingContext context = 6;
+	optional uint32 source_id = 7;
+}
+
+// ref: Wotc.Mtgo.Gre.External.Messaging.GroupResp
+message GroupResp {
+	repeated Group groups = 1;
+	optional GroupType group_type = 3;
+}
+
+// ref: Wotc.Mtgo.Gre.External.Messaging.GroupSpecification
+message GroupSpecification {
+	optional uint32 lower_bound = 1;
+	optional uint32 upper_bound = 2;
+	optional ZoneType zone_type = 3;
+	optional SubZoneType sub_zone_type = 4;
+	optional bool is_facedown = 6;
+}
+
+// ref: Wotc.Mtgo.Gre.External.Messaging.IllegalRequestMessage
+message IllegalRequestMessage {
+	optional ClientToGREMessage invalid_message = 1;
+	optional FailureReason reason = 2;
+}
+
+// ref: Wotc.Mtgo.Gre.External.Messaging.Int32Value
+message Int32Value {
+	optional int32 value = 1;
+}
+
+// ref: Wotc.Mtgo.Gre.External.Messaging.Int32Values
+message Int32Values {
+	repeated int32 values = 1 [packed=true];
+}
+
+// ref: Wotc.Mtgo.Gre.External.Messaging.Int64Value
+message Int64Value {
+	optional int64 value = 1;
+}
+
+// ref: Wotc.Mtgo.Gre.External.Messaging.Int64Values
+message Int64Values {
+	repeated int64 values = 1 [packed=true];
+}
+
+// ref: Wotc.Mtgo.Gre.External.Messaging.IntermissionReq
+message IntermissionReq {
+	repeated UserOption options = 1;
+	optional Prompt intermission_prompt = 2;
+	optional ResultSpec result = 5;
+}
+
+// ref: Wotc.Mtgo.Gre.External.Messaging.IRLoaderConfiguration
+message IRLoaderConfiguration {
+	optional bool enable_limited_irloading = 1;
+}
+
+// ref: Wotc.Mtgo.Gre.External.Messaging.KeyValuePair
+message KeyValuePair {
+	// ref: Wotc.Mtgo.Gre.External.Messaging.KeyValuePair/ValueOneofCase
+	enum ValueOneofCase {
+		none = 0;
+		single_value = 2;
+		repeated_value = 3;
+	}
+
+	optional string key = 1;
+	optional SingleValue single_value = 2;
+	optional RepeatedValue repeated_value = 3;
+}
+
+// ref: Wotc.Mtgo.Gre.External.Messaging.KeyValuePairInfo
+message KeyValuePairInfo {
+	optional string key = 1;
+	optional KeyValuePairValueType type = 2;
+	repeated uint32 value_uint32 = 3 [packed=true];
+	repeated int32 value_int32 = 4 [packed=true];
+	repeated uint64 value_uint64 = 5 [packed=true];
+	repeated int64 value_int64 = 6 [packed=true];
+	repeated bool value_bool = 7 [packed=true];
+	repeated string value_string = 8;
+	repeated float value_float = 9 [packed=true];
+	repeated double value_double = 10 [packed=true];
+}
+
+// ref: Wotc.Mtgo.Gre.External.Messaging.LifeCost
+message LifeCost {
+	optional int32 count = 1;
+}
+
+// ref: Wotc.Mtgo.Gre.External.Messaging.LoyaltyCost
+message LoyaltyCost {
+	optional int32 count = 1;
+}
+
+// ref: Wotc.Mtgo.Gre.External.Messaging.ManaCost
+message ManaCost {
+	repeated ManaColor color = 1;
+	optional int32 count = 2;
+}
+
+// ref: Wotc.Mtgo.Gre.External.Messaging.ManaInfo
+message ManaInfo {
+	// ref: Wotc.Mtgo.Gre.External.Messaging.ManaInfo/Types/Spec
+	message Spec {
+		optional ManaSpecType type = 1;
+	}
+
+	optional uint32 mana_id = 1;
+	optional ManaColor color = 2;
+	optional uint32 src_instance_id = 3;
+	repeated Spec specs = 4;
+	optional uint32 ability_grp_id = 5;
+	repeated uint32 linked_selections = 6 [packed=true];
+}
+
+// ref: Wotc.Mtgo.Gre.External.Messaging.ManaPaymentCondition
+message ManaPaymentCondition {
+	repeated ManaColor colors = 1;
+	repeated ManaSpecType specs = 2;
+	optional uint32 ability_grp_id = 3;
+	optional ManaPaymentConditionType type = 4;
+}
+
+// ref: Wotc.Mtgo.Gre.External.Messaging.ManaPaymentOption
+message ManaPaymentOption {
+	repeated ManaInfo mana = 2;
+	optional uint32 option_index = 4;
+	optional bool have_replacements_been_applied = 5;
+	optional bool have_triggers_been_applied = 6;
+	optional bool is_unpredictable = 7;
+}
+
+// ref: Wotc.Mtgo.Gre.External.Messaging.ManaRequirement
+message ManaRequirement {
+	repeated ManaColor color = 1;
+	optional int32 count = 2;
+	optional uint32 cost_id = 3;
+	optional uint32 object_id = 4;
+	optional uint32 ability_grp_id = 5;
+}
+
+// ref: Wotc.Mtgo.Gre.External.Messaging.MatchConfig
+message MatchConfig {
+	optional GameType game_type = 1;
+	optional GameVariant game_variant = 2;
+	optional MatchWinCondition win_condition = 3;
+	optional uint32 max_player_hand_size = 5;
+	repeated TeamConfig teams = 6;
+	optional TestConfig test_config = 9;
+	optional MulliganType mulligan_type = 10;
+	repeated TimerConfig timer_configs = 11;
+	optional TimerPackage timer_package = 12;
+	optional TimeoutConfig timeout_config = 13;
+	repeated CosmeticConfig cosmetic_configs = 14;
+	optional SuperFormat super_format = 15;
+	optional DeckConstraintInfo deck_constraint_info = 16;
+	optional CubeConfig cube_config = 17;
+}
+
+// ref: Wotc.Mtgo.Gre.External.Messaging.MatchGameRoomConfig
+message MatchGameRoomConfig {
+	optional string event_id = 2;
+	repeated MatchGameRoomPlayerInfo reserved_players = 8;
+	optional string match_id = 11;
+	optional MatchConfig match_config = 12;
+	optional GREConfiguration gre_config = 13;
+	optional bool is_visible = 20;
+	optional string gre_host_logger_level = 31;
+	optional int32 join_room_timeout_secs = 35;
+	optional int32 player_disconnect_timeout_secs = 36;
+}
+
+// ref: Wotc.Mtgo.Gre.External.Messaging.MatchGameRoomInfo
+message MatchGameRoomInfo {
+	optional MatchGameRoomConfig game_room_config = 2;
+	optional MatchGameRoomStateType state_type = 3;
+	optional FinalMatchResult final_match_result = 4;
+	repeated MatchGameRoomPlayerInfo players = 6;
+	repeated MatchPlayerMetrics player_metrics = 7;
+}
+
+// ref: Wotc.Mtgo.Gre.External.Messaging.MatchGameRoomPlayerInfo
+message MatchGameRoomPlayerInfo {
+	optional string user_id = 1;
+	optional string player_name = 2;
+	optional int32 system_seat_id = 3;
+	optional int32 team_id = 4;
+	optional UserConnectionInfo connection_info = 5;
+	optional string course_id = 10;
+	optional string deck_id = 11;
+	optional string session_id = 13;
+	optional bool is_wotc = 14;
+	optional string platform_id = 15;
+	optional bool is_bot_player = 16;
+	optional string event_id = 17;
+}
+
+// ref: Wotc.Mtgo.Gre.External.Messaging.MatchGameRoomStateChangedEvent
+message MatchGameRoomStateChangedEvent {
+	optional MatchGameRoomInfo game_room_info = 1;
+}
+
+// ref: Wotc.Mtgo.Gre.External.Messaging.MatchPlayerMetrics
+message MatchPlayerMetrics {
+	optional string user_id = 1;
+	repeated PlayerMetricKeyValuePair metrics = 2;
+}
+
+// ref: Wotc.Mtgo.Gre.External.Messaging.MatchServiceError
+message MatchServiceError {
+	optional MatchServiceErrorCode error_code = 2;
+	optional string error_message = 3;
+}
+
+// ref: Wotc.Mtgo.Gre.External.Messaging.MatchServiceToClientMessage
+message MatchServiceToClientMessage {
+	// ref: Wotc.Mtgo.Gre.External.Messaging.MatchServiceToClientMessage/MessageOneofCase
+	enum MessageOneofCase {
+		none = 0;
+		error = 7;
+		gre_to_client_event = 8;
+		match_game_room_state_changed_event = 9;
+		authenticate_response = 100;
+		create_match_game_room_response_v2 = 201;
+		echo_response = 1000;
+	}
+
+	optional string transaction_id = 1;
+	optional int32 request_id = 3;
+	optional int64 timestamp = 4;
+	optional MatchServiceError error = 7;
+	optional GreToClientEvent gre_to_client_event = 8;
+	optional MatchGameRoomStateChangedEvent match_game_room_state_changed_event = 9;
+	optional AuthenticateResponse authenticate_response = 100;
+	optional CreateMatchGameRoomResponseV2 create_match_game_room_response_v2 = 201;
+	optional EchoResponse echo_response = 1000;
+}
+
+// ref: Wotc.Mtgo.Gre.External.Messaging.ModalOption
+message ModalOption {
+	optional uint32 grp_id = 1;
+}
+
+// ref: Wotc.Mtgo.Gre.External.Messaging.ModalReq
+message ModalReq {
+	repeated ModalOption modal_options = 1;
+	optional uint32 ability_grp_id = 2;
+	optional uint32 min_sel = 3;
+	optional uint32 max_sel = 4;
+	optional bool repeated_select_allowed = 5;
+	repeated ModalOption excluded_options = 6;
+	repeated uint32 other_sel = 7 [packed=true];
+}
+
+// ref: Wotc.Mtgo.Gre.External.Messaging.MulliganReq
+message MulliganReq {
+	optional MulliganType mulligan_type = 1;
+	optional uint32 free_mulligan_count = 2;
+	optional uint32 mulligan_count = 3;
+}
+
+// ref: Wotc.Mtgo.Gre.External.Messaging.MulliganResp
+message MulliganResp {
+	optional MulliganOption decision = 1;
+}
+
+// ref: Wotc.Mtgo.Gre.External.Messaging.NumericInputReq
+message NumericInputReq {
+	optional uint32 min_value = 2;
+	optional uint32 max_value = 3;
+	optional uint32 step_size = 4;
+	optional uint32 source_id = 5;
+	optional NumericInputType numeric_input_type = 6;
+	repeated uint32 disallowed_values = 7 [packed=true];
+	repeated uint32 suggested_values = 8 [packed=true];
+}
+
+// ref: Wotc.Mtgo.Gre.External.Messaging.NumericInputResp
+message NumericInputResp {
+	optional uint32 numeric_input_value = 2;
+}
+
+// ref: Wotc.Mtgo.Gre.External.Messaging.OnChat
+message OnChat {
+	optional string text = 1;
+}
+
+// ref: Wotc.Mtgo.Gre.External.Messaging.OnGenericEvent
+message OnGenericEvent {
+	optional string category = 1;
+	optional string payload = 2;
+}
+
+// ref: Wotc.Mtgo.Gre.External.Messaging.OnHover
+message OnHover {
+	optional uint32 object_id = 1;
+}
+
+// ref: Wotc.Mtgo.Gre.External.Messaging.OnSelect
+message OnSelect {
+	optional uint32 object_id = 1;
+}
+
+// ref: Wotc.Mtgo.Gre.External.Messaging.OnShuffle
+message OnShuffle {
+	repeated uint32 object_ids = 1 [packed=true];
+}
+
+// ref: Wotc.Mtgo.Gre.External.Messaging.OptionalActionMessage
+message OptionalActionMessage {
+	optional Prompt prompt = 1;
+	optional uint32 source_id = 3;
+	repeated CardMechanicType optional_action_types = 4;
+	repeated uint32 recipient_ids = 5 [packed=true];
+	optional HighlightType highlight = 6;
+}
+
+// ref: Wotc.Mtgo.Gre.External.Messaging.OptionalResp
+message OptionalResp {
+	optional OptionResponse response = 1;
+	optional ChoicePersistence persistence = 2;
+	optional SettingScope applies_to = 3;
+	optional SettingKey map_to = 4;
+}
+
+// ref: Wotc.Mtgo.Gre.External.Messaging.OrCost
+message OrCost {
+	repeated Cost costs = 1;
+	optional bool is_optional = 2;
+}
+
+// ref: Wotc.Mtgo.Gre.External.Messaging.OrderCombatDamageReq
+message OrderCombatDamageReq {
+	optional OrderCombatDamageType order_damage_type = 1;
+	repeated CombatDamageOrder orders = 2;
+}
+
+// ref: Wotc.Mtgo.Gre.External.Messaging.OrderCombatDamageResp
+message OrderCombatDamageResp {
+	optional OrderCombatDamageType order_damage_type = 1;
+	repeated CombatDamageOrderAssignment orders = 2;
+}
+
+// ref: Wotc.Mtgo.Gre.External.Messaging.OrderDamageConfirmation
+message OrderDamageConfirmation {
+	optional ResultCode result = 1;
+	optional OrderCombatDamageType order_damage_type = 2;
+}
+
+// ref: Wotc.Mtgo.Gre.External.Messaging.OrderedDamageAssignment
+message OrderedDamageAssignment {
+	optional uint32 instance_id = 1;
+	optional uint32 assigned_damage = 2;
+}
+
+// ref: Wotc.Mtgo.Gre.External.Messaging.OrderReq
+message OrderReq {
+	repeated uint32 ids = 1 [packed=true];
+	optional OrderingContext ordering_context = 3;
+}
+
+// ref: Wotc.Mtgo.Gre.External.Messaging.OrderResp
+message OrderResp {
+	repeated uint32 ids = 1 [packed=true];
+	optional OrderingType ordering = 2;
+}
+
+// ref: Wotc.Mtgo.Gre.External.Messaging.PayCostsReq
+message PayCostsReq {
+	repeated ManaRequirement mana_cost = 1;
+	optional ActionsAvailableReq payment_actions = 2;
+	optional SelectNReq payment_selection = 3;
+	optional EffectCostReq effect_cost_req = 4;
+	optional AutoTapActionsAvailableReq auto_tap_actions_req = 6;
+}
+
+// ref: Wotc.Mtgo.Gre.External.Messaging.PerformActionResp
+message PerformActionResp {
+	repeated Action actions = 1;
+	optional AutoPassPriority auto_pass_priority = 2;
+	optional SettingStatus set_yield = 3;
+	optional SettingScope applies_to = 4;
+	optional SettingKey map_to = 5;
+}
+
+// ref: Wotc.Mtgo.Gre.External.Messaging.PerformAutoTapActionsResp
+message PerformAutoTapActionsResp {
+	optional uint32 index = 1;
+}
+
+// ref: Wotc.Mtgo.Gre.External.Messaging.PlayerConfig
+message PlayerConfig {
+	optional uint32 system_seat_id = 1;
+	repeated uint32 deck_cards = 2 [packed=true];
+	repeated uint32 sideboard_cards = 3 [packed=true];
+	optional uint32 starting_life_total = 6;
+	optional bool starting_hand_size_specified = 7;
+	optional uint32 starting_hand_size = 8;
+	repeated uint32 command_emblems = 9 [packed=true];
+	repeated uint32 jazz_musicians = 10 [packed=true];
+	repeated CardSkinTuple skins = 11;
+	optional ShuffleRestriction shuffle_restriction = 12;
+	optional uint32 player_config_field_thirteen = 13;
+}
+
+// ref: Wotc.Mtgo.Gre.External.Messaging.PlayerDieRoll
+message PlayerDieRoll {
+	optional uint32 system_seat_id = 1;
+	optional uint32 roll_value = 2;
+}
+
+// ref: Wotc.Mtgo.Gre.External.Messaging.PlayerInfo
+message PlayerInfo {
+	optional int32 life_total = 1;
+	optional uint32 system_seat_number = 2;
+	repeated ManaInfo mana_pool = 6;
+	optional uint32 max_hand_size = 7;
+	optional uint32 mulligan_count = 8;
+	optional uint32 turn_number = 9;
+	optional uint32 team_id = 10;
+	repeated uint32 timer_ids = 11 [packed=true];
+	optional uint32 controller_seat_id = 12;
+	optional ControllerType controller_type = 13;
+	optional uint32 timeout_count = 14;
+	optional uint32 pip_count = 15;
+	optional ClientMessageType pending_message_type = 16;
+	optional uint32 starting_life_total = 17;
+}
+
+// ref: Wotc.Mtgo.Gre.External.Messaging.PlayerMetricKeyValuePair
+message PlayerMetricKeyValuePair {
+	optional string key = 1;
+	optional int32 value = 2;
+}
+
+// ref: Wotc.Mtgo.Gre.External.Messaging.PlayerMetrics
+message PlayerMetrics {
+	optional uint32 player_id = 1;
+	repeated KeyValuePairInfo metrics = 2;
+}
+
+// ref: Wotc.Mtgo.Gre.External.Messaging.PredictionReq
+message PredictionReq {
+}
+
+// ref: Wotc.Mtgo.Gre.External.Messaging.PredictionResp
+message PredictionResp {
+	repeated GameStateMessage game_state_messages = 1;
+	repeated TriggeredAbility suppressed_triggered_abilities = 2;
+	repeated GREToClientMessage gre_requests = 3;
+}
+
+// ref: Wotc.Mtgo.Gre.External.Messaging.Prompt
+message Prompt {
+	optional uint32 prompt_id = 1;
+	repeated PromptParameter parameters = 2;
+}
+
+// ref: Wotc.Mtgo.Gre.External.Messaging.PromptParameter
+message PromptParameter {
+	// ref: Wotc.Mtgo.Gre.External.Messaging.PromptParameter/ValueOneofCase
+	enum ValueOneofCase {
+		none = 0;
+		reference = 3;
+		string_value = 4;
+		number_value = 5;
+		prompt_id = 7;
+	}
+
+	optional string parameter_name = 1;
+	optional ParameterType type = 2;
+	optional Reference reference = 3;
+	optional string string_value = 4;
+	optional int32 number_value = 5;
+	optional int32 prompt_id = 7;
+}
+
+// ref: Wotc.Mtgo.Gre.External.Messaging.Reference
+message Reference {
+	optional ReferenceType type = 1;
+	optional uint32 id = 2;
+}
+
+// ref: Wotc.Mtgo.Gre.External.Messaging.RepeatedValue
+message RepeatedValue {
+	// ref: Wotc.Mtgo.Gre.External.Messaging.RepeatedValue/ValuesOneofCase
+	enum ValuesOneofCase {
+		none = 0;
+		uint32_values = 1;
+		int32_values = 2;
+		uint64_values = 3;
+		int64_values = 4;
+		bool_values = 5;
+		string_values = 6;
+		float_values = 7;
+		double_values = 8;
+	}
+
+	optional UInt32Values uint32_values = 1;
+	optional Int32Values int32_values = 2;
+	optional UInt64Values uint64_values = 3;
+	optional Int64Values int64_values = 4;
+	optional BoolValues bool_values = 5;
+	optional StringValues string_values = 6;
+	optional FloatValues float_values = 7;
+	optional DoubleValues double_values = 8;
+}
+
+// ref: Wotc.Mtgo.Gre.External.Messaging.ReplacementEffect
+message ReplacementEffect {
+	optional uint32 object_instance = 1;
+	optional uint32 unique_ability_id = 2;
+	optional uint32 ability_grp_id = 4;
+	optional uint32 affected_object = 5;
+	optional uint32 replacement_effect_id = 6;
+	optional uint32 conferring_object_zcid = 7;
+}
+
+// ref: Wotc.Mtgo.Gre.External.Messaging.ReportResultMessage
+message ReportResultMessage {
+	optional ResultSpec result = 1;
+}
+
+// ref: Wotc.Mtgo.Gre.External.Messaging.ResultSpec
+message ResultSpec {
+	optional MatchScope scope = 1;
+	optional ResultType result = 2;
+	optional uint32 winning_team_id = 3;
+	optional ResultReason reason = 4;
+}
+
+// ref: Wotc.Mtgo.Gre.External.Messaging.SearchFromGroupsReq
+message SearchFromGroupsReq {
+	optional uint32 min_find = 2;
+	optional uint32 max_find = 3;
+	repeated uint32 zones_to_search = 4 [packed=true];
+	repeated Group groups = 5;
+	optional GroupingStyle grouping_style = 6;
+	optional uint32 source_id = 7;
+	optional AllowFailToFind allow_fail_to_find = 8;
+	repeated uint32 additional_zones = 9 [packed=true];
+}
+
+// ref: Wotc.Mtgo.Gre.External.Messaging.SearchFromGroupsResp
+message SearchFromGroupsResp {
+	repeated Group groups = 3;
+	optional uint32 add_zone_to_search_scope = 4;
+}
+
+// ref: Wotc.Mtgo.Gre.External.Messaging.SearchReq
+message SearchReq {
+	optional uint32 min_find = 2;
+	optional uint32 max_find = 3;
+	repeated uint32 zones_to_search = 4 [packed=true];
+	repeated uint32 items_to_search = 5 [packed=true];
+	repeated uint32 items_sought = 6 [packed=true];
+	optional uint32 source_id = 7;
+	repeated uint32 additional_zones = 8 [packed=true];
+	optional AllowFailToFind allow_fail_to_find = 9;
+}
+
+// ref: Wotc.Mtgo.Gre.External.Messaging.SearchResp
+message SearchResp {
+	repeated uint32 items_found = 2 [packed=true];
+	optional uint32 add_zone_to_search_scope = 3;
+}
+
+// ref: Wotc.Mtgo.Gre.External.Messaging.SelectCountersReq
+message SelectCountersReq {
+	optional uint32 min_sel = 1;
+	optional uint32 max_sel = 2;
+	optional SelectionContext context = 3;
+	optional OptionContext option_context = 5;
+	optional SelectionListType list_type = 6;
+	repeated CounterPair counter_pairs = 7;
+	optional uint32 source_id = 9;
+}
+
+// ref: Wotc.Mtgo.Gre.External.Messaging.SelectCountersResp
+message SelectCountersResp {
+	repeated CounterPair selections = 5;
+}
+
+// ref: Wotc.Mtgo.Gre.External.Messaging.SelectFromGroupsReq
+message SelectFromGroupsReq {
+	repeated Group groups = 3;
+	optional uint32 min_total_sel = 5;
+	optional uint32 max_total_sel = 6;
+	optional GroupingStyle grouping_style = 7;
+	repeated uint32 unfiltered_ids = 8 [packed=true];
+	optional uint32 source_id = 9;
+	repeated uint32 zone_ids = 10 [packed=true];
+}
+
+// ref: Wotc.Mtgo.Gre.External.Messaging.SelectFromGroupsResp
+message SelectFromGroupsResp {
+	repeated Group groups = 3;
+}
+
+// ref: Wotc.Mtgo.Gre.External.Messaging.SelectManaTypeReq
+message SelectManaTypeReq {
+	repeated ManaColor mana_colors = 2;
+	optional uint32 source_id = 3;
+}
+
+// ref: Wotc.Mtgo.Gre.External.Messaging.SelectManaTypeResp
+message SelectManaTypeResp {
+	optional ManaColor mana_color = 3;
+}
+
+// ref: Wotc.Mtgo.Gre.External.Messaging.SelectNGroupReq
+message SelectNGroupReq {
+	optional uint32 min_sel = 1;
+	optional uint32 max_sel = 2;
+	repeated Group groups = 3;
+	optional uint32 source_id = 5;
+}
+
+// ref: Wotc.Mtgo.Gre.External.Messaging.SelectNGroupResp
+message SelectNGroupResp {
+	repeated uint32 selectedgroupids = 2 [packed=true];
+}
+
+// ref: Wotc.Mtgo.Gre.External.Messaging.SelectNReq
+message SelectNReq {
+	optional int32 min_sel = 1;
+	optional uint32 max_sel = 2;
+	optional SelectionContext context = 3;
+	optional OptionContext option_context = 5;
+	optional SelectionListType list_type = 6;
+	repeated uint32 ids = 7 [packed=true];
+	repeated int32 weights = 8 [packed=true];
+	optional StaticList static_list = 9;
+	optional Prompt prompt = 11;
+	optional IdType id_type = 12;
+	optional bool choices_are_repeatable = 13;
+	repeated uint32 unfiltered_ids = 14 [packed=true];
+	optional uint32 source_id = 15;
+	repeated uint32 hot_ids = 16;
+	optional SelectionValidationType validation_type = 17;
+	repeated uint32 zone_ids = 18;
+}
+
+// ref: Wotc.Mtgo.Gre.External.Messaging.SelectNResp
+message SelectNResp {
+	repeated uint32 ids = 5 [packed=true];
+	optional OrderingType use_arbitrary = 6;
+}
+
+// ref: Wotc.Mtgo.Gre.External.Messaging.SelectReplacementReq
+message SelectReplacementReq {
+	repeated ReplacementEffect replacements = 1;
+	optional bool is_optional = 2;
+}
+
+// ref: Wotc.Mtgo.Gre.External.Messaging.SelectReplacementResp
+message SelectReplacementResp {
+	optional ReplacementEffect replacement = 1;
+}
+
+// ref: Wotc.Mtgo.Gre.External.Messaging.SelectTargetsReq
+message SelectTargetsReq {
+	repeated TargetSelection targets = 1;
+	optional uint32 source_id = 2;
+	optional uint32 ability_grp_id = 3;
+}
+
+// ref: Wotc.Mtgo.Gre.External.Messaging.SelectTargetsResp
+message SelectTargetsResp {
+	optional TargetSelection target = 1;
+}
+
+// ref: Wotc.Mtgo.Gre.External.Messaging.ServerToGREMessage
+message ServerToGREMessage {
+	// ref: Wotc.Mtgo.Gre.External.Messaging.ServerToGREMessage/MessageOneofCase
+	enum MessageOneofCase {
+		none = 0;
+		create_request = 1;
+		config_request = 2;
+		start_match_request = 3;
+		resume_match_request = 4;
+		checkpoint_request = 5;
+		force_result_request = 6;
+		destroy_request = 7;
+		timer_expired = 8;
+		tick = 9;
+		timeout = 10;
+		interpret_request = 11;
+		expire_timer_request = 12;
+		elapse_time_request = 13;
+		start_delayed_timer_message = 14;
+	}
+
+	optional GRECreateRequest create_request = 1;
+	optional GREConfigRequest config_request = 2;
+	optional GREStartMatchRequest start_match_request = 3;
+	optional GREResumeMatchRequest resume_match_request = 4;
+	optional GRECheckpointRequest checkpoint_request = 5;
+	optional GREForceResultRequest force_result_request = 6;
+	optional GREDestroyRequest destroy_request = 7;
+	optional GRETimerExpiredMessage timer_expired = 8;
+	optional GRETickMessage tick = 9;
+	optional GRETimeoutMessage timeout = 10;
+	optional GREInterpretRequest interpret_request = 11;
+	optional GREExpireTimerRequest expire_timer_request = 12;
+	optional GREElapseTimeRequest elapse_time_request = 13;
+	optional GREStartDelayedTimerMessage start_delayed_timer_message = 14;
+}
+
+// ref: Wotc.Mtgo.Gre.External.Messaging.ServiceFabricConfigPackageInfo
+message ServiceFabricConfigPackageInfo {
+	optional string package_name = 1;
+	optional string package_version = 2;
+}
+
+// ref: Wotc.Mtgo.Gre.External.Messaging.ServiceFabricServiceInfo
+message ServiceFabricServiceInfo {
+	optional string service_name = 1;
+	optional string service_type_name = 2;
+	optional int64 replica_or_instance_id = 3;
+	optional string partition_id = 4;
+	optional string node_name = 5;
+	optional string code_package_version = 6;
+	repeated ServiceFabricConfigPackageInfo config_packages = 7;
+	optional string exe_assembly_version = 10;
+	optional string gateway_url = 20;
+}
+
+// ref: Wotc.Mtgo.Gre.External.Messaging.ServiceInfoRequest
+message ServiceInfoRequest {
+}
+
+// ref: Wotc.Mtgo.Gre.External.Messaging.SetSettingsReq
+message SetSettingsReq {
+	optional SettingsMessage settings = 1;
+	optional uint32 turn_number = 2;
+}
+
+// ref: Wotc.Mtgo.Gre.External.Messaging.SetSettingsResp
+message SetSettingsResp {
+	optional SettingsMessage settings = 1;
+}
+
+// ref: Wotc.Mtgo.Gre.External.Messaging.SettingsConfig
+message SettingsConfig {
+	optional uint32 seat_id = 1;
+	optional SettingsMessage default_settings = 2;
+	optional string settings_file_path = 3;
+}
+
+// ref: Wotc.Mtgo.Gre.External.Messaging.SettingsMessage
+message SettingsMessage {
+	repeated Stop stops = 1;
+	repeated AutoYield yields = 2;
+	repeated AutoAnswer answers = 3;
+	optional AutoPassOption auto_pass_option = 4;
+	optional OrderingType graveyard_order = 5;
+	optional SettingStatus clear_all_stops = 6;
+	optional SettingStatus clear_all_yields = 7;
+	optional SettingStatus clear_all_answers = 8;
+	optional ManaSelectionType mana_selection_type = 9;
+	optional AutoPassOption default_auto_pass_option = 10;
+	optional SmartStopsSetting smart_stops_setting = 11;
+	optional AutoTapStopsSetting auto_tap_stops_setting = 12;
+	optional Setting auto_optional_payment_cancellation_setting = 13;
+	optional ManaPaymentStrategyType mana_payment_strategy_type = 14;
+	repeated Stop transient_stops = 15;
+	repeated CosmeticInfo cosmetics = 16;
+	optional Setting auto_select_replacement_setting = 17;
+	optional AutoPassOption stack_auto_pass_option = 19;
+}
+
+// ref: Wotc.Mtgo.Gre.External.Messaging.SingleValue
+message SingleValue {
+	// ref: Wotc.Mtgo.Gre.External.Messaging.SingleValue/ValueOneofCase
+	enum ValueOneofCase {
+		none = 0;
+		uint32_value = 1;
+		int32_value = 2;
+		uint64_value = 3;
+		int64_value = 4;
+		bool_value = 5;
+		string_value = 6;
+		float_value = 7;
+		double_value = 8;
+	}
+
+	optional uint32 uint32_value = 1;
+	optional int32 int32_value = 2;
+	optional uint64 uint64_value = 3;
+	optional int64 int64_value = 4;
+	optional bool bool_value = 5;
+	optional string string_value = 6;
+	optional float float_value = 7;
+	optional double double_value = 8;
+}
+
+// ref: Wotc.Mtgo.Gre.External.Messaging.SortFilterPagingOptions
+message SortFilterPagingOptions {
+	optional string sort = 1;
+	optional string filter = 2;
+	optional int32 top = 5;
+	optional int32 skip = 6;
+	optional ContinuationToken continuation_token = 10;
+}
+
+// ref: Wotc.Mtgo.Gre.External.Messaging.Stop
+message Stop {
+	optional StopType stop_type = 1;
+	optional SettingScope applies_to = 2;
+	optional SettingStatus status = 3;
+}
+
+// ref: Wotc.Mtgo.Gre.External.Messaging.StringInputReq
+message StringInputReq {
+	optional uint32 source_id = 2;
+}
+
+// ref: Wotc.Mtgo.Gre.External.Messaging.StringInputResp
+message StringInputResp {
+	optional string input_value = 1;
+}
+
+// ref: Wotc.Mtgo.Gre.External.Messaging.StringValue
+message StringValue {
+	optional string value = 1;
+}
+
+// ref: Wotc.Mtgo.Gre.External.Messaging.StringValues
+message StringValues {
+	repeated string values = 1;
+}
+
+// ref: Wotc.Mtgo.Gre.External.Messaging.SubmitAttackersResp
+message SubmitAttackersResp {
+	optional ResultCode result = 1;
+}
+
+// ref: Wotc.Mtgo.Gre.External.Messaging.SubmitBlockersResp
+message SubmitBlockersResp {
+	optional ResultCode result = 1;
+}
+
+// ref: Wotc.Mtgo.Gre.External.Messaging.SubmitDeckReq
+message SubmitDeckReq {
+	optional DeckMessage deck = 1;
+}
+
+// ref: Wotc.Mtgo.Gre.External.Messaging.SubmitDeckResp
+message SubmitDeckResp {
+	optional DeckMessage deck = 1;
+}
+
+// ref: Wotc.Mtgo.Gre.External.Messaging.SubmitTargetsResp
+message SubmitTargetsResp {
+	optional ResultCode result = 1;
+}
+
+// ref: Wotc.Mtgo.Gre.External.Messaging.Target
+message Target {
+	optional uint32 target_instance_id = 1;
+	optional SelectAction legal_action = 2;
+	optional HighlightType highlight = 3;
+}
+
+// ref: Wotc.Mtgo.Gre.External.Messaging.TargetInfo
+message TargetInfo {
+	optional TargetType target_type = 1;
+	optional uint32 target_id = 2;
+}
+
+// ref: Wotc.Mtgo.Gre.External.Messaging.TargetSelection
+message TargetSelection {
+	optional uint32 target_idx = 1;
+	repeated Target targets = 2;
+	optional uint32 min_targets = 3;
+	optional uint32 max_targets = 4;
+	optional uint32 selected_targets = 5;
+	optional Prompt prompt = 6;
+	optional uint32 target_source_zone_id = 7;
+	optional uint32 targeting_ability_grp_id = 8;
+}
+
+// ref: Wotc.Mtgo.Gre.External.Messaging.TeamConfig
+message TeamConfig {
+	optional uint32 team_id = 1;
+	repeated PlayerConfig players = 2;
+}
+
+// ref: Wotc.Mtgo.Gre.External.Messaging.TeamInfo
+message TeamInfo {
+	optional uint32 id = 1;
+	repeated uint32 player_ids = 2 [packed=true];
+}
+
+// ref: Wotc.Mtgo.Gre.External.Messaging.TestConfig
+message TestConfig {
+	optional ShuffleRestriction shuffle_restriction = 1;
+	optional uint32 starting_player = 2;
+	optional bool use_specified_seed = 3;
+	optional uint32 random_seed = 4;
+	optional bool use_zero_mana_cost_for_casting = 5;
+	optional uint32 use_max_lands_per_turn = 6;
+	optional TreeOfCongress tree_of_congress = 7;
+	optional bool disable_game_state_queueing_during_cancelable_actions = 10;
+	optional bool disable_hi_fi_game_states = 11;
+	optional bool disable_timers = 12;
+	repeated uint32 random_seeds = 13 [packed=true];
+	optional uint32 free_mulligan_count = 14;
+	optional uint32 random_draw_count = 15;
+	optional float min_random_draw_distance = 16;
+	optional float max_random_draw_distance = 17;
+	optional bool enable_auto_accept_hand = 18;
+	optional bool enable_auto_play = 19;
+	optional bool disable_unexpected_message_recovery = 20;
+	optional bool disable_sideboarding = 21;
+	optional uint32 candidate_shuffle_count = 22;
+	optional uint32 best_candidate_shuffle_count = 23;
+	optional AutoRespondPermission auto_respond_permission = 24;
+	optional bool disable_deferred_action_cost_payment = 25;
+	optional bool disable_individual_damage_assignments = 26;
+	optional bool disable_hi_fi_settings = 27;
+	optional bool enable_sideboard_loading = 28;
+	optional bool disable_unique_ability_activations = 29;
+	optional bool enable_predictions = 30;
+}
+
+// ref: Wotc.Mtgo.Gre.External.Messaging.TimeoutConfig
+message TimeoutConfig {
+	optional uint32 max_timeout_count = 1;
+	optional uint32 starting_timeout_count = 2;
+	optional uint32 max_pip_count = 3;
+	optional uint32 starting_pip_count = 4;
+	optional uint32 duration_sec = 5;
+}
+
+// ref: Wotc.Mtgo.Gre.External.Messaging.TimeoutMessage
+message TimeoutMessage {
+	optional uint32 seat_id = 1;
+	optional uint32 timeout_count = 2;
+	optional TimerInfo timer = 3;
+}
+
+// ref: Wotc.Mtgo.Gre.External.Messaging.TimerConfig
+message TimerConfig {
+	optional TimerType type = 1;
+	optional uint32 duration_sec = 4;
+	optional TimerBehavior behavior = 5;
+	repeated TimerControl controls = 6;
+	optional uint32 warning_threshold_sec = 7;
+	optional uint32 max_duration_sec = 8;
+}
+
+// ref: Wotc.Mtgo.Gre.External.Messaging.TimerControl
+message TimerControl {
+	optional TimerEvent event = 1;
+	optional TimerBehavior behavior = 2;
+}
+
+// ref: Wotc.Mtgo.Gre.External.Messaging.TimerInfo
+message TimerInfo {
+	optional uint32 timer_id = 1;
+	optional TimerType type = 2;
+	optional uint32 duration_sec = 3;
+	optional uint32 elapsed_sec = 4;
+	optional bool running = 5;
+	optional TimerBehavior behavior = 6;
+	optional uint32 warning_threshold_sec = 7;
+	optional uint32 elapsed_ms = 8;
+}
+
+// ref: Wotc.Mtgo.Gre.External.Messaging.TimerStateMessage
+message TimerStateMessage {
+	optional uint32 seat_id = 1;
+	repeated TimerInfo timers = 2;
+}
+
+// ref: Wotc.Mtgo.Gre.External.Messaging.TreeOfCongress
+message TreeOfCongress {
+	repeated uint32 system_seat_id = 1 [packed=true];
+}
+
+// ref: Wotc.Mtgo.Gre.External.Messaging.TriggeredAbility
+message TriggeredAbility {
+	optional uint32 ability_grp_id = 1;
+	optional uint32 source_zcid = 2;
+}
+
+// ref: Wotc.Mtgo.Gre.External.Messaging.TurnInfo
+message TurnInfo {
+	optional Phase phase = 1;
+	optional Step step = 2;
+	optional uint32 turn_number = 3;
+	optional uint32 active_player = 4;
+	optional uint32 priority_player = 5;
+	optional uint32 decision_player = 6;
+	optional Phase next_phase = 8;
+	optional Step next_step = 9;
+}
+
+// ref: Wotc.Mtgo.Gre.External.Messaging.UIMessage
+message UIMessage {
+	// ref: Wotc.Mtgo.Gre.External.Messaging.UIMessage/MessageOneofCase
+	enum MessageOneofCase {
+		none = 0;
+		on_select = 2;
+		on_hover = 3;
+		on_shuffle = 4;
+		on_chat = 5;
+		on_generic_event = 6;
+	}
+
+	repeated uint32 seat_ids = 1 [packed=true];
+	optional OnSelect on_select = 2;
+	optional OnHover on_hover = 3;
+	optional OnShuffle on_shuffle = 4;
+	optional OnChat on_chat = 5;
+	optional OnGenericEvent on_generic_event = 6;
+}
+
+// ref: Wotc.Mtgo.Gre.External.Messaging.UInt32Value
+message UInt32Value {
+	optional uint32 value = 1;
+}
+
+// ref: Wotc.Mtgo.Gre.External.Messaging.UInt32Values
+message UInt32Values {
+	repeated uint32 values = 1 [packed=true];
+}
+
+// ref: Wotc.Mtgo.Gre.External.Messaging.UInt64Value
+message UInt64Value {
+	optional uint64 value = 1;
+}
+
+// ref: Wotc.Mtgo.Gre.External.Messaging.UInt64Values
+message UInt64Values {
+	repeated uint64 values = 1 [packed=true];
+}
+
+// ref: Wotc.Mtgo.Gre.External.Messaging.UserConnectionInfo
+message UserConnectionInfo {
+	optional ConnectionState connection_state = 1;
+	optional int64 last_connect_timestamp = 10;
+	optional int64 last_disconnect_timestamp = 11;
+}
+
+// ref: Wotc.Mtgo.Gre.External.Messaging.UserOption
+message UserOption {
+	optional Prompt option_prompt = 1;
+	optional ClientMessageType response_type = 2;
+}
+
+// ref: Wotc.Mtgo.Gre.External.Messaging.Version
+message Version {
+	optional uint32 major_version = 1;
+	optional uint32 minor_version = 2;
+	optional uint32 revision_version = 3;
+	optional uint32 build_version = 4;
+}
+
+// ref: Wotc.Mtgo.Gre.External.Messaging.ZoneInfo
+message ZoneInfo {
+	optional uint32 zone_id = 1;
+	optional ZoneType type = 2;
+	optional Visibility visibility = 3;
+	optional uint32 owner_seat_id = 4;
+	repeated uint32 object_instance_ids = 5 [packed=true];
+	repeated uint32 viewers = 6 [packed=true];
+}
+
