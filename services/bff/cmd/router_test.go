@@ -237,30 +237,42 @@ func TestRouter_SSE_401Body_IsJSON(t *testing.T) {
 }
 
 // TestRouter_SSE_ValidJWT_PassesClerkMiddleware verifies that a valid Clerk JWT
-// is accepted by RequireClerkAuth.  The SSE handler will still return 401
-// because UserIDFromContext cannot resolve an int64 from a Clerk string subject
-// (that mapping requires a DB lookup not yet wired in this PR), but the Clerk
-// middleware layer must not be the source of the 401.
+// is accepted by RequireClerkAuth. Uses httptest.NewServer + a real HTTP client
+// so that http.Client.Do returns once response headers arrive — without blocking
+// on the SSE stream. httptest.NewRecorder cannot be used here because
+// r.ServeHTTP would never return (the SSE handler blocks on ctx.Done()).
 func TestRouter_SSE_ValidJWT_PassesClerkMiddleware(t *testing.T) {
 	jwt := setupClerkBackend(t)
 
 	r := BuildRouter(minimalConfig(), depsWithClerk(t))
 
-	req := httptest.NewRequest(http.MethodGet, "/api/v1/events", nil)
+	ts := httptest.NewServer(r)
+	t.Cleanup(ts.Close)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, ts.URL+"/api/v1/events", nil)
+	if err != nil {
+		t.Fatalf("new request: %v", err)
+	}
 	req.Header.Set("Authorization", "Bearer "+jwt)
-	rr := httptest.NewRecorder()
-	r.ServeHTTP(rr, req)
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatalf("GET /api/v1/events: %v", err)
+	}
+	defer resp.Body.Close()
 
 	// With a valid JWT the Clerk middleware must NOT emit {"error":"unauthorized"}.
-	// (The SSE handler may still 401 due to missing int64 user_id mapping.)
-	if rr.Code == http.StatusUnauthorized {
+	if resp.StatusCode == http.StatusUnauthorized {
 		var body map[string]string
-		if err := json.NewDecoder(rr.Body).Decode(&body); err == nil {
-			if body["error"] == "unauthorized" {
-				t.Fatal("valid JWT: Clerk middleware rejected the token — it should have passed through")
-			}
+		if decErr := json.NewDecoder(resp.Body).Decode(&body); decErr == nil && body["error"] == "unauthorized" {
+			t.Fatal("valid JWT: Clerk middleware rejected the token — it should have passed through")
 		}
+		t.Fatalf("unexpected 401 from /api/v1/events with valid JWT")
 	}
+	// Deferred cancel() terminates the SSE connection; ts.Close() then completes cleanly.
 }
 
 // ──────────────────────────────────────────────────────────────────────────────
@@ -373,40 +385,47 @@ func TestRouter_SSE_Returns503_WhenNoAuthConfigured(t *testing.T) {
 
 // TestRouter_SSE_ValidJWT_WithResolver_ReachesHandler verifies that a valid
 // Clerk JWT combined with a working ClerkUserResolver stub resolves the int64
-// user ID and reaches the SSE handler.
+// user ID and reaches the SSE handler (200 SSE response).
 //
-// httptest.ResponseRecorder does not implement http.Flusher, so the SSE
-// handler returns 500 "streaming not supported" — that is expected behaviour
-// from the SSE infrastructure, not from the auth layer.  What must NOT happen
-// is a 401 from Clerk middleware or a JSON 500 from the resolver middleware.
+// Uses httptest.NewServer so http.Client.Do returns once headers arrive —
+// avoiding the infinite SSE stream block that httptest.NewRecorder would cause.
 func TestRouter_SSE_ValidJWT_WithResolver_ReachesHandler(t *testing.T) {
 	jwt := setupClerkBackend(t)
 
 	deps := depsWithClerk(t) // includes stubUserRepo returning id=1
 	r := BuildRouter(minimalConfig(), deps)
 
-	req := httptest.NewRequest(http.MethodGet, "/api/v1/events", nil)
-	req.Header.Set("Authorization", "Bearer "+jwt)
-	rr := httptest.NewRecorder()
-	r.ServeHTTP(rr, req)
+	ts := httptest.NewServer(r)
+	t.Cleanup(ts.Close)
 
-	body := rr.Body.String()
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, ts.URL+"/api/v1/events", nil)
+	if err != nil {
+		t.Fatalf("new request: %v", err)
+	}
+	req.Header.Set("Authorization", "Bearer "+jwt)
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatalf("GET /api/v1/events: %v", err)
+	}
+	defer resp.Body.Close()
 
 	// A 401 from Clerk middleware indicates a token problem — must not happen.
-	if rr.Code == http.StatusUnauthorized {
-		t.Fatalf("GET /api/v1/events with resolver: unexpected 401 — body: %s", body)
+	if resp.StatusCode == http.StatusUnauthorized {
+		t.Fatalf("GET /api/v1/events with resolver: unexpected 401")
 	}
 
 	// A JSON 500 from the resolver indicates the stub repo failed — must not happen.
-	// The only acceptable 500 is the SSE "streaming not supported" plain-text response.
-	if rr.Code == http.StatusInternalServerError {
+	if resp.StatusCode == http.StatusInternalServerError {
 		var errBody map[string]string
-		if err := json.NewDecoder(rr.Body).Decode(&errBody); err == nil {
-			if errBody["error"] == "internal server error" {
-				t.Fatalf("GET /api/v1/events with resolver: resolver returned 500 — body: %s", body)
-			}
+		if decErr := json.NewDecoder(resp.Body).Decode(&errBody); decErr == nil && errBody["error"] == "internal server error" {
+			t.Fatalf("GET /api/v1/events with resolver: resolver returned 500")
 		}
 	}
+	// Deferred cancel() terminates the SSE connection; ts.Close() then completes cleanly.
 }
 
 // TestRouter_SSE_ValidJWT_ResolverDBError_Returns500 verifies that when the
