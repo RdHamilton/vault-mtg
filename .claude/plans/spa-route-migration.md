@@ -80,8 +80,8 @@ tests + lint/format gates.
 | # | PR scope                              | Paths | Status        | Branch / PR |
 |---|---------------------------------------|-------|---------------|-------------|
 | 1 | matches/* — full surface (17 paths)   | 17    | ✅ **Merged** 2026-05-11 | PR #1872 |
-| 2 | collection/* (8 paths)                | 8     | ⏳ **In progress** | `feat/phase2-pr2-collection` |
-| 3 | quests/* (4 paths)                    | 4     | Pending       | — |
+| 2 | collection/* (8 paths)                | 8     | ✅ **Merged** 2026-05-11 | PR #1873 |
+| 3 | quests/* (4 paths)                    | 4     | ⏳ **In progress** | `feat/phase2-pr3-quests` |
 | 4 | standard/* (6 paths)                  | 6     | Pending       | — |
 | 5 | gameplays/* + meta/* (2 paths)        | 2     | Pending       | — |
 | 6 | opponents/* + analytics overlap       | 3     | Pending       | — |
@@ -222,3 +222,10 @@ authenticated user's accounts. camelCase JSON wire format.
   surface: 4 endpoints (POST /collection, GET /collection/stats,
   /collection/sets, /collection/value). Branch
   `feat/phase2-pr2-collection` ready to open as PR.
+- **2026-05-11** — PR #2 merged. Starting PR #3 (quests/*).
+- **2026-05-11** — PR #3 (quests/*) built. Five endpoints under
+  /api/v1/quests/* (active/history/wins/daily, wins/weekly, stats).
+  Read-side methods added to existing QuestRepository (was
+  write-only). Daily/weekly wins computed from matches table;
+  TotalGoldEarned in stats stubbed at 0 pending a richer rewards
+  schema. quests.ts: import-only swap (URLs unchanged).

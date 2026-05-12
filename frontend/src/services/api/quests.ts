@@ -1,9 +1,14 @@
 /**
  * Quests API service.
- * Replaces Wails quest-related function bindings.
+ *
+ * Phase 2 PR #3: cloud-data quest reads now hit the BFF directly via
+ * apiClient at /api/v1/quests/*. Wire shape preserved (snake_case keys
+ * matching models.Quest / models.QuestStats TS classes).
+ *
+ * Plan tracker: .claude/plans/spa-route-migration.md
  */
 
-import { get } from '../daemonClient';
+import { get } from '../apiClient';
 import { models } from '@/types/models';
 
 /**

@@ -176,6 +176,7 @@ func main() {
 		daemonRegisterHandler *handlers.DaemonRegisterHandler
 		matchesHandler        *handlers.MatchesHandler
 		collectionHandler     *handlers.CollectionHandler
+		questsHandler         *handlers.QuestsHandler
 	)
 
 	// projCtx is cancelled on SIGTERM so the projection worker exits cleanly.
@@ -214,6 +215,11 @@ func main() {
 		// .claude/plans/spa-route-migration.md.
 		collectionRepo := repository.NewCollectionRepository(sqlDB)
 		collectionHandler = handlers.NewCollectionHandler(collectionRepo, accountRepo)
+
+		// Phase 2 PR #3 — /api/v1/quests surface (active/history/wins/stats).
+		// QuestRepository was previously write-only (projection worker writes);
+		// PR #3 adds the read-side methods used here.
+		questsHandler = handlers.NewQuestsHandler(repository.NewQuestRepository(sqlDB), accountRepo)
 
 		// ListV2Handler provides cursor-paginated v2 endpoints for matches,
 		// drafts, decks, and collection (ADR-018).
@@ -301,6 +307,7 @@ func main() {
 		DaemonRegisterHandler: daemonRegisterHandler,
 		MatchesHandler:        matchesHandler,
 		CollectionHandler:     collectionHandler,
+		QuestsHandler:         questsHandler,
 		HealthzHandler:        healthzHandler,
 		ClerkAuthMiddl:        clerkAuthMiddl,
 		ClerkAuthSSEMiddl:     clerkAuthSSEMiddl,
@@ -367,6 +374,9 @@ type RouterDeps struct {
 	// CollectionHandler serves the Phase 2 /api/v1/collection/* surface
 	// (cards/stats/sets/value). Protected by DaemonAPIKeyAuth.
 	CollectionHandler *handlers.CollectionHandler
+	// QuestsHandler serves the Phase 2 /api/v1/quests/* surface
+	// (active/history/wins/stats). Protected by DaemonAPIKeyAuth.
+	QuestsHandler *handlers.QuestsHandler
 	// HealthzHandler serves GET /healthz — intentionally public (no auth).
 	HealthzHandler *handlers.HealthzHandler
 	ClerkAuthMiddl func(http.Handler) http.Handler
@@ -508,6 +518,22 @@ func BuildRouter(cfg *config.Config, deps RouterDeps) http.Handler {
 			r.With(auth).Get("/api/v1/collection/value", c.Value)
 		} else {
 			log.Println("WARN: /api/v1/collection/* disabled — DaemonAPIKeyAuth middleware not configured")
+		}
+	}
+
+	// Phase 2 PR #3 — /api/v1/quests surface (active/history/wins/stats).
+	// Same auth + envelope contract.
+	if deps.QuestsHandler != nil {
+		if deps.DaemonAPIKeyAuthMiddl != nil {
+			q := deps.QuestsHandler
+			auth := deps.DaemonAPIKeyAuthMiddl
+			r.With(auth).Get("/api/v1/quests/active", q.Active)
+			r.With(auth).Get("/api/v1/quests/history", q.History)
+			r.With(auth).Get("/api/v1/quests/wins/daily", q.DailyWins)
+			r.With(auth).Get("/api/v1/quests/wins/weekly", q.WeeklyWins)
+			r.With(auth).Get("/api/v1/quests/stats", q.Stats)
+		} else {
+			log.Println("WARN: /api/v1/quests/* disabled — DaemonAPIKeyAuth middleware not configured")
 		}
 	}
 
