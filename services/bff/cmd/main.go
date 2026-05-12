@@ -178,6 +178,7 @@ func main() {
 		collectionHandler     *handlers.CollectionHandler
 		questsHandler         *handlers.QuestsHandler
 		standardHandler       *handlers.StandardHandler
+		gamePlaysHandler      *handlers.GamePlaysHandler
 	)
 
 	// projCtx is cancelled on SIGTERM so the projection worker exits cleanly.
@@ -226,6 +227,12 @@ func main() {
 		// validate/legality). Mixed scope: sets+config+legality are global,
 		// rotation+affected-decks+validate are account-scoped via accountRepo.
 		standardHandler = handlers.NewStandardHandler(repository.NewStandardRepository(sqlDB), accountRepo)
+
+		// Phase 2 PR #5a — game-plays read surface. Routes mount under
+		// /api/v1/matches/{matchId}/plays/* and /api/v1/gameplays/* per the
+		// SPA contract (gameplays.ts). Backed by game_plays,
+		// game_state_snapshots, and opponent_cards_observed.
+		gamePlaysHandler = handlers.NewGamePlaysHandler(repository.NewGamePlaysRepository(sqlDB), accountRepo)
 
 		// ListV2Handler provides cursor-paginated v2 endpoints for matches,
 		// drafts, decks, and collection (ADR-018).
@@ -315,6 +322,7 @@ func main() {
 		CollectionHandler:     collectionHandler,
 		QuestsHandler:         questsHandler,
 		StandardHandler:       standardHandler,
+		GamePlaysHandler:      gamePlaysHandler,
 		HealthzHandler:        healthzHandler,
 		ClerkAuthMiddl:        clerkAuthMiddl,
 		ClerkAuthSSEMiddl:     clerkAuthSSEMiddl,
@@ -387,6 +395,10 @@ type RouterDeps struct {
 	// StandardHandler serves the Phase 2 /api/v1/standard/* surface
 	// (sets/rotation/config/validate/legality). Protected by DaemonAPIKeyAuth.
 	StandardHandler *handlers.StandardHandler
+	// GamePlaysHandler serves the Phase 2 in-game telemetry routes:
+	// /api/v1/matches/{matchId}/plays/*, /opponent-cards, /snapshots
+	// and /api/v1/gameplays/game/{gameId}. Protected by DaemonAPIKeyAuth.
+	GamePlaysHandler *handlers.GamePlaysHandler
 	// HealthzHandler serves GET /healthz — intentionally public (no auth).
 	HealthzHandler *handlers.HealthzHandler
 	ClerkAuthMiddl func(http.Handler) http.Handler
@@ -544,6 +556,24 @@ func BuildRouter(cfg *config.Config, deps RouterDeps) http.Handler {
 			r.With(auth).Get("/api/v1/quests/stats", q.Stats)
 		} else {
 			log.Println("WARN: /api/v1/quests/* disabled — DaemonAPIKeyAuth middleware not configured")
+		}
+	}
+
+	// Phase 2 PR #5a — game-plays / snapshots / opponent-cards routes that
+	// extend the matches surface, plus the dedicated /api/v1/gameplays/game
+	// path. Same auth + envelope contract.
+	if deps.GamePlaysHandler != nil {
+		if deps.DaemonAPIKeyAuthMiddl != nil {
+			gp := deps.GamePlaysHandler
+			auth := deps.DaemonAPIKeyAuthMiddl
+			r.With(auth).Get("/api/v1/matches/{matchId}/plays", gp.MatchPlays)
+			r.With(auth).Get("/api/v1/matches/{matchId}/plays/timeline", gp.MatchTimeline)
+			r.With(auth).Get("/api/v1/matches/{matchId}/plays/summary", gp.MatchPlaySummary)
+			r.With(auth).Get("/api/v1/matches/{matchId}/opponent-cards", gp.MatchOpponentCards)
+			r.With(auth).Get("/api/v1/matches/{matchId}/snapshots", gp.MatchSnapshots)
+			r.With(auth).Get("/api/v1/gameplays/game/{gameId}", gp.PlaysByGame)
+		} else {
+			log.Println("WARN: gameplays routes disabled — DaemonAPIKeyAuth middleware not configured")
 		}
 	}
 

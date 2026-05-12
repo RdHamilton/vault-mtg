@@ -82,8 +82,9 @@ tests + lint/format gates.
 | 1 | matches/* — full surface (17 paths)   | 17    | ✅ **Merged** 2026-05-11 | PR #1872 |
 | 2 | collection/* (8 paths)                | 8     | ✅ **Merged** 2026-05-11 | PR #1873 |
 | 3 | quests/* (4 paths)                    | 4     | ✅ **Merged** 2026-05-11 | PR #1874 |
-| 4 | standard/* (6 paths)                  | 6     | ⏳ **In progress** | `feat/phase2-pr4-standard` |
-| 5 | gameplays/* + meta/* (2 paths)        | 2     | Pending       | — |
+| 4 | standard/* (6 paths)                  | 6     | ✅ **Merged** 2026-05-11 | PR #1875 |
+| 5a | gameplays/* (6 endpoints — backed by game_plays, game_state_snapshots, opponent_cards_observed tables) | 6 | ⏳ **In progress** | `feat/phase2-pr5-gameplays-meta` (gameplays only — meta deferred) |
+| 5b | meta/* (7 endpoints; some stubbed pending ML/scrape infra) | 7 | Pending — separate branch | — |
 | 6 | opponents/* + analytics overlap       | 3     | Pending       | — |
 | 7 | notes/* (7 paths)                     | 7     | Pending       | — |
 | 8 | cards/* (13 paths)                    | 13    | Pending       | — |
@@ -238,3 +239,14 @@ authenticated user's accounts. camelCase JSON wire format.
   parses the cards.legalities JSON inline; affected-decks iterates
   per-deck against the next rotation_date. standard.ts: import-only
   swap. Standard-format SPA tests fixed to mock apiClient.
+- **2026-05-11** — PR #4 merged. Starting PR #5.
+- **2026-05-11** — PR #5 plan was "gameplays + meta (2 paths)" but
+  audit revealed 13 actual endpoints across the two modules.
+  Splitting: PR #5a covers gameplays/* (6 endpoints), PR #5b will
+  cover meta/* (7 endpoints) on its own branch.
+- **2026-05-11** — PR #5a (gameplays/*) built. New GamePlaysRepository
+  + GamePlaysHandler with 6 endpoints under /api/v1/matches/{id}/plays/*,
+  /opponent-cards, /snapshots, plus /api/v1/gameplays/game/{id}.
+  Backed by the existing game_plays / game_state_snapshots /
+  opponent_cards_observed tables; scope enforced via matches join.
+  gameplays.ts and gameplays.test.ts: import-only swap to apiClient.

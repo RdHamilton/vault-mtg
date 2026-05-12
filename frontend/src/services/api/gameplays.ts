@@ -1,10 +1,15 @@
 /**
  * Game Plays API service.
- * Provides access to in-game play tracking data including card plays,
- * attacks, blocks, and turn-by-turn game state snapshots.
+ *
+ * Phase 2 PR #5a: cloud-data play telemetry now hits the BFF directly via
+ * apiClient. Routes mount under /api/v1/matches/{matchId}/plays/* and
+ * /api/v1/gameplays/game/{gameId}; wire shapes preserved (snake_case keys
+ * matching the local TypeScript interfaces below).
+ *
+ * Plan tracker: .claude/plans/spa-route-migration.md
  */
 
-import { get } from '../daemonClient';
+import { get } from '../apiClient';
 
 /**
  * Represents a single game play action.
