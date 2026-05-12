@@ -67,9 +67,16 @@ lint_code() {
 }
 
 build_app() {
-    print_step "Building application..."
-    go build -o bin/mtga-companion ./cmd/mtga-companion
-    print_success "Build complete: bin/mtga-companion"
+    print_step "Building all workspace services..."
+    # Build each workspace module so a single command surfaces compile
+    # errors across the whole repo. Each service also ships its own
+    # Makefile (services/<name>/Makefile) for release-tagged builds.
+    (cd services/bff && go build ./...)
+    (cd services/daemon && go build ./...)
+    (cd services/sync && go build ./...)
+    (cd pkg/draftalgo && go build ./...)
+    (cd pkg/logparse && go build ./...)
+    print_success "All workspace modules built successfully"
 }
 
 run_checks() {

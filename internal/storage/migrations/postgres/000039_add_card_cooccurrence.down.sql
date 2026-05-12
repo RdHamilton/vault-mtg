@@ -1,9 +1,0 @@
-DROP INDEX IF EXISTS idx_frequency_format;
-DROP INDEX IF EXISTS idx_frequency_card;
-DROP TABLE IF EXISTS card_frequency;
-DROP TABLE IF EXISTS cooccurrence_sources;
-DROP INDEX IF EXISTS idx_cooccurrence_pmi;
-DROP INDEX IF EXISTS idx_cooccurrence_format;
-DROP INDEX IF EXISTS idx_cooccurrence_card_b;
-DROP INDEX IF EXISTS idx_cooccurrence_card_a;
-DROP TABLE IF EXISTS card_cooccurrence;

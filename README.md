@@ -21,7 +21,7 @@ A modern companion application for Magic: The Gathering Arena (MTGA). Track your
 - **Log Reading**: Automatically locates and reads MTGA Player.log files
 - **Auto-Detection**: Cross-platform support for macOS and Windows log locations
 - **Real-Time Monitoring**: Poll-based log watching for instant updates
-- **Database Storage**: Local SQLite database with migration support
+- **Cloud Storage**: Per-account PostgreSQL on the BFF (matches, drafts, decks, collection, settings)
 - **Export System**: Export statistics in CSV or JSON formats
 
 ### Draft Assistant (v1.1)
@@ -362,9 +362,10 @@ If you prefer not to use daemon mode, the GUI includes an embedded log poller th
 git clone https://github.com/RdHamilton/MTGA-Companion.git
 cd MTGA-Companion
 
-# Build the Go backend (API server + daemon)
-go build -o bin/mtga-companion ./cmd/mtga-companion
-go build -o bin/apiserver ./cmd/apiserver
+# Build the Go services (BFF + daemon + sync)
+(cd services/bff && go build ./...)
+(cd services/daemon && go build ./...)
+(cd services/sync && go build ./...)
 
 # Install and build frontend
 cd frontend
@@ -375,10 +376,13 @@ cd ..
 
 **Development Mode** (with hot reload):
 ```bash
-# Terminal 1: Start API server
-go run ./cmd/apiserver
+# Terminal 1: Start the BFF
+cd services/bff && go run ./cmd
 
-# Terminal 2: Start frontend dev server
+# Terminal 2: Start the daemon
+cd services/daemon && go run ./cmd/daemon
+
+# Terminal 3: Start frontend dev server
 cd frontend
 npm run dev
 ```
@@ -525,33 +529,34 @@ MTGA-Companion/
 
 **Full Stack Development** (recommended):
 ```bash
-# Terminal 1: Start API server with hot reload
-go run ./cmd/apiserver
+# Terminal 1: Start BFF (cloud data, port 8080)
+cd services/bff && go run ./cmd
 
-# Terminal 2: Start frontend dev server
-cd frontend
-npm run dev
+# Terminal 2: Start daemon (live MTGA log reader, port 9001)
+cd services/daemon && go run ./cmd/daemon
+
+# Terminal 3: Start frontend dev server
+cd frontend && npm run dev
 
 # Open browser to http://localhost:3000
 ```
 
 **Go Development** (backend):
 ```bash
-# Format code
-gofumpt -w .
+# Format code (per-service since each is its own module)
+gofumpt -w services/ pkg/
 
 # Run linter
 golangci-lint run --timeout=5m
 
-# Run tests
-go test ./...
+# Run tests with race detection (per service)
+(cd services/bff && go test -race ./...)
+(cd services/daemon && go test -race ./...)
+(cd services/sync && go test -race ./...)
+(cd pkg/draftalgo && go test -race ./...)
 
-# Run tests with race detection
-go test -race ./...
-
-# Build binaries
-go build -o bin/apiserver ./cmd/apiserver
-go build -o bin/mtga-companion ./cmd/mtga-companion
+# Build all workspace services
+./scripts/dev.sh build
 ```
 
 **Frontend Development**:
@@ -626,44 +631,13 @@ MTGA-Companion is built with modern technologies for performance and cross-platf
   - React SPA served via Vite or static files
   - Opens in your default browser - no native app required
 
-### Go 1.25 Features
-
-MTGA Companion leverages Go 1.25's new features for improved performance and debugging:
-
-**Flight Recorder** (`internal/daemon/flight_recorder.go`)
-- Uses `runtime/trace.FlightRecorder` for low-overhead execution tracing
-- Automatically captures traces when errors exceed threshold
-- Configurable trace buffer size and retention
-- Manual trace capture via daemon API
-
-**Benchmark Suite** (`benchmarks/`)
-- **GC Benchmarks**: Compare default GC vs experimental `greenteagc` garbage collector
-  ```bash
-  # Run with default GC
-  go test -bench=. -benchmem ./benchmarks/...
-
-  # Run with greenteagc (Go 1.25+ required)
-  GOEXPERIMENT=greenteagc go test -bench=. -benchmem ./benchmarks/...
-
-  # Compare results
-  ./benchmarks/run_gc_comparison.sh
-  ```
-- **JSON Benchmarks**: Compare `encoding/json` (v1) vs experimental `encoding/json/v2`
-  ```bash
-  # Run comparison (requires GOEXPERIMENT=jsonv2)
-  ./benchmarks/run_json_comparison.sh
-  ```
-
 ### Backend (Go)
 
 - **[Go 1.25+](https://go.dev/)** - Programming language
-- **[Chi Router](https://github.com/go-chi/chi)** - Lightweight HTTP router
-- **[SQLite 3](https://www.sqlite.org/)** - Local database storage
-- **[modernc.org/sqlite](https://gitlab.com/cznic/sqlite)** - Pure Go SQLite driver (no CGo required)
+- **[Chi Router](https://github.com/go-chi/chi)** - Lightweight HTTP router (BFF)
+- **[PostgreSQL](https://www.postgresql.org/) / [pgx](https://github.com/jackc/pgx)** - Per-account cloud storage on the BFF
 - **[golang-migrate/migrate](https://github.com/golang-migrate/migrate)** - Database migration management
-- **[gorilla/websocket](https://github.com/gorilla/websocket)** - WebSocket implementation
-- **[fsnotify](https://github.com/fsnotify/fsnotify)** - Cross-platform file system notifications
-- **[kardianos/service](https://github.com/kardianos/service)** - Cross-platform service management
+- **[fsnotify](https://github.com/fsnotify/fsnotify)** - Cross-platform file system notifications (daemon log poller)
 
 ### Frontend (React + TypeScript)
 

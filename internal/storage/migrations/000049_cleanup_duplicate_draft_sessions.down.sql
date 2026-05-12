@@ -1,2 +1,0 @@
--- Down migration: No-op. Deleted duplicate sessions cannot be restored.
--- The duplicates were erroneous data created by a log re-processing bug.

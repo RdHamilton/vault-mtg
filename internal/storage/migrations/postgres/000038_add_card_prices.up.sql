@@ -1,9 +1,0 @@
--- Add price fields to set_cards table (PostgreSQL)
-ALTER TABLE set_cards ADD COLUMN IF NOT EXISTS price_usd REAL DEFAULT NULL;
-ALTER TABLE set_cards ADD COLUMN IF NOT EXISTS price_usd_foil REAL DEFAULT NULL;
-ALTER TABLE set_cards ADD COLUMN IF NOT EXISTS price_eur REAL DEFAULT NULL;
-ALTER TABLE set_cards ADD COLUMN IF NOT EXISTS price_eur_foil REAL DEFAULT NULL;
-ALTER TABLE set_cards ADD COLUMN IF NOT EXISTS price_tix REAL DEFAULT NULL;
-ALTER TABLE set_cards ADD COLUMN IF NOT EXISTS prices_updated_at TIMESTAMPTZ DEFAULT NULL;
-
-CREATE INDEX IF NOT EXISTS idx_set_cards_prices ON set_cards(price_usd) WHERE price_usd IS NOT NULL;
