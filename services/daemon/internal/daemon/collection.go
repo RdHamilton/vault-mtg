@@ -2,6 +2,7 @@ package daemon
 
 import (
 	"context"
+	"fmt"
 	"log"
 	"os"
 	"path/filepath"
@@ -33,7 +34,12 @@ func (s *Service) WithTray(hooks TrayHooks) {
 }
 
 // checkHelperOnStartup probes the helper socket and updates the tray.
-func (s *Service) checkHelperOnStartup() {
+func (s *Service) checkHelperOnStartup(ctx context.Context) {
+	select {
+	case <-ctx.Done():
+		return
+	default:
+	}
 	c := collectionclient.New()
 	installed := c.IsHelperRunning()
 	if s.trayHooks.SetHelperInstalled != nil {
@@ -155,6 +161,9 @@ func locateHelperFiles() (helperBinary, scriptDir string, err error) {
 	scriptDir = filepath.Join(dir, "install")
 	if _, statErr := os.Stat(helperBinary); statErr != nil {
 		return "", "", statErr
+	}
+	if _, statErr := os.Stat(scriptDir); statErr != nil {
+		return "", "", fmt.Errorf("install directory not found: %w", statErr)
 	}
 	return helperBinary, scriptDir, nil
 }

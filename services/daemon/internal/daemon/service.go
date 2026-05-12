@@ -281,7 +281,7 @@ func (s *Service) Run(ctx context.Context) error {
 	log.Printf("[daemon] started (session=%s cloud_api=%s)", s.sessionID, s.cfg.CloudAPIURL)
 
 	// Check if the privileged collection helper is already installed.
-	go s.checkHelperOnStartup()
+	go s.checkHelperOnStartup(ctx)
 
 	// Start the GRE stale-buffer sweep goroutine.
 	go s.greManager.RunSweep(ctx)
@@ -342,10 +342,24 @@ func (s *Service) Run(ctx context.Context) error {
 			cancel()
 
 		case <-s.trayHooks.SyncNow:
-			go s.performCollectionSync(ctx)
+			go func() {
+				defer func() {
+					if r := recover(); r != nil {
+						log.Printf("[daemon] panic in performCollectionSync: %v", r)
+					}
+				}()
+				s.performCollectionSync(ctx)
+			}()
 
 		case <-s.trayHooks.GrantAccess:
-			go s.installCollectionHelper()
+			go func() {
+				defer func() {
+					if r := recover(); r != nil {
+						log.Printf("[daemon] panic in installCollectionHelper: %v", r)
+					}
+				}()
+				s.installCollectionHelper()
+			}()
 
 		case err, ok := <-errs:
 			if !ok {

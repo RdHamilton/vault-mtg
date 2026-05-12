@@ -126,12 +126,20 @@ func main() {
 	}
 
 	outPath := "/tmp/collection_go.json"
-	f, err := os.Create(outPath)
-	if err == nil {
+	f, createErr := os.Create(outPath)
+	if createErr == nil {
 		enc := json.NewEncoder(f)
 		enc.SetIndent("", "  ")
-		_ = enc.Encode(best.entries)
-		f.Close()
-		fmt.Printf("\nSaved to %s\n", outPath)
+		encErr := enc.Encode(best.entries)
+		closeErr := f.Close()
+		switch {
+		case encErr != nil:
+			fmt.Fprintf(os.Stderr, "error: encode %s: %v\n", outPath, encErr)
+			_ = os.Remove(outPath)
+		case closeErr != nil:
+			fmt.Fprintf(os.Stderr, "error: close %s: %v\n", outPath, closeErr)
+		default:
+			fmt.Printf("\nSaved to %s\n", outPath)
+		}
 	}
 }

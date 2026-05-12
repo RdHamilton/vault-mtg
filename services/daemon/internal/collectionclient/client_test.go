@@ -33,8 +33,13 @@ func startFakeHelper(t *testing.T, sockPath string, resp ScanResponse) {
 		}
 		defer func() { _ = conn.Close() }()
 		var req ScanRequest
-		_ = json.NewDecoder(conn).Decode(&req)
-		_ = json.NewEncoder(conn).Encode(resp)
+		if err := json.NewDecoder(conn).Decode(&req); err != nil {
+			t.Errorf("startFakeHelper: decode request: %v", err)
+			return
+		}
+		if err := json.NewEncoder(conn).Encode(resp); err != nil {
+			t.Errorf("startFakeHelper: encode response: %v", err)
+		}
 	}()
 }
 

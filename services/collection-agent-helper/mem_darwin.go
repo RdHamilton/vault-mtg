@@ -8,6 +8,7 @@ package main
 #include <stdlib.h>
 
 static mach_port_t selfTask() { return mach_task_self(); }
+static void deallocTaskPort(mach_port_t task) { mach_port_deallocate(mach_task_self(), task); }
 
 static kern_return_t vmRead(mach_port_t task, uint64_t addr, uint64_t size,
                              void **outPtr, uint32_t *outSize) {
@@ -98,6 +99,7 @@ func scanProcess(pid int) (map[int]int, error) {
 	if err != nil {
 		return nil, err
 	}
+	defer C.deallocTaskPort(task)
 
 	regions := listReadableRegions(task, minRegionSize)
 

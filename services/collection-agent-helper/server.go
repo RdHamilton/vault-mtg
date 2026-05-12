@@ -6,6 +6,7 @@ import (
 	"log"
 	"net"
 	"os"
+	"syscall"
 	"time"
 )
 
@@ -31,15 +32,18 @@ func runServer() error {
 		return fmt.Errorf("remove stale socket: %w", err)
 	}
 
+	// Set restrictive umask so the socket is created 0600; restore afterward.
+	old := syscall.Umask(0o077)
 	ln, err := net.Listen("unix", SocketPath)
+	syscall.Umask(old)
 	if err != nil {
 		return fmt.Errorf("listen %s: %w", SocketPath, err)
 	}
 	defer func() { _ = ln.Close() }()
 
-	// Only root should be able to connect.
+	// Belt-and-suspenders: chmod in case the umask was externally overridden.
 	if err := os.Chmod(SocketPath, 0o600); err != nil {
-		log.Printf("[helper] warn: chmod socket: %v", err)
+		return fmt.Errorf("chmod socket: %w", err)
 	}
 
 	log.Printf("[helper] listening on %s", SocketPath)
@@ -66,6 +70,12 @@ func handleConn(conn net.Conn) {
 
 	if req.PID <= 0 {
 		writeError(conn, "invalid pid")
+		return
+	}
+	// Verify the process exists before attempting a privileged memory scan.
+	p, _ := os.FindProcess(req.PID)
+	if err := p.Signal(syscall.Signal(0)); err != nil {
+		writeError(conn, fmt.Sprintf("PID %d not found", req.PID))
 		return
 	}
 

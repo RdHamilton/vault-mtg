@@ -26,7 +26,7 @@ func scanDictEntries(data []byte) map[int]int {
 		if hashCode != key {
 			continue
 		}
-		if key <= minGRPID || key >= maxGRPID {
+		if key < minGRPID || key > maxGRPID {
 			continue
 		}
 		if value < minQty || value > maxQty {

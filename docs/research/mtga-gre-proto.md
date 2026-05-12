@@ -21,7 +21,7 @@ extracted from the Untapped.gg companion app.
 ## Transport
 
 MTGA connects via TCP to:
-```
+```text
 frontdoor-mtga-production-<id>.w2.mtgarena.com:30010
 ```
 Messages are length-prefixed protobuf. The outer envelope is `ClientMessage` /

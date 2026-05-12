@@ -12,7 +12,7 @@ import (
 // findMTGAPID returns the PID of the running MTGA process, or an error if it
 // is not found.
 func findMTGAPID() (int, error) {
-	out, err := exec.Command("pgrep", "-x", "MTGA").Output()
+	out, err := exec.Command("pgrep", "-x", "-o", "MTGA").Output()
 	if err != nil {
 		return 0, fmt.Errorf("MTGA not running")
 	}
