@@ -48,10 +48,11 @@ type State struct {
 // handlers and writes from the daemon's dispatch goroutine are safe without
 // a mutex on the hot path.
 type Server struct {
-	port  int
-	state atomic.Pointer[State]
-	srv   *http.Server
-	ln    net.Listener
+	port        int
+	state       atomic.Pointer[State]
+	srv         *http.Server
+	ln          net.Listener
+	uninstaller Uninstaller // nil → defaultUninstaller; tests override via SetUninstaller
 }
 
 // New returns a Server bound to 127.0.0.1:port. Use DefaultPort unless tests
@@ -67,6 +68,13 @@ func New(port int, state State) *Server {
 // partial updates.
 func (s *Server) SetState(state State) {
 	s.state.Store(&state)
+}
+
+// SetUninstaller installs a custom Uninstaller. Used by tests to swap in a
+// fake; production never calls this (the default implementation is wired in
+// handleSystemUninstall when uninstaller is nil).
+func (s *Server) SetUninstaller(u Uninstaller) {
+	s.uninstaller = u
 }
 
 // snapshot returns a copy of the current state. Always non-nil for a Server
@@ -108,6 +116,10 @@ func (s *Server) Start() error {
 	mux.HandleFunc("/api/v1/system/daemon/status", s.handleSystemDaemonStatus)
 	mux.HandleFunc("/api/v1/system/daemon/connect", s.handleSystemDaemonConnect)
 	mux.HandleFunc("/api/v1/system/daemon/disconnect", s.handleSystemDaemonDisconnect)
+
+	// Phase 2 PR #18 — uninstall surface. Lets the SPA's Settings UI
+	// trigger a clean uninstall without forcing the user into a Terminal.
+	mux.HandleFunc("/api/v1/system/uninstall", s.handleSystemUninstall)
 
 	s.srv = &http.Server{
 		Handler:           withCORS(mux),
@@ -206,7 +218,7 @@ func withCORS(next http.Handler) http.Handler {
 		} else {
 			w.Header().Set("Access-Control-Allow-Origin", "*")
 		}
-		w.Header().Set("Access-Control-Allow-Methods", "GET, HEAD, OPTIONS")
+		w.Header().Set("Access-Control-Allow-Methods", "GET, HEAD, OPTIONS, POST")
 		w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization")
 
 		if r.Method == http.MethodOptions {

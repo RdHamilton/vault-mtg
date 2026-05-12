@@ -121,4 +121,31 @@ describe('system API', () => {
       expect(result).toEqual(mockData);
     });
   });
+
+  describe('uninstallDaemon', () => {
+    it('POSTs without purge by default', async () => {
+      vi.mocked(post).mockResolvedValue({ status: 'scheduled', message: 'ok' });
+
+      const result = await system.uninstallDaemon();
+
+      expect(post).toHaveBeenCalledWith('/system/uninstall');
+      expect(result).toEqual({ status: 'scheduled', message: 'ok' });
+    });
+
+    it('appends ?purge=true when opts.purge is true', async () => {
+      vi.mocked(post).mockResolvedValue({ status: 'scheduled', message: 'ok' });
+
+      await system.uninstallDaemon({ purge: true });
+
+      expect(post).toHaveBeenCalledWith('/system/uninstall?purge=true');
+    });
+
+    it('omits the query string when opts.purge is false', async () => {
+      vi.mocked(post).mockResolvedValue({ status: 'scheduled', message: 'ok' });
+
+      await system.uninstallDaemon({ purge: false });
+
+      expect(post).toHaveBeenCalledWith('/system/uninstall');
+    });
+  });
 });
