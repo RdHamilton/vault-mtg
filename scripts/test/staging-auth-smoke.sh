@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #
-# staging-auth-smoke.sh — end-to-end smoke test of staging BFF + SPA auth wiring.
+# staging-auth-smoke.sh — end-to-end smoke test of BFF + SPA auth wiring.
 #
 # Purpose: catch the auth misconfiguration we hit on 2026-05-12 — SPA bundle's
 # Clerk publishable key not matching the BFF's Clerk secret — without needing a
@@ -10,7 +10,17 @@
 #
 # Run before claiming any auth-related change is "done".
 #
-# Usage:
+# Usage (staging — default):
+#   ./scripts/test/staging-auth-smoke.sh
+#
+# Usage (production):
+#   SPA_HOST=https://app.vaultmtg.app \
+#   BFF_HOST=https://api.vaultmtg.app \
+#   SSM_CLERK_PK_PARAM=/mtga-companion/prod/CLERK_PUBLISHABLE_KEY \
+#   SSM_CLERK_FRONTEND_PARAM=/mtga-companion/prod/CLERK_FRONTEND_API \
+#   EC2_INSTANCE_ID=i-<prod-instance-id> \
+#   BFF_ENV_FILE=/etc/mtga-companion/env \
+#   BFF_SYSTEMD_UNIT=mtga-bff \
 #   ./scripts/test/staging-auth-smoke.sh
 #
 # Requires:
@@ -25,6 +35,15 @@ SPA_HOST="${SPA_HOST:-https://stg-app.vaultmtg.app}"
 BFF_HOST="${BFF_HOST:-https://staging-api.vaultmtg.app}"
 AWS_PROFILE_NAME="${AWS_PROFILE_NAME:-personal}"
 SSM_REGION="${SSM_REGION:-us-east-1}"
+
+# SSM parameter names for Clerk keys.
+SSM_CLERK_PK_PARAM="${SSM_CLERK_PK_PARAM:-/mtga-companion/staging/CLERK_PUBLISHABLE_KEY}"
+SSM_CLERK_FRONTEND_PARAM="${SSM_CLERK_FRONTEND_PARAM:-/mtga-companion/staging/CLERK_FRONTEND_API}"
+
+# EC2 instance and BFF runtime paths.
+EC2_INSTANCE_ID="${EC2_INSTANCE_ID:-i-065351fbb99da2d22}"
+BFF_ENV_FILE="${BFF_ENV_FILE:-/etc/mtga-companion-staging/env}"
+BFF_SYSTEMD_UNIT="${BFF_SYSTEMD_UNIT:-mtga-bff-staging}"
 
 # ── coloring ──────────────────────────────────────────────────────────────────
 if [[ -t 1 ]]; then
@@ -60,10 +79,10 @@ expect_status() {
 
 # ── tests ─────────────────────────────────────────────────────────────────────
 
-info "Pulling staging Clerk SSM parameters for cross-check"
+info "Pulling Clerk SSM parameters for cross-check"
 SSM_OUT=$(aws ssm get-parameters \
-  --names "/mtga-companion/staging/CLERK_PUBLISHABLE_KEY" \
-          "/mtga-companion/staging/CLERK_FRONTEND_API" \
+  --names "$SSM_CLERK_PK_PARAM" \
+          "$SSM_CLERK_FRONTEND_PARAM" \
   --region "$SSM_REGION" --profile "$AWS_PROFILE_NAME" \
   --query "Parameters[*].{Name:Name,Value:Value}" --output json)
 
@@ -149,13 +168,13 @@ expect_status "GET $JWKS_URL" "$JWKS_URL" "200"
 info "Test 9 — daemon_events schema matches BFF Insert call signature"
 SCHEMA_CHECK=$(aws ssm send-command \
   --document-name "AWS-RunShellScript" \
-  --instance-ids "i-065351fbb99da2d22" \
+  --instance-ids "$EC2_INSTANCE_ID" \
   --region "$SSM_REGION" --profile "$AWS_PROFILE_NAME" \
-  --parameters 'commands=["set -a && source /etc/mtga-companion-staging/env && set +a && psql \"$DATABASE_URL\" -tAc \"SELECT string_agg(column_name, '\'','\'' ORDER BY ordinal_position) FROM information_schema.columns WHERE table_schema = '\''public'\'' AND table_name = '\''daemon_events'\'';\""]' \
+  --parameters "commands=[\"set -a && source $BFF_ENV_FILE && set +a && psql \\\"\\\$DATABASE_URL\\\" -tAc \\\"SELECT string_agg(column_name, ',' ORDER BY ordinal_position) FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'daemon_events';\\\"\"]" \
   --query "Command.CommandId" --output text 2>&1)
 sleep 5
 SCHEMA_RESULT=$(aws ssm get-command-invocation \
-  --command-id "$SCHEMA_CHECK" --instance-id "i-065351fbb99da2d22" \
+  --command-id "$SCHEMA_CHECK" --instance-id "$EC2_INSTANCE_ID" \
   --region "$SSM_REGION" --profile "$AWS_PROFILE_NAME" \
   --query "StandardOutputContent" --output text 2>&1 | tr -d '\n')
 
@@ -180,13 +199,13 @@ fi
 info "Test 10 — recent daemon ingest persistence is healthy"
 INGEST_CHECK=$(aws ssm send-command \
   --document-name "AWS-RunShellScript" \
-  --instance-ids "i-065351fbb99da2d22" \
+  --instance-ids "$EC2_INSTANCE_ID" \
   --region "$SSM_REGION" --profile "$AWS_PROFILE_NAME" \
-  --parameters 'commands=["journalctl -u mtga-bff-staging --since \"5 min ago\" --no-pager | grep -c \"ERROR persisting event\" || true"]' \
+  --parameters "commands=[\"journalctl -u $BFF_SYSTEMD_UNIT --since '5 min ago' --no-pager | grep -c 'ERROR persisting event' || true\"]" \
   --query "Command.CommandId" --output text 2>&1)
 sleep 5
 ERR_COUNT=$(aws ssm get-command-invocation \
-  --command-id "$INGEST_CHECK" --instance-id "i-065351fbb99da2d22" \
+  --command-id "$INGEST_CHECK" --instance-id "$EC2_INSTANCE_ID" \
   --region "$SSM_REGION" --profile "$AWS_PROFILE_NAME" \
   --query "StandardOutputContent" --output text 2>&1 | tr -d '[:space:]')
 if [[ "$ERR_COUNT" == "0" ]]; then
