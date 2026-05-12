@@ -23,6 +23,7 @@ import {
   useDeveloperMode,
   useSettings,
 } from '../hooks';
+import { uninstallDaemon } from '../services/api/system';
 import './Settings.css';
 
 const Settings = () => {
@@ -236,6 +237,13 @@ const Settings = () => {
             isReplaying={isReplaying}
             replayProgress={replayProgress}
             onReplayLogs={() => handleReplayLogs(isConnected)}
+            onUninstallDaemon={async (purge) => {
+              const response = await uninstallDaemon({ purge });
+              // Forward the backend's user-facing message (residual
+              // platform-specific cleanup steps) to the section so it
+              // can render it verbatim in the success panel.
+              return response.message;
+            }}
           />
         ),
       },

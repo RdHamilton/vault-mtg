@@ -424,7 +424,7 @@ describe('Settings', () => {
       const dataRecoveryHeader = screen.getByRole('button', { name: /data recovery/i });
       fireEvent.click(dataRecoveryHeader);
 
-      expect(screen.getByText(/daemon must be running/i)).toBeInTheDocument();
+      expect(screen.getByText(/daemon must be running to replay logs/i)).toBeInTheDocument();
     });
   });
 

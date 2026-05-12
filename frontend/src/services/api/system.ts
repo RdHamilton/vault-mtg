@@ -134,6 +134,29 @@ export async function getCurrentAccount(): Promise<models.Account> {
 }
 
 /**
+ * Daemon uninstall response shape.
+ */
+export interface UninstallResponse {
+  status: string;
+  message: string;
+}
+
+/**
+ * Trigger a clean uninstall of the local daemon (Phase 2 PR #18).
+ *
+ * The daemon stops itself + removes the launchd plist / Task Scheduler
+ * entry + (optionally) wipes its config directory. The daemon binary
+ * itself stays on disk — the response message tells the user the
+ * one remaining residual step (drag to Trash on macOS, Add/Remove
+ * Programs on Windows). After the call returns the daemon will exit
+ * within ~200ms.
+ */
+export async function uninstallDaemon(opts: { purge?: boolean } = {}): Promise<UninstallResponse> {
+  const params = opts.purge ? '?purge=true' : '';
+  return post<UninstallResponse>(`/system/uninstall${params}`);
+}
+
+/**
  * Export ML training data.
  */
 export async function exportMLTrainingData(limit: number): Promise<gui.MLTrainingDataExport> {
