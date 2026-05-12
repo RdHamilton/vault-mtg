@@ -94,8 +94,100 @@ tests + lint/format gates.
 |12 | settings/* — cloud-backed key/value (4 endpoints + new user_settings JSONB table) | 4 | ✅ **Merged** 2026-05-12 | PR #1884 |
 |13 | system.ts cleanup — delete 6 dead wrappers + orphaned LLM/Clear UI (~1500 LOC) | -6 | ✅ **Merged** 2026-05-12 | PR #1885 |
 |14 | drafts/* Bucket C — flip 3 live-state wrappers (`current-pack`, `grade-pick`, `win-probability`) back to daemonClient; BFF stubs retained pending daemon impl | 3 | ✅ **Merged** 2026-05-12 | PR #1886 |
-|15 | Frontend cleanup — strip dead `daemonClient` exports (configure/getConfig/put/patch/del/getRaw/SSE); keep only `get` + `post` | — | ⏳ **In progress** | `feat/phase2-pr15-daemonclient-cleanup` |
-|16 | Audit doc PR — land `feat/phase2-audit-and-bucket-a` on main for reviewers | — | Pending | branch already pushed |
+|15 | Frontend cleanup — strip dead `daemonClient` exports (configure/getConfig/put/patch/del/getRaw/SSE); keep only `get` + `post` | — | ✅ **Merged** 2026-05-12 | PR #1887 |
+|16 | Audit doc PR — land `docs/product/milestones/v0.3.1/daemon-local-api-phase2-audit.md` on main with status header pointing at the live tracker | — | ⏳ **In progress** | `feat/phase2-pr16-audit-doc` |
+|17a | Restore deleted draft algorithm packages as `pkg/draftalgo/` (grading + pickquality + prediction; rewrite storage coupling to depend on `pkg/logparse` types only) — pure Go pkg, unit tests, no daemon wiring | — | Pending | — |
+|17b | Wire daemon live-state endpoints: `GET /drafts/{id}/current-pack`, `POST /drafts/grade-pick`, `POST /drafts/win-probability`. Read live session state from the daemon's existing `pkg/logparse` poller; call `pkg/draftalgo` for grading/prediction. Delete the 3 retained BFF stubs from PR #14. | 3 | Pending — depends on 17a | — |
+|18 | Daemon uninstall surface — `POST /api/v1/system/uninstall` on daemon localapi; shells out to the existing `services/daemon/install/{macos,windows}/uninstall.{sh,ps1}` scripts; SPA Settings → Uninstall button calls it; `?purge=true` flag wipes config + scrubs SQLite | 1 | Pending | — |
+
+---
+
+## Scope details — PRs #17 (draft live-state port) and #18 (uninstall)
+
+### PR #17a — Restore draft algorithm packages
+
+**Why this is its own PR:** Phase 1's logparse-extraction commit (`783cf66`) deleted ~1,250 LOC of grading / pickquality / prediction logic that the Wails-era `internal/api/handlers/draft.go` depended on. The handlers are still on disk but reference packages that no longer exist, so the code is uncompilable as-is. Reintroducing the algorithms cleanly before wiring them to the daemon keeps PR #17b focused on routing + integration.
+
+**Files to resurrect from `783cf66~1`:**
+- `internal/mtga/draft/grading/calculator.go` (340 LOC) → `pkg/draftalgo/grading/`
+- `internal/mtga/draft/pickquality/analyzer.go` (193 LOC) → `pkg/draftalgo/pickquality/`
+- `internal/mtga/draft/prediction/predictor.go` (262 LOC) → `pkg/draftalgo/prediction/`
+- `internal/mtga/draft/prediction/synergy.go` (451 LOC) → `pkg/draftalgo/prediction/`
+- All `_test.go` files
+
+**Required rewrites:**
+- The deleted code imports `internal/storage/models` and `internal/storage/repository` (Wails SQLite layer). The new packages must depend only on `pkg/logparse` types (`DraftSession`, `DraftPick`, `DraftPack`) + `pkg/draftalgo`'s own internal types.
+- Anywhere the old code looked up cards in the local sqlite, replace with a small interface the daemon will satisfy with its in-memory pack/pool state.
+- Anywhere the old code looked up rating data from the local sqlite, replace with a `RatingsClient` interface — the daemon will back this with a cached fetch from the BFF's `/api/v1/draft-ratings/{set}/{format}` endpoint.
+
+**Out of scope:**
+- No daemon wiring.
+- No SPA changes.
+- No new ML — restore the heuristic-based grading the Wails app had, not a smarter model.
+
+**Tests:** all original `_test.go` files plus new tests for the storage-decoupled interfaces. Pre-PR gates: `gofumpt`, `go vet`, `go test -race ./...` in `pkg/draftalgo`.
+
+---
+
+### PR #17b — Wire daemon live-state endpoints
+
+**Adds to `services/daemon/internal/localapi/`:**
+- `GET  /api/v1/drafts/{sessionId}/current-pack` — handler reads from the daemon's live `pkg/logparse` poller's last-known `DraftSession`, builds the SPA's `CurrentPackResponse` shape (pack cards + per-card ratings from the cached BFF ratings + a recommendation from `pkg/logparse.GetDraftRecommendations` already present).
+- `POST /api/v1/drafts/grade-pick` — handler reads the session's pack/pick history from the live poller, calls `pkg/draftalgo/pickquality.Analyze` to score the picked card vs. alternatives, returns SPA's `PickQuality` shape.
+- `POST /api/v1/drafts/win-probability` — handler reads the session's current pool, calls `pkg/draftalgo/prediction.PredictWinRate`, returns `{probability: float}`.
+
+**Daemon-side plumbing:**
+- The daemon's poller already maintains live session state via `pkg/logparse`; PR #17b exposes a small read interface (`SessionByID(string) (*DraftSession, bool)`) the handlers consume.
+- Add a `RatingsClient` that the handlers use to fetch (and cache, with TTL) draft ratings from the BFF. Reuses the daemon's existing api-key auth path.
+- Wire all three routes in `services/daemon/internal/localapi/server.go` after the existing `/api/v1/system/*` routes.
+
+**BFF cleanup:**
+- Delete the three retained stub handlers from `services/bff/internal/api/handlers/drafts.go` (CurrentPackWithRecommendation, GradePick, WinProbability) and their routes in `services/bff/cmd/main.go`. They've never returned useful data and the SPA no longer points at them (PR #14). Update the corresponding tests.
+
+**Tests:**
+- BFF: delete the 3 stub tests in `drafts_test.go`.
+- Daemon: handler tests with a fake session reader + fake ratings client. Integration test that drives a real `pkg/logparse` poller against fixture log files.
+- SPA: no changes needed — the URLs already point at the daemon (PR #14).
+- Pre-PR gates: `gofumpt` + `go vet` + `go test -race ./...` in both `services/daemon` and `services/bff`; `npx tsc --noEmit` + `npm run test:run` in `frontend`.
+
+**Risks / open questions:**
+- The Wails-era handlers depended on a per-session SQLite history. The daemon today only keeps the **live** session in memory; once MTGA closes the session, the poller may drop it. If the SPA loads `/drafts/{id}/current-pack` for a session that ended, the daemon will 404. Decide whether to mirror that state into a daemon-local SQLite for replay, or accept the 404 + cover with a friendly SPA error.
+- Ratings caching strategy: per-set, 24h TTL feels right (matches the cache headers PR #1880 returns from the BFF). Single in-memory map on the daemon process — no disk persistence required.
+
+---
+
+### PR #18 — Daemon uninstall surface
+
+**Why:** users today have to open Terminal and run `bash uninstall.sh` (macOS) or use Add/Remove Programs (Windows). The SPA can't trigger that. Adding a single localapi endpoint lets the SPA expose a one-click uninstall button.
+
+**Scope:**
+- `POST /api/v1/system/uninstall` on `services/daemon/internal/localapi/server.go`.
+  - Optional `?purge=true` flag (default false). When false, keep `~/.config/vaultmtg/` (config + DB). When true, also remove that folder.
+  - Handler shells out to the platform-appropriate script bundled alongside the daemon binary:
+    - macOS: `bash $RESOURCE_DIR/uninstall.sh [--purge]`
+    - Windows: `powershell -File $RESOURCE_DIR/uninstall.ps1 [-Purge]`
+    - Linux: same shape as macOS, new `uninstall.sh` if needed (currently no installer).
+  - Returns `{status: "scheduled", message: "..."}` immediately; spawns the script in a detached child so the daemon can complete the response before the script kills the daemon process.
+  - Auth: protected by the same daemon api-key as other localapi routes.
+- Extend the existing `uninstall.sh` / `uninstall.ps1` with a `--purge` / `-Purge` flag that deletes `~/.config/vaultmtg/` (currently both scripts deliberately leave config behind).
+- SPA addition: a new "Uninstall VaultMTG Daemon" button in Settings → Data Recovery (or a new "Danger Zone" subsection). Calls `system.uninstallDaemon({ purge: boolean })`. Renders a confirmation dialog first.
+- Add `uninstallDaemon` wrapper to `frontend/src/services/api/system.ts` (back to daemonClient.post).
+
+**Out of scope (future tickets if requested):**
+- A tray icon with native Quit/Uninstall menu items (requires a tray library like `getlantern/systray` — meaningful new dependency).
+- Auto-prompted uninstall when the user removes their VaultMTG cloud account.
+- Cross-platform installer parity (Linux installer doesn't exist; Windows uses NSIS).
+
+**Tests:**
+- Daemon: handler test with a fake exec function. Verify both flags + auth.
+- SPA: vitest spec for the new wrapper; component test for the Settings UI button + confirmation dialog.
+- Manual: install the daemon, click Uninstall, verify launchd plist + binary gone (macOS); verify Add/Remove Programs entry removed (Windows).
+- Pre-PR gates: `gofumpt` + `go vet` + `go test -race ./...` in `services/daemon`; `npx tsc --noEmit` + `npm run test:run` in `frontend`.
+
+**Risks / open questions:**
+- macOS Gatekeeper: a self-deleting binary triggered via an HTTP call may need extra entitlements; the script-shell-out approach avoids that since the script is a separate process.
+- Race: the daemon is responding to the HTTP request when the script kills it. Using a detached child + a small sleep before the kill avoids cutting off the response payload.
+- Confirmation UX: must be explicit + double-confirmed in the SPA since the action is irreversible.
 
 ---
 
@@ -324,6 +416,20 @@ authenticated user's accounts. camelCase JSON wire format.
   current-pack, etc.) are documented STUBs pending the ML pipeline.
   drafts.ts + 2 drafts.test.ts files + 2 msw handlers: import-only
   swap to apiClient / BFF_BASE.
+- **2026-05-12** — PR #15 merged (#1887). Starting PR #16 (audit doc).
+  Branch `feat/phase2-audit-and-bucket-a` predated the entire phase
+  and would resurrect ~1500 LOC we just deleted if merged — cherry-
+  picked just the doc file (`docs/product/milestones/v0.3.1/daemon-
+  local-api-phase2-audit.md`) onto a fresh branch. Added a status
+  header noting the doc's PR numbers (#1, #2, …) are pre-execution
+  numbering and pointing readers at `.claude/plans/spa-route-
+  migration.md` for the live tracker. Architecture content preserved
+  verbatim as the migration's record-of-design.
+  Also expanded the plan to scope PRs #17a/#17b (daemon live-state
+  draft port — restore deleted `pkg/draftalgo/` from git history,
+  wire daemon endpoints, retire BFF stubs) and PR #18 (daemon
+  uninstall surface — `POST /api/v1/system/uninstall` + SPA button).
+  All three are deferred follow-ups, can run in parallel post-#16.
 - **2026-05-12** — PR #14 merged (#1886). Starting PR #15 (daemonClient
   cleanup). Audit: only `get` and `post` from `daemonClient.ts` had
   production callers (system.ts + drafts.ts). Deleted unused exports:
