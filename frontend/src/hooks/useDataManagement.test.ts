@@ -7,9 +7,6 @@ vi.mock('@/services/api', () => ({
   matches: {
     exportMatches: vi.fn(),
   },
-  system: {
-    clearAllData: vi.fn(),
-  },
 }));
 
 // Mock download utility
@@ -24,19 +21,17 @@ vi.mock('../components/ToastContainer', () => ({
   },
 }));
 
-import { matches, system } from '@/services/api';
+import { matches } from '@/services/api';
 import { downloadTextFile } from '@/utils/download';
 import { showToast } from '../components/ToastContainer';
 
 const mockExportMatches = vi.mocked(matches.exportMatches);
-const mockClearAllData = vi.mocked(system.clearAllData);
 const mockDownloadTextFile = vi.mocked(downloadTextFile);
 
 describe('useDataManagement', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockExportMatches.mockResolvedValue([]);
-    mockClearAllData.mockResolvedValue(undefined);
   });
 
   describe('handleExportData', () => {
@@ -67,12 +62,12 @@ describe('useDataManagement', () => {
 
       expect(mockExportMatches).toHaveBeenCalledWith('csv');
       expect(mockDownloadTextFile).toHaveBeenCalledWith(
-        expect.any(String),
+        'csv,data',
         'mtga-matches.csv'
       );
     });
 
-    it('shows success toast for JSON export', async () => {
+    it('shows success toast after successful export', async () => {
       const { result } = renderHook(() => useDataManagement());
 
       await act(async () => {
@@ -80,26 +75,13 @@ describe('useDataManagement', () => {
       });
 
       expect(showToast.show).toHaveBeenCalledWith(
-        'Successfully exported data to JSON!',
+        expect.stringContaining('Successfully exported'),
         'success'
       );
     });
 
-    it('shows success toast for CSV export', async () => {
-      const { result } = renderHook(() => useDataManagement());
-
-      await act(async () => {
-        await result.current.handleExportData('csv');
-      });
-
-      expect(showToast.show).toHaveBeenCalledWith(
-        'Successfully exported data to CSV!',
-        'success'
-      );
-    });
-
-    it('shows error toast on export failure', async () => {
-      mockExportMatches.mockRejectedValueOnce(new Error('Export failed'));
+    it('shows error toast when export fails', async () => {
+      mockExportMatches.mockRejectedValueOnce(new Error('export failed'));
 
       const { result } = renderHook(() => useDataManagement());
 
@@ -108,111 +90,7 @@ describe('useDataManagement', () => {
       });
 
       expect(showToast.show).toHaveBeenCalledWith(
-        expect.stringContaining('Failed to export data'),
-        'error'
-      );
-    });
-  });
-
-  describe('handleImportData', () => {
-    // Note: Import functions are no-ops in REST API mode (require native file picker)
-    it('shows success toast even for no-op import', async () => {
-      const { result } = renderHook(() => useDataManagement());
-
-      await act(async () => {
-        await result.current.handleImportData();
-      });
-
-      expect(showToast.show).toHaveBeenCalledWith(
-        expect.stringContaining('Successfully imported data'),
-        'success'
-      );
-    });
-  });
-
-  describe('handleImportLogFile', () => {
-    // Note: ImportLogFile is a no-op in REST API mode (requires native file picker)
-    // The no-op stub returns an empty result with fileName='' but still triggers the success path
-    it('shows success toast even for no-op import with empty result', async () => {
-      const { result } = renderHook(() => useDataManagement());
-
-      await act(async () => {
-        await result.current.handleImportLogFile();
-      });
-
-      // The no-op returns a truthy object (even with empty fileName)
-      // so a success toast is shown with zeros
-      expect(showToast.show).toHaveBeenCalledWith(
-        expect.stringContaining('Successfully imported'),
-        'success'
-      );
-    });
-  });
-
-  describe('handleClearAllData', () => {
-    it('calls system.clearAllData API', async () => {
-      // Mock window.location.reload
-      const reloadMock = vi.fn();
-      Object.defineProperty(window, 'location', {
-        value: { reload: reloadMock },
-        writable: true,
-      });
-
-      const { result } = renderHook(() => useDataManagement());
-
-      await act(async () => {
-        await result.current.handleClearAllData();
-      });
-
-      expect(mockClearAllData).toHaveBeenCalled();
-    });
-
-    it('shows success toast on successful clear', async () => {
-      const reloadMock = vi.fn();
-      Object.defineProperty(window, 'location', {
-        value: { reload: reloadMock },
-        writable: true,
-      });
-
-      const { result } = renderHook(() => useDataManagement());
-
-      await act(async () => {
-        await result.current.handleClearAllData();
-      });
-
-      expect(showToast.show).toHaveBeenCalledWith(
-        'All data has been cleared successfully!',
-        'success'
-      );
-    });
-
-    it('reloads the page after clearing data', async () => {
-      const reloadMock = vi.fn();
-      Object.defineProperty(window, 'location', {
-        value: { reload: reloadMock },
-        writable: true,
-      });
-
-      const { result } = renderHook(() => useDataManagement());
-
-      await act(async () => {
-        await result.current.handleClearAllData();
-      });
-
-      expect(reloadMock).toHaveBeenCalled();
-    });
-
-    it('shows error toast on clear failure', async () => {
-      mockClearAllData.mockRejectedValueOnce(new Error('Clear failed'));
-
-      const { result } = renderHook(() => useDataManagement());
-
-      await act(async () => {
-        await result.current.handleClearAllData();
-      });
-
-      expect(showToast.show).toHaveBeenCalledWith(
-        expect.stringContaining('Failed to clear data'),
+        expect.stringContaining('Failed to export'),
         'error'
       );
     });

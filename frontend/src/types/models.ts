@@ -41,9 +41,6 @@ export namespace gui {
 	    daemonPort: number;
 	    daemonMode: string;
 	    mlEnabled: boolean;
-	    llmEnabled: boolean;
-	    ollamaEndpoint: string;
-	    ollamaModel: string;
 	    metaGoldfishEnabled: boolean;
 	    metaTop8Enabled: boolean;
 	    metaWeight: number;
@@ -74,9 +71,6 @@ export namespace gui {
 	        this.daemonPort = source["daemonPort"];
 	        this.daemonMode = source["daemonMode"];
 	        this.mlEnabled = source["mlEnabled"];
-	        this.llmEnabled = source["llmEnabled"];
-	        this.ollamaEndpoint = source["ollamaEndpoint"];
-	        this.ollamaModel = source["ollamaModel"];
 	        this.metaGoldfishEnabled = source["metaGoldfishEnabled"];
 	        this.metaTop8Enabled = source["metaTop8Enabled"];
 	        this.metaWeight = source["metaWeight"];

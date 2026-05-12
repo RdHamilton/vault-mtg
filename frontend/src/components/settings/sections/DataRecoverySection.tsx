@@ -1,5 +1,4 @@
 import LoadingButton from '../../LoadingButton';
-import { SettingItem } from '../';
 import { gui } from '@/types/models';
 
 export interface DataRecoverySectionProps {
@@ -8,9 +7,7 @@ export interface DataRecoverySectionProps {
   onClearDataBeforeReplayChange: (value: boolean) => void;
   isReplaying: boolean;
   replayProgress: gui.LogReplayProgress | null;
-  onImportLogFile: () => void;
   onReplayLogs: () => void;
-  onClearAllData: () => void;
 }
 
 export function DataRecoverySection({
@@ -19,25 +16,14 @@ export function DataRecoverySection({
   onClearDataBeforeReplayChange,
   isReplaying,
   replayProgress,
-  onImportLogFile,
   onReplayLogs,
-  onClearAllData,
 }: DataRecoverySectionProps) {
   return (
     <div className="settings-section">
       <h2 className="section-title">Data Recovery</h2>
       <div className="setting-description settings-section-description">
-        Recover historical data from MTGA log files or start fresh.
+        Recover historical data from MTGA log files by replaying them through the daemon.
       </div>
-
-      <SettingItem
-        label="Import Single Log File"
-        description="Import one MTGA log file from anywhere (backup drive, shared file, etc.). Processes the selected file and imports all data."
-      >
-        <button className="action-button" onClick={onImportLogFile}>
-          Select Log File...
-        </button>
-      </SettingItem>
 
       <div className="setting-item">
         <label className="setting-label">
@@ -118,18 +104,6 @@ export function DataRecoverySection({
           </div>
         </div>
       )}
-
-      <div className="setting-item danger">
-        <label className="setting-label">
-          Clear All Data
-          <span className="setting-description">Permanently delete all match history and statistics. This cannot be undone.</span>
-        </label>
-        <div className="setting-control">
-          <button className="danger-button" onClick={onClearAllData}>
-            Clear All Data
-          </button>
-        </div>
-      </div>
     </div>
   );
 }

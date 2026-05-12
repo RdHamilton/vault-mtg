@@ -5,17 +5,18 @@ import { ImportExportSection } from './ImportExportSection';
 describe('ImportExportSection', () => {
   const defaultProps = {
     onExportData: vi.fn(),
-    onImportData: vi.fn(),
   };
 
   it('renders section title', () => {
     render(<ImportExportSection {...defaultProps} />);
-    expect(screen.getByText('Import / Export')).toBeInTheDocument();
+    expect(screen.getByText('Export')).toBeInTheDocument();
   });
 
   it('renders section description', () => {
     render(<ImportExportSection {...defaultProps} />);
-    expect(screen.getByText(/Export your data for backup/)).toBeInTheDocument();
+    expect(
+      screen.getByText(/Export your match history for backup or external analysis/)
+    ).toBeInTheDocument();
   });
 
   describe('export buttons', () => {
@@ -48,31 +49,10 @@ describe('ImportExportSection', () => {
     });
   });
 
-  describe('import button', () => {
-    it('renders import from JSON button', () => {
-      render(<ImportExportSection {...defaultProps} />);
-      expect(screen.getByRole('button', { name: 'Import from JSON' })).toBeInTheDocument();
-    });
-
-    it('calls onImportData when import button clicked', () => {
-      const onImportData = vi.fn();
-      render(<ImportExportSection {...defaultProps} onImportData={onImportData} />);
-
-      fireEvent.click(screen.getByRole('button', { name: 'Import from JSON' }));
-
-      expect(onImportData).toHaveBeenCalled();
-    });
-  });
-
   describe('labels and descriptions', () => {
     it('renders export data label', () => {
       render(<ImportExportSection {...defaultProps} />);
       expect(screen.getByText('Export Data')).toBeInTheDocument();
-    });
-
-    it('renders import data label', () => {
-      render(<ImportExportSection {...defaultProps} />);
-      expect(screen.getByText('Import Data')).toBeInTheDocument();
     });
   });
 });

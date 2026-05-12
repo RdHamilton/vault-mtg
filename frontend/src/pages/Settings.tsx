@@ -36,11 +36,8 @@ const Settings = () => {
     refreshInterval,
     showNotifications,
     theme,
-    // ML/LLM Settings
+    // ML Settings
     mlEnabled,
-    llmEnabled,
-    ollamaEndpoint,
-    ollamaModel,
     metaGoldfishEnabled,
     metaTop8Enabled,
     metaWeight,
@@ -68,9 +65,6 @@ const Settings = () => {
     setShowNotifications,
     setTheme,
     setMLEnabled,
-    setLLMEnabled,
-    setOllamaEndpoint,
-    setOllamaModel,
     setMetaGoldfishEnabled,
     setMetaTop8Enabled,
     setMetaWeight,
@@ -152,12 +146,7 @@ const Settings = () => {
     handleClearDatasetCache,
   } = useSeventeenLands();
 
-  const {
-    handleExportData,
-    handleImportData,
-    handleImportLogFile,
-    handleClearAllData,
-  } = useDataManagement();
+  const { handleExportData } = useDataManagement();
 
   // Derived state
   const isConnected = connectionStatus.status === 'connected';
@@ -228,14 +217,11 @@ const Settings = () => {
         ),
       },
       {
-        id: 'import-export',
-        label: 'Import / Export',
+        id: 'export',
+        label: 'Export',
         icon: '📦',
         content: (
-          <ImportExportSection
-            onExportData={handleExportData}
-            onImportData={handleImportData}
-          />
+          <ImportExportSection onExportData={handleExportData} />
         ),
       },
       {
@@ -249,9 +235,7 @@ const Settings = () => {
             onClearDataBeforeReplayChange={setClearDataBeforeReplay}
             isReplaying={isReplaying}
             replayProgress={replayProgress}
-            onImportLogFile={handleImportLogFile}
             onReplayLogs={() => handleReplayLogs(isConnected)}
-            onClearAllData={handleClearAllData}
           />
         ),
       },
@@ -288,12 +272,6 @@ const Settings = () => {
           <MLSettingsSection
             mlEnabled={mlEnabled}
             onMLEnabledChange={setMLEnabled}
-            llmEnabled={llmEnabled}
-            onLLMEnabledChange={setLLMEnabled}
-            ollamaEndpoint={ollamaEndpoint}
-            onOllamaEndpointChange={setOllamaEndpoint}
-            ollamaModel={ollamaModel}
-            onOllamaModelChange={setOllamaModel}
             metaGoldfishEnabled={metaGoldfishEnabled}
             onMetaGoldfishEnabledChange={setMetaGoldfishEnabled}
             metaTop8Enabled={metaTop8Enabled}

@@ -10,9 +10,7 @@ describe('DataRecoverySection', () => {
     onClearDataBeforeReplayChange: vi.fn(),
     isReplaying: false,
     replayProgress: null,
-    onImportLogFile: vi.fn(),
     onReplayLogs: vi.fn(),
-    onClearAllData: vi.fn(),
   };
 
   it('renders section title', () => {
@@ -23,22 +21,6 @@ describe('DataRecoverySection', () => {
   it('renders section description', () => {
     render(<DataRecoverySection {...defaultProps} />);
     expect(screen.getByText(/Recover historical data/)).toBeInTheDocument();
-  });
-
-  describe('import log file', () => {
-    it('renders select log file button', () => {
-      render(<DataRecoverySection {...defaultProps} />);
-      expect(screen.getByRole('button', { name: 'Select Log File...' })).toBeInTheDocument();
-    });
-
-    it('calls onImportLogFile when button clicked', () => {
-      const onImportLogFile = vi.fn();
-      render(<DataRecoverySection {...defaultProps} onImportLogFile={onImportLogFile} />);
-
-      fireEvent.click(screen.getByRole('button', { name: 'Select Log File...' }));
-
-      expect(onImportLogFile).toHaveBeenCalled();
-    });
   });
 
   describe('replay logs', () => {
@@ -126,22 +108,6 @@ describe('DataRecoverySection', () => {
 
       render(<DataRecoverySection {...defaultProps} isReplaying={false} replayProgress={progress} />);
       expect(screen.getByText('✓ Replay Complete')).toBeInTheDocument();
-    });
-  });
-
-  describe('clear data', () => {
-    it('renders clear all data button', () => {
-      render(<DataRecoverySection {...defaultProps} />);
-      expect(screen.getByRole('button', { name: 'Clear All Data' })).toBeInTheDocument();
-    });
-
-    it('calls onClearAllData when clicked', () => {
-      const onClearAllData = vi.fn();
-      render(<DataRecoverySection {...defaultProps} onClearAllData={onClearAllData} />);
-
-      fireEvent.click(screen.getByRole('button', { name: 'Clear All Data' }));
-
-      expect(onClearAllData).toHaveBeenCalled();
     });
   });
 });

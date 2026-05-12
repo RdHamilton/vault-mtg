@@ -14,11 +14,6 @@ vi.mock('@/services/api', () => ({
   system: {
     getStatus: vi.fn(),
     getVersion: vi.fn(),
-    clearAllData: vi.fn(),
-    checkOllamaStatus: vi.fn(),
-    getAvailableOllamaModels: vi.fn(),
-    pullOllamaModel: vi.fn(),
-    testLLMGeneration: vi.fn(),
     connectDaemon: vi.fn(),
   },
   matches: {
@@ -112,7 +107,7 @@ describe('Settings', () => {
       // Check accordion section headers
       expect(screen.getByRole('button', { name: /connection/i })).toBeInTheDocument();
       expect(screen.getByRole('button', { name: /preferences/i })).toBeInTheDocument();
-      expect(screen.getByRole('button', { name: /import \/ export/i })).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: /Export▼?$/i })).toBeInTheDocument();
       expect(screen.getByRole('button', { name: /data recovery/i })).toBeInTheDocument();
       expect(screen.getByRole('button', { name: /17lands integration/i })).toBeInTheDocument();
       expect(screen.getByRole('button', { name: /about/i })).toBeInTheDocument();
@@ -162,7 +157,7 @@ describe('Settings', () => {
       // All sections should be expanded
       expect(screen.getByRole('button', { name: /connection/i })).toHaveAttribute('aria-expanded', 'true');
       expect(screen.getByRole('button', { name: /preferences/i })).toHaveAttribute('aria-expanded', 'true');
-      expect(screen.getByRole('button', { name: /import \/ export/i })).toHaveAttribute('aria-expanded', 'true');
+      expect(screen.getByRole('button', { name: /Export▼?$/i })).toHaveAttribute('aria-expanded', 'true');
     });
 
     it('collapses all sections when Collapse All is clicked', () => {
@@ -326,21 +321,11 @@ describe('Settings', () => {
       render(<Settings />);
 
       // Expand import/export section
-      const importExportHeader = screen.getByRole('button', { name: /import \/ export/i });
+      const importExportHeader = screen.getByRole('button', { name: /Export▼?$/i });
       fireEvent.click(importExportHeader);
 
       expect(screen.getByRole('button', { name: /export to json/i })).toBeInTheDocument();
       expect(screen.getByRole('button', { name: /export to csv/i })).toBeInTheDocument();
-    });
-
-    it('renders import button', () => {
-      render(<Settings />);
-
-      // Expand import/export section
-      const importExportHeader = screen.getByRole('button', { name: /import \/ export/i });
-      fireEvent.click(importExportHeader);
-
-      expect(screen.getByRole('button', { name: /import from json/i })).toBeInTheDocument();
     });
 
     it('handles export to JSON', async () => {
@@ -349,7 +334,7 @@ describe('Settings', () => {
       render(<Settings />);
 
       // Expand import/export section
-      const importExportHeader = screen.getByRole('button', { name: /import \/ export/i });
+      const importExportHeader = screen.getByRole('button', { name: /Export▼?$/i });
       fireEvent.click(importExportHeader);
 
       const exportJsonButton = screen.getByRole('button', { name: /export to json/i });
@@ -366,7 +351,7 @@ describe('Settings', () => {
       render(<Settings />);
 
       // Expand import/export section
-      const importExportHeader = screen.getByRole('button', { name: /import \/ export/i });
+      const importExportHeader = screen.getByRole('button', { name: /Export▼?$/i });
       fireEvent.click(importExportHeader);
 
       const exportCsvButton = screen.getByRole('button', { name: /export to csv/i });
@@ -385,7 +370,7 @@ describe('Settings', () => {
       render(<Settings />);
 
       // Expand import/export section
-      const importExportHeader = screen.getByRole('button', { name: /import \/ export/i });
+      const importExportHeader = screen.getByRole('button', { name: /Export▼?$/i });
       fireEvent.click(importExportHeader);
 
       const exportJsonButton = screen.getByRole('button', { name: /export to json/i });
@@ -401,16 +386,6 @@ describe('Settings', () => {
   });
 
   describe('Data Recovery section', () => {
-    it('renders import log file button', () => {
-      render(<Settings />);
-
-      // Expand data recovery section
-      const dataRecoveryHeader = screen.getByRole('button', { name: /data recovery/i });
-      fireEvent.click(dataRecoveryHeader);
-
-      expect(screen.getByRole('button', { name: /select log file/i })).toBeInTheDocument();
-    });
-
     it('renders replay historical logs button', () => {
       render(<Settings />);
 
@@ -419,41 +394,6 @@ describe('Settings', () => {
       fireEvent.click(dataRecoveryHeader);
 
       expect(screen.getByRole('button', { name: /replay historical logs/i })).toBeInTheDocument();
-    });
-
-    it('renders clear all data button', () => {
-      render(<Settings />);
-
-      // Expand data recovery section
-      const dataRecoveryHeader = screen.getByRole('button', { name: /data recovery/i });
-      fireEvent.click(dataRecoveryHeader);
-
-      expect(screen.getByRole('button', { name: /clear all data/i })).toBeInTheDocument();
-    });
-
-    // Test removed: importLogFile requires native file picker integration - useDataManagement uses no-op functions
-
-    it('handles clear all data', async () => {
-      const reloadSpy = vi.fn();
-      Object.defineProperty(window, 'location', {
-        value: { ...window.location, reload: reloadSpy },
-        writable: true,
-      });
-
-      (system.clearAllData as ReturnType<typeof vi.fn>).mockResolvedValue(undefined);
-
-      render(<Settings />);
-
-      // Expand data recovery section
-      const dataRecoveryHeader = screen.getByRole('button', { name: /data recovery/i });
-      fireEvent.click(dataRecoveryHeader);
-
-      const clearDataButton = screen.getByRole('button', { name: /clear all data/i });
-      fireEvent.click(clearDataButton);
-
-      await waitFor(() => {
-        expect(system.clearAllData).toHaveBeenCalled();
-      });
     });
 
     it('shows clear data before replay checkbox', () => {

@@ -23,9 +23,6 @@ export type { AboutSectionProps } from './AboutSection';
 export { DatabaseSection } from './DatabaseSection';
 export type { DatabaseSectionProps } from './DatabaseSection';
 
-export { DataManagementSection } from './DataManagementSection';
-export type { DataManagementSectionProps } from './DataManagementSection';
-
 export { AppearanceSection } from './AppearanceSection';
 
 export { MLSettingsSection } from './MLSettingsSection';

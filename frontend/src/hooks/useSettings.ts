@@ -9,11 +9,8 @@ interface SettingsState {
   theme: string;
   daemonPort: number;
   daemonMode: string;
-  // ML/LLM Settings
+  // ML Settings
   mlEnabled: boolean;
-  llmEnabled: boolean;
-  ollamaEndpoint: string;
-  ollamaModel: string;
   metaGoldfishEnabled: boolean;
   metaTop8Enabled: boolean;
   metaWeight: number;
@@ -42,11 +39,8 @@ interface UseSettingsReturn extends SettingsState {
   setRefreshInterval: (value: number) => void;
   setShowNotifications: (value: boolean) => void;
   setTheme: (value: string) => void;
-  // ML/LLM Settings setters
+  // ML Settings setters
   setMLEnabled: (value: boolean) => void;
-  setLLMEnabled: (value: boolean) => void;
-  setOllamaEndpoint: (value: string) => void;
-  setOllamaModel: (value: string) => void;
   setMetaGoldfishEnabled: (value: boolean) => void;
   setMetaTop8Enabled: (value: boolean) => void;
   setMetaWeight: (value: number) => void;
@@ -77,11 +71,8 @@ const defaultSettings: Omit<SettingsState, 'isLoading' | 'isSaving' | 'error'> =
   theme: 'dark',
   daemonPort: 9999,
   daemonMode: 'standalone',
-  // ML/LLM defaults
+  // ML defaults
   mlEnabled: true,
-  llmEnabled: false,
-  ollamaEndpoint: 'http://localhost:11434',
-  ollamaModel: 'qwen3:8b',
   metaGoldfishEnabled: true,
   metaTop8Enabled: true,
   metaWeight: 0.3,
@@ -122,11 +113,8 @@ export function useSettings(): UseSettingsReturn {
           theme: backendSettings.theme ?? defaultSettings.theme,
           daemonPort: backendSettings.daemonPort ?? defaultSettings.daemonPort,
           daemonMode: backendSettings.daemonMode ?? defaultSettings.daemonMode,
-          // ML/LLM settings
+          // ML settings
           mlEnabled: backendSettings.mlEnabled ?? defaultSettings.mlEnabled,
-          llmEnabled: backendSettings.llmEnabled ?? defaultSettings.llmEnabled,
-          ollamaEndpoint: backendSettings.ollamaEndpoint ?? defaultSettings.ollamaEndpoint,
-          ollamaModel: backendSettings.ollamaModel ?? defaultSettings.ollamaModel,
           metaGoldfishEnabled: backendSettings.metaGoldfishEnabled ?? defaultSettings.metaGoldfishEnabled,
           metaTop8Enabled: backendSettings.metaTop8Enabled ?? defaultSettings.metaTop8Enabled,
           metaWeight: backendSettings.metaWeight ?? defaultSettings.metaWeight,
@@ -182,21 +170,9 @@ export function useSettings(): UseSettingsReturn {
     setSettings((prev) => ({ ...prev, theme: value }));
   }, []);
 
-  // ML/LLM setters
+  // ML setters
   const setMLEnabled = useCallback((value: boolean) => {
     setSettings((prev) => ({ ...prev, mlEnabled: value }));
-  }, []);
-
-  const setLLMEnabled = useCallback((value: boolean) => {
-    setSettings((prev) => ({ ...prev, llmEnabled: value }));
-  }, []);
-
-  const setOllamaEndpoint = useCallback((value: string) => {
-    setSettings((prev) => ({ ...prev, ollamaEndpoint: value }));
-  }, []);
-
-  const setOllamaModel = useCallback((value: string) => {
-    setSettings((prev) => ({ ...prev, ollamaModel: value }));
   }, []);
 
   const setMetaGoldfishEnabled = useCallback((value: boolean) => {
@@ -272,11 +248,8 @@ export function useSettings(): UseSettingsReturn {
         theme: settings.theme,
         daemonPort: settings.daemonPort,
         daemonMode: settings.daemonMode,
-        // ML/LLM settings
+        // ML settings
         mlEnabled: settings.mlEnabled,
-        llmEnabled: settings.llmEnabled,
-        ollamaEndpoint: settings.ollamaEndpoint,
-        ollamaModel: settings.ollamaModel,
         metaGoldfishEnabled: settings.metaGoldfishEnabled,
         metaTop8Enabled: settings.metaTop8Enabled,
         metaWeight: settings.metaWeight,
@@ -323,11 +296,8 @@ export function useSettings(): UseSettingsReturn {
     setRefreshInterval,
     setShowNotifications,
     setTheme,
-    // ML/LLM setters
+    // ML setters
     setMLEnabled,
-    setLLMEnabled,
-    setOllamaEndpoint,
-    setOllamaModel,
     setMetaGoldfishEnabled,
     setMetaTop8Enabled,
     setMetaWeight,

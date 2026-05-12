@@ -20,9 +20,6 @@ export type { AccordionSection, UseSettingsAccordionOptions } from './useSetting
 
 export { useSettings } from './useSettings';
 
-export { useMLSettings } from './useMLSettings';
-export type { UseMLSettingsProps, UseMLSettingsReturn } from './useMLSettings';
-
 export { useServices } from './useServices';
 export type { UseServicesOptions, UseServicesReturn } from './useServices';
 

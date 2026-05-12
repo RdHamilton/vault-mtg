@@ -91,8 +91,8 @@ tests + lint/format gates.
 | 9 | decks/* (~50 endpoints; CRUD + cards + tags + permutations + import/export real, deck-builder + recommendation stubs) | 50 | ✅ **Merged** 2026-05-11 | PR #1881 |
 |10 | drafts/* — full module incl. `/decks/*` and `/feedback/*` strays (~38 endpoints; sessions + 17lands + community + trends real, grading/recs stubs) | 38 | ✅ **Merged** 2026-05-11 | PR #1882 |
 |11 | mlSuggestions/* (11 endpoints — 3 alias to notes/, 8 net-new; process-history + play-patterns/update stubs) | 11 | ✅ **Merged** 2026-05-12 | PR #1883 |
-|12 | settings/* — cloud-backed key/value (4 endpoints + new user_settings JSONB table) | 4 | ⏳ **In progress** | `feat/phase2-pr12-settings` |
-|13 | system.ts cleanup — delete dead paths (`/llm/*`, `/feedback/dashboard`, `/export/clear`) | — | Pending | — |
+|12 | settings/* — cloud-backed key/value (4 endpoints + new user_settings JSONB table) | 4 | ✅ **Merged** 2026-05-12 | PR #1884 |
+|13 | system.ts cleanup — delete 6 dead wrappers + orphaned LLM/Clear UI (~1500 LOC) | -6 | ⏳ **In progress** | `feat/phase2-pr13-system-cleanup` |
 |14 | drafts/* Bucket C — live-state stays on daemon (current-pack, in-flight grading) | ~3 | Pending | — |
 |15 | Frontend cleanup — drop unused `daemonClient` exports if empty | — | Pending | — |
 |16 | Audit doc PR — land `feat/phase2-audit-and-bucket-a` on main for reviewers | — | Pending | branch already pushed |
@@ -324,6 +324,22 @@ authenticated user's accounts. camelCase JSON wire format.
   current-pack, etc.) are documented STUBs pending the ML pipeline.
   drafts.ts + 2 drafts.test.ts files + 2 msw handlers: import-only
   swap to apiClient / BFF_BASE.
+- **2026-05-12** — PR #12 merged (#1884). Starting PR #13 (system.ts
+  cleanup). 6 dead wrappers deleted from system.ts: `clearAllData`
+  (`/export/clear`), `checkOllamaStatus`, `getAvailableOllamaModels`,
+  `pullOllamaModel`, `testLLMGeneration` (`/llm/*`), and
+  `getFeedbackDashboardMetrics` (`/feedback/dashboard`). User approved
+  full-cascade delete: removed `useMLSettings.ts` hook + test (Ollama-only),
+  deleted unused `DataManagementSection.tsx` (legacy split-out), trimmed
+  `useDataManagement.ts` to just `handleExportData`, stripped Ollama UI
+  from `MLSettingsSection.tsx` (kept ML preferences + meta sources +
+  weights + clear-learned-data), removed `Import from JSON` / `Import
+  Single Log File` / `Clear All Data` from `ImportExportSection.tsx` +
+  `DataRecoverySection.tsx`, removed `llmEnabled`/`ollamaEndpoint`/
+  `ollamaModel` from `gui.AppSettings` + `useSettings.ts`, dropped
+  related entries from `Settings.tsx` accordion + `apiMock.ts` legacy
+  Wails bindings. Tests rewritten for each touched section. Net change:
+  ~1500 LOC removed, 0 LOC of BFF/daemon work.
 - **2026-05-12** — PR #11 merged (#1883). Starting PR #12 (settings/*).
   Audit: 4 endpoints in settings.ts (GET/PUT full + GET/PUT per-key).
   Old desktop-era `settings(key,value)` table is global + dead (no
