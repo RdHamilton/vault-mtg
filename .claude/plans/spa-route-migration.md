@@ -83,8 +83,8 @@ tests + lint/format gates.
 | 2 | collection/* (8 paths)                | 8     | ✅ **Merged** 2026-05-11 | PR #1873 |
 | 3 | quests/* (4 paths)                    | 4     | ✅ **Merged** 2026-05-11 | PR #1874 |
 | 4 | standard/* (6 paths)                  | 6     | ✅ **Merged** 2026-05-11 | PR #1875 |
-| 5a | gameplays/* (6 endpoints — backed by game_plays, game_state_snapshots, opponent_cards_observed tables) | 6 | ⏳ **In progress** | `feat/phase2-pr5-gameplays-meta` (gameplays only — meta deferred) |
-| 5b | meta/* (7 endpoints; some stubbed pending ML/scrape infra) | 7 | Pending — separate branch | — |
+| 5a | gameplays/* (6 endpoints — backed by game_plays, game_state_snapshots, opponent_cards_observed tables) | 6 | ✅ **Merged** 2026-05-11 | PR #1876 |
+| 5b | meta/* (7 endpoints; 3 real reads from mtgzone_* + 4 shape-stubs pending ML/scrape infra) | 7 | ⏳ **In progress** | `feat/phase2-pr5b-meta` |
 | 6 | opponents/* + analytics overlap       | 3     | Pending       | — |
 | 7 | notes/* (7 paths)                     | 7     | Pending       | — |
 | 8 | cards/* (13 paths)                    | 13    | Pending       | — |
@@ -250,3 +250,11 @@ authenticated user's accounts. camelCase JSON wire format.
   Backed by the existing game_plays / game_state_snapshots /
   opponent_cards_observed tables; scope enforced via matches join.
   gameplays.ts and gameplays.test.ts: import-only swap to apiClient.
+- **2026-05-11** — PR #5a merged. Starting PR #5b (meta/*).
+- **2026-05-11** — PR #5b (meta/*) built. New MetaRepository +
+  MetaHandler with 7 endpoints. /meta/archetypes, /meta/tier,
+  /meta/archetypes/cards are real reads from mtgzone_archetypes /
+  mtgzone_archetype_cards. /meta/deck-analysis, /meta/identify-archetype,
+  /meta/insights, /meta/refresh are shape-correct stubs documented
+  inline pending the archetype-matching algorithm + scrape pipeline
+  (separate follow-up PRs). meta.ts: import-only swap.

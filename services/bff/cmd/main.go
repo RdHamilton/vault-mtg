@@ -179,6 +179,7 @@ func main() {
 		questsHandler         *handlers.QuestsHandler
 		standardHandler       *handlers.StandardHandler
 		gamePlaysHandler      *handlers.GamePlaysHandler
+		metaHandler           *handlers.MetaHandler
 	)
 
 	// projCtx is cancelled on SIGTERM so the projection worker exits cleanly.
@@ -233,6 +234,11 @@ func main() {
 		// SPA contract (gameplays.ts). Backed by game_plays,
 		// game_state_snapshots, and opponent_cards_observed.
 		gamePlaysHandler = handlers.NewGamePlaysHandler(repository.NewGamePlaysRepository(sqlDB), accountRepo)
+
+		// Phase 2 PR #5b — /api/v1/meta surface (archetypes/tier/cards from
+		// mtgzone_*; deck-analysis / identify-archetype / insights / refresh
+		// stubbed pending the archetype-matching + scrape pipeline).
+		metaHandler = handlers.NewMetaHandler(repository.NewMetaRepository(sqlDB))
 
 		// ListV2Handler provides cursor-paginated v2 endpoints for matches,
 		// drafts, decks, and collection (ADR-018).
@@ -323,6 +329,7 @@ func main() {
 		QuestsHandler:         questsHandler,
 		StandardHandler:       standardHandler,
 		GamePlaysHandler:      gamePlaysHandler,
+		MetaHandler:           metaHandler,
 		HealthzHandler:        healthzHandler,
 		ClerkAuthMiddl:        clerkAuthMiddl,
 		ClerkAuthSSEMiddl:     clerkAuthSSEMiddl,
@@ -399,6 +406,10 @@ type RouterDeps struct {
 	// /api/v1/matches/{matchId}/plays/*, /opponent-cards, /snapshots
 	// and /api/v1/gameplays/game/{gameId}. Protected by DaemonAPIKeyAuth.
 	GamePlaysHandler *handlers.GamePlaysHandler
+	// MetaHandler serves the Phase 2 /api/v1/meta/* surface
+	// (archetypes/tier/cards from mtgzone_*; analysis/identify/insights/
+	// refresh stubbed). Protected by DaemonAPIKeyAuth.
+	MetaHandler *handlers.MetaHandler
 	// HealthzHandler serves GET /healthz — intentionally public (no auth).
 	HealthzHandler *handlers.HealthzHandler
 	ClerkAuthMiddl func(http.Handler) http.Handler
@@ -574,6 +585,25 @@ func BuildRouter(cfg *config.Config, deps RouterDeps) http.Handler {
 			r.With(auth).Get("/api/v1/gameplays/game/{gameId}", gp.PlaysByGame)
 		} else {
 			log.Println("WARN: gameplays routes disabled — DaemonAPIKeyAuth middleware not configured")
+		}
+	}
+
+	// Phase 2 PR #5b — /api/v1/meta surface. Account-agnostic (meta data is
+	// global), but still gated behind DaemonAPIKeyAuth so anonymous callers
+	// can't enumerate the archetype catalogue.
+	if deps.MetaHandler != nil {
+		if deps.DaemonAPIKeyAuthMiddl != nil {
+			m := deps.MetaHandler
+			auth := deps.DaemonAPIKeyAuthMiddl
+			r.With(auth).Get("/api/v1/meta/archetypes", m.Archetypes)
+			r.With(auth).Get("/api/v1/meta/tier", m.Tier)
+			r.With(auth).Get("/api/v1/meta/archetypes/cards", m.ArchetypeCards)
+			r.With(auth).Get("/api/v1/meta/deck-analysis", m.DeckAnalysis)
+			r.With(auth).Post("/api/v1/meta/identify-archetype", m.IdentifyArchetype)
+			r.With(auth).Get("/api/v1/meta/insights", m.FormatInsights)
+			r.With(auth).Post("/api/v1/meta/refresh", m.Refresh)
+		} else {
+			log.Println("WARN: /api/v1/meta/* disabled — DaemonAPIKeyAuth middleware not configured")
 		}
 	}
 

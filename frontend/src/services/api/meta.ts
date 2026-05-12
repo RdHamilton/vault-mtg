@@ -1,9 +1,16 @@
 /**
  * Meta API service.
- * Replaces Wails meta-related function bindings.
+ *
+ * Phase 2 PR #5b: cloud-data meta reads now hit the BFF directly via
+ * apiClient. /meta/archetypes, /meta/tier, /meta/archetypes/cards return
+ * real mtgzone_* data; /meta/deck-analysis, /meta/identify-archetype,
+ * /meta/insights, /meta/refresh return shape-correct stubs until the
+ * archetype-matching + scrape pipeline lands.
+ *
+ * Plan tracker: .claude/plans/spa-route-migration.md
  */
 
-import { get, post } from '../daemonClient';
+import { get, post } from '../apiClient';
 import { gui, insights } from '@/types/models';
 
 /**
