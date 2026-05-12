@@ -180,6 +180,7 @@ func main() {
 		standardHandler       *handlers.StandardHandler
 		gamePlaysHandler      *handlers.GamePlaysHandler
 		metaHandler           *handlers.MetaHandler
+		opponentsHandler      *handlers.OpponentsHandler
 	)
 
 	// projCtx is cancelled on SIGTERM so the projection worker exits cleanly.
@@ -239,6 +240,11 @@ func main() {
 		// mtgzone_*; deck-analysis / identify-archetype / insights / refresh
 		// stubbed pending the archetype-matching + scrape pipeline).
 		metaHandler = handlers.NewMetaHandler(repository.NewMetaRepository(sqlDB))
+
+		// Phase 2 PR #6 — opponents + analytics + archetype-expected-cards.
+		// Reads opponent_deck_profiles, matchup_statistics,
+		// archetype_expected_cards, opponent_cards_observed.
+		opponentsHandler = handlers.NewOpponentsHandler(repository.NewOpponentsRepository(sqlDB), accountRepo)
 
 		// ListV2Handler provides cursor-paginated v2 endpoints for matches,
 		// drafts, decks, and collection (ADR-018).
@@ -330,6 +336,7 @@ func main() {
 		StandardHandler:       standardHandler,
 		GamePlaysHandler:      gamePlaysHandler,
 		MetaHandler:           metaHandler,
+		OpponentsHandler:      opponentsHandler,
 		HealthzHandler:        healthzHandler,
 		ClerkAuthMiddl:        clerkAuthMiddl,
 		ClerkAuthSSEMiddl:     clerkAuthSSEMiddl,
@@ -410,6 +417,12 @@ type RouterDeps struct {
 	// (archetypes/tier/cards from mtgzone_*; analysis/identify/insights/
 	// refresh stubbed). Protected by DaemonAPIKeyAuth.
 	MetaHandler *handlers.MetaHandler
+	// OpponentsHandler serves the Phase 2 opponents + analytics +
+	// archetype-expected-cards surface. Routes mount across four URL
+	// prefixes (matches/{id}/opponent-analysis, opponents/decks,
+	// analytics/matchups, analytics/opponent-history,
+	// archetypes/{name}/expected-cards). Protected by DaemonAPIKeyAuth.
+	OpponentsHandler *handlers.OpponentsHandler
 	// HealthzHandler serves GET /healthz — intentionally public (no auth).
 	HealthzHandler *handlers.HealthzHandler
 	ClerkAuthMiddl func(http.Handler) http.Handler
@@ -585,6 +598,23 @@ func BuildRouter(cfg *config.Config, deps RouterDeps) http.Handler {
 			r.With(auth).Get("/api/v1/gameplays/game/{gameId}", gp.PlaysByGame)
 		} else {
 			log.Println("WARN: gameplays routes disabled — DaemonAPIKeyAuth middleware not configured")
+		}
+	}
+
+	// Phase 2 PR #6 — opponents + analytics + archetype-expected-cards.
+	// Mixed scope: match-bound and per-account routes are scoped via
+	// matches.account_id; archetypes/{name}/expected-cards is global.
+	if deps.OpponentsHandler != nil {
+		if deps.DaemonAPIKeyAuthMiddl != nil {
+			o := deps.OpponentsHandler
+			auth := deps.DaemonAPIKeyAuthMiddl
+			r.With(auth).Get("/api/v1/matches/{matchId}/opponent-analysis", o.OpponentAnalysis)
+			r.With(auth).Get("/api/v1/opponents/decks", o.ListDecks)
+			r.With(auth).Get("/api/v1/analytics/matchups", o.MatchupStats)
+			r.With(auth).Get("/api/v1/analytics/opponent-history", o.OpponentHistory)
+			r.With(auth).Get("/api/v1/archetypes/{name}/expected-cards", o.ExpectedCardsByArchetype)
+		} else {
+			log.Println("WARN: opponents routes disabled — DaemonAPIKeyAuth middleware not configured")
 		}
 	}
 

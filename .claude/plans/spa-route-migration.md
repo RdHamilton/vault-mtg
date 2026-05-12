@@ -84,8 +84,8 @@ tests + lint/format gates.
 | 3 | quests/* (4 paths)                    | 4     | ✅ **Merged** 2026-05-11 | PR #1874 |
 | 4 | standard/* (6 paths)                  | 6     | ✅ **Merged** 2026-05-11 | PR #1875 |
 | 5a | gameplays/* (6 endpoints — backed by game_plays, game_state_snapshots, opponent_cards_observed tables) | 6 | ✅ **Merged** 2026-05-11 | PR #1876 |
-| 5b | meta/* (7 endpoints; 3 real reads from mtgzone_* + 4 shape-stubs pending ML/scrape infra) | 7 | ⏳ **In progress** | `feat/phase2-pr5b-meta` |
-| 6 | opponents/* + analytics overlap       | 3     | Pending       | — |
+| 5b | meta/* (7 endpoints; 3 real reads from mtgzone_* + 4 shape-stubs pending ML/scrape infra) | 7 | ✅ **Merged** 2026-05-11 | PR #1877 |
+| 6 | opponents/* + analytics + archetypes-expected (5 endpoints across 4 URL prefixes) | 5 | ⏳ **In progress** | `feat/phase2-pr6-opponents` |
 | 7 | notes/* (7 paths)                     | 7     | Pending       | — |
 | 8 | cards/* (13 paths)                    | 13    | Pending       | — |
 | 9 | decks/* cloud paths (33 paths)        | 33    | Pending       | — |
@@ -258,3 +258,14 @@ authenticated user's accounts. camelCase JSON wire format.
   /meta/insights, /meta/refresh are shape-correct stubs documented
   inline pending the archetype-matching algorithm + scrape pipeline
   (separate follow-up PRs). meta.ts: import-only swap.
+- **2026-05-11** — PR #5b merged. Starting PR #6 (opponents/*).
+- **2026-05-11** — PR #6 (opponents/*) built. New OpponentsRepository
+  + OpponentsHandler with 5 endpoints across 4 URL prefixes
+  (/matches/{id}/opponent-analysis, /opponents/decks,
+  /analytics/matchups, /analytics/opponent-history,
+  /archetypes/{name}/expected-cards). Composite OpponentAnalysis
+  endpoint stitches profile + observed cards + expected cards
+  (with wasSeen flag) + matchup stats. StrategicInsights and
+  MetaArchetype linkage emitted as empty/null pending follow-up.
+  opponents.ts: import-only swap; MSW handlers for opponent routes
+  repointed from API_BASE → BFF_BASE.
