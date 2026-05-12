@@ -186,6 +186,7 @@ func main() {
 		decksHandler          *handlers.DecksHandler
 		draftsHandler         *handlers.DraftsHandler
 		mlHandler             *handlers.MLHandler
+		settingsHandler       *handlers.SettingsHandler
 	)
 
 	// projCtx is cancelled on SIGTERM so the projection worker exits cleanly.
@@ -286,6 +287,14 @@ func main() {
 			accountRepo,
 		)
 
+		// Phase 2 PR #12 — /api/v1/settings[/{key}] surface
+		// (account-scoped JSONB key/value store; backs the SPA's
+		// AppSettings + per-key getters/setters).
+		settingsHandler = handlers.NewSettingsHandler(
+			repository.NewSettingsRepository(sqlDB),
+			accountRepo,
+		)
+
 		// ListV2Handler provides cursor-paginated v2 endpoints for matches,
 		// drafts, decks, and collection (ADR-018).
 		cardInventoryRepoV2 := repository.NewCardInventoryRepository(sqlDB)
@@ -382,6 +391,7 @@ func main() {
 		DecksHandler:          decksHandler,
 		DraftsHandler:         draftsHandler,
 		MLHandler:             mlHandler,
+		SettingsHandler:       settingsHandler,
 		HealthzHandler:        healthzHandler,
 		ClerkAuthMiddl:        clerkAuthMiddl,
 		ClerkAuthSSEMiddl:     clerkAuthSSEMiddl,
@@ -493,6 +503,10 @@ type RouterDeps struct {
 	// apply / synergy / play-patterns / account-scoped clear.
 	// Protected by DaemonAPIKeyAuth.
 	MLHandler *handlers.MLHandler
+	// SettingsHandler serves the Phase 2 /api/v1/settings[/{key}]
+	// surface. Account-scoped JSONB key/value store; backs the SPA's
+	// AppSettings + per-key getters/setters. Protected by DaemonAPIKeyAuth.
+	SettingsHandler *handlers.SettingsHandler
 	// HealthzHandler serves GET /healthz — intentionally public (no auth).
 	HealthzHandler *handlers.HealthzHandler
 	ClerkAuthMiddl func(http.Handler) http.Handler
@@ -815,6 +829,21 @@ func BuildRouter(cfg *config.Config, deps RouterDeps) http.Handler {
 			r.With(auth).Get("/api/v1/cards/{arenaId}", c.GetByArenaID)
 		} else {
 			log.Println("WARN: /api/v1/cards/* disabled — DaemonAPIKeyAuth middleware not configured")
+		}
+	}
+
+	// Phase 2 PR #12 — /api/v1/settings[/{key}] surface
+	// (account-scoped JSONB key/value store).
+	if deps.SettingsHandler != nil {
+		if deps.DaemonAPIKeyAuthMiddl != nil {
+			s := deps.SettingsHandler
+			auth := deps.DaemonAPIKeyAuthMiddl
+			r.With(auth).Get("/api/v1/settings", s.GetSettings)
+			r.With(auth).Put("/api/v1/settings", s.UpdateSettings)
+			r.With(auth).Get("/api/v1/settings/{key}", s.GetSetting)
+			r.With(auth).Put("/api/v1/settings/{key}", s.UpdateSetting)
+		} else {
+			log.Println("WARN: /api/v1/settings/* disabled — DaemonAPIKeyAuth middleware not configured")
 		}
 	}
 

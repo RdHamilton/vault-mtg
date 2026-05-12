@@ -90,8 +90,8 @@ tests + lint/format gates.
 | 8 | cards/* (16 endpoints; refresh-ratings stubbed pending scrape pipeline) | 16 | ✅ **Merged** 2026-05-11 | PR #1880 |
 | 9 | decks/* (~50 endpoints; CRUD + cards + tags + permutations + import/export real, deck-builder + recommendation stubs) | 50 | ✅ **Merged** 2026-05-11 | PR #1881 |
 |10 | drafts/* — full module incl. `/decks/*` and `/feedback/*` strays (~38 endpoints; sessions + 17lands + community + trends real, grading/recs stubs) | 38 | ✅ **Merged** 2026-05-11 | PR #1882 |
-|11 | mlSuggestions/* (8 paths)             | 8     | ⏳ **In progress** | `feat/phase2-pr11-ml-suggestions` |
-|12 | settings/* — implement cloud-backed settings on BFF | 1+ | Pending | — |
+|11 | mlSuggestions/* (11 endpoints — 3 alias to notes/, 8 net-new; process-history + play-patterns/update stubs) | 11 | ✅ **Merged** 2026-05-12 | PR #1883 |
+|12 | settings/* — cloud-backed key/value (4 endpoints + new user_settings JSONB table) | 4 | ⏳ **In progress** | `feat/phase2-pr12-settings` |
 |13 | system.ts cleanup — delete dead paths (`/llm/*`, `/feedback/dashboard`, `/export/clear`) | — | Pending | — |
 |14 | drafts/* Bucket C — live-state stays on daemon (current-pack, in-flight grading) | ~3 | Pending | — |
 |15 | Frontend cleanup — drop unused `daemonClient` exports if empty | — | Pending | — |
@@ -324,6 +324,18 @@ authenticated user's accounts. camelCase JSON wire format.
   current-pack, etc.) are documented STUBs pending the ML pipeline.
   drafts.ts + 2 drafts.test.ts files + 2 msw handlers: import-only
   swap to apiClient / BFF_BASE.
+- **2026-05-12** — PR #11 merged (#1883). Starting PR #12 (settings/*).
+  Audit: 4 endpoints in settings.ts (GET/PUT full + GET/PUT per-key).
+  Old desktop-era `settings(key,value)` table is global + dead (no
+  readers in current codebase). New migration 000076 adds
+  account-scoped `user_settings(account_id, key, value JSONB)`. SPA's
+  AppSettings constructor applies defaults for missing keys, so a
+  brand-new account just gets `{}` on GET and renders zeros. PUT
+  /settings (full replace) upserts each field as a row in a single
+  transaction; PUT /settings/{key} stores {value} verbatim.
+  settings.ts + new __tests__/settings.test.ts: import-only swap to
+  apiClient. Settings.test.tsx + useSettings hook untouched (they
+  mock the whole module via apiMock pattern).
 - **2026-05-11** — PR #10 merged (#1882). Starting PR #11
   (mlSuggestions/*). Audit revealed 11 endpoints in mlSuggestions.ts,
   not 8 — three of them (list / generate / dismiss) overlapped with
