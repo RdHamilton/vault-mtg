@@ -23,6 +23,7 @@ import {
   useDeveloperMode,
   useSettings,
 } from '../hooks';
+import { uninstallDaemon } from '../services/api/system';
 import './Settings.css';
 
 const Settings = () => {
@@ -236,6 +237,9 @@ const Settings = () => {
             isReplaying={isReplaying}
             replayProgress={replayProgress}
             onReplayLogs={() => handleReplayLogs(isConnected)}
+            onUninstallDaemon={async (purge) => {
+              await uninstallDaemon({ purge });
+            }}
           />
         ),
       },

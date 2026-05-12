@@ -5,6 +5,30 @@ To fully remove the VaultMTG daemon, you need to stop it, remove the app, delete
 
 ---
 
+## Quick uninstall from the app
+
+If the daemon is running and you have the VaultMTG web app open:
+
+1. Sign in to [app.vaultmtg.app](https://app.vaultmtg.app) and open **Settings → Data Recovery**.
+2. Scroll to the **Danger Zone — Uninstall Daemon** subsection.
+3. Click **Uninstall VaultMTG Daemon**.
+4. (Optional) Tick **Also wipe my local config + cached data** to delete the daemon's local config folder.
+5. Click **Confirm Uninstall**.
+
+The daemon will:
+- Stop itself.
+- Remove its launchd plist (macOS) or Task Scheduler entry (Windows) so it does not restart at next login.
+- Wipe the local config folder if you ticked the box.
+- Exit within ~200 ms.
+
+After that, the binary itself stays on disk. To remove it:
+- **macOS:** drag VaultMTG from `/Applications` to the Trash.
+- **Windows:** use **Settings → Apps → Apps & features → VaultMTG → Uninstall**.
+
+If the daemon is **not** running, the in-app uninstall button is disabled. Fall back to the manual steps below.
+
+---
+
 ## macOS Uninstall
 
 ### Step 1 — Quit the daemon
