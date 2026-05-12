@@ -81,8 +81,8 @@ tests + lint/format gates.
 |---|---------------------------------------|-------|---------------|-------------|
 | 1 | matches/* — full surface (17 paths)   | 17    | ✅ **Merged** 2026-05-11 | PR #1872 |
 | 2 | collection/* (8 paths)                | 8     | ✅ **Merged** 2026-05-11 | PR #1873 |
-| 3 | quests/* (4 paths)                    | 4     | ⏳ **In progress** | `feat/phase2-pr3-quests` |
-| 4 | standard/* (6 paths)                  | 6     | Pending       | — |
+| 3 | quests/* (4 paths)                    | 4     | ✅ **Merged** 2026-05-11 | PR #1874 |
+| 4 | standard/* (6 paths)                  | 6     | ⏳ **In progress** | `feat/phase2-pr4-standard` |
 | 5 | gameplays/* + meta/* (2 paths)        | 2     | Pending       | — |
 | 6 | opponents/* + analytics overlap       | 3     | Pending       | — |
 | 7 | notes/* (7 paths)                     | 7     | Pending       | — |
@@ -229,3 +229,12 @@ authenticated user's accounts. camelCase JSON wire format.
   write-only). Daily/weekly wins computed from matches table;
   TotalGoldEarned in stats stubbed at 0 pending a richer rewards
   schema. quests.ts: import-only swap (URLs unchanged).
+- **2026-05-11** — PR #3 merged. Starting PR #4 (standard/*).
+- **2026-05-11** — PR #4 (standard/*) built. Six endpoints under
+  /api/v1/standard/* (sets, config, rotation, rotation/affected-decks,
+  POST validate/{deckId}, cards/{arenaId}/legality). New
+  StandardRepository covers global reads (sets, standard_config,
+  cards.legalities) and account-scoped deck queries. validate
+  parses the cards.legalities JSON inline; affected-decks iterates
+  per-deck against the next rotation_date. standard.ts: import-only
+  swap. Standard-format SPA tests fixed to mock apiClient.

@@ -7,13 +7,13 @@ vi.unmock('../standard');
 
 import * as standard from '../standard';
 
-// Mock the daemonClient (standard routes go to the local daemon)
-vi.mock('../../daemonClient', () => ({
+// Mock the apiClient — Phase 2 PR #4 routes standard.* through the BFF.
+vi.mock('../../apiClient', () => ({
   get: vi.fn(),
   post: vi.fn(),
 }));
 
-import { get, post } from '../../daemonClient';
+import { get, post } from '../../apiClient';
 
 describe('standard API', () => {
   beforeEach(() => {

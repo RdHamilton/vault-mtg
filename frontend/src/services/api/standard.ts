@@ -1,9 +1,14 @@
 /**
  * Standard format API service.
- * Provides functions for Standard legality validation and set management.
+ *
+ * Phase 2 PR #4: cloud-data Standard reads now hit the BFF directly via
+ * apiClient at /api/v1/standard/*. Wire shapes preserved (camelCase keys
+ * matching the local TypeScript interfaces below).
+ *
+ * Plan tracker: .claude/plans/spa-route-migration.md
  */
 
-import { get, post } from '../daemonClient';
+import { get, post } from '../apiClient';
 
 // Types
 
