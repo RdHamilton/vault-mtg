@@ -10,6 +10,7 @@
 //	MTGA_DAEMON_LOG_PATH          Override MTGA log file path (auto-detected by default)
 //	MTGA_DAEMON_ACCOUNT_ID        MTGA account ID to tag events
 //	MTGA_DAEMON_HEADLESS          Set to "1" to skip browser open and print the auth URL instead
+//	MTGA_COLLECTION_HELPER_DIR    Directory containing collection-helper binary and install/ subdir (dev override)
 //	CLERK_PUBLISHABLE_KEY         Clerk publishable key (pk_live_* / pk_test_*) used for PKCE OAuth
 //	CLERK_FRONTEND_API            Clerk frontend API base URL (e.g. https://accounts.clerk.dev)
 //
