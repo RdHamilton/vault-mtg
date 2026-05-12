@@ -786,6 +786,80 @@ func TestRunSendsHeartbeatWhenAccountIDSet(t *testing.T) {
 		"expected at least one daemon.heartbeat event when AccountID is set")
 }
 
+// TestHandleEntry_PlayerAuthenticatedCachesMtgaUserID verifies that processing
+// a player.authenticated log entry caches the MTGA account ID so that
+// subsequent match.completed parsing can identify the local player's team.
+func TestHandleEntry_PlayerAuthenticatedCachesMtgaUserID(t *testing.T) {
+	var received contract.DaemonEvent
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		body, err := io.ReadAll(r.Body)
+		require.NoError(t, err)
+		require.NoError(t, json.Unmarshal(body, &received))
+		w.WriteHeader(http.StatusAccepted)
+	}))
+	defer srv.Close()
+
+	cfg := &config.Config{
+		CloudAPIURL: srv.URL,
+		IngestPath:  "/v1/ingest/events",
+		APIKey:      "test-key",
+		AccountID:   "clerk-user-id-001",
+	}
+	svc := New(cfg)
+
+	// Simulate the player.authenticated log entry emitted by Arena.
+	authEntry := &logreader.LogEntry{
+		IsJSON: true,
+		JSON: map[string]interface{}{
+			"authenticateResponse": map[string]interface{}{
+				"accountId":  "WTC_12345678",
+				"screenName": "TestPlayer",
+			},
+		},
+	}
+
+	require.NoError(t, svc.handleEntry(context.Background(), authEntry))
+	assert.Equal(t, "WTC_12345678", svc.mtgaUserID,
+		"mtgaUserID must be cached after player.authenticated")
+	assert.Equal(t, "player.authenticated", received.Type)
+}
+
+// TestHandleEntry_MatchCompleted_WithCachedMtgaUserID verifies that when the
+// daemon has already processed a player.authenticated event, the subsequent
+// match.completed event carries a pre-computed result ("win" or "loss").
+func TestHandleEntry_MatchCompleted_WithCachedMtgaUserID(t *testing.T) {
+	var received contract.DaemonEvent
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		body, err := io.ReadAll(r.Body)
+		require.NoError(t, err)
+		require.NoError(t, json.Unmarshal(body, &received))
+		w.WriteHeader(http.StatusAccepted)
+	}))
+	defer srv.Close()
+
+	cfg := &config.Config{
+		CloudAPIURL: srv.URL,
+		IngestPath:  "/v1/ingest/events",
+		APIKey:      "test-key",
+		AccountID:   "clerk-user-id-001",
+	}
+	svc := New(cfg)
+	// Pre-set the cached MTGA user ID as if player.authenticated was seen.
+	// USER_B has teamId=2 in matchCompletedEntry(), WinningTeamID=2 → "win".
+	svc.mtgaUserID = "USER_B"
+
+	require.NoError(t, svc.handleEntry(context.Background(), matchCompletedEntry()))
+	assert.Equal(t, "match.completed", received.Type)
+
+	var payload contract.MatchCompletedPayload
+	require.NoError(t, json.Unmarshal(received.Payload, &payload))
+	assert.Equal(t, "win", payload.Result,
+		"result must be pre-computed when mtgaUserID is known")
+	assert.Equal(t, 2, payload.PlayerTeamID)
+	assert.Equal(t, 1, payload.PlayerWins)
+	assert.Equal(t, 0, payload.OpponentWins)
+}
+
 // TestRunSkipsHeartbeatWhenAccountIDEmpty verifies that no heartbeat is sent
 // when the daemon has no AccountID (not yet authenticated).
 func TestRunSkipsHeartbeatWhenAccountIDEmpty(t *testing.T) {

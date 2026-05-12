@@ -290,6 +290,9 @@ type matchPayload struct {
 	DurationSeconds *int    `json:"duration_seconds"`
 	OpponentName    *string `json:"opponent_name"`
 	OpponentID      *string `json:"opponent_id"`
+	// WinningTeamID is included so the projection can derive Result when the
+	// daemon did not pre-compute it (e.g. player.authenticated not yet seen).
+	WinningTeamID int `json:"winning_team_id"`
 }
 
 type draftPayload struct {
@@ -315,8 +318,18 @@ func (w *Worker) projectMatch(ctx context.Context, row *repository.DaemonEventRo
 	}
 
 	result := normaliseResult(p.Result)
+	// Fallback: derive result from winning_team_id + player_team_id when the
+	// daemon did not pre-compute the result string (player.authenticated not
+	// yet observed in that daemon session).
+	if result == "" && p.PlayerTeamID > 0 && p.WinningTeamID > 0 {
+		if p.WinningTeamID == p.PlayerTeamID {
+			result = "win"
+		} else {
+			result = "loss"
+		}
+	}
 	if result == "" {
-		return fmt.Errorf("match payload invalid result %q", p.Result)
+		return fmt.Errorf("match payload: result indeterminate (result=%q winning_team_id=%d player_team_id=%d)", p.Result, p.WinningTeamID, p.PlayerTeamID)
 	}
 
 	accountID, err := w.accounts.GetOrCreateByClientID(ctx, row.AccountID, row.UserID)

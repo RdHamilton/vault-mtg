@@ -308,3 +308,68 @@ func TestParseMatchCompletedEntry_MissingFinalMatchResult(t *testing.T) {
 	assert.Empty(t, p.MatchID)
 	assert.Empty(t, p.ResultList)
 }
+
+// ---------------------------------------------------------------------------
+// Derived fields: Result, PlayerTeamID, PlayerWins, OpponentWins
+// ---------------------------------------------------------------------------
+
+func TestParseMatchCompletedEntry_DerivedResult_Win(t *testing.T) {
+	// USER_B is team 2 and WinningTeamID is 2 → result = "win"
+	entry := makeMatchCompletedEntry(
+		"MatchGameRoomStateType_MatchCompleted",
+		"match-win", ladderResultList(), twoPlayers(), "Ladder",
+	)
+	p, err := ParseMatchCompletedEntry(entry, "USER_B")
+	require.NoError(t, err)
+	assert.Equal(t, "win", p.Result)
+	assert.Equal(t, 2, p.PlayerTeamID)
+	assert.Equal(t, 1, p.PlayerWins)
+	assert.Equal(t, 0, p.OpponentWins)
+	assert.Equal(t, "PlayerOne", p.OpponentName)
+}
+
+func TestParseMatchCompletedEntry_DerivedResult_Loss(t *testing.T) {
+	// USER_A is team 1, WinningTeamID is 2 → result = "loss"
+	entry := makeMatchCompletedEntry(
+		"MatchGameRoomStateType_MatchCompleted",
+		"match-loss", ladderResultList(), twoPlayers(), "Ladder",
+	)
+	p, err := ParseMatchCompletedEntry(entry, "USER_A")
+	require.NoError(t, err)
+	assert.Equal(t, "loss", p.Result)
+	assert.Equal(t, 1, p.PlayerTeamID)
+	assert.Equal(t, 0, p.PlayerWins)
+	assert.Equal(t, 1, p.OpponentWins)
+	assert.Equal(t, "PlayerTwo", p.OpponentName)
+}
+
+func TestParseMatchCompletedEntry_DerivedResult_EmptyWhenPlayerUnknown(t *testing.T) {
+	// No playerUserID — cannot determine player team, result stays empty.
+	entry := makeMatchCompletedEntry(
+		"MatchGameRoomStateType_MatchCompleted",
+		"match-unknown", ladderResultList(), twoPlayers(), "Ladder",
+	)
+	p, err := ParseMatchCompletedEntry(entry, "")
+	require.NoError(t, err)
+	assert.Empty(t, p.Result)
+	assert.Equal(t, 0, p.PlayerTeamID)
+}
+
+func TestParseMatchCompletedEntry_PlayerWins_MultiGame(t *testing.T) {
+	// 2-1 match: USER_B (team 2) won games 1 and 3; USER_A (team 1) won game 2.
+	multiGameResults := []interface{}{
+		map[string]interface{}{"scope": "MatchScope_Game", "result": "ResultType_WinLoss", "winningTeamId": float64(2), "reason": "ResultReason_Game"},
+		map[string]interface{}{"scope": "MatchScope_Game", "result": "ResultType_WinLoss", "winningTeamId": float64(1), "reason": "ResultReason_Game"},
+		map[string]interface{}{"scope": "MatchScope_Game", "result": "ResultType_WinLoss", "winningTeamId": float64(2), "reason": "ResultReason_Game"},
+		map[string]interface{}{"scope": "MatchScope_Match", "result": "ResultType_WinLoss", "winningTeamId": float64(2), "reason": "ResultReason_Game"},
+	}
+	entry := makeMatchCompletedEntry(
+		"MatchGameRoomStateType_MatchCompleted",
+		"match-2v1", multiGameResults, twoPlayers(), "Ladder",
+	)
+	p, err := ParseMatchCompletedEntry(entry, "USER_B")
+	require.NoError(t, err)
+	assert.Equal(t, "win", p.Result)
+	assert.Equal(t, 2, p.PlayerWins)
+	assert.Equal(t, 1, p.OpponentWins)
+}

@@ -150,12 +150,23 @@ type MatchResult struct {
 // player.
 // Format is sourced from the eventId field in gameRoomConfig (e.g. "Ladder",
 // "QuickDraft_SOS_20260430"); it is empty when absent.
+//
+// Result, PlayerTeamID, PlayerWins, and OpponentWins are derived when the
+// daemon knows the local player's MTGA userId (from a preceding
+// player.authenticated event). They are empty/zero when the player cannot
+// be identified — the projection worker falls back to WinningTeamID +
+// PlayerTeamID in that case.
 type MatchCompletedPayload struct {
 	MatchID       string        `json:"match_id"`
 	WinningTeamID int           `json:"winning_team_id"`
 	ResultList    []MatchResult `json:"result_list"`
 	Format        string        `json:"format"`
 	OpponentName  string        `json:"opponent_name"`
+	// Derived fields — populated when the local player's MTGA userId is known.
+	Result       string `json:"result"`         // "win" or "loss"; empty when indeterminate
+	PlayerTeamID int    `json:"player_team_id"` // 0 when indeterminate
+	PlayerWins   int    `json:"player_wins"`
+	OpponentWins int    `json:"opponent_wins"`
 }
 
 // LifeChangeEntry records a single life-total mutation observed in a game.

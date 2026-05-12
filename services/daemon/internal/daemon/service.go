@@ -58,6 +58,12 @@ type Service struct {
 	// Wired into localAPI via SetDraftLookups; token kept in sync
 	// with the dispatcher via SetToken on each JWT rotation.
 	ratings *ratingsclient.Client
+	// mtgaUserID is the local player's MTGA Arena account ID (e.g.
+	// "WTC_12345678") extracted from the authenticateResponse log entry.
+	// It is used to identify the local player's team in match results so
+	// win/loss can be derived.  Empty until a player.authenticated event
+	// has been processed in this daemon session.
+	mtgaUserID string
 }
 
 // New creates a Service from cfg.
@@ -427,11 +433,19 @@ func (s *Service) handleEntry(ctx context.Context, entry *logreader.LogEntry) er
 		} else {
 			payload = p
 		}
+	case "player.authenticated":
+		// Cache the local player's MTGA Arena account ID so subsequent
+		// match.completed events can determine win/loss from reservedPlayers.
+		if resp, ok := entry.JSON["authenticateResponse"].(map[string]interface{}); ok {
+			if uid, ok := resp["accountId"].(string); ok && uid != "" {
+				s.mtgaUserID = uid
+				log.Printf("[daemon] cached MTGA user ID from authenticateResponse")
+			}
+		}
+		payload = entry.JSON
+
 	case "match.completed":
-		// Pass empty playerUserID — the daemon config does not store the MTGA
-		// userId, so opponent identification falls back to the first non-empty
-		// playerName in reservedPlayers.
-		p, err := logreader.ParseMatchCompletedEntry(entry, "")
+		p, err := logreader.ParseMatchCompletedEntry(entry, s.mtgaUserID)
 		if err != nil {
 			log.Printf("[daemon] warn: parse match completed: %v", err)
 			payload = entry.JSON

@@ -1220,3 +1220,66 @@ func TestRunOnce_GamePlayEvent_NoLifeChanges_OnlyGamePlayInserted(t *testing.T) 
 		t.Errorf("expected row 97 marked projected, got %v", events.projected)
 	}
 }
+
+// TestRunOnce_MatchCompleted_FallbackResultFromWinningTeamID verifies that when
+// the daemon sends winning_team_id + player_team_id but no pre-computed result
+// string, the projection worker derives "win" or "loss" correctly.
+func TestRunOnce_MatchCompleted_FallbackResultFromWinningTeamID(t *testing.T) {
+	payload := makePayload(t, map[string]interface{}{
+		"match_id":        "match-fallback",
+		"format":          "Ladder",
+		"winning_team_id": 2,
+		"player_team_id":  2, // player is team 2 → should resolve to "win"
+		// result is intentionally absent to test the fallback path
+	})
+
+	events := &fakeEventStore{
+		pending: []repository.DaemonEventRow{
+			{ID: 200, UserID: 1, AccountID: "acct-1", EventType: "match.completed", Payload: payload, OccurredAt: time.Now()},
+		},
+	}
+	accounts := &fakeAccountStore{accountID: 10}
+	matches := &fakeMatchStore{}
+
+	w := newWorker(events, accounts, matches, &fakeDraftStore{})
+	w.RunOnce(context.Background())
+
+	if len(matches.upserts) != 1 {
+		t.Fatalf("expected 1 match upsert, got %d", len(matches.upserts))
+	}
+	if matches.upserts[0].Result != "win" {
+		t.Errorf("expected result=win, got %q", matches.upserts[0].Result)
+	}
+	if len(events.projected) != 1 || events.projected[0] != 200 {
+		t.Errorf("expected row 200 marked projected, got %v", events.projected)
+	}
+}
+
+// TestRunOnce_MatchCompleted_FallbackResultLoss verifies the loss case of the
+// winning_team_id + player_team_id fallback.
+func TestRunOnce_MatchCompleted_FallbackResultLoss(t *testing.T) {
+	payload := makePayload(t, map[string]interface{}{
+		"match_id":        "match-fallback-loss",
+		"format":          "Ladder",
+		"winning_team_id": 2,
+		"player_team_id":  1, // player is team 1, opponent (team 2) won → loss
+	})
+
+	events := &fakeEventStore{
+		pending: []repository.DaemonEventRow{
+			{ID: 201, UserID: 1, AccountID: "acct-1", EventType: "match.completed", Payload: payload, OccurredAt: time.Now()},
+		},
+	}
+	accounts := &fakeAccountStore{accountID: 10}
+	matches := &fakeMatchStore{}
+
+	w := newWorker(events, accounts, matches, &fakeDraftStore{})
+	w.RunOnce(context.Background())
+
+	if len(matches.upserts) != 1 {
+		t.Fatalf("expected 1 match upsert, got %d", len(matches.upserts))
+	}
+	if matches.upserts[0].Result != "loss" {
+		t.Errorf("expected result=loss, got %q", matches.upserts[0].Result)
+	}
+}

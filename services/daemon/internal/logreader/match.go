@@ -96,15 +96,16 @@ func ParseMatchCompletedEntry(entry *LogEntry, playerUserID string) (*contract.M
 		}
 	}
 
-	// --- gameRoomConfig (format + opponent name) ---
+	// --- gameRoomConfig (format + opponent name + player team) ---
 	if cfg, ok := gameRoomInfo["gameRoomConfig"].(map[string]interface{}); ok {
 		// Format comes from eventId (e.g. "Ladder", "QuickDraft_SOS_20260430").
 		if eventID, ok := cfg["eventId"].(string); ok {
 			p.Format = eventID
 		}
 
-		// Opponent: iterate reservedPlayers and take the player whose userId
-		// does NOT match the local player.
+		// Iterate reservedPlayers to identify the local player's teamId and
+		// the opponent's display name.  When playerUserID is non-empty and
+		// matches a player's userId we can definitively assign both roles.
 		if players, ok := cfg["reservedPlayers"].([]interface{}); ok {
 			for _, pl := range players {
 				pm, ok := pl.(map[string]interface{})
@@ -113,17 +114,38 @@ func ParseMatchCompletedEntry(entry *LogEntry, playerUserID string) (*contract.M
 				}
 				uid, _ := pm["userId"].(string)
 				name, _ := pm["playerName"].(string)
-				if uid == "" {
-					continue
+				teamID := int(0)
+				if v, ok := pm["teamId"].(float64); ok {
+					teamID = int(v)
 				}
-				// If we know the local user, skip their entry.
+
 				if playerUserID != "" && uid == playerUserID {
-					continue
-				}
-				if name != "" {
+					// This entry is the local player.
+					p.PlayerTeamID = teamID
+				} else if uid != "" && name != "" && p.OpponentName == "" {
+					// First non-local player with a name is the opponent.
 					p.OpponentName = name
-					break
 				}
+			}
+		}
+	}
+
+	// Derive Result, PlayerWins, OpponentWins when we identified the player.
+	if p.PlayerTeamID > 0 {
+		if p.WinningTeamID == p.PlayerTeamID {
+			p.Result = "win"
+		} else if p.WinningTeamID > 0 {
+			p.Result = "loss"
+		}
+
+		for _, r := range p.ResultList {
+			if r.Scope != "MatchScope_Game" {
+				continue
+			}
+			if r.WinningTeamID == p.PlayerTeamID {
+				p.PlayerWins++
+			} else if r.WinningTeamID > 0 {
+				p.OpponentWins++
 			}
 		}
 	}
