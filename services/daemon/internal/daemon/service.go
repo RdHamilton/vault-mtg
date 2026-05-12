@@ -19,6 +19,7 @@ import (
 	"github.com/ramonehamilton/mtga-daemon/internal/keychain"
 	"github.com/ramonehamilton/mtga-daemon/internal/localapi"
 	"github.com/ramonehamilton/mtga-daemon/internal/logreader"
+	"github.com/ramonehamilton/mtga-daemon/internal/ratingsclient"
 	"github.com/ramonehamilton/mtga-daemon/internal/registrar"
 	"github.com/ramonehamilton/mtga-daemon/internal/updatecheck"
 )
@@ -45,6 +46,13 @@ type Service struct {
 	// friends without re-reading the log. Populated as draft.pack /
 	// draft.pick events flow through handleEntry.
 	draftState *draftstate.Store
+	// ratings is the daemon's read-through cache for the BFF's
+	// /api/v1/draft-ratings/{set}/{format} endpoint. Satisfies both
+	// pkg/draftalgo.CardLookup and .RatingsLookup so the localapi
+	// draft handlers can grade picks against real 17Lands data.
+	// Wired into localAPI via SetDraftLookups; token kept in sync
+	// with the dispatcher via SetToken on each JWT rotation.
+	ratings *ratingsclient.Client
 }
 
 // New creates a Service from cfg.
@@ -79,6 +87,10 @@ func New(cfg *config.Config) *Service {
 		regClient:  registrar.NewClient(cfg.CloudAPIURL),
 		version:    "dev",
 		draftState: draftstate.New(),
+		ratings: ratingsclient.New(ratingsclient.Config{
+			BFFURL: cfg.CloudAPIURL,
+			Token:  token,
+		}),
 	}
 	// Wire the legacy refresher only when NOT in keychain mode. With keychain
 	// the api_key does not expire, and the legacy /api/daemon/register endpoint
@@ -150,6 +162,13 @@ func (s *Service) register(ctx context.Context) (string, error) {
 	s.cfg.DaemonJWT = resp.Token
 	s.cfg.DaemonID = resp.DaemonID
 	s.dispatcher.SetToken(resp.Token)
+	// Keep the ratings client's bearer in sync with the dispatcher so
+	// the next /api/v1/draft-ratings fetch (after TTL expiry) uses the
+	// fresh token. Cache contents stay valid across the swap — the
+	// BFF's auth check happens per-request.
+	if s.ratings != nil {
+		s.ratings.SetToken(resp.Token)
+	}
 
 	if saveErr := s.cfg.Save(); saveErr != nil {
 		log.Printf("[daemon] warn: could not persist JWT to config file: %v", saveErr)
@@ -236,6 +255,10 @@ func (s *Service) Run(ctx context.Context) error {
 	// /api/v1/drafts/{id}/current-pack, /grade-pick, and /win-probability
 	// can answer from in-memory data without a separate parse pass.
 	localAPI.SetDraftStore(s.draftState)
+	// Wire the ratings client as both CardLookup and RatingsLookup —
+	// it satisfies both interfaces. Without this, grade-pick returns
+	// "N/A" and win-probability falls back to the neutral baseline.
+	localAPI.SetDraftLookups(s.ratings, s.ratings)
 	if err := localAPI.Start(); err != nil {
 		log.Printf("[daemon] warn: local API server did not start: %v", err)
 	}
