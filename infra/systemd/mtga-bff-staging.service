@@ -8,7 +8,7 @@ Type=simple
 User=ec2-user
 Group=ec2-user
 
-ExecStart=/usr/local/bin/mtga-bff-staging
+ExecStart=/usr/local/bin/mtga-bff-staging -port 8081
 
 # Load env file rendered by provision-staging-env.sh from SSM
 EnvironmentFile=/etc/mtga-companion-staging/env
