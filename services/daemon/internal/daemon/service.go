@@ -14,6 +14,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/ramonehamilton/mtga-daemon/internal/config"
 	"github.com/ramonehamilton/mtga-daemon/internal/dispatch"
+	"github.com/ramonehamilton/mtga-daemon/internal/draftstate"
 	"github.com/ramonehamilton/mtga-daemon/internal/gre"
 	"github.com/ramonehamilton/mtga-daemon/internal/keychain"
 	"github.com/ramonehamilton/mtga-daemon/internal/localapi"
@@ -39,6 +40,11 @@ type Service struct {
 	regClient  *registrar.Client
 	version    string // build-time version; "dev" skips update checks
 	greManager *gre.Manager
+	// draftState caches the live draft session(s) the daemon has seen
+	// so localapi handlers can answer /drafts/{id}/current-pack and
+	// friends without re-reading the log. Populated as draft.pack /
+	// draft.pick events flow through handleEntry.
+	draftState *draftstate.Store
 }
 
 // New creates a Service from cfg.
@@ -72,6 +78,7 @@ func New(cfg *config.Config) *Service {
 		sessionID:  sessionID,
 		regClient:  registrar.NewClient(cfg.CloudAPIURL),
 		version:    "dev",
+		draftState: draftstate.New(),
 	}
 	// Wire the legacy refresher only when NOT in keychain mode. With keychain
 	// the api_key does not expire, and the legacy /api/daemon/register endpoint
@@ -225,6 +232,10 @@ func (s *Service) Run(ctx context.Context) error {
 		CloudAPIURL:  s.cfg.CloudAPIURL,
 		BFFReachable: true, // optimistic — flips when a dispatch fails
 	})
+	// Hand the localapi server a read view of the live draft state so
+	// /api/v1/drafts/{id}/current-pack, /grade-pick, and /win-probability
+	// can answer from in-memory data without a separate parse pass.
+	localAPI.SetDraftStore(s.draftState)
 	if err := localAPI.Start(); err != nil {
 		log.Printf("[daemon] warn: local API server did not start: %v", err)
 	}
@@ -309,6 +320,12 @@ func (s *Service) handleEntry(ctx context.Context, entry *logreader.LogEntry) er
 			payload = entry.JSON
 		} else {
 			payload = p
+			// Mirror the typed payload into in-memory draftstate so
+			// localapi handlers can serve current-pack / grade-pick /
+			// win-probability without re-parsing the log.
+			if s.draftState != nil {
+				s.draftState.HandlePack(p)
+			}
 		}
 	case "draft.pick":
 		p, err := logreader.ParseDraftPick(entry)
@@ -317,6 +334,9 @@ func (s *Service) handleEntry(ctx context.Context, entry *logreader.LogEntry) er
 			payload = entry.JSON
 		} else {
 			payload = p
+			if s.draftState != nil {
+				s.draftState.HandlePick(p)
+			}
 		}
 	case "inventory.updated":
 		p, err := logreader.ParseInventoryEntry(entry)

@@ -17,6 +17,8 @@ import (
 	"strings"
 	"sync/atomic"
 	"time"
+
+	"github.com/RdHamilton/MTGA-Companion/pkg/draftalgo"
 )
 
 // DefaultPort is the loopback TCP port the daemon's local HTTP API listens on.
@@ -48,11 +50,14 @@ type State struct {
 // handlers and writes from the daemon's dispatch goroutine are safe without
 // a mutex on the hot path.
 type Server struct {
-	port        int
-	state       atomic.Pointer[State]
-	srv         *http.Server
-	ln          net.Listener
-	uninstaller Uninstaller // nil → defaultUninstaller; tests override via SetUninstaller
+	port          int
+	state         atomic.Pointer[State]
+	srv           *http.Server
+	ln            net.Listener
+	uninstaller   Uninstaller             // nil → defaultUninstaller; tests override via SetUninstaller
+	draftStore    DraftStore              // nil → draft endpoints respond with empty/no-session
+	cardsLookup   draftalgo.CardLookup    // nil → noopCards; defaults applied lazily in drafts.go
+	ratingsLookup draftalgo.RatingsLookup // nil → noopRatings; defaults applied lazily in drafts.go
 }
 
 // New returns a Server bound to 127.0.0.1:port. Use DefaultPort unless tests
@@ -75,6 +80,22 @@ func (s *Server) SetState(state State) {
 // handleSystemUninstall when uninstaller is nil).
 func (s *Server) SetUninstaller(u Uninstaller) {
 	s.uninstaller = u
+}
+
+// SetDraftStore wires the in-memory draft session store the daemon
+// maintains (see services/daemon/internal/draftstate). When nil, the
+// /api/v1/drafts/* live-state endpoints return 404 / empty payloads.
+func (s *Server) SetDraftStore(store DraftStore) {
+	s.draftStore = store
+}
+
+// SetDraftLookups installs the card-name + 17Lands ratings lookups the
+// draft handlers use. Production wires this after fetching cached BFF
+// data; tests inject deterministic stubs. nil values fall back to the
+// noopCards / noopRatings defaults in drafts.go.
+func (s *Server) SetDraftLookups(cards draftalgo.CardLookup, ratings draftalgo.RatingsLookup) {
+	s.cardsLookup = cards
+	s.ratingsLookup = ratings
 }
 
 // snapshot returns a copy of the current state. Always non-nil for a Server
@@ -120,6 +141,14 @@ func (s *Server) Start() error {
 	// Phase 2 PR #18 — uninstall surface. Lets the SPA's Settings UI
 	// trigger a clean uninstall without forcing the user into a Terminal.
 	mux.HandleFunc("/api/v1/system/uninstall", s.handleSystemUninstall)
+
+	// Phase 2 PR #17b — live draft state. Endpoints answer from the
+	// daemon's in-memory draftstate.Store (populated by the log entry
+	// consumer in services/daemon/internal/daemon). Retire the BFF
+	// stubs (PR #14) when this lands.
+	mux.HandleFunc("/api/v1/drafts/grade-pick", s.handleDraftGradePick)
+	mux.HandleFunc("/api/v1/drafts/win-probability", s.handleDraftWinProbability)
+	mux.HandleFunc("/api/v1/drafts/", s.handleDraftsPathPrefix)
 
 	s.srv = &http.Server{
 		Handler:           withCORS(mux),
