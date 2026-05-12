@@ -208,9 +208,13 @@ jobs:
       - name: Create .pkg installer
         env:
           INSTALLER_IDENTITY: ${{ secrets.APPLE_INSTALLER_IDENTITY }}
-          CLERK_FRONTEND_API_VALUE: https://clerk.vaultmtg.app
-          CLERK_PUBLISHABLE_KEY_VALUE: ${{ vars.VITE_CLERK_PUBLISHABLE_KEY }}
-          CLERK_OAUTH_CLIENT_ID_VALUE: ${{ secrets.CLERK_OAUTH_CLIENT_ID }}
+          # rc/alpha/beta/pre tags ship the staging build, which must point at the
+          # Clerk Development instance.  Stable tags ship the production build,
+          # which points at the Clerk Production instance.  The split mirrors the
+          # cloud_url step above so all four placeholders track the same target.
+          CLERK_FRONTEND_API_VALUE: ${{ contains(steps.cloud_url.outputs.url, 'staging-api') && 'https://settled-martin-99.clerk.accounts.dev' || 'https://clerk.vaultmtg.app' }}
+          CLERK_PUBLISHABLE_KEY_VALUE: ${{ contains(steps.cloud_url.outputs.url, 'staging-api') && 'pk_test_c2V0dGxlZC1tYXJ0aW4tOTkuY2xlcmsuYWNjb3VudHMuZGV2JA' || vars.VITE_CLERK_PUBLISHABLE_KEY }}
+          CLERK_OAUTH_CLIENT_ID_VALUE: ${{ contains(steps.cloud_url.outputs.url, 'staging-api') && secrets.CLERK_DEV_OAUTH_CLIENT_ID || secrets.CLERK_OAUTH_CLIENT_ID }}
           VAULTMTG_CLOUD_API_URL_VALUE: ${{ steps.cloud_url.outputs.url }}
         run: |
           mkdir -p pkg-root/usr/local/bin
