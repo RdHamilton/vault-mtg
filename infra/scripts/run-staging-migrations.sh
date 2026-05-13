@@ -113,6 +113,25 @@ DATABASE_URL="${DATABASE_URL/postgresql:\/\//postgres://}"
 echo "[run-staging-migrations] Applying migrations from $MIGRATIONS_DIR ..."
 echo "[run-staging-migrations] Target DB: ${DATABASE_URL%%@*}@<host redacted>"
 
+# If a previous migration run failed mid-flight, golang-migrate marks the
+# schema_migrations table as dirty and refuses to proceed.  Detect that state
+# and force the version back to the last clean version so the fixed migration
+# can re-run automatically without manual intervention.
+VERSION_OUTPUT=$(migrate \
+    -path     "$MIGRATIONS_DIR" \
+    -database "$DATABASE_URL" \
+    version 2>&1 || true)
+if echo "$VERSION_OUTPUT" | grep -q "dirty"; then
+    DIRTY_VER=$(echo "$VERSION_OUTPUT" | grep -oE '[0-9]+' | head -1)
+    CLEAN_VER=$((DIRTY_VER - 1))
+    echo "[run-staging-migrations] Dirty state detected at version $DIRTY_VER — forcing back to $CLEAN_VER ..."
+    migrate \
+        -path     "$MIGRATIONS_DIR" \
+        -database "$DATABASE_URL" \
+        force "$CLEAN_VER"
+    echo "[run-staging-migrations] Forced to version $CLEAN_VER."
+fi
+
 migrate \
     -path    "$MIGRATIONS_DIR" \
     -database "$DATABASE_URL" \
