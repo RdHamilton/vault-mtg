@@ -7,9 +7,10 @@
 -- not recoverable; we drop the column and re-add it as BIGINT NULLABLE with
 -- a proper FK to accounts(id).
 --
--- The index from 000068 is also dropped and recreated on the new column.
+-- Note: DROP COLUMN automatically cascades to any indexes on the column,
+-- so we do not issue a separate DROP INDEX (the migration user may not own
+-- the index that was created by a superuser in migration 000068).
 
-DROP INDEX IF EXISTS idx_quests_account_id;
 ALTER TABLE quests DROP COLUMN IF EXISTS account_id;
 ALTER TABLE quests
     ADD COLUMN account_id BIGINT REFERENCES accounts(id) ON DELETE CASCADE;
