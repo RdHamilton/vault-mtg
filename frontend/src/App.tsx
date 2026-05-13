@@ -4,7 +4,6 @@ import { useAuth, useUser } from '@clerk/react';
 import * as Sentry from '@sentry/react';
 import Layout from './components/Layout';
 import ToastContainer from './components/ToastContainer';
-import MatchHistory from './pages/MatchHistory';
 import WinRateTrend from './pages/WinRateTrend';
 import DeckPerformance from './pages/DeckPerformance';
 import RankProgression from './pages/RankProgression';
@@ -176,7 +175,7 @@ function App() {
 
           {/* Protected routes — require Clerk authentication */}
           <Route element={<ProtectedRoute />}>
-            <Route path="/match-history" element={<MatchHistory />} />
+            <Route path="/match-history" element={<BffMatchHistory />} />
             <Route path="/quests" element={<Quests />} />
             <Route path="/draft" element={<Draft />} />
             <Route path="/draft-analytics" element={<DraftAnalytics />} />
@@ -191,7 +190,6 @@ function App() {
             <Route path="/charts/format-distribution" element={<FormatDistribution />} />
             <Route path="/charts/result-breakdown" element={<ResultBreakdown />} />
             <Route path="/settings" element={<Settings />} />
-            <Route path="/history/matches" element={<BffMatchHistory />} />
             <Route path="/history/drafts" element={<BffDraftHistory />} />
             <Route path="/draft/live" element={<DraftLive />} />
             <Route path="/api-keys" element={<ApiKeysPage />} />

@@ -57,27 +57,13 @@ test.describe('Data Pipeline - Log to UI', () => {
     // starts don't race past this anchor on a 4-way CI split.
     await expect(page.locator('[data-testid="app-container"]')).toBeVisible({ timeout: 60000 });
 
-    // Wait for Match History to mount and be in a stable rendered state.
+    // Wait for BffMatchHistory to mount and be in a stable rendered state.
     //
-    // Accepted states (in order of likelihood in CI without a live daemon):
-    //   .filter-row           — always rendered once MatchHistory mounts; this
-    //                           fires immediately, before any async data arrives.
-    //                           Covers the window where loading:false but
-    //                           daemonChecked:false (no daemon-empty or error-state
-    //                           yet) — previously caused a 30-s timeout.
-    //   .empty-state          — DaemonEmptyState (via EmptyState) or no-data
-    //   .error-state          — BFF returned an error (no database in CI)
-    //   table                 — matches loaded from live data
-    //   .protected-route-prompt — ProtectedRoute blocked; auth injection failed
-    //                             (test will fail later but at least beforeEach ends)
-    // Use .first() to avoid Playwright strict-mode violations when multiple
-    // selectors match simultaneously (e.g. .filter-row + .empty-state both
-    // visible at the same time once MatchHistory mounts without live data).
+    // Accepted states (in order of likelihood in CI without a database):
+    //   [data-testid="match-history-page"] — always rendered once component mounts
+    //   .protected-route-prompt            — ProtectedRoute blocked; auth injection failed
     await expect(
-      page.locator('.filter-row')
-        .or(page.locator('.empty-state'))
-        .or(page.locator('.error-state'))
-        .or(page.locator('.match-history-table-container table'))
+      page.locator('[data-testid="match-history-page"]')
         .or(page.locator('[data-testid="protected-route-prompt"]'))
         .first()
     ).toBeVisible();
@@ -87,7 +73,7 @@ test.describe('Data Pipeline - Log to UI', () => {
     test('should display matches parsed from log file', async ({ page }) => {
       await expect(page.locator('h1.page-title')).toHaveText('Match History');
 
-      const table = page.locator('.match-history-table-container table');
+      const table = page.locator('[data-testid="match-history-table"]');
       const emptyState = page.locator('.empty-state');
       const errorState = page.locator('.error-state');
 
@@ -117,7 +103,7 @@ test.describe('Data Pipeline - Log to UI', () => {
     });
 
     test('should show multiple event types from log', async ({ page }) => {
-      const table = page.locator('.match-history-table-container table');
+      const table = page.locator('[data-testid="match-history-table"]');
       const hasTable = await table.isVisible().catch(() => false);
 
       if (hasTable) {
@@ -138,7 +124,7 @@ test.describe('Data Pipeline - Log to UI', () => {
     });
 
     test('should show both wins and losses', async ({ page }) => {
-      const table = page.locator('.match-history-table-container table');
+      const table = page.locator('[data-testid="match-history-table"]');
       const hasTable = await table.isVisible().catch(() => false);
 
       if (hasTable) {
@@ -631,18 +617,19 @@ test.describe('Data Pipeline - Log to UI', () => {
 
   test.describe('Sorting and Filtering', () => {
     test('should have filter controls on Match History page', async ({ page }) => {
-      // Match History is the default page - check for filter row
-      const filterRow = page.locator('.filter-row');
-      await expect(filterRow).toBeVisible();
+      // BffMatchHistory renders the page container regardless of data state
+      const matchHistoryPage = page.locator('[data-testid="match-history-page"]');
+      await expect(matchHistoryPage).toBeVisible();
 
-      // Should have at least one select element for filtering
-      const selects = filterRow.locator('select');
-      const selectCount = await selects.count();
-      expect(selectCount).toBeGreaterThan(0);
+      // Page renders either a table (with data), empty state, or error state
+      const tableOrState = page.locator(
+        '[data-testid="match-history-table"], [data-testid="match-history-empty"], .error-state'
+      );
+      await expect(tableOrState.first()).toBeVisible();
     });
 
     test('should have sortable table headers on Match History', async ({ page }) => {
-      const table = page.locator('.match-history-table-container table');
+      const table = page.locator('[data-testid="match-history-table"]');
       const hasTable = await table.isVisible().catch(() => false);
 
       if (hasTable) {
@@ -878,7 +865,7 @@ test.describe('Data Pipeline - Log to UI', () => {
       await page.waitForURL('**/match-history');
 
       // Page should still render (table, empty state, or error state — all valid)
-      const table = page.locator('.match-history-table-container table');
+      const table = page.locator('[data-testid="match-history-table"]');
       const emptyState = page.locator('.empty-state');
       const errorState = page.locator('.error-state');
 

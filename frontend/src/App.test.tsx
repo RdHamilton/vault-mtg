@@ -51,7 +51,7 @@ vi.mock('./components/KeyboardShortcutsHandler', () => ({
   default: () => <div data-testid="keyboard-shortcuts-handler" />,
 }));
 
-vi.mock('./pages/MatchHistory', () => ({
+vi.mock('./pages/BffMatchHistory', () => ({
   default: () => <div data-testid="match-history-page">Match History</div>,
 }));
 

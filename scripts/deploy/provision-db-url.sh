@@ -39,6 +39,13 @@ DATABASE_URL="postgresql://${DB_ENDPOINT}:5432/${DB_NAME}?sslmode=require"
 
 mkdir -p /etc/mtga-companion
 
+# Upsert AWS_DEFAULT_REGION so the BFF's Secrets Manager client resolves the endpoint.
+if grep -q '^AWS_DEFAULT_REGION=' "$ENV_FILE" 2>/dev/null; then
+  sed -i "s|^AWS_DEFAULT_REGION=.*|AWS_DEFAULT_REGION=${REGION}|" "$ENV_FILE"
+else
+  printf 'AWS_DEFAULT_REGION=%s\n' "$REGION" >> "$ENV_FILE"
+fi
+
 # Upsert DB_SECRET_ARN.
 if grep -q '^DB_SECRET_ARN=' "$ENV_FILE" 2>/dev/null; then
   sed -i "s|^DB_SECRET_ARN=.*|DB_SECRET_ARN=${DB_SECRET_ARN}|" "$ENV_FILE"

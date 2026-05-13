@@ -60,7 +60,8 @@ type CollectionItem struct {
 // rows into the SPA's CollectionCard wire shape (image URI extraction,
 // JSON-array parsing, etc.).
 func (r *CollectionRepository) ListCollection(ctx context.Context, accountID int64, f CollectionFilter) ([]CollectionItem, error) {
-	clauses := []string{"ci.account_id = $1"}
+	// ci predicates: always applied in the outer WHERE.
+	ciClauses := []string{"ci.account_id = $1"}
 	args := []any{accountID}
 	next := 2
 
@@ -68,17 +69,25 @@ func (r *CollectionRepository) ListCollection(ctx context.Context, accountID int
 		// OwnedOnly is the default: card_inventory only stores owned cards
 		// today, but be explicit so future "phantom" rows (count=0 markers)
 		// don't sneak in.
-		clauses = append(clauses, "ci.count > 0")
+		ciClauses = append(ciClauses, "ci.count > 0")
 	} else {
-		clauses = append(clauses, "ci.count = 0")
+		ciClauses = append(ciClauses, "ci.count = 0")
 	}
+
+	// sc predicates are pushed into the CTE WHERE so that DISTINCT ON selects
+	// among matching printings only — not the globally lowest-id printing.
+	// Without this, filtering by SetCode='S2' on a card whose lowest-id row is
+	// in S1 would silently exclude the card even though the user owns it in S2.
+	// When any sc predicate is active we also add sc.arena_id IS NOT NULL to the
+	// outer WHERE so that cards with no matching printing are excluded.
+	var scClauses []string
 	if f.SetCode != "" {
-		clauses = append(clauses, "lower(sc.set_code) = lower($"+strconv.Itoa(next)+")")
+		scClauses = append(scClauses, "lower(set_code) = lower($"+strconv.Itoa(next)+")")
 		args = append(args, f.SetCode)
 		next++
 	}
 	if f.Rarity != "" {
-		clauses = append(clauses, "lower(sc.rarity) = lower($"+strconv.Itoa(next)+")")
+		scClauses = append(scClauses, "lower(rarity) = lower($"+strconv.Itoa(next)+")")
 		args = append(args, f.Rarity)
 		next++
 	}
@@ -87,14 +96,28 @@ func (r *CollectionRepository) ListCollection(ctx context.Context, accountID int
 		// Use ILIKE on the raw JSON text so we don't have to depend on a JSONB cast.
 		ors := make([]string, 0, len(f.Colors))
 		for _, color := range f.Colors {
-			ors = append(ors, "sc.colors ILIKE $"+strconv.Itoa(next))
+			ors = append(ors, "colors ILIKE $"+strconv.Itoa(next))
 			args = append(args, "%\""+strings.ToUpper(strings.TrimSpace(color))+"\"%")
 			next++
 		}
-		clauses = append(clauses, "("+strings.Join(ors, " OR ")+")")
+		scClauses = append(scClauses, "("+strings.Join(ors, " OR ")+")")
+	}
+	scWhere := ""
+	if len(scClauses) > 0 {
+		scWhere = "\n\t\t\t\tWHERE " + strings.Join(scClauses, " AND ")
+		ciClauses = append(ciClauses, "sc.arena_id IS NOT NULL")
 	}
 
+	// DISTINCT ON (arena_id) guards against reprints: set_cards has UNIQUE(set_code,
+	// arena_id) not UNIQUE(arena_id), so the same arena_id can appear in multiple
+	// sets.  sc predicates in the CTE WHERE ensure the dedup picks the correct
+	// printing when a filter is active.
 	q := `
+		WITH sc AS (
+			SELECT DISTINCT ON (arena_id) *
+			FROM set_cards` + scWhere + `
+			ORDER BY arena_id, id
+		)
 		SELECT
 			ci.card_id,
 			COALESCE(sc.arena_id::INT, ci.card_id),
@@ -116,9 +139,9 @@ func (r *CollectionRepository) ListCollection(ctx context.Context, accountID int
 			sc.price_eur,
 			EXTRACT(EPOCH FROM sc.prices_updated_at)::BIGINT
 		FROM card_inventory ci
-		LEFT JOIN set_cards sc ON sc.arena_id = ci.card_id::TEXT
-		LEFT JOIN sets s       ON s.code = sc.set_code
-		WHERE ` + strings.Join(clauses, " AND ") + `
+		LEFT JOIN sc ON sc.arena_id = ci.card_id::TEXT
+		LEFT JOIN sets s ON s.code = sc.set_code
+		WHERE ` + strings.Join(ciClauses, " AND ") + `
 		ORDER BY sc.name NULLS LAST, ci.card_id
 		LIMIT 5000`
 
@@ -179,7 +202,8 @@ func (r *CollectionRepository) CountByRarity(ctx context.Context, accountID int6
 	const q = `SELECT COALESCE(sc.rarity, '') AS rarity,
 	                  COALESCE(SUM(ci.count), 0) AS total_cards
 	           FROM card_inventory ci
-	           LEFT JOIN set_cards sc ON sc.arena_id = ci.card_id::TEXT
+	           LEFT JOIN (SELECT DISTINCT ON (arena_id) arena_id, rarity FROM set_cards ORDER BY arena_id, id) sc
+	                  ON sc.arena_id = ci.card_id::TEXT
 	           WHERE ci.account_id = $1 AND ci.count > 0
 	           GROUP BY sc.rarity
 	           ORDER BY rarity`
@@ -320,6 +344,11 @@ type CardValueRow struct {
 func (r *CollectionRepository) ValueRows(ctx context.Context, accountID int64) ([]CardValueRow, int, error) {
 	// Two queries: one for priced rows, one to count owned-but-unpriced.
 	const priced = `
+		WITH sc AS (
+			SELECT DISTINCT ON (arena_id) arena_id, name, set_code, rarity, price_usd, price_eur
+			FROM set_cards
+			ORDER BY arena_id, id
+		)
 		SELECT
 			ci.card_id,
 			COALESCE(sc.name, ''),
@@ -329,7 +358,7 @@ func (r *CollectionRepository) ValueRows(ctx context.Context, accountID int64) (
 			COALESCE(sc.price_usd, 0),
 			COALESCE(sc.price_eur, 0)
 		FROM card_inventory ci
-		JOIN set_cards sc ON sc.arena_id = ci.card_id::TEXT
+		JOIN sc ON sc.arena_id = ci.card_id::TEXT
 		WHERE ci.account_id = $1 AND ci.count > 0 AND sc.price_usd IS NOT NULL AND sc.price_usd > 0`
 
 	rows, err := r.db.QueryContext(ctx, priced, accountID)

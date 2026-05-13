@@ -49,6 +49,10 @@ write_param() {
   echo "${key} provisioned."
 }
 
+# AWS region — required by the BFF's Secrets Manager client at startup.
+printf 'AWS_DEFAULT_REGION=%s\n' "$REGION" >> "$ENV_FILE"
+echo "AWS_DEFAULT_REGION provisioned."
+
 # Core BFF settings
 write_param PORT                    /mtga-companion/staging/PORT
 write_param ALLOWED_ORIGINS         /mtga-companion/staging/ALLOWED_ORIGINS

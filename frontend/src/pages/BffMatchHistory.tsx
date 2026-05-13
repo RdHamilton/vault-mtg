@@ -66,7 +66,7 @@ const BffMatchHistory = () => {
     });
 
   return (
-    <div className="page-container">
+    <div className="page-container" data-testid="match-history-page">
       <div className="bff-match-history-header">
         <h1 className="page-title">Match History</h1>
       </div>

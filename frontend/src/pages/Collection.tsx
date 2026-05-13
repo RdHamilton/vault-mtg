@@ -3,8 +3,6 @@ import { collection, cards as cardsApi } from '@/services/api';
 import { gui } from '@/types/models';
 import { useDownload } from '@/context/DownloadContext';
 import SetCompletionPanel from '../components/SetCompletion';
-import DaemonEmptyState from '../components/DaemonEmptyState';
-import { useDaemonStatus } from '../hooks/useDaemonStatus';
 import './Collection.css';
 
 // Color icon mapping
@@ -37,9 +35,6 @@ interface FilterState {
 const ITEMS_PER_PAGE = 50;
 
 export default function Collection() {
-  // Daemon connectivity — drives the no-daemon empty state
-  const { daemonConnected, daemonChecked } = useDaemonStatus();
-
   const [cards, setCards] = useState<gui.CollectionCard[]>([]);
   const [sets, setSets] = useState<gui.SetInfo[]>([]);
   const [loading, setLoading] = useState(true);
@@ -271,24 +266,6 @@ export default function Collection() {
   }, [processedCards, currentPage]);
 
   const totalPages = Math.ceil(processedCards.length / ITEMS_PER_PAGE);
-
-  // Daemon not connected — show first-run empty state immediately (skip loading)
-  if (daemonChecked && !daemonConnected) {
-    return (
-      <div className="collection-page" data-testid="collection-page">
-        <div className="collection-header" data-testid="collection-header">
-          <div className="header-title">
-            <h1>Collection</h1>
-          </div>
-        </div>
-        <DaemonEmptyState
-          page="collection"
-          heading="Daemon not connected"
-          subtext="Collection requires the VaultMTG daemon to be running. Download and start the daemon to sync your collection."
-        />
-      </div>
-    );
-  }
 
   if (loading && cards.length === 0) {
     return (
