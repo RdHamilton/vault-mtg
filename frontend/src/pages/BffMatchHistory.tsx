@@ -2,6 +2,7 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import { useAuth } from '@clerk/react';
 import { getMatchHistory } from '@/services/api/bffMatchHistory';
 import type { MatchHistoryItem } from '@/services/api/bffMatchHistory';
+import { EventsOn } from '@/services/websocketClient';
 import LoadingSpinner from '../components/LoadingSpinner';
 import EmptyState from '../components/EmptyState';
 import { trackEvent } from '@/services/analytics';
@@ -51,6 +52,14 @@ const BffMatchHistory = () => {
 
   useEffect(() => {
     void fetchMatches(0);
+  }, [fetchMatches]);
+
+  // Refresh when the BFF emits stats:updated (fired after a match is processed).
+  useEffect(() => {
+    const unsub = EventsOn('stats:updated', () => {
+      void fetchMatches(0);
+    });
+    return unsub;
   }, [fetchMatches]);
 
   const hasPrev = offset > 0;

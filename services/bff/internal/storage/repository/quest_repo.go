@@ -9,7 +9,7 @@ import (
 // QuestProgressUpsert holds a single quest entry written to the quests table
 // from a quest.progress daemon event.
 type QuestProgressUpsert struct {
-	AccountID string
+	AccountID int64 // accounts.id FK (resolved from client_id by the projection worker)
 	QuestID   string
 	QuestName string
 	Progress  int

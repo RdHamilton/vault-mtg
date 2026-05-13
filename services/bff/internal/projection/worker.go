@@ -545,13 +545,18 @@ func (w *Worker) projectQuestProgress(ctx context.Context, row *repository.Daemo
 		return fmt.Errorf("unmarshal quest.progress payload: %w", err)
 	}
 
+	accountID, err := w.accounts.GetOrCreateByClientID(ctx, row.AccountID, row.UserID)
+	if err != nil {
+		return fmt.Errorf("projectQuestProgress resolve account client_id=%s: %w", row.AccountID, err)
+	}
+
 	for _, q := range p.Quests {
 		if q.QuestID == "" {
 			continue
 		}
 
 		if err := w.quests.UpsertQuestProgress(ctx, repository.QuestProgressUpsert{
-			AccountID: row.AccountID,
+			AccountID: accountID,
 			QuestID:   q.QuestID,
 			QuestName: q.QuestName,
 			Progress:  q.Progress,

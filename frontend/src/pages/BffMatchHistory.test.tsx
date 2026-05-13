@@ -1,11 +1,22 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, waitFor, fireEvent } from '@testing-library/react';
+import { render, screen, waitFor, fireEvent, act } from '@testing-library/react';
 import BffMatchHistory from './BffMatchHistory';
 import type { MatchHistoryResponse } from '@/services/api/bffMatchHistory';
 
 // Mock the BFF adapter
 vi.mock('@/services/api/bffMatchHistory', () => ({
   getMatchHistory: vi.fn(),
+}));
+
+// Track registered SSE callbacks so tests can fire them manually.
+let statsUpdatedCallback: (() => void) | null = null;
+vi.mock('@/services/websocketClient', () => ({
+  EventsOn: vi.fn((event: string, cb: () => void) => {
+    if (event === 'stats:updated') {
+      statsUpdatedCallback = cb;
+    }
+    return () => { statsUpdatedCallback = null; };
+  }),
 }));
 
 // Import after mock so we get the vi.fn() version
@@ -302,6 +313,35 @@ describe('BffMatchHistory', () => {
 
       await waitFor(() => {
         expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent('Match History');
+      });
+    });
+  });
+
+  describe('SSE refresh on stats:updated', () => {
+    it('re-fetches matches when stats:updated fires', async () => {
+      statsUpdatedCallback = null;
+      mockGetMatchHistory.mockResolvedValue(makeResponse({ total: 0 }));
+
+      render(<BffMatchHistory />);
+
+      await waitFor(() => {
+        expect(mockGetMatchHistory).toHaveBeenCalledTimes(1);
+      });
+
+      expect(statsUpdatedCallback).not.toBeNull();
+
+      mockGetMatchHistory.mockResolvedValue(makeResponse({
+        total: 1,
+        matches: [{ id: 99, opponent_deck: 'New Match', result: 'win', format: 'Standard', played_at: '2026-05-13T12:00:00Z' }],
+      }));
+
+      await act(async () => {
+        statsUpdatedCallback!();
+      });
+
+      await waitFor(() => {
+        expect(mockGetMatchHistory).toHaveBeenCalledTimes(2);
+        expect(screen.getByText('New Match')).toBeInTheDocument();
       });
     });
   });
