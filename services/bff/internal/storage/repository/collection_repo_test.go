@@ -203,6 +203,36 @@ func TestCollectionRepository_ListCollection_NoDuplicatesForReprint(t *testing.T
 	}
 }
 
+// TestCollectionRepository_ListCollection_SetCodeFilterMatchesHigherIdPrinting
+// verifies that SetCode filter picks the printing in the requested set even when
+// a lower-id printing exists in a different set.  Before the CTE pre-filter fix,
+// DISTINCT ON would collapse to the S1 row and the SetCode='S2' predicate would
+// then miss the card entirely.
+func TestCollectionRepository_ListCollection_SetCodeFilterMatchesHigherIdPrinting(t *testing.T) {
+	db := openTestDB(t)
+	repo := repository.NewCollectionRepository(db)
+	ctx := context.Background()
+
+	accountID := insertTestAccount(t, db, "col-filter-setcode")
+	insertTestSet(t, db, "F1", "Filter Set One")
+	insertTestSet(t, db, "F2", "Filter Set Two")
+	// S1 row is inserted first so it gets a lower id — the old bug would pick it.
+	insertTestSetCard(t, db, setCardSeed{SetCode: "F1", ArenaID: "75001", Name: "Shared Card", Rarity: "rare"})
+	insertTestSetCard(t, db, setCardSeed{SetCode: "F2", ArenaID: "75001", Name: "Shared Card", Rarity: "rare"})
+	insertTestInventory(t, db, accountID, 75001, 1)
+
+	items, err := repo.ListCollection(ctx, accountID, repository.CollectionFilter{SetCode: "F2"})
+	if err != nil {
+		t.Fatalf("ListCollection(SetCode=F2): %v", err)
+	}
+	if len(items) != 1 {
+		t.Fatalf("SetCode filter: expected 1 item, got %d (card in F2 missing from results)", len(items))
+	}
+	if items[0].SetCode != "F2" {
+		t.Errorf("SetCode: got %q, want F2", items[0].SetCode)
+	}
+}
+
 // ----------------------------------------------------------------------------
 // CollectionRepository.CountCollection
 // ----------------------------------------------------------------------------
