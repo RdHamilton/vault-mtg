@@ -94,7 +94,16 @@ func (r *CollectionRepository) ListCollection(ctx context.Context, accountID int
 		clauses = append(clauses, "("+strings.Join(ors, " OR ")+")")
 	}
 
+	// DISTINCT ON (arena_id) guards against reprints: set_cards has UNIQUE(set_code,
+	// arena_id) not UNIQUE(arena_id), so the same arena_id can appear in multiple
+	// sets.  Without dedup the join would produce one row per printing, inflating
+	// every card's quantity.  We pick the lowest-id row (first synced) per arena_id.
 	q := `
+		WITH sc AS (
+			SELECT DISTINCT ON (arena_id) *
+			FROM set_cards
+			ORDER BY arena_id, id
+		)
 		SELECT
 			ci.card_id,
 			COALESCE(sc.arena_id::INT, ci.card_id),
@@ -116,8 +125,8 @@ func (r *CollectionRepository) ListCollection(ctx context.Context, accountID int
 			sc.price_eur,
 			EXTRACT(EPOCH FROM sc.prices_updated_at)::BIGINT
 		FROM card_inventory ci
-		LEFT JOIN set_cards sc ON sc.arena_id = ci.card_id::TEXT
-		LEFT JOIN sets s       ON s.code = sc.set_code
+		LEFT JOIN sc ON sc.arena_id = ci.card_id::TEXT
+		LEFT JOIN sets s ON s.code = sc.set_code
 		WHERE ` + strings.Join(clauses, " AND ") + `
 		ORDER BY sc.name NULLS LAST, ci.card_id
 		LIMIT 5000`
@@ -179,7 +188,8 @@ func (r *CollectionRepository) CountByRarity(ctx context.Context, accountID int6
 	const q = `SELECT COALESCE(sc.rarity, '') AS rarity,
 	                  COALESCE(SUM(ci.count), 0) AS total_cards
 	           FROM card_inventory ci
-	           LEFT JOIN set_cards sc ON sc.arena_id = ci.card_id::TEXT
+	           LEFT JOIN (SELECT DISTINCT ON (arena_id) arena_id, rarity FROM set_cards ORDER BY arena_id, id) sc
+	                  ON sc.arena_id = ci.card_id::TEXT
 	           WHERE ci.account_id = $1 AND ci.count > 0
 	           GROUP BY sc.rarity
 	           ORDER BY rarity`
@@ -320,6 +330,11 @@ type CardValueRow struct {
 func (r *CollectionRepository) ValueRows(ctx context.Context, accountID int64) ([]CardValueRow, int, error) {
 	// Two queries: one for priced rows, one to count owned-but-unpriced.
 	const priced = `
+		WITH sc AS (
+			SELECT DISTINCT ON (arena_id) arena_id, name, set_code, rarity, price_usd, price_eur
+			FROM set_cards
+			ORDER BY arena_id, id
+		)
 		SELECT
 			ci.card_id,
 			COALESCE(sc.name, ''),
@@ -329,7 +344,7 @@ func (r *CollectionRepository) ValueRows(ctx context.Context, accountID int64) (
 			COALESCE(sc.price_usd, 0),
 			COALESCE(sc.price_eur, 0)
 		FROM card_inventory ci
-		JOIN set_cards sc ON sc.arena_id = ci.card_id::TEXT
+		JOIN sc ON sc.arena_id = ci.card_id::TEXT
 		WHERE ci.account_id = $1 AND ci.count > 0 AND sc.price_usd IS NOT NULL AND sc.price_usd > 0`
 
 	rows, err := r.db.QueryContext(ctx, priced, accountID)
