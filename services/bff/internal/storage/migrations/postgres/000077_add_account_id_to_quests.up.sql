@@ -1,13 +1,16 @@
--- Migration 000077: add account_id to quests table.
+-- Migration 000077: convert quests.account_id from TEXT → BIGINT FK.
 --
--- The quests table was created in 000010 without account_id.
--- Projection worker and read queries both need a BIGINT FK to accounts(id)
--- so that quest rows are properly scoped per-account.
+-- Migration 000068 added account_id TEXT NOT NULL DEFAULT '' to the quests
+-- table as a placeholder.  The projection worker never populated it correctly
+-- (it wrote TEXT client_id strings, which can't be resolved back to accounts),
+-- so all existing rows have account_id = ''.  Those rows are orphaned and
+-- not recoverable; we drop the column and re-add it as BIGINT NULLABLE with
+-- a proper FK to accounts(id).
 --
--- The column is nullable to avoid breaking existing rows; the projection
--- worker will populate it for all new quest writes going forward.
+-- The index from 000068 is also dropped and recreated on the new column.
 
+DROP INDEX IF EXISTS idx_quests_account_id;
+ALTER TABLE quests DROP COLUMN IF EXISTS account_id;
 ALTER TABLE quests
-    ADD COLUMN IF NOT EXISTS account_id BIGINT REFERENCES accounts(id) ON DELETE CASCADE;
-
+    ADD COLUMN account_id BIGINT REFERENCES accounts(id) ON DELETE CASCADE;
 CREATE INDEX IF NOT EXISTS idx_quests_account_id ON quests(account_id);
