@@ -274,6 +274,47 @@ describe('Meta', () => {
         expect(screen.getByText('No Meta Data Available')).toBeInTheDocument();
       });
     });
+
+    it('displays error when API returns null instead of silently rendering empty', async () => {
+      // Regression test for #1975: null-coalescing API nulls to [] was silently
+      // swallowing failures, leaving the page blank with no indication of error.
+      // getMetaDashboard must throw when archetypes is null so loadDashboard
+      // catches it and sets the error state instead of empty dashboardData.
+      mockGetMetaArchetypes.mockResolvedValue(null as unknown as gui.ArchetypeInfo[]);
+
+      renderMeta();
+
+      await waitFor(() => {
+        expect(screen.getByText(/no data returned from meta api/i)).toBeInTheDocument();
+      });
+    });
+
+    it('shows error state rather than blank page when API throws ApiRequestError', async () => {
+      // Verifies error propagation path: ApiRequestError from apiClient → catch
+      // block in loadDashboard → error state rendered in UI.
+      mockGetMetaArchetypes.mockRejectedValue(new Error('Failed to fetch: connection refused'));
+
+      renderMeta();
+
+      await waitFor(() => {
+        // Error banner should appear with the API error message
+        expect(screen.getByText(/Error:/i)).toBeInTheDocument();
+        expect(screen.getByText(/failed to fetch: connection refused/i)).toBeInTheDocument();
+      });
+    });
+
+    it('does not display blank page when API fails — shows error message', async () => {
+      // Ensures no silent blank-page scenario: after error, dashboardData is
+      // null so the content section is not rendered at all.
+      mockGetMetaArchetypes.mockRejectedValue(new Error('Internal server error'));
+
+      renderMeta();
+
+      await waitFor(() => {
+        expect(screen.queryByText('No Meta Data Available')).not.toBeInTheDocument();
+        expect(screen.getByText(/internal server error/i)).toBeInTheDocument();
+      });
+    });
   });
 
   describe('format selection', () => {

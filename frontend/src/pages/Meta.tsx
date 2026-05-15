@@ -54,15 +54,21 @@ function isDataStale(format: string): boolean {
   return Date.now() - lastRefresh > ONE_WEEK_MS;
 }
 
-// Convert meta.getMetaArchetypes response to MetaDashboardResponse
+// Convert meta.getMetaArchetypes response to MetaDashboardResponse.
+// Let errors from meta.getMetaArchetypes propagate — do NOT null-coalesce
+// API failures to [] here. Callers rely on thrown errors to reach the catch
+// block in loadDashboard so the UI can show a meaningful error message.
 async function getMetaDashboard(format: string): Promise<gui.MetaDashboardResponse> {
   const archetypes = await meta.getMetaArchetypes(format);
-  // Null check for archetypes to prevent "Cannot read properties of null" error
-  const archetypeList = archetypes ?? [];
+  // Guard against a null/undefined payload (e.g. unexpected 204 with no body)
+  // without hiding real API errors, which are always thrown as ApiRequestError.
+  if (archetypes == null) {
+    throw new Error('No data returned from meta API');
+  }
   return {
-    archetypes: archetypeList as unknown as gui.ArchetypeInfo[],
+    archetypes: archetypes as unknown as gui.ArchetypeInfo[],
     format,
-    totalArchetypes: archetypeList.length,
+    totalArchetypes: archetypes.length,
     lastUpdated: new Date().toISOString(),
     sources: [],
     convertValues: () => ({}),
