@@ -35,7 +35,7 @@ linters:
           - forbidigo
           - gci
           - goheader
-          - gomnd
+          - mnd
           - gomodguard
           - goprintffuncname
           - lll
