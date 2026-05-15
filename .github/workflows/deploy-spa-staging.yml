@@ -92,3 +92,23 @@ jobs:
           done
           echo "Staging SPA smoke check failed after 60s"
           exit 1
+
+      - name: Install Playwright browsers
+        working-directory: frontend
+        run: npx playwright install chromium --with-deps
+
+      - name: Run SPA browser smoke suite
+        working-directory: frontend
+        run: npm run test:e2e:staging-spa
+        env:
+          STAGING_SPA_URL: ${{ vars.STAGING_SPA_URL }}
+          SMOKE_CLERK_EMAIL: ${{ secrets.SMOKE_CLERK_EMAIL }}
+          SMOKE_CLERK_PASSWORD: ${{ secrets.SMOKE_CLERK_PASSWORD }}
+
+      - name: Upload Playwright SPA smoke report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-staging-spa-report
+          path: frontend/playwright-report-staging-spa/
+          retention-days: 7
