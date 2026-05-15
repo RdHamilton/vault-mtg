@@ -283,6 +283,9 @@ func main() {
 		// permutations, import/export, library + STUBs for the deck-builder
 		// + recommendation pipeline).
 		decksHandler = handlers.NewDecksHandler(repository.NewDecksRepository(sqlDB), accountRepo)
+		if postHogClient != nil {
+			decksHandler = decksHandler.WithPostHogClient(postHogClient)
+		}
 
 		// Phase 2 PR #10 — /api/v1/drafts/* surface (sessions, picks,
 		// stats, 17lands export, community comparison, temporal trends,

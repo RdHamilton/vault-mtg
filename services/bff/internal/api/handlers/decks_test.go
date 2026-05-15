@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/go-chi/chi/v5"
+	"github.com/posthog/posthog-go"
 	"github.com/ramonehamilton/mtga-bff/internal/api/handlers"
 	bffmiddleware "github.com/ramonehamilton/mtga-bff/internal/api/middleware"
 	"github.com/ramonehamilton/mtga-bff/internal/storage/repository"
@@ -582,4 +583,327 @@ func contains(s, sub string) bool {
 		}
 	}
 	return false
+}
+
+// isHex16 returns true when s is exactly 16 lowercase hex characters.
+// This is the shape produced by hashAccountID (SHA-256 hex[:16]).
+func isHex16(s string) bool {
+	if len(s) != 16 {
+		return false
+	}
+	for _, c := range s {
+		if !((c >= '0' && c <= '9') || (c >= 'a' && c <= 'f')) {
+			return false
+		}
+	}
+	return true
+}
+
+// assertHashedID asserts that:
+//  1. capture.DistinctId is a 16-char hex string (not a raw integer).
+//  2. capture.Properties["account_id_hash"] matches DistinctId.
+//  3. capture.Properties["account_id"] is NOT set (PII guard).
+func assertHashedID(t *testing.T, capture posthog.Capture) {
+	t.Helper()
+	if !isHex16(capture.DistinctId) {
+		t.Errorf("DistinctId=%q: want 16-char hex string (got raw PII or wrong format)", capture.DistinctId)
+	}
+	hash, ok := capture.Properties["account_id_hash"]
+	if !ok {
+		t.Error("PostHog capture missing account_id_hash property")
+		return
+	}
+	hashStr, _ := hash.(string)
+	if !isHex16(hashStr) {
+		t.Errorf("account_id_hash=%q: want 16-char hex string", hashStr)
+	}
+	if hashStr != capture.DistinctId {
+		t.Errorf("account_id_hash=%q != DistinctId=%q: must match", hashStr, capture.DistinctId)
+	}
+	if _, present := capture.Properties["account_id"]; present {
+		t.Error("PostHog capture must NOT contain raw account_id property (PII violation)")
+	}
+}
+
+// ─── PostHog instrumentation tests (ticket #1982) ──────────────────────────
+//
+// Each test wires a mockPostHogClient and asserts that the correct event is
+// emitted on the happy path and that NO event is emitted on error paths.
+// Sentry.CaptureException is a safe no-op when Sentry is uninitialised, so
+// error-path tests exercise that branch without requiring a live Sentry DSN.
+
+// TestDecksGet_EmitsPostHogEvent verifies that a successful Get emits a
+// "get_deck" PostHog event with the deck_id property set.
+func TestDecksGet_EmitsPostHogEvent(t *testing.T) {
+	ph := &mockPostHogClient{}
+	reader := &stubDecksReader{deck: sampleDeckDetail()}
+	h := handlers.NewDecksHandler(reader, &decksAccountLookup{accountID: 7, found: true}).
+		WithPostHogClient(ph)
+	req := authedDecksRequest(t, http.MethodGet, "/api/v1/decks/deck1", nil, 168)
+	req = chiDecksContext(req, "deckId", "deck1")
+	rr := httptest.NewRecorder()
+	h.Get(rr, req)
+	if rr.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d body=%s", rr.Code, rr.Body.String())
+	}
+	if len(ph.calls) != 1 {
+		t.Fatalf("expected 1 PostHog call, got %d", len(ph.calls))
+	}
+	capture, ok := ph.calls[0].(posthog.Capture)
+	if !ok {
+		t.Fatal("PostHog message is not a posthog.Capture")
+	}
+	if capture.Event != "get_deck" {
+		t.Errorf("event=%q, want %q", capture.Event, "get_deck")
+	}
+	if capture.Properties["deck_id"] != "deck1" {
+		t.Errorf("deck_id=%v, want %q", capture.Properties["deck_id"], "deck1")
+	}
+	assertHashedID(t, capture)
+}
+
+// TestDecksGet_DBError_NoPostHogEvent verifies that no PostHog event is emitted
+// when GetDeck returns an error (error path must not capture success metrics).
+func TestDecksGet_DBError_NoPostHogEvent(t *testing.T) {
+	ph := &mockPostHogClient{}
+	reader := &stubDecksReader{deckErr: errors.New("db down")}
+	h := handlers.NewDecksHandler(reader, &decksAccountLookup{accountID: 7, found: true}).
+		WithPostHogClient(ph)
+	req := authedDecksRequest(t, http.MethodGet, "/api/v1/decks/deck1", nil, 168)
+	req = chiDecksContext(req, "deckId", "deck1")
+	rr := httptest.NewRecorder()
+	h.Get(rr, req)
+	if rr.Code != http.StatusInternalServerError {
+		t.Fatalf("expected 500, got %d", rr.Code)
+	}
+	if len(ph.calls) != 0 {
+		t.Errorf("expected no PostHog calls on error path, got %d", len(ph.calls))
+	}
+}
+
+// TestDecksUpdate_EmitsPostHogEvent verifies that a successful Update emits an
+// "update_deck" PostHog event.
+func TestDecksUpdate_EmitsPostHogEvent(t *testing.T) {
+	ph := &mockPostHogClient{}
+	reader := &stubDecksReader{updated: sampleDeckDetail()}
+	h := handlers.NewDecksHandler(reader, &decksAccountLookup{accountID: 7, found: true}).
+		WithPostHogClient(ph)
+	body, _ := json.Marshal(map[string]any{"name": "Updated Name"})
+	req := authedDecksRequest(t, http.MethodPut, "/api/v1/decks/deck1", body, 168)
+	req = chiDecksContext(req, "deckId", "deck1")
+	rr := httptest.NewRecorder()
+	h.Update(rr, req)
+	if rr.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d body=%s", rr.Code, rr.Body.String())
+	}
+	if len(ph.calls) != 1 {
+		t.Fatalf("expected 1 PostHog call, got %d", len(ph.calls))
+	}
+	capture, ok := ph.calls[0].(posthog.Capture)
+	if !ok {
+		t.Fatal("PostHog message is not a posthog.Capture")
+	}
+	if capture.Event != "update_deck" {
+		t.Errorf("event=%q, want %q", capture.Event, "update_deck")
+	}
+	assertHashedID(t, capture)
+}
+
+// TestDecksUpdate_DBError_NoPostHogEvent verifies that no PostHog event is
+// emitted when UpdateDeck returns an error.
+func TestDecksUpdate_DBError_NoPostHogEvent(t *testing.T) {
+	ph := &mockPostHogClient{}
+	reader := &stubDecksReader{updatedErr: errors.New("db down")}
+	h := handlers.NewDecksHandler(reader, &decksAccountLookup{accountID: 7, found: true}).
+		WithPostHogClient(ph)
+	body, _ := json.Marshal(map[string]any{"name": "Updated Name"})
+	req := authedDecksRequest(t, http.MethodPut, "/api/v1/decks/deck1", body, 168)
+	req = chiDecksContext(req, "deckId", "deck1")
+	rr := httptest.NewRecorder()
+	h.Update(rr, req)
+	if rr.Code != http.StatusInternalServerError {
+		t.Fatalf("expected 500, got %d", rr.Code)
+	}
+	if len(ph.calls) != 0 {
+		t.Errorf("expected no PostHog calls on error path, got %d", len(ph.calls))
+	}
+}
+
+// TestDecksDelete_EmitsPostHogEvent verifies that a successful Delete emits a
+// "delete_deck" PostHog event.
+func TestDecksDelete_EmitsPostHogEvent(t *testing.T) {
+	ph := &mockPostHogClient{}
+	reader := &stubDecksReader{deleted: true}
+	h := handlers.NewDecksHandler(reader, &decksAccountLookup{accountID: 7, found: true}).
+		WithPostHogClient(ph)
+	req := authedDecksRequest(t, http.MethodDelete, "/api/v1/decks/d1", nil, 168)
+	req = chiDecksContext(req, "deckId", "d1")
+	rr := httptest.NewRecorder()
+	h.Delete(rr, req)
+	if rr.Code != http.StatusNoContent {
+		t.Fatalf("expected 204, got %d body=%s", rr.Code, rr.Body.String())
+	}
+	if len(ph.calls) != 1 {
+		t.Fatalf("expected 1 PostHog call, got %d", len(ph.calls))
+	}
+	capture, ok := ph.calls[0].(posthog.Capture)
+	if !ok {
+		t.Fatal("PostHog message is not a posthog.Capture")
+	}
+	if capture.Event != "delete_deck" {
+		t.Errorf("event=%q, want %q", capture.Event, "delete_deck")
+	}
+	if capture.Properties["deck_id"] != "d1" {
+		t.Errorf("deck_id=%v, want %q", capture.Properties["deck_id"], "d1")
+	}
+	assertHashedID(t, capture)
+}
+
+// TestDecksDelete_DBError_NoPostHogEvent verifies that no PostHog event is
+// emitted when DeleteDeck returns an error.
+func TestDecksDelete_DBError_NoPostHogEvent(t *testing.T) {
+	ph := &mockPostHogClient{}
+	reader := &stubDecksReader{deletedErr: errors.New("db down")}
+	h := handlers.NewDecksHandler(reader, &decksAccountLookup{accountID: 7, found: true}).
+		WithPostHogClient(ph)
+	req := authedDecksRequest(t, http.MethodDelete, "/api/v1/decks/d1", nil, 168)
+	req = chiDecksContext(req, "deckId", "d1")
+	rr := httptest.NewRecorder()
+	h.Delete(rr, req)
+	if rr.Code != http.StatusInternalServerError {
+		t.Fatalf("expected 500, got %d", rr.Code)
+	}
+	if len(ph.calls) != 0 {
+		t.Errorf("expected no PostHog calls on error path, got %d", len(ph.calls))
+	}
+}
+
+// TestDecksClone_EmitsPostHogEvent verifies that a successful Clone emits a
+// "clone_deck" PostHog event with source_deck_id and new_deck_id properties.
+func TestDecksClone_EmitsPostHogEvent(t *testing.T) {
+	ph := &mockPostHogClient{}
+	cloned := sampleDeckDetail()
+	cloned.ID = "deck-cloned"
+	reader := &stubDecksReader{cloned: cloned}
+	h := handlers.NewDecksHandler(reader, &decksAccountLookup{accountID: 7, found: true}).
+		WithPostHogClient(ph)
+	body, _ := json.Marshal(map[string]any{"name": "Clone of Mono Red"})
+	req := authedDecksRequest(t, http.MethodPost, "/api/v1/decks/deck1/clone", body, 168)
+	req = chiDecksContext(req, "deckId", "deck1")
+	rr := httptest.NewRecorder()
+	h.Clone(rr, req)
+	if rr.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d body=%s", rr.Code, rr.Body.String())
+	}
+	if len(ph.calls) != 1 {
+		t.Fatalf("expected 1 PostHog call, got %d", len(ph.calls))
+	}
+	capture, ok := ph.calls[0].(posthog.Capture)
+	if !ok {
+		t.Fatal("PostHog message is not a posthog.Capture")
+	}
+	if capture.Event != "clone_deck" {
+		t.Errorf("event=%q, want %q", capture.Event, "clone_deck")
+	}
+	if capture.Properties["source_deck_id"] != "deck1" {
+		t.Errorf("source_deck_id=%v, want %q", capture.Properties["source_deck_id"], "deck1")
+	}
+	if capture.Properties["new_deck_id"] != "deck-cloned" {
+		t.Errorf("new_deck_id=%v, want %q", capture.Properties["new_deck_id"], "deck-cloned")
+	}
+	assertHashedID(t, capture)
+}
+
+// TestDecksClone_DBError_NoPostHogEvent verifies that no PostHog event is
+// emitted when CloneDeck returns an error.
+func TestDecksClone_DBError_NoPostHogEvent(t *testing.T) {
+	ph := &mockPostHogClient{}
+	reader := &stubDecksReader{clonedErr: errors.New("db down")}
+	h := handlers.NewDecksHandler(reader, &decksAccountLookup{accountID: 7, found: true}).
+		WithPostHogClient(ph)
+	body, _ := json.Marshal(map[string]any{"name": "Clone of Mono Red"})
+	req := authedDecksRequest(t, http.MethodPost, "/api/v1/decks/deck1/clone", body, 168)
+	req = chiDecksContext(req, "deckId", "deck1")
+	rr := httptest.NewRecorder()
+	h.Clone(rr, req)
+	if rr.Code != http.StatusInternalServerError {
+		t.Fatalf("expected 500, got %d", rr.Code)
+	}
+	if len(ph.calls) != 0 {
+		t.Errorf("expected no PostHog calls on error path, got %d", len(ph.calls))
+	}
+}
+
+// TestDecksExport_EmitsPostHogEvent verifies that a successful Export emits an
+// "export_deck" PostHog event with deck_id, deck_name, and format properties.
+func TestDecksExport_EmitsPostHogEvent(t *testing.T) {
+	ph := &mockPostHogClient{}
+	reader := &stubDecksReader{deck: sampleDeckDetail()}
+	h := handlers.NewDecksHandler(reader, &decksAccountLookup{accountID: 7, found: true}).
+		WithPostHogClient(ph)
+	body, _ := json.Marshal(map[string]any{"format": "arena"})
+	req := authedDecksRequest(t, http.MethodPost, "/api/v1/decks/deck1/export", body, 168)
+	req = chiDecksContext(req, "deckId", "deck1")
+	rr := httptest.NewRecorder()
+	h.Export(rr, req)
+	if rr.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d body=%s", rr.Code, rr.Body.String())
+	}
+	if len(ph.calls) != 1 {
+		t.Fatalf("expected 1 PostHog call, got %d", len(ph.calls))
+	}
+	capture, ok := ph.calls[0].(posthog.Capture)
+	if !ok {
+		t.Fatal("PostHog message is not a posthog.Capture")
+	}
+	if capture.Event != "export_deck" {
+		t.Errorf("event=%q, want %q", capture.Event, "export_deck")
+	}
+	if capture.Properties["deck_id"] != "deck1" {
+		t.Errorf("deck_id=%v, want %q", capture.Properties["deck_id"], "deck1")
+	}
+	if capture.Properties["deck_name"] != "Mono Red" {
+		t.Errorf("deck_name=%v, want %q", capture.Properties["deck_name"], "Mono Red")
+	}
+	if capture.Properties["format"] != "arena" {
+		t.Errorf("format=%v, want %q", capture.Properties["format"], "arena")
+	}
+	assertHashedID(t, capture)
+}
+
+// TestDecksExport_DBError_NoPostHogEvent verifies that no PostHog event is
+// emitted when GetDeck returns an error during export.
+func TestDecksExport_DBError_NoPostHogEvent(t *testing.T) {
+	ph := &mockPostHogClient{}
+	reader := &stubDecksReader{deckErr: errors.New("db down")}
+	h := handlers.NewDecksHandler(reader, &decksAccountLookup{accountID: 7, found: true}).
+		WithPostHogClient(ph)
+	req := authedDecksRequest(t, http.MethodPost, "/api/v1/decks/deck1/export", nil, 168)
+	req = chiDecksContext(req, "deckId", "deck1")
+	rr := httptest.NewRecorder()
+	h.Export(rr, req)
+	if rr.Code != http.StatusInternalServerError {
+		t.Fatalf("expected 500, got %d", rr.Code)
+	}
+	if len(ph.calls) != 0 {
+		t.Errorf("expected no PostHog calls on error path, got %d", len(ph.calls))
+	}
+}
+
+// TestDecksHandler_NoopPostHog_DefaultBehavior verifies that the handler works
+// correctly when no PostHogClient is explicitly wired (uses the noop default).
+// This is a regression guard: NewDecksHandler must not panic or fail without
+// an explicit WithPostHogClient call.
+func TestDecksHandler_NoopPostHog_DefaultBehavior(t *testing.T) {
+	reader := &stubDecksReader{deck: sampleDeckDetail()}
+	// No WithPostHogClient — uses internal noop default.
+	h := handlers.NewDecksHandler(reader, &decksAccountLookup{accountID: 7, found: true})
+	req := authedDecksRequest(t, http.MethodGet, "/api/v1/decks/deck1", nil, 168)
+	req = chiDecksContext(req, "deckId", "deck1")
+	rr := httptest.NewRecorder()
+	h.Get(rr, req)
+	// Must succeed with default noop client — no panic, correct status.
+	if rr.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d body=%s", rr.Code, rr.Body.String())
+	}
 }
