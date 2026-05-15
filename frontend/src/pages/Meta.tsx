@@ -92,11 +92,7 @@ export default function Meta() {
       setError(null);
       try {
         const data = await getMetaDashboard(format);
-        if (data.error) {
-          setError(data.error);
-        } else {
-          setDashboardData(data);
-        }
+        setDashboardData(data);
       } catch (err) {
         setError(err instanceof Error ? err.message : 'Failed to load meta data');
       } finally {
