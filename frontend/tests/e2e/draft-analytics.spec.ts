@@ -135,20 +135,6 @@ test.describe('Draft Analytics', () => {
       }
     });
 
-    test('should display Auto-refresh toggle when data available', async ({ page }) => {
-      await page.click('.sub-tab-bar a[href="/draft-analytics"]');
-      await page.waitForURL('**/draft-analytics');
-
-      // Wait for content to load
-      const contentState = page.locator('.draft-analytics__content');
-      const hasContent = await contentState.isVisible({ timeout: 10000 }).catch(() => false);
-
-      if (hasContent) {
-        const autoRefreshLabel = page.locator('label:has-text("Auto-refresh")');
-        await expect(autoRefreshLabel).toBeVisible();
-      }
-    });
-
     test('should allow changing set filter', async ({ page }) => {
       await page.click('.sub-tab-bar a[href="/draft-analytics"]');
       await page.waitForURL('**/draft-analytics');
@@ -198,29 +184,13 @@ test.describe('Draft Analytics', () => {
       }
     });
 
-    test('should toggle auto-refresh checkbox', async ({ page }) => {
+    test('should not display per-page auto-refresh checkbox (#2023)', async ({ page }) => {
       await page.click('.sub-tab-bar a[href="/draft-analytics"]');
       await page.waitForURL('**/draft-analytics');
 
-      // Wait for content to load
-      const contentState = page.locator('.draft-analytics__content');
-      const hasContent = await contentState.isVisible({ timeout: 10000 }).catch(() => false);
-
-      if (hasContent) {
-        const checkbox = page.locator('input[type="checkbox"]');
-        await expect(checkbox).toBeVisible();
-
-        // Should be unchecked by default
-        await expect(checkbox).not.toBeChecked();
-
-        // Toggle on
-        await checkbox.click();
-        await expect(checkbox).toBeChecked();
-
-        // Toggle off
-        await checkbox.click();
-        await expect(checkbox).not.toBeChecked();
-      }
+      // auto-refresh is now controlled globally via Settings, not per-page
+      const autoRefreshLabel = page.locator('label:has-text("Auto-refresh")');
+      await expect(autoRefreshLabel).not.toBeVisible();
     });
   });
 
@@ -323,3 +293,4 @@ test.describe('Draft Analytics', () => {
     });
   });
 });
+
