@@ -3,7 +3,7 @@ import { test, expect } from '@playwright/test';
 /**
  * Meta Page E2E Tests
  *
- * Tests the Meta page functionality including format selection.
+ * Tests the Meta page functionality including format selection and error states.
  * Uses REST API backend for testing.
  */
 test.describe('Meta', () => {
@@ -98,6 +98,74 @@ test.describe('Meta', () => {
       // Page should still be visible after refresh
       const metaPage = page.locator('.meta-page');
       await expect(metaPage).toBeVisible();
+    });
+  });
+
+  test.describe('Error State', () => {
+    /**
+     * Verifies that the error banner (.meta-error) renders when the BFF returns
+     * a 500 error for the /meta/archetypes endpoint (#1975).
+     *
+     * The route is registered before navigation so it intercepts the initial
+     * data fetch that Meta.tsx triggers on mount.
+     *
+     * NOTE: marked fixme because the local E2E stack (BFF + Vite) requires
+     * DATABASE_URL and a running Postgres instance — not available in the
+     * dev environment without staging. Run against a real staging environment
+     * to verify. Tracked in #1975.
+     */
+    test('should display error banner when BFF returns a 500 error for /meta/archetypes', async ({ page }) => {
+      test.fixme(true, 'Requires staging environment with DATABASE_URL; tracked in #1975');
+
+      // Register the mock BEFORE navigating so the interceptor is active
+      // when Meta.tsx calls getMetaArchetypes() on mount.
+      await page.route('**/api/v1/meta/archetypes**', async (route) => {
+        await route.fulfill({
+          status: 500,
+          contentType: 'application/json',
+          body: JSON.stringify({ error: 'internal server error' }),
+        });
+      });
+
+      await page.goto('/');
+      await expect(page.locator('[data-testid="app-container"]')).toBeVisible();
+
+      await page.click('a[href="/meta"]');
+      await page.waitForURL('**/meta');
+
+      // The error banner must be visible — loading should have resolved to error
+      const errorBanner = page.locator('.meta-error');
+      await expect(errorBanner).toBeVisible({ timeout: 10000 });
+      await expect(errorBanner).not.toBeEmpty();
+    });
+
+    /**
+     * Verifies the error banner renders when the BFF returns a null/empty body
+     * (e.g. an unexpected 204 with no content) for /meta/archetypes (#1975).
+     *
+     * NOTE: marked fixme — same staging environment requirement as above.
+     * Tracked in #1975.
+     */
+    test('should display error banner when BFF returns null body for /meta/archetypes', async ({ page }) => {
+      test.fixme(true, 'Requires staging environment with DATABASE_URL; tracked in #1975');
+
+      await page.route('**/api/v1/meta/archetypes**', async (route) => {
+        await route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: 'null',
+        });
+      });
+
+      await page.goto('/');
+      await expect(page.locator('[data-testid="app-container"]')).toBeVisible();
+
+      await page.click('a[href="/meta"]');
+      await page.waitForURL('**/meta');
+
+      const errorBanner = page.locator('.meta-error');
+      await expect(errorBanner).toBeVisible({ timeout: 10000 });
+      await expect(errorBanner).not.toBeEmpty();
     });
   });
 });
