@@ -719,6 +719,43 @@ func TestHandle_ConsecutiveSkipGuard_ResetOnSuccess(t *testing.T) {
 	}
 }
 
+// --- inter-request sleep timing test ---
+
+// TestSyncSet_InterRequestSleep verifies that the interRequestSleep injected by
+// syncSet between consecutive set×format calls actually fires.
+//
+// Pattern mirrors TestFetchCardRatings_BackoffTiming in client_test.go:
+// measure wall-clock elapsed time across a Handle call and assert that it is at
+// least (numFormats - 1) * interRequestSleep, proving the sleep was not skipped.
+//
+// Three formats → two inter-request pauses → elapsed must be ≥ 2 * 5ms = 10ms.
+func TestSyncSet_InterRequestSleep(t *testing.T) {
+	const (
+		sleep      = 5 * time.Millisecond
+		numFormats = 3
+		minElapsed = (numFormats - 1) * sleep // 10ms
+	)
+
+	cards := []seventeenlands.CardRating{{MtgaID: 1, Name: "Lightning Bolt", ALSA: 1.5}}
+	fetcher := &stubFetcher{cards: cards}
+	store := &stubStore{}
+
+	formats := []string{"PremierDraft", "QuickDraft", "Sealed"}
+	h := handler.NewWithOptions(fetcher, store, []string{"FDN"}, formats, 0, 0, sleep, noBackoff)
+
+	start := time.Now()
+	err := h.Handle(context.Background(), nil)
+	elapsed := time.Since(start)
+
+	require.NoError(t, err)
+	// All three formats must have been fetched.
+	assert.Equal(t, numFormats, fetcher.called,
+		"expected one fetch per format")
+	// Wall-clock must include at least (numFormats-1) inter-request pauses.
+	assert.GreaterOrEqual(t, elapsed, minElapsed,
+		"elapsed %v must be >= %v — inter-request sleep must fire between format calls", elapsed, minElapsed)
+}
+
 // --- helpers ---
 
 // formatTrackingFetcher records the (setCode, format) pairs it was called with.
