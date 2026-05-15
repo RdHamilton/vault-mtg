@@ -298,3 +298,93 @@ func TestDecksRepository_GetDeck_SetCardsMetadata_NoMatch(t *testing.T) {
 		t.Errorf("Rarity: got %q, want empty string for no-match card", c.Rarity)
 	}
 }
+
+// ----------------------------------------------------------------------------
+// DecksRepository.CreateDeck — issue #2012 regression tests
+// ----------------------------------------------------------------------------
+
+// TestDecksRepository_CreateDeck_HappyPath verifies that CreateDeck inserts a
+// new row and returns a populated DeckDetailRow (AC1 for issue #2012).
+func TestDecksRepository_CreateDeck_HappyPath(t *testing.T) {
+	db := openTestDB(t)
+	repo := repository.NewDecksRepository(db)
+	ctx := context.Background()
+
+	accountID := insertTestAccount(t, db, "create-deck-happy")
+
+	in := repository.CreateDeckInput{
+		AccountID: accountID,
+		Name:      "Test Constructed Deck",
+		Format:    "standard",
+		Source:    "constructed",
+	}
+	d, err := repo.CreateDeck(ctx, in)
+	if err != nil {
+		t.Fatalf("CreateDeck: %v", err)
+	}
+	if d == nil {
+		t.Fatal("CreateDeck returned nil deck")
+	}
+	t.Cleanup(func() {
+		_, _ = db.ExecContext(context.Background(), `DELETE FROM decks WHERE id = $1`, d.ID)
+	})
+
+	if d.Name != in.Name {
+		t.Errorf("Name: got %q want %q", d.Name, in.Name)
+	}
+	if d.Format != in.Format {
+		t.Errorf("Format: got %q want %q", d.Format, in.Format)
+	}
+	if d.Source != in.Source {
+		t.Errorf("Source: got %q want %q", d.Source, in.Source)
+	}
+	if d.CreatedMethod != "manual" {
+		t.Errorf("CreatedMethod: got %q want %q", d.CreatedMethod, "manual")
+	}
+	if d.ID == "" {
+		t.Error("ID must not be empty")
+	}
+	// A newly created deck has no cards and zero counts.
+	if d.CardCount != 0 {
+		t.Errorf("CardCount: got %d want 0", d.CardCount)
+	}
+	if len(d.Cards) != 0 {
+		t.Errorf("Cards: got %d want 0", len(d.Cards))
+	}
+}
+
+// TestDecksRepository_CreateDeck_CrossAccountIsolation verifies that a deck
+// created for one account cannot be fetched by another account.
+func TestDecksRepository_CreateDeck_CrossAccountIsolation(t *testing.T) {
+	db := openTestDB(t)
+	repo := repository.NewDecksRepository(db)
+	ctx := context.Background()
+
+	ownerID := insertTestAccount(t, db, "create-deck-owner")
+	otherID := insertTestAccount(t, db, "create-deck-other")
+
+	d, err := repo.CreateDeck(ctx, repository.CreateDeckInput{
+		AccountID: ownerID,
+		Name:      "Owner Deck",
+		Format:    "standard",
+		Source:    "constructed",
+	})
+	if err != nil {
+		t.Fatalf("CreateDeck: %v", err)
+	}
+	if d == nil {
+		t.Fatal("CreateDeck returned nil")
+	}
+	t.Cleanup(func() {
+		_, _ = db.ExecContext(context.Background(), `DELETE FROM decks WHERE id = $1`, d.ID)
+	})
+
+	// other account must not be able to fetch this deck.
+	got, err := repo.GetDeck(ctx, otherID, d.ID)
+	if err != nil {
+		t.Fatalf("GetDeck cross-account: %v", err)
+	}
+	if got != nil {
+		t.Error("cross-account isolation failure: GetDeck returned deck for wrong account")
+	}
+}

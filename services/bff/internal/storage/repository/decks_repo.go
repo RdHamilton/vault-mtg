@@ -232,10 +232,12 @@ type CreateDeckInput struct {
 // CreateDeck inserts a deck row and returns it.
 func (r *DecksRepository) CreateDeck(ctx context.Context, in CreateDeckInput) (*DeckDetailRow, error) {
 	id := generateDeckID(in.AccountID, in.Name)
+	// created_method is 'manual' for user-initiated deck creation (vs 'imported'
+	// for sync-sourced or deck-import flows).
 	const q = `INSERT INTO decks (
 	             id, account_id, name, format, source, draft_event_id,
 	             is_app_created, created_method, created_at, modified_at
-	           ) VALUES ($1, $2, $3, $4, $5, $6, FALSE, 'imported', NOW(), NOW())
+	           ) VALUES ($1, $2, $3, $4, $5, $6, FALSE, 'manual', NOW(), NOW())
 	           RETURNING id, name, format, source, draft_event_id,
 	                     matches_played, matches_won, games_played, games_won,
 	                     is_app_created, created_at, modified_at, last_played,

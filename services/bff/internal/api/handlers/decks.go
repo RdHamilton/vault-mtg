@@ -319,6 +319,10 @@ func (h *DecksHandler) Create(w http.ResponseWriter, r *http.Request) {
 		writeJSONError(w, "name is required", http.StatusBadRequest)
 		return
 	}
+	if strings.TrimSpace(req.Format) == "" {
+		writeJSONError(w, "format is required", http.StatusBadRequest)
+		return
+	}
 	if req.Source == "" {
 		req.Source = "constructed"
 	}
@@ -328,9 +332,21 @@ func (h *DecksHandler) Create(w http.ResponseWriter, r *http.Request) {
 	})
 	if err != nil {
 		log.Printf("[DecksHandler.Create] accountID=%d: %v", accountID, err)
+		sentry.CaptureException(err)
 		writeJSONError(w, "internal server error", http.StatusInternalServerError)
 		return
 	}
+	hashedID := hashAccountID(strconv.FormatInt(accountID, 10))
+	_ = h.postHogClient.Enqueue(posthog.Capture{
+		DistinctId: hashedID,
+		Event:      "create_deck",
+		Properties: posthog.NewProperties().
+			Set("format", req.Format).
+			Set("source", req.Source).
+			Set("account_id_hash", hashedID),
+	})
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusCreated)
 	writeMatchesJSON(w, deckDetailToResponse(*d))
 }
 

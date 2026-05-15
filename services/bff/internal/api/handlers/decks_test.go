@@ -264,8 +264,51 @@ func TestDecksCreate_HappyPath(t *testing.T) {
 	req := authedDecksRequest(t, http.MethodPost, "/api/v1/decks", body, 168)
 	rr := httptest.NewRecorder()
 	h.Create(rr, req)
-	if rr.Code != http.StatusOK {
-		t.Fatalf("status: %d body=%s", rr.Code, rr.Body.String())
+	// AC1: Create must return 201 Created (not 200 OK).
+	if rr.Code != http.StatusCreated {
+		t.Fatalf("status: got %d want %d, body=%s", rr.Code, http.StatusCreated, rr.Body.String())
+	}
+	var resp map[string]any
+	decodeDecksEnvelope(t, rr.Body.Bytes(), &resp)
+	if resp["id"] != "deck1" {
+		t.Errorf("Create response id: got %v want deck1", resp["id"])
+	}
+}
+
+func TestDecksCreate_MissingFormat(t *testing.T) {
+	reader := &stubDecksReader{created: sampleDeckDetail()}
+	h := handlers.NewDecksHandler(reader, &decksAccountLookup{accountID: 7, found: true})
+	// format is deliberately omitted — handler must reject with 400.
+	body, _ := json.Marshal(map[string]any{"name": "No Format Deck"})
+	req := authedDecksRequest(t, http.MethodPost, "/api/v1/decks", body, 168)
+	rr := httptest.NewRecorder()
+	h.Create(rr, req)
+	if rr.Code != http.StatusBadRequest {
+		t.Errorf("status: got %d want 400 when format is missing", rr.Code)
+	}
+}
+
+func TestDecksCreate_MissingName(t *testing.T) {
+	reader := &stubDecksReader{created: sampleDeckDetail()}
+	h := handlers.NewDecksHandler(reader, &decksAccountLookup{accountID: 7, found: true})
+	body, _ := json.Marshal(map[string]any{"format": "standard"})
+	req := authedDecksRequest(t, http.MethodPost, "/api/v1/decks", body, 168)
+	rr := httptest.NewRecorder()
+	h.Create(rr, req)
+	if rr.Code != http.StatusBadRequest {
+		t.Errorf("status: got %d want 400 when name is missing", rr.Code)
+	}
+}
+
+func TestDecksCreate_DBError(t *testing.T) {
+	reader := &stubDecksReader{createdErr: errors.New("db error")}
+	h := handlers.NewDecksHandler(reader, &decksAccountLookup{accountID: 7, found: true})
+	body, _ := json.Marshal(map[string]any{"name": "Ray", "format": "standard"})
+	req := authedDecksRequest(t, http.MethodPost, "/api/v1/decks", body, 168)
+	rr := httptest.NewRecorder()
+	h.Create(rr, req)
+	if rr.Code != http.StatusInternalServerError {
+		t.Errorf("status: got %d want 500 when DB fails", rr.Code)
 	}
 }
 
