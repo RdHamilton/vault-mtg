@@ -208,3 +208,93 @@ func TestDecksRepository_GetDeck_CrossAccountIsolation(t *testing.T) {
 		t.Errorf("cross-account isolation failure: GetDeck returned deck for wrong account")
 	}
 }
+
+// ----------------------------------------------------------------------------
+// deckCards — set_cards JOIN (#2002 regression fix)
+// ----------------------------------------------------------------------------
+
+// TestDecksRepository_GetDeck_SetCardsMetadata verifies that deckCards() joins
+// against set_cards (not the dropped `cards` table) and correctly populates
+// card metadata fields (Name, SetCode, Types/TypeLine, Rarity, ManaCost, CMC,
+// Colors, ImageURIs).  This is the regression test for issue #2002.
+func TestDecksRepository_GetDeck_SetCardsMetadata(t *testing.T) {
+	db := openTestDB(t)
+	repo := repository.NewDecksRepository(db)
+	ctx := context.Background()
+
+	accountID := insertTestAccount(t, db, "decks-repo-set-cards-meta")
+	deckID := insertTestDeck(t, db, accountID, "set-cards-meta")
+
+	// Seed a set_cards row for arena_id "91001".
+	insertTestSetCard(t, db, setCardSeed{
+		SetCode: "TST",
+		ArenaID: "91001",
+		Name:    "Test Creature",
+		Rarity:  "rare",
+		Colors:  `["R"]`,
+	})
+
+	// Insert a deck_cards row referencing the same arena_id.
+	insertTestDeckCard(t, db, deckID, 91001, false)
+
+	detail, err := repo.GetDeck(ctx, accountID, deckID)
+	if err != nil {
+		t.Fatalf("GetDeck: %v", err)
+	}
+	if detail == nil {
+		t.Fatal("GetDeck returned nil — deck not found")
+	}
+	if len(detail.Cards) != 1 {
+		t.Fatalf("expected 1 card, got %d", len(detail.Cards))
+	}
+	c := detail.Cards[0]
+	if c.Name != "Test Creature" {
+		t.Errorf("Name: got %q, want %q", c.Name, "Test Creature")
+	}
+	if c.SetCode != "TST" {
+		t.Errorf("SetCode: got %q, want %q", c.SetCode, "TST")
+	}
+	if c.Rarity != "rare" {
+		t.Errorf("Rarity: got %q, want %q", c.Rarity, "rare")
+	}
+	if c.Colors != `["R"]` {
+		t.Errorf("Colors: got %q, want %q", c.Colors, `["R"]`)
+	}
+}
+
+// TestDecksRepository_GetDeck_SetCardsMetadata_NoMatch verifies that deckCards()
+// returns a row with empty metadata when no set_cards row exists for the
+// card_id (LEFT JOIN falls through gracefully).
+func TestDecksRepository_GetDeck_SetCardsMetadata_NoMatch(t *testing.T) {
+	db := openTestDB(t)
+	repo := repository.NewDecksRepository(db)
+	ctx := context.Background()
+
+	accountID := insertTestAccount(t, db, "decks-repo-set-cards-nomatch")
+	deckID := insertTestDeck(t, db, accountID, "set-cards-nomatch")
+
+	// card_id 91002 has no corresponding set_cards row.
+	insertTestDeckCard(t, db, deckID, 91002, false)
+
+	detail, err := repo.GetDeck(ctx, accountID, deckID)
+	if err != nil {
+		t.Fatalf("GetDeck: %v", err)
+	}
+	if detail == nil {
+		t.Fatal("GetDeck returned nil — deck not found")
+	}
+	if len(detail.Cards) != 1 {
+		t.Fatalf("expected 1 card, got %d", len(detail.Cards))
+	}
+	c := detail.Cards[0]
+	if c.CardID != 91002 {
+		t.Errorf("CardID: got %d, want 91002", c.CardID)
+	}
+	// Metadata fields must be empty strings (COALESCE defaults), not a DB error.
+	if c.Name != "" {
+		t.Errorf("Name: got %q, want empty string for no-match card", c.Name)
+	}
+	if c.Rarity != "" {
+		t.Errorf("Rarity: got %q, want empty string for no-match card", c.Rarity)
+	}
+}
