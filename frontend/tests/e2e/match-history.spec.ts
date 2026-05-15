@@ -1,15 +1,73 @@
-import { test, expect } from '@playwright/test';
+import { test, expect, Page } from '@playwright/test';
 
 /**
  * Match History E2E Tests
  *
  * Tests the main Match History page which is the default landing page.
  * Uses REST API backend for testing.
+ *
+ * Auth approach: the Vite dev server starts with VITE_CLERK_TEST_MODE=true which
+ * aliases @clerk/react to src/test/mocks/clerkMock.tsx. That mock reads
+ * window.__CLERK_TEST_STATE__ — injected via page.addInitScript() — so tests
+ * control auth state without a real Clerk publishable key.
+ *
+ * Default state (no injection or { isSignedIn: false }): signed-out.
+ *   ProtectedRoute renders sign-in prompt instead of page content.
+ *
+ * Signed-in state ({ isSignedIn: true }): ProtectedRoute passes through and
+ *   BffMatchHistory renders, calling the BFF API.
+ *
+ * Fix (#2000): Added setClerkSignedIn() injection in beforeEach so that the
+ * /match-history protected route receives an authenticated Clerk context in CI.
+ * Without this injection the Clerk mock defaults to isSignedIn: false, causing
+ * ProtectedRoute to show the sign-in prompt and every selector assertion to time
+ * out with "TimeoutError waiting for sign-in email input".
  */
+
+// ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
+
+type ClerkTestState = {
+  isSignedIn: boolean;
+  firstName?: string;
+  lastName?: string;
+};
+
+/** Inject signed-in Clerk state before page load. Must be called before page.goto(). */
+async function setClerkSignedIn(page: Page, user?: Partial<ClerkTestState>): Promise<void> {
+  const state: ClerkTestState = {
+    isSignedIn: true,
+    firstName: user?.firstName ?? 'Test',
+    lastName: user?.lastName ?? 'User',
+  };
+  await page.addInitScript((s) => {
+    (window as unknown as Record<string, unknown>).__CLERK_TEST_STATE__ = s;
+  }, state);
+}
+
+/** Inject signed-out Clerk state before page load. Must be called before page.goto(). */
+async function setClerkSignedOut(page: Page): Promise<void> {
+  await page.addInitScript((s) => {
+    (window as unknown as Record<string, unknown>).__CLERK_TEST_STATE__ = s;
+  }, { isSignedIn: false });
+}
+
+// ---------------------------------------------------------------------------
+// Tests
+// ---------------------------------------------------------------------------
+
 test.describe('Match History', () => {
   test.beforeEach(async ({ page }) => {
+    // Inject signed-in state so ProtectedRoute allows /match-history to render.
+    // Without this, the Clerk mock defaults to isSignedIn: false and the
+    // protected route displays a sign-in prompt instead of Match History content,
+    // causing all selector assertions to time out in CI (#2000).
+    await setClerkSignedIn(page);
     await page.goto('/');
-    await expect(page.locator('[data-testid="app-container"]')).toBeVisible();
+    await expect(page.locator('[data-testid="app-container"]'), {
+      message: 'App container must be visible after navigation to /',
+    }).toBeVisible({ timeout: 15_000 });
   });
 
   test.describe('Navigation and Page Load', () => {
@@ -197,7 +255,7 @@ test.describe('Match History', () => {
       // If this fails, getHealth() is being called without the isDesktopApp() guard.
       expect(
         daemonErrors,
-        `Match History page emitted daemon connection errors: ${daemonErrors.join('; ')}`
+        `Match History page emitted daemon connection errors: ${daemonErrors.join('; ')}`,
       ).toHaveLength(0);
     });
 
@@ -217,8 +275,37 @@ test.describe('Match History', () => {
 
       expect(
         daemonRequests,
-        `Match History page sent requests to the daemon (port 9001): ${daemonRequests.join(', ')}`
+        `Match History page sent requests to the daemon (port 9001): ${daemonRequests.join(', ')}`,
       ).toHaveLength(0);
     });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Unauthenticated access — protected route shows sign-in prompt (#2000)
+//
+// When no Clerk state is injected the mock defaults to isSignedIn: false.
+// ProtectedRoute must show the sign-in prompt, NOT match-history content.
+// ---------------------------------------------------------------------------
+
+test.describe('Match History — unauthenticated access', () => {
+  test('@smoke unauthenticated visit to /match-history shows sign-in prompt, not match content', async ({ page }) => {
+    await setClerkSignedOut(page);
+    await page.goto('/match-history');
+
+    // Give the page time to resolve the auth guard.
+    await page.waitForLoadState('networkidle', { timeout: 10_000 }).catch(() => {/* ignore timeout */});
+
+    // ProtectedRoute must render the sign-in prompt for unauthenticated users.
+    await expect(page.locator('[data-testid="protected-route-prompt"]'), {
+      message: 'ProtectedRoute must show the sign-in prompt for unauthenticated users on /match-history',
+    }).toBeVisible({ timeout: 10_000 });
+
+    // The prompt must contain the sign-in action button.
+    await expect(page.locator('[data-testid="protected-route-sign-in-btn"]')).toBeVisible();
+
+    // Match History content must NOT be rendered without authentication.
+    await expect(page.locator('.match-history-table-container')).not.toBeVisible();
+    await expect(page.locator('.filter-row')).not.toBeVisible();
   });
 });
