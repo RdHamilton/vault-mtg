@@ -19,19 +19,12 @@ vi.mock('../components/ToastContainer', () => ({
   },
 }));
 
-// Mock runtimeContext so tests can control desktop vs browser mode
-vi.mock('@/lib/runtimeContext', () => ({
-  isDesktopApp: vi.fn(),
-}));
-
 import { useAuth } from '@clerk/react';
 import { getDaemonHealth } from '@/services/api/bffHealth';
 import { showToast } from '../components/ToastContainer';
-import { isDesktopApp } from '@/lib/runtimeContext';
 
 const mockUseAuth = vi.mocked(useAuth);
 const mockGetDaemonHealth = vi.mocked(getDaemonHealth);
-const mockIsDesktopApp = vi.mocked(isDesktopApp);
 
 /** Helper: set up Clerk mock as signed-in with a valid token. */
 function signedInAuth(token = 'test-token') {
@@ -52,11 +45,9 @@ function signedOutAuth() {
 describe('useDaemonConnection', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    // Default: signed in, BFF returns standalone status.
+    // Default: signed in, BFF returns disconnected.
     signedInAuth();
     mockGetDaemonHealth.mockResolvedValue({ status: 'disconnected' });
-    // Default: not in desktop context.
-    mockIsDesktopApp.mockReturnValue(false);
   });
 
   describe('initial state', () => {
@@ -88,40 +79,11 @@ describe('useDaemonConnection', () => {
     });
   });
 
-  describe('browser context (isDesktopApp() returns false)', () => {
-    it('does NOT call getDaemonHealth', async () => {
-      mockIsDesktopApp.mockReturnValue(false);
-      const { result } = renderHook(() => useDaemonConnection());
-
-      // Give any async effects a chance to settle.
-      await act(async () => {
-        await Promise.resolve();
-      });
-
-      expect(mockGetDaemonHealth).not.toHaveBeenCalled();
-      // State stays at default — no ERR_CONNECTION_REFUSED.
-      expect(result.current.connectionStatus.status).toBe('standalone');
-    });
-
-    it('returns default state without probing daemon', async () => {
-      mockIsDesktopApp.mockReturnValue(false);
-      const { result } = renderHook(() => useDaemonConnection());
-
-      await act(async () => {
-        await Promise.resolve();
-      });
-
-      expect(result.current.connectionStatus.connected).toBe(false);
-      expect(result.current.daemonPort).toBe(9999);
-    });
-  });
-
-  describe('desktop context (isDesktopApp() returns true)', () => {
-    beforeEach(() => {
-      mockIsDesktopApp.mockReturnValue(true);
-    });
-
-    it('calls getDaemonHealth via BFF proxy on mount', async () => {
+  // AC2 (#2020): useDaemonConnection uses the same BFF endpoint as DaemonHealthIndicator
+  // regardless of desktop/browser context — no isDesktopApp() guard.
+  describe('polls BFF health in all contexts — single source of truth (#2020)', () => {
+    it('calls getDaemonHealth on mount when signed in (browser context)', async () => {
+      // Browser context — previously this was gated by isDesktopApp(); now it must fire.
       mockGetDaemonHealth.mockResolvedValueOnce({ status: 'connected' });
 
       const { result } = renderHook(() => useDaemonConnection());
@@ -132,6 +94,20 @@ describe('useDaemonConnection', () => {
 
       expect(result.current.connectionStatus.status).toBe('connected');
       expect(result.current.connectionStatus.connected).toBe(true);
+    });
+
+    it('reflects connected status from BFF and sets connected=true', async () => {
+      mockGetDaemonHealth.mockResolvedValueOnce({ status: 'connected' });
+
+      const { result } = renderHook(() => useDaemonConnection());
+
+      await waitFor(() => {
+        expect(mockGetDaemonHealth).toHaveBeenCalled();
+      });
+
+      expect(result.current.connectionStatus.status).toBe('connected');
+      expect(result.current.connectionStatus.connected).toBe(true);
+      expect(result.current.connectionStatus.mode).toBe('daemon');
     });
 
     it('reflects disconnected status from BFF', async () => {
@@ -155,6 +131,7 @@ describe('useDaemonConnection', () => {
         expect(mockGetDaemonHealth).toHaveBeenCalled();
       });
 
+      // On error we keep the default state (standalone/not-connected).
       expect(result.current.connectionStatus.status).toBe('standalone');
     });
 

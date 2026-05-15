@@ -3,7 +3,6 @@ import { useAuth } from '@clerk/react';
 import { getDaemonHealth } from '@/services/api/bffHealth';
 import { showToast } from '../components/ToastContainer';
 import { gui } from '@/types/models';
-import { isDesktopApp } from '@/lib/runtimeContext';
 
 // No-op functions - daemon control not implemented in REST API
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
@@ -56,14 +55,10 @@ export function useDaemonConnection(): UseDaemonConnectionReturn {
   const [isReconnecting, setIsReconnecting] = useState(false);
 
   const loadConnectionStatus = useCallback(async () => {
-    // Only probe daemon health in the desktop app context.
-    // In browser/staging sessions isDesktopApp() returns false,
-    // so we skip the call entirely and return the default state to avoid
-    // ERR_CONNECTION_REFUSED errors.
-    if (!isDesktopApp()) {
-      return;
-    }
-
+    // Poll the BFF daemon health endpoint regardless of desktop/browser context.
+    // DaemonHealthIndicator (nav bar) uses the same endpoint without an
+    // isDesktopApp() guard — removing the guard here ensures both indicators
+    // always read from the same source of truth (#2020).
     if (!isSignedIn) {
       return;
     }
