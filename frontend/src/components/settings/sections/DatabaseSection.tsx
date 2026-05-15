@@ -10,14 +10,14 @@ export function DatabaseSection({ dbPath, onDbPathChange }: DatabaseSectionProps
       <div className="setting-item">
         <label className="setting-label">
           Database Path
-          <span className="setting-description">Location of the MTGA Companion database file</span>
+          <span className="setting-description">Location of the VaultMTG database file</span>
         </label>
         <div className="setting-control">
           <input
             type="text"
             value={dbPath}
             onChange={(e) => onDbPathChange(e.target.value)}
-            placeholder="/Users/username/.mtga-companion/mtga.db"
+            placeholder="/Users/username/.vaultmtg/mtga.db"
             className="text-input"
           />
           <button className="browse-button">Browse...</button>
