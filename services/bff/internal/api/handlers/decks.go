@@ -345,6 +345,7 @@ func (h *DecksHandler) Create(w http.ResponseWriter, r *http.Request) {
 			Set("source", req.Source).
 			Set("account_id_hash", hashedID),
 	})
+	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusCreated)
 	writeMatchesJSON(w, deckDetailToResponse(*d))
 }
