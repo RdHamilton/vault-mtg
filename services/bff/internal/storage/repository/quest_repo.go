@@ -2,6 +2,7 @@ package repository
 
 import (
 	"context"
+	"database/sql"
 	"strings"
 	"time"
 )
@@ -255,14 +256,14 @@ func (r *QuestRepository) LastQuestSeenAt(ctx context.Context, accountID int64) 
 	const q = `SELECT COALESCE(MAX(last_seen_at), MAX(assigned_at))
 	           FROM quests
 	           WHERE account_id = $1`
-	var ts *time.Time
+	var ts sql.NullTime
 	if err := r.db.QueryRowContext(ctx, q, accountID).Scan(&ts); err != nil {
 		return time.Time{}, false, err
 	}
-	if ts == nil {
+	if !ts.Valid {
 		return time.Time{}, false, nil
 	}
-	return *ts, true, nil
+	return ts.Time, true, nil
 }
 
 // scanQuestRows is the shared decoder used by ListActive/ListHistory.
