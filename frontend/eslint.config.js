@@ -20,4 +20,14 @@ export default defineConfig([
       globals: globals.browser,
     },
   },
+  {
+    // Storybook configuration & tooling files are not part of the app bundle,
+    // so Vite Fast Refresh does not apply to them. The Clerk mock in
+    // .storybook/clerk-mock.tsx must mirror @clerk/react's export shape, which
+    // legitimately mixes component and non-component exports.
+    files: ['.storybook/**/*.{ts,tsx}'],
+    rules: {
+      'react-refresh/only-export-components': 'off',
+    },
+  },
 ])

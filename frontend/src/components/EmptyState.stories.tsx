@@ -3,7 +3,7 @@ import EmptyState from './EmptyState';
 import './EmptyState.css';
 
 const meta: Meta<typeof EmptyState> = {
-  title: 'Components/EmptyState',
+  title: 'Molecules/EmptyState',
   component: EmptyState,
   parameters: {
     layout: 'centered',

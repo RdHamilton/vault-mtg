@@ -2,7 +2,7 @@ import type { Meta, StoryObj } from '@storybook/react';
 import DaemonEmptyState from './DaemonEmptyState';
 
 const meta: Meta<typeof DaemonEmptyState> = {
-  title: 'Components/DaemonEmptyState',
+  title: 'Molecules/DaemonEmptyState',
   component: DaemonEmptyState,
   parameters: {
     layout: 'centered',

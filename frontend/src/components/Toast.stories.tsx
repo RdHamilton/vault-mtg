@@ -3,7 +3,7 @@ import Toast from './Toast';
 import './Toast.css';
 
 const meta: Meta<typeof Toast> = {
-  title: 'Components/Toast',
+  title: 'Atoms/Toast',
   component: Toast,
   parameters: {
     layout: 'centered',

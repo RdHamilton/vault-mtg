@@ -3,7 +3,7 @@ import LoadingButton from './LoadingButton';
 import './LoadingButton.css';
 
 const meta: Meta<typeof LoadingButton> = {
-  title: 'Components/LoadingButton',
+  title: 'Atoms/LoadingButton',
   component: LoadingButton,
   parameters: {
     layout: 'centered',

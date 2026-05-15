@@ -3,7 +3,7 @@ import ProgressBar from './ProgressBar';
 import './ProgressBar.css';
 
 const meta: Meta<typeof ProgressBar> = {
-  title: 'Components/ProgressBar',
+  title: 'Atoms/ProgressBar',
   component: ProgressBar,
   parameters: {
     layout: 'padded',
