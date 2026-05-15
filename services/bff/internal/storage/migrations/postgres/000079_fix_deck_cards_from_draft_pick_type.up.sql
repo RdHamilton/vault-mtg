@@ -4,6 +4,7 @@
 -- prevented the table from being recreated on incrementally-migrated databases.
 -- This migration normalises the type on all existing databases.
 
-ALTER TABLE deck_cards
-    ALTER COLUMN from_draft_pick TYPE BOOLEAN
-    USING (from_draft_pick::boolean);
+-- Drop the INTEGER default before changing type; PostgreSQL cannot auto-cast DEFAULT 0 to boolean.
+ALTER TABLE deck_cards ALTER COLUMN from_draft_pick DROP DEFAULT;
+ALTER TABLE deck_cards ALTER COLUMN from_draft_pick TYPE BOOLEAN USING (from_draft_pick::boolean);
+ALTER TABLE deck_cards ALTER COLUMN from_draft_pick SET DEFAULT false;
