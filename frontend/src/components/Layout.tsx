@@ -34,7 +34,7 @@ const Layout = ({ children }: LayoutProps) => {
   const isActive = (path: string) => location.pathname === path;
 
   // Derive activeTab from current route (computed value, not state)
-  const getActiveTab = (): 'home' | 'match-history' | 'quests' | 'draft' | 'decks' | 'collection' | 'meta' | 'charts' | 'download' => {
+  const getActiveTab = (): 'home' | 'match-history' | 'quests' | 'draft' | 'decks' | 'collection' | 'meta' | 'charts' | 'download' | 'profile' => {
     if (location.pathname === '/home' || location.pathname === '/') {
       return 'home';
     } else if (location.pathname === '/match-history') {
@@ -53,6 +53,8 @@ const Layout = ({ children }: LayoutProps) => {
       return 'charts';
     } else if (location.pathname === '/download') {
       return 'download';
+    } else if (location.pathname === '/profile') {
+      return 'profile';
     }
     return 'match-history';
   };
@@ -128,6 +130,13 @@ const Layout = ({ children }: LayoutProps) => {
             data-testid="nav-tab-download"
           >
             Download
+          </Link>
+          <Link
+            to="/profile"
+            className={`tab ${activeTab === 'profile' ? 'active' : ''}`}
+            data-testid="nav-tab-profile"
+          >
+            Profile
           </Link>
           <Link
             to="/settings"

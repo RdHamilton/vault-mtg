@@ -1,4 +1,5 @@
 import { useUser } from '@clerk/react';
+import { Link } from 'react-router-dom';
 import './UserProfileSection.css';
 
 /**
@@ -92,6 +93,13 @@ export function UserProfileSection({
                 {user.primaryEmailAddress.emailAddress}
               </div>
             )}
+            <Link
+              to="/profile"
+              className="user-profile-link"
+              data-testid="user-profile-link"
+            >
+              View &amp; edit full profile →
+            </Link>
           </div>
         </div>
       )}
