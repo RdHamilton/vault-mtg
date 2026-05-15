@@ -80,7 +80,7 @@ func (s *Server) handleReplay(w http.ResponseWriter, r *http.Request) {
 	// Fire the replay in a separate goroutine so the HTTP response is sent
 	// immediately (202 Accepted).  The caller drives progress via the BFF SSE
 	// stream (replay:started, replay:progress, replay:completed, replay:error).
-	go s.replayTrigger(r.Context(), req.ClearDataFirst)
+	go s.replayTrigger(s.ctx, req.ClearDataFirst)
 
 	writeJSON(w, r, http.StatusAccepted, replayAcceptedResponse{
 		Status:  "accepted",

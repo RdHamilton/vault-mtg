@@ -281,6 +281,9 @@ func (s *Service) Run(ctx context.Context) error {
 	// Wire the replay trigger so POST /api/v1/replay can start a
 	// historical log replay that emits replay:* events via the BFF.
 	localAPI.SetReplayTrigger(s.Replay)
+	// Use the daemon lifecycle context so replay goroutines are cancelled
+	// when the daemon stops rather than on HTTP request completion.
+	localAPI.WithContext(ctx)
 	if err := localAPI.Start(); err != nil {
 		log.Printf("[daemon] warn: local API server did not start: %v", err)
 	}

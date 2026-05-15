@@ -54,6 +54,7 @@ type Server struct {
 	state         atomic.Pointer[State]
 	srv           *http.Server
 	ln            net.Listener
+	ctx           context.Context         // lifecycle context; cancelled when the daemon stops
 	uninstaller   Uninstaller             // nil → defaultUninstaller; tests override via SetUninstaller
 	draftStore    DraftStore              // nil → draft endpoints respond with empty/no-session
 	cardsLookup   draftalgo.CardLookup    // nil → noopCards; defaults applied lazily in drafts.go
@@ -64,7 +65,7 @@ type Server struct {
 // New returns a Server bound to 127.0.0.1:port. Use DefaultPort unless tests
 // need an ephemeral port (pass 0 to let the OS pick).
 func New(port int, state State) *Server {
-	s := &Server{port: port}
+	s := &Server{port: port, ctx: context.Background()}
 	s.state.Store(&state)
 	return s
 }
@@ -74,6 +75,15 @@ func New(port int, state State) *Server {
 // partial updates.
 func (s *Server) SetState(state State) {
 	s.state.Store(&state)
+}
+
+// WithContext attaches the given context as the server lifecycle context.
+// Call this before Start so that long-running background work (e.g. replay
+// goroutines) can be cancelled when the daemon shuts down rather than relying
+// on the short-lived HTTP request context.
+func (s *Server) WithContext(ctx context.Context) *Server {
+	s.ctx = ctx
+	return s
 }
 
 // SetUninstaller installs a custom Uninstaller. Used by tests to swap in a
