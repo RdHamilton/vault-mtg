@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { renderHook, act, waitFor } from '@testing-library/react';
 import { useDaemonConnection } from './useDaemonConnection';
 
@@ -19,12 +19,19 @@ vi.mock('../components/ToastContainer', () => ({
   },
 }));
 
+// Mock runtimeContext so tests can control desktop vs browser mode
+vi.mock('@/lib/runtimeContext', () => ({
+  isDesktopApp: vi.fn(),
+}));
+
 import { useAuth } from '@clerk/react';
 import { getDaemonHealth } from '@/services/api/bffHealth';
 import { showToast } from '../components/ToastContainer';
+import { isDesktopApp } from '@/lib/runtimeContext';
 
 const mockUseAuth = vi.mocked(useAuth);
 const mockGetDaemonHealth = vi.mocked(getDaemonHealth);
+const mockIsDesktopApp = vi.mocked(isDesktopApp);
 
 /** Helper: set up Clerk mock as signed-in with a valid token. */
 function signedInAuth(token = 'test-token') {
@@ -49,11 +56,7 @@ describe('useDaemonConnection', () => {
     signedInAuth();
     mockGetDaemonHealth.mockResolvedValue({ status: 'disconnected' });
     // Default: not in desktop context.
-    delete (window as Window).__VAULTMTG_DESKTOP__;
-  });
-
-  afterEach(() => {
-    delete (window as Window).__VAULTMTG_DESKTOP__;
+    mockIsDesktopApp.mockReturnValue(false);
   });
 
   describe('initial state', () => {
@@ -85,8 +88,9 @@ describe('useDaemonConnection', () => {
     });
   });
 
-  describe('browser context (window.__VAULTMTG_DESKTOP__ unset)', () => {
+  describe('browser context (isDesktopApp() returns false)', () => {
     it('does NOT call getDaemonHealth', async () => {
+      mockIsDesktopApp.mockReturnValue(false);
       const { result } = renderHook(() => useDaemonConnection());
 
       // Give any async effects a chance to settle.
@@ -100,6 +104,7 @@ describe('useDaemonConnection', () => {
     });
 
     it('returns default state without probing daemon', async () => {
+      mockIsDesktopApp.mockReturnValue(false);
       const { result } = renderHook(() => useDaemonConnection());
 
       await act(async () => {
@@ -111,9 +116,9 @@ describe('useDaemonConnection', () => {
     });
   });
 
-  describe('desktop context (window.__VAULTMTG_DESKTOP__ = true)', () => {
+  describe('desktop context (isDesktopApp() returns true)', () => {
     beforeEach(() => {
-      (window as Window).__VAULTMTG_DESKTOP__ = true;
+      mockIsDesktopApp.mockReturnValue(true);
     });
 
     it('calls getDaemonHealth via BFF proxy on mount', async () => {

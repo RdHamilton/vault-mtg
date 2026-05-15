@@ -3,6 +3,7 @@ import { useAuth } from '@clerk/react';
 import { getDaemonHealth } from '@/services/api/bffHealth';
 import { showToast } from '../components/ToastContainer';
 import { gui } from '@/types/models';
+import { isDesktopApp } from '@/lib/runtimeContext';
 
 // No-op functions - daemon control not implemented in REST API
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
@@ -56,10 +57,10 @@ export function useDaemonConnection(): UseDaemonConnectionReturn {
 
   const loadConnectionStatus = useCallback(async () => {
     // Only probe daemon health in the desktop app context.
-    // In browser/staging sessions window.__VAULTMTG_DESKTOP__ is unset,
+    // In browser/staging sessions isDesktopApp() returns false,
     // so we skip the call entirely and return the default state to avoid
     // ERR_CONNECTION_REFUSED errors.
-    if (!window.__VAULTMTG_DESKTOP__) {
+    if (!isDesktopApp()) {
       return;
     }
 
