@@ -103,6 +103,14 @@ jobs:
         # This step is the visual regression gate. It fails CI when unreviewed visual
         # changes are detected, forcing a human review on the Chromatic dashboard.
         #
+        # On pushes to main: --auto-accept-changes is passed so that merged snapshots
+        # automatically become the new baseline. This is the standard Chromatic pattern
+        # for keeping main in sync as the reference baseline.
+        #
+        # On pull_request events: --auto-accept-changes is NOT passed, so any visual
+        # difference detected against the main baseline requires human review on the
+        # Chromatic dashboard before the status check passes.
+        #
         # REQUIRES: CHROMATIC_PROJECT_TOKEN secret must be set in GitHub Actions secrets.
         # To provision:
         #   1. Create a project at https://www.chromatic.com
@@ -113,5 +121,10 @@ jobs:
         if: >
           steps.changes.outputs.frontend_changed == 'true' &&
           steps.token_check.outputs.has_token == 'true'
-        run: npx chromatic --storybook-build-dir=storybook-static --project-token=${{ secrets.CHROMATIC_PROJECT_TOKEN }}
+        run: |
+          if [ "${{ github.event_name }}" = "push" ]; then
+            npx chromatic --storybook-build-dir=storybook-static --project-token=${{ secrets.CHROMATIC_PROJECT_TOKEN }} --auto-accept-changes
+          else
+            npx chromatic --storybook-build-dir=storybook-static --project-token=${{ secrets.CHROMATIC_PROJECT_TOKEN }}
+          fi
         working-directory: frontend
