@@ -145,6 +145,15 @@ func TestCollectionRepository_ListCollection_WithMetadata(t *testing.T) {
 	if item.PricesUpdated == nil {
 		t.Error("PricesUpdated should be non-nil")
 	}
+	// AC from #2013: ImageURIs must be a valid JSON object (not empty string or
+	// '{"normal":null}') when set_cards has a matching arena_id row.  The query
+	// uses json_build_object('normal', sc.image_url) so the result is at least
+	// '{"normal":null}'; when image_url is populated it is '{"normal":"<url>"}».
+	// Either way, an empty string here indicates the JOIN or column mapping is
+	// broken.
+	if item.ImageURIs == "" {
+		t.Error("ImageURIs: got empty string, want a JSON object (set_cards JOIN broken)")
+	}
 }
 
 func TestCollectionRepository_ListCollection_NoMetadata(t *testing.T) {
@@ -172,6 +181,12 @@ func TestCollectionRepository_ListCollection_NoMetadata(t *testing.T) {
 	}
 	if item.PriceUSD != nil {
 		t.Errorf("PriceUSD: expected nil for unmatched card, got %v", item.PriceUSD)
+	}
+	// AC from #2013: ImageURIs must be '{}' (empty object) when there is no
+	// set_cards row, not '{"normal":null}' which would be a JSON parse error
+	// in the SPA.  The CASE expression in the query ensures this.
+	if item.ImageURIs != "{}" {
+		t.Errorf("ImageURIs: got %q, want '{}' for unmatched card (null guard broken)", item.ImageURIs)
 	}
 }
 

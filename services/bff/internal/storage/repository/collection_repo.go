@@ -131,7 +131,7 @@ func (r *CollectionRepository) ListCollection(ctx context.Context, accountID int
 			COALESCE(sc.types, ''),
 			COALESCE(sc.colors, '[]'),
 			'[]',
-			json_build_object('normal', sc.image_url)::TEXT,
+			CASE WHEN sc.image_url IS NOT NULL THEN json_build_object('normal', sc.image_url)::TEXT ELSE '{}' END,
 			sc.power,
 			sc.toughness,
 			sc.price_usd,
