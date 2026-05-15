@@ -30,7 +30,7 @@ describe('DaemonDownload', () => {
         render(<DaemonDownload />);
         const title = screen.getByTestId('daemon-download-title');
         expect(title).toBeInTheDocument();
-        expect(title).toHaveTextContent('Get Started with MTGA Companion');
+        expect(title).toHaveTextContent('Get Started with VaultMTG');
       });
 
       it('should render the download buttons container', () => {
@@ -176,7 +176,7 @@ describe('DaemonDownload', () => {
     it('should render the page title', () => {
       render(<DaemonDownload />);
       expect(screen.getByTestId('daemon-download-title')).toHaveTextContent(
-        'Get Started with MTGA Companion'
+        'Get Started with VaultMTG'
       );
     });
 
@@ -313,7 +313,7 @@ describe('DaemonDownload', () => {
     it('should render main title as h1', () => {
       render(<DaemonDownload />);
       const h1 = screen.getByRole('heading', { level: 1 });
-      expect(h1).toHaveTextContent('Get Started with MTGA Companion');
+      expect(h1).toHaveTextContent('Get Started with VaultMTG');
     });
 
     it('should render Getting Started as h2', () => {
