@@ -174,7 +174,14 @@ export default function Collection() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Reload collection when filters change (but not on mount)
+  // Reload collection when filters change (but not on mount).
+  // loadCollection is recreated by useCallback whenever its filter deps change
+  // (filters.setCode, filters.rarity, filters.colors, filters.ownedOnly), so
+  // depending on loadCollection here guarantees we always call the freshest
+  // closure — the one that captures the current filter values.  Without
+  // loadCollection in the dep array the effect calls a stale closure and the
+  // server-side filters (set_code, rarity, colors, owned_only) silently have
+  // no effect.  This was the root cause of bug #1974.
   const isInitialMount = useRef(true);
   useEffect(() => {
     if (isInitialMount.current) {
@@ -182,8 +189,7 @@ export default function Collection() {
       return;
     }
     loadCollection();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [filters.setCode, filters.rarity, filters.colors, filters.ownedOnly]);
+  }, [loadCollection]);
 
   // Reset page when filters change
   useEffect(() => {

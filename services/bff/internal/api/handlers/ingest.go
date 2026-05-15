@@ -3,9 +3,7 @@ package handlers
 
 import (
 	"context"
-	"crypto/sha256"
 	"encoding/json"
-	"fmt"
 	"log/slog"
 	"net/http"
 	"time"
@@ -86,13 +84,6 @@ func (h *IngestHandler) WithPostHogClient(client PostHogClient) *IngestHandler {
 		gapDetector:   h.gapDetector,
 		postHogClient: client,
 	}
-}
-
-// hashAccountID returns a privacy-safe representation of accountID for
-// PostHog: SHA-256 hex, first 16 characters.  No raw PII is sent.
-func hashAccountID(accountID string) string {
-	sum := sha256.Sum256([]byte(accountID))
-	return fmt.Sprintf("%x", sum)[:16]
 }
 
 // IngestEvent handles POST /v1/ingest/events.

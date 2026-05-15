@@ -419,6 +419,138 @@ describe('Collection', () => {
       // API should only be called once (on mount) - search is client-side
       expect(mockCollection.getCollectionWithMetadata).toHaveBeenCalledTimes(1);
     });
+
+    // Bug #1974: server-side filters (set, rarity, colors, owned_only) were not
+    // triggering a re-fetch because the filter-change useEffect held a stale closure
+    // on loadCollection that captured the initial (empty) filter values.
+    it('should re-fetch from API with set_code when set filter changes (#1974)', async () => {
+      const initialCards = [createMockCollectionCard({ cardId: 1, arenaId: 1, name: 'Lightning Bolt', setCode: 'sta' })];
+      const filteredCards = [createMockCollectionCard({ cardId: 2, arenaId: 2, name: 'Counterspell', setCode: 'dsk' })];
+      mockCollection.getCollectionWithMetadata
+        .mockResolvedValueOnce(createMockCollectionResponse(initialCards))
+        .mockResolvedValueOnce(createMockCollectionResponse(filteredCards));
+      mockCollection.getCollectionStats.mockResolvedValue(createMockCollectionStats());
+      mockCardsApi.getAllSetInfo.mockResolvedValue([
+        createMockSetInfo({ code: 'sta', name: 'Strixhaven Mystical Archive' }),
+        createMockSetInfo({ code: 'dsk', name: 'Duskmourn' }),
+      ]);
+
+      renderWithRouter(<Collection />);
+      await vi.advanceTimersByTimeAsync(100);
+
+      await waitFor(() => {
+        expect(screen.getByTestId('collection-set-filter')).toBeInTheDocument();
+      });
+
+      // Change the set filter
+      const setSelect = screen.getByTestId('collection-set-filter');
+      fireEvent.change(setSelect, { target: { value: 'dsk' } });
+
+      await vi.advanceTimersByTimeAsync(100);
+
+      // API should be called a second time with the correct set_code filter
+      await waitFor(() => {
+        expect(mockCollection.getCollectionWithMetadata).toHaveBeenCalledTimes(2);
+      });
+      expect(mockCollection.getCollectionWithMetadata).toHaveBeenLastCalledWith(
+        expect.objectContaining({ set_code: 'dsk' })
+      );
+    });
+
+    it('should re-fetch from API with rarity when rarity filter changes (#1974)', async () => {
+      const initialCards = [createMockCollectionCard()];
+      const filteredCards = [createMockCollectionCard({ cardId: 2, arenaId: 2, name: 'Rare Card', rarity: 'rare' })];
+      mockCollection.getCollectionWithMetadata
+        .mockResolvedValueOnce(createMockCollectionResponse(initialCards))
+        .mockResolvedValueOnce(createMockCollectionResponse(filteredCards));
+      mockCollection.getCollectionStats.mockResolvedValue(createMockCollectionStats());
+      mockCardsApi.getAllSetInfo.mockResolvedValue([]);
+
+      renderWithRouter(<Collection />);
+      await vi.advanceTimersByTimeAsync(100);
+
+      await waitFor(() => {
+        expect(screen.getByTestId('collection-rarity-filter')).toBeInTheDocument();
+      });
+
+      // Change the rarity filter
+      const raritySelect = screen.getByTestId('collection-rarity-filter');
+      fireEvent.change(raritySelect, { target: { value: 'rare' } });
+
+      await vi.advanceTimersByTimeAsync(100);
+
+      // API should be called a second time with the correct rarity filter
+      await waitFor(() => {
+        expect(mockCollection.getCollectionWithMetadata).toHaveBeenCalledTimes(2);
+      });
+      expect(mockCollection.getCollectionWithMetadata).toHaveBeenLastCalledWith(
+        expect.objectContaining({ rarity: 'rare' })
+      );
+    });
+
+    it('should re-fetch from API with colors when color filter changes (#1974)', async () => {
+      const initialCards = [createMockCollectionCard()];
+      const filteredCards = [createMockCollectionCard({ cardId: 2, arenaId: 2, name: 'Red Card', colors: ['R'] })];
+      mockCollection.getCollectionWithMetadata
+        .mockResolvedValueOnce(createMockCollectionResponse(initialCards))
+        .mockResolvedValueOnce(createMockCollectionResponse(filteredCards));
+      mockCollection.getCollectionStats.mockResolvedValue(createMockCollectionStats());
+      mockCardsApi.getAllSetInfo.mockResolvedValue([]);
+
+      renderWithRouter(<Collection />);
+      await vi.advanceTimersByTimeAsync(100);
+
+      await waitFor(() => {
+        expect(screen.getByTestId('collection-color-button-R')).toBeInTheDocument();
+      });
+
+      // Click the Red color button to activate the color filter
+      fireEvent.click(screen.getByTestId('collection-color-button-R'));
+
+      await vi.advanceTimersByTimeAsync(100);
+
+      // API should be called a second time with the colors filter
+      await waitFor(() => {
+        expect(mockCollection.getCollectionWithMetadata).toHaveBeenCalledTimes(2);
+      });
+      expect(mockCollection.getCollectionWithMetadata).toHaveBeenLastCalledWith(
+        expect.objectContaining({ colors: ['R'] })
+      );
+    });
+
+    it('should re-fetch from API when owned-only filter toggles (#1974)', async () => {
+      const initialCards = [createMockCollectionCard()];
+      const allCards = [
+        createMockCollectionCard({ cardId: 1, arenaId: 1 }),
+        createMockCollectionCard({ cardId: 2, arenaId: 2, quantity: 0 }),
+      ];
+      mockCollection.getCollectionWithMetadata
+        .mockResolvedValueOnce(createMockCollectionResponse(initialCards))
+        .mockResolvedValueOnce(createMockCollectionResponse(allCards));
+      mockCollection.getCollectionStats.mockResolvedValue(createMockCollectionStats());
+      mockCardsApi.getAllSetInfo.mockResolvedValue([]);
+
+      renderWithRouter(<Collection />);
+      await vi.advanceTimersByTimeAsync(100);
+
+      await waitFor(() => {
+        expect(screen.getByTestId('collection-owned-only-checkbox')).toBeInTheDocument();
+      });
+
+      // Uncheck owned-only
+      const checkbox = screen.getByTestId('collection-owned-only-checkbox');
+      fireEvent.click(checkbox);
+
+      await vi.advanceTimersByTimeAsync(100);
+
+      // API should be called a second time with owned_only: false
+      await waitFor(() => {
+        expect(mockCollection.getCollectionWithMetadata).toHaveBeenCalledTimes(2);
+      });
+      expect(mockCollection.getCollectionWithMetadata).toHaveBeenLastCalledWith(
+        expect.objectContaining({ owned_only: false })
+      );
+    });
   });
 
   describe('Pagination', () => {

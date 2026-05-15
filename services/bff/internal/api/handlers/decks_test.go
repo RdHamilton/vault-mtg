@@ -585,6 +585,46 @@ func contains(s, sub string) bool {
 	return false
 }
 
+// isHex16 returns true when s is exactly 16 lowercase hex characters.
+// This is the shape produced by hashAccountID (SHA-256 hex[:16]).
+func isHex16(s string) bool {
+	if len(s) != 16 {
+		return false
+	}
+	for _, c := range s {
+		if !((c >= '0' && c <= '9') || (c >= 'a' && c <= 'f')) {
+			return false
+		}
+	}
+	return true
+}
+
+// assertHashedID asserts that:
+//  1. capture.DistinctId is a 16-char hex string (not a raw integer).
+//  2. capture.Properties["account_id_hash"] matches DistinctId.
+//  3. capture.Properties["account_id"] is NOT set (PII guard).
+func assertHashedID(t *testing.T, capture posthog.Capture) {
+	t.Helper()
+	if !isHex16(capture.DistinctId) {
+		t.Errorf("DistinctId=%q: want 16-char hex string (got raw PII or wrong format)", capture.DistinctId)
+	}
+	hash, ok := capture.Properties["account_id_hash"]
+	if !ok {
+		t.Error("PostHog capture missing account_id_hash property")
+		return
+	}
+	hashStr, _ := hash.(string)
+	if !isHex16(hashStr) {
+		t.Errorf("account_id_hash=%q: want 16-char hex string", hashStr)
+	}
+	if hashStr != capture.DistinctId {
+		t.Errorf("account_id_hash=%q != DistinctId=%q: must match", hashStr, capture.DistinctId)
+	}
+	if _, present := capture.Properties["account_id"]; present {
+		t.Error("PostHog capture must NOT contain raw account_id property (PII violation)")
+	}
+}
+
 // ─── PostHog instrumentation tests (ticket #1982) ──────────────────────────
 //
 // Each test wires a mockPostHogClient and asserts that the correct event is
@@ -619,6 +659,7 @@ func TestDecksGet_EmitsPostHogEvent(t *testing.T) {
 	if capture.Properties["deck_id"] != "deck1" {
 		t.Errorf("deck_id=%v, want %q", capture.Properties["deck_id"], "deck1")
 	}
+	assertHashedID(t, capture)
 }
 
 // TestDecksGet_DBError_NoPostHogEvent verifies that no PostHog event is emitted
@@ -665,6 +706,7 @@ func TestDecksUpdate_EmitsPostHogEvent(t *testing.T) {
 	if capture.Event != "update_deck" {
 		t.Errorf("event=%q, want %q", capture.Event, "update_deck")
 	}
+	assertHashedID(t, capture)
 }
 
 // TestDecksUpdate_DBError_NoPostHogEvent verifies that no PostHog event is
@@ -714,6 +756,7 @@ func TestDecksDelete_EmitsPostHogEvent(t *testing.T) {
 	if capture.Properties["deck_id"] != "d1" {
 		t.Errorf("deck_id=%v, want %q", capture.Properties["deck_id"], "d1")
 	}
+	assertHashedID(t, capture)
 }
 
 // TestDecksDelete_DBError_NoPostHogEvent verifies that no PostHog event is
@@ -768,6 +811,7 @@ func TestDecksClone_EmitsPostHogEvent(t *testing.T) {
 	if capture.Properties["new_deck_id"] != "deck-cloned" {
 		t.Errorf("new_deck_id=%v, want %q", capture.Properties["new_deck_id"], "deck-cloned")
 	}
+	assertHashedID(t, capture)
 }
 
 // TestDecksClone_DBError_NoPostHogEvent verifies that no PostHog event is
@@ -824,6 +868,7 @@ func TestDecksExport_EmitsPostHogEvent(t *testing.T) {
 	if capture.Properties["format"] != "arena" {
 		t.Errorf("format=%v, want %q", capture.Properties["format"], "arena")
 	}
+	assertHashedID(t, capture)
 }
 
 // TestDecksExport_DBError_NoPostHogEvent verifies that no PostHog event is
