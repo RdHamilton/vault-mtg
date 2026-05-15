@@ -33,8 +33,11 @@ import (
 // expansion added Games / AggregateStats / Trends / FormatDistribution /
 // PerformanceByHour / MatchupMatrix / DistinctArchetypes / RankProgression /
 // RankProgressionTimeline / ExportAll alongside the original three methods.
+//
+// #2031: ListByAccountIDFiltered (offset) replaced by
+// ListByAccountIDCursorFiltered (keyset) — no OFFSET, no SELECT COUNT(*).
 type matchesListReader interface {
-	ListByAccountIDFiltered(ctx context.Context, accountID int64, filter repository.MatchFilter) ([]repository.MatchRow, int, error)
+	ListByAccountIDCursorFiltered(ctx context.Context, accountID int64, filter repository.MatchFilter, cursorTS *time.Time, cursorID string, limit int) ([]repository.MatchRow, error)
 	GetByID(ctx context.Context, accountID int64, matchID string) (*repository.MatchRow, error)
 	DistinctFormats(ctx context.Context, accountID int64) ([]string, error)
 	GamesByMatchID(ctx context.Context, accountID int64, matchID string) ([]repository.GameRow, error)
@@ -80,19 +83,29 @@ type matchListItem struct {
 	OpponentWins    int       `json:"OpponentWins"`
 }
 
-// matchListResponse wraps a page of matches. Field names are PascalCase to
-// stay consistent with matchListItem; the SPA reads response.matches/.total
-// via the typed return shape.
+// matchListResponse wraps a page of matches using keyset (cursor) pagination.
+// HasMore signals whether a next page exists (limit+1 probe pattern).
+// NextCursorTS and NextCursorID are opaque tokens the caller passes back on
+// the next request; when HasMore is false they are empty strings.
+//
+// The legacy Total/Page/Limit fields are omitted — new callers must use
+// HasMore. The SPA's existing getMatches() only reads Matches so removing
+// Total/Page/Limit is wire-compatible with the current frontend.
 type matchListResponse struct {
-	Matches []matchListItem `json:"Matches"`
-	Total   int             `json:"Total"`
-	Page    int             `json:"Page"`
-	Limit   int             `json:"Limit"`
+	Matches      []matchListItem `json:"Matches"`
+	HasMore      bool            `json:"HasMore"`
+	NextCursorTS string          `json:"NextCursorTS,omitempty"`
+	NextCursorID string          `json:"NextCursorID,omitempty"`
+	Limit        int             `json:"Limit"`
 }
 
 // matchesListFilterRequest is the JSON body the SPA's getMatches() posts. All
 // fields are optional; the handler treats missing fields as "no filter on that
 // dimension". Mirrors StatsFilterRequest in frontend/src/services/api/matches.ts.
+//
+// CursorTS and CursorID replace the old Page field. On the first request both
+// are empty; subsequent requests echo back the NextCursorTS/NextCursorID from
+// the previous response.
 type matchesListFilterRequest struct {
 	StartDate string   `json:"startDate,omitempty"`
 	EndDate   string   `json:"endDate,omitempty"`
@@ -100,13 +113,25 @@ type matchesListFilterRequest struct {
 	Formats   []string `json:"formats,omitempty"`
 	DeckID    string   `json:"deckId,omitempty"`
 	Result    string   `json:"result,omitempty"`
-	Page      int      `json:"page,omitempty"`
-	Limit     int      `json:"limit,omitempty"`
+	// CursorTS and CursorID are keyset pagination tokens (RFC3339 timestamp +
+	// match ID). Both must be supplied together; omitting both means first page.
+	CursorTS string `json:"cursorTS,omitempty"`
+	CursorID string `json:"cursorID,omitempty"`
+	Limit    int    `json:"limit,omitempty"`
+	// Page is accepted but ignored — use CursorTS/CursorID instead.
+	// Retained for a brief transitional period so existing SPA builds do not
+	// receive a decode error on the ignored field.
+	Page int `json:"page,omitempty"`
 }
 
-// List handles POST /api/v1/matches. Returns the paginated, filtered list of
-// matches for the authenticated user. Uses POST (not GET) to match the SPA's
-// existing call shape — bodies are easier than serialising filter[] params.
+// List handles POST /api/v1/matches. Returns a keyset-paginated, filtered list
+// of matches for the authenticated user. Uses POST (not GET) to match the
+// SPA's existing call shape — bodies are easier than serialising filter[] params.
+//
+// Pagination: pass CursorTS + CursorID from the previous response's
+// NextCursorTS/NextCursorID. Both must be present together. Omitting both
+// returns the first page. The response includes HasMore to signal whether
+// another page exists.
 func (h *MatchesHandler) List(w http.ResponseWriter, r *http.Request) {
 	userID, ok := bffmiddleware.UserIDFromContext(r.Context())
 	if !ok {
@@ -122,10 +147,6 @@ func (h *MatchesHandler) List(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	page := req.Page
-	if page <= 0 {
-		page = 1
-	}
 	limit := req.Limit
 	if limit <= 0 {
 		limit = 50
@@ -134,10 +155,31 @@ func (h *MatchesHandler) List(w http.ResponseWriter, r *http.Request) {
 		limit = 200
 	}
 
-	filter, err := buildMatchFilter(req, page, limit)
+	filter, err := buildMatchFilter(req, 1, limit)
 	if err != nil {
 		writeJSONError(w, err.Error(), http.StatusBadRequest)
 		return
+	}
+	// Clear the offset-era Page/Limit so analytics methods (AggregateStats etc.)
+	// that reuse MatchFilter are not confused.
+	filter.Page = 0
+	filter.Limit = 0
+
+	// Parse the keyset cursor when supplied. Both fields must be present.
+	var cursorTS *time.Time
+	cursorID := ""
+	if req.CursorTS != "" || req.CursorID != "" {
+		if req.CursorTS == "" || req.CursorID == "" {
+			writeJSONError(w, "cursorTS and cursorID must both be provided together", http.StatusBadRequest)
+			return
+		}
+		t, parseErr := time.Parse(time.RFC3339Nano, req.CursorTS)
+		if parseErr != nil {
+			writeJSONError(w, "invalid cursorTS: must be RFC3339 timestamp", http.StatusBadRequest)
+			return
+		}
+		cursorTS = &t
+		cursorID = req.CursorID
 	}
 
 	accountID, found, err := h.accounts.GetAccountIDByUserID(r.Context(), userID)
@@ -148,22 +190,40 @@ func (h *MatchesHandler) List(w http.ResponseWriter, r *http.Request) {
 	}
 	if !found {
 		// No account row yet — return an empty page rather than 404.
-		writeMatchesJSON(w, matchListResponse{Matches: []matchListItem{}, Total: 0, Page: page, Limit: limit})
+		writeMatchesJSON(w, matchListResponse{Matches: []matchListItem{}, HasMore: false, Limit: limit})
 		return
 	}
 
-	rows, total, err := h.matches.ListByAccountIDFiltered(r.Context(), accountID, filter)
+	// Fetch limit+1 rows; the extra row is the has_more probe.
+	rows, err := h.matches.ListByAccountIDCursorFiltered(r.Context(), accountID, filter, cursorTS, cursorID, limit)
 	if err != nil {
-		log.Printf("[MatchesHandler.List] ListByAccountIDFiltered accountID=%d: %v", accountID, err)
+		log.Printf("[MatchesHandler.List] ListByAccountIDCursorFiltered accountID=%d: %v", accountID, err)
 		writeJSONError(w, "internal server error", http.StatusInternalServerError)
 		return
+	}
+
+	hasMore := len(rows) > limit
+	if hasMore {
+		rows = rows[:limit] // trim the probe row
 	}
 
 	items := make([]matchListItem, 0, len(rows))
 	for _, m := range rows {
 		items = append(items, matchRowToListItem(m))
 	}
-	writeMatchesJSON(w, matchListResponse{Matches: items, Total: total, Page: page, Limit: limit})
+
+	resp := matchListResponse{
+		Matches: items,
+		HasMore: hasMore,
+		Limit:   limit,
+	}
+	if hasMore && len(rows) > 0 {
+		last := rows[len(rows)-1]
+		resp.NextCursorTS = last.Timestamp.UTC().Format(time.RFC3339Nano)
+		resp.NextCursorID = last.ID
+	}
+
+	writeMatchesJSON(w, resp)
 }
 
 // Get handles GET /api/v1/matches/{matchId}. Returns a single match scoped to
@@ -237,6 +297,9 @@ func (h *MatchesHandler) Formats(w http.ResponseWriter, r *http.Request) {
 
 // buildMatchFilter validates the incoming request and shapes it into the repo
 // filter struct. Validation errors get propagated to the handler as 400s.
+// The page and limit args are retained for call-sites that still use the
+// offset-based ListByAccountID path (history handler); cursor-based callers
+// should clear filter.Page and filter.Limit after calling this function.
 func buildMatchFilter(req matchesListFilterRequest, page, limit int) (repository.MatchFilter, error) {
 	f := repository.MatchFilter{
 		Page:    page,

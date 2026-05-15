@@ -18,6 +18,9 @@ import (
 // is nil (first page) no keyset predicate is applied.
 //
 // format may be empty to return all formats.
+//
+// Deprecated: prefer ListByAccountIDCursorFiltered which accepts a full
+// MatchFilter. This method is retained for backward compatibility.
 func (r *MatchesRepository) ListByAccountIDCursor(
 	ctx context.Context,
 	accountID int64,
@@ -26,62 +29,50 @@ func (r *MatchesRepository) ListByAccountIDCursor(
 	cursorID string,
 	limit int,
 ) ([]MatchRow, error) {
+	f := MatchFilter{Format: format}
+	return r.ListByAccountIDCursorFiltered(ctx, accountID, f, cursorTS, cursorID, limit)
+}
+
+// ListByAccountIDCursorFiltered returns up to limit+1 matches using keyset
+// (cursor) pagination. The extra row signals has_more=true to the caller.
+//
+// It accepts the full MatchFilter to support date-range, deck, result, and
+// multi-format filtering while keeping the keyset predicate on (timestamp, id).
+// The filter's Page and Limit fields are ignored; pass limit separately.
+//
+// When cursorTS is nil (first page) no keyset predicate is applied.
+// Indexes idx_matches_account_id_timestamp and
+// idx_matches_account_id_format_timestamp already support this ordering.
+func (r *MatchesRepository) ListByAccountIDCursorFiltered(
+	ctx context.Context,
+	accountID int64,
+	f MatchFilter,
+	cursorTS *time.Time,
+	cursorID string,
+	limit int,
+) ([]MatchRow, error) {
 	fetch := limit + 1 // fetch one extra to detect has_more
 
-	var (
-		rows *sql.Rows
-		err  error
-	)
+	// Build the WHERE clause from the filter (ignores Page/Limit).
+	where, args := buildMatchWhere(accountID, f)
+	next := len(args) + 1 // next positional placeholder index
 
-	switch {
-	case format != "" && cursorTS != nil:
-		const q = `
-			SELECT id, format, result, timestamp, duration_seconds, deck_id, rank_before, rank_after,
-			       player_wins, opponent_wins
-			FROM matches
-			WHERE account_id = $1
-			  AND lower(format) = lower($2)
-			  AND (timestamp < $3 OR (timestamp = $3 AND id < $4))
-			ORDER BY timestamp DESC, id DESC
-			LIMIT $5`
-
-		rows, err = r.db.QueryContext(ctx, q, accountID, format, *cursorTS, cursorID, fetch)
-
-	case format != "" && cursorTS == nil:
-		const q = `
-			SELECT id, format, result, timestamp, duration_seconds, deck_id, rank_before, rank_after,
-			       player_wins, opponent_wins
-			FROM matches
-			WHERE account_id = $1 AND lower(format) = lower($2)
-			ORDER BY timestamp DESC, id DESC
-			LIMIT $3`
-
-		rows, err = r.db.QueryContext(ctx, q, accountID, format, fetch)
-
-	case format == "" && cursorTS != nil:
-		const q = `
-			SELECT id, format, result, timestamp, duration_seconds, deck_id, rank_before, rank_after,
-			       player_wins, opponent_wins
-			FROM matches
-			WHERE account_id = $1
-			  AND (timestamp < $2 OR (timestamp = $2 AND id < $3))
-			ORDER BY timestamp DESC, id DESC
-			LIMIT $4`
-
-		rows, err = r.db.QueryContext(ctx, q, accountID, *cursorTS, cursorID, fetch)
-
-	default: // format == "" && cursorTS == nil (first page, no filter)
-		const q = `
-			SELECT id, format, result, timestamp, duration_seconds, deck_id, rank_before, rank_after,
-			       player_wins, opponent_wins
-			FROM matches
-			WHERE account_id = $1
-			ORDER BY timestamp DESC, id DESC
-			LIMIT $2`
-
-		rows, err = r.db.QueryContext(ctx, q, accountID, fetch)
+	// Append keyset predicate when a cursor is supplied.
+	if cursorTS != nil {
+		where += " AND (timestamp < $" + itoa(next) + " OR (timestamp = $" + itoa(next) + " AND id < $" + itoa(next+1) + "))"
+		args = append(args, *cursorTS, cursorID)
+		next += 2
 	}
 
+	q := `SELECT id, format, result, timestamp, duration_seconds, deck_id, rank_before, rank_after,
+	             player_wins, opponent_wins
+	      FROM matches ` + where + `
+	      ORDER BY timestamp DESC, id DESC
+	      LIMIT $` + itoa(next)
+
+	args = append(args, fetch)
+
+	rows, err := r.db.QueryContext(ctx, q, args...)
 	if err != nil {
 		return nil, err
 	}
@@ -132,7 +123,10 @@ func NewMatchesRepository(db DB) *MatchesRepository {
 
 // ListByAccountID returns a page of matches for the given account, ordered by
 // timestamp DESC.  format may be empty to return all formats.
-// Returns rows and total count (for pagination).
+//
+// Deprecated: this method uses OFFSET pagination which degrades at scale.
+// Callers should migrate to ListByAccountIDCursorFiltered. The method is
+// hard-capped at 200 rows and page depth 50 to prevent runaway scans.
 func (r *MatchesRepository) ListByAccountID(
 	ctx context.Context,
 	accountID int64,
@@ -140,6 +134,15 @@ func (r *MatchesRepository) ListByAccountID(
 	page int,
 	limit int,
 ) ([]MatchRow, int, error) {
+	// Hard cap: protect against deep-page full-scans on large accounts.
+	const maxLimit = 200
+	const maxPage = 50
+	if limit > maxLimit {
+		limit = maxLimit
+	}
+	if page > maxPage {
+		page = maxPage
+	}
 	offset := (page - 1) * limit
 
 	var (
@@ -153,7 +156,7 @@ func (r *MatchesRepository) ListByAccountID(
 			       player_wins, opponent_wins
 			FROM matches
 			WHERE account_id = $1 AND lower(format) = lower($2)
-			ORDER BY timestamp DESC
+			ORDER BY timestamp DESC, id DESC
 			LIMIT $3 OFFSET $4`
 
 		rows, err = r.db.QueryContext(ctx, q, accountID, format, limit, offset)
@@ -163,7 +166,7 @@ func (r *MatchesRepository) ListByAccountID(
 			       player_wins, opponent_wins
 			FROM matches
 			WHERE account_id = $1
-			ORDER BY timestamp DESC
+			ORDER BY timestamp DESC, id DESC
 			LIMIT $2 OFFSET $3`
 
 		rows, err = r.db.QueryContext(ctx, q, accountID, limit, offset)
@@ -193,6 +196,8 @@ func (r *MatchesRepository) ListByAccountID(
 		return nil, 0, err
 	}
 
+	// Deprecated: this COUNT(*) scan is the main cost driver at scale.
+	// New callers must use ListByAccountIDCursorFiltered + has_more.
 	total, err := r.countByAccountID(ctx, accountID, format)
 	if err != nil {
 		return nil, 0, err
@@ -290,51 +295,10 @@ type MatchFilter struct {
 	Limit     int
 }
 
-// ListByAccountIDFiltered returns a page of matches scoped to accountID,
-// filtered by the non-zero fields of f, ordered by timestamp DESC.  Returns
-// the page rows and a total count for pagination.
-func (r *MatchesRepository) ListByAccountIDFiltered(ctx context.Context, accountID int64, f MatchFilter) ([]MatchRow, int, error) {
-	where, args := buildMatchWhere(accountID, f)
-	offset := (f.Page - 1) * f.Limit
-	args = append(args, f.Limit, offset)
-
-	q := `SELECT id, format, result, timestamp, duration_seconds, deck_id,
-	             rank_before, rank_after, player_wins, opponent_wins
-	      FROM matches ` + where + `
-	      ORDER BY timestamp DESC
-	      LIMIT $` + itoa(len(args)-1) + ` OFFSET $` + itoa(len(args))
-
-	rows, err := r.db.QueryContext(ctx, q, args...)
-	if err != nil {
-		return nil, 0, err
-	}
-	defer func() { _ = rows.Close() }()
-
-	var matches []MatchRow
-	for rows.Next() {
-		var m MatchRow
-		if err := rows.Scan(
-			&m.ID, &m.Format, &m.Result, &m.Timestamp,
-			&m.DurationSeconds, &m.DeckID, &m.RankBefore, &m.RankAfter,
-			&m.PlayerWins, &m.OpponentWins,
-		); err != nil {
-			return nil, 0, err
-		}
-		matches = append(matches, m)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, 0, err
-	}
-
-	// Drop pagination args for the count query.
-	countWhere, countArgs := buildMatchWhere(accountID, f)
-	countQ := "SELECT COUNT(*) FROM matches " + countWhere
-	var total int
-	if err := r.db.QueryRowContext(ctx, countQ, countArgs...).Scan(&total); err != nil {
-		return nil, 0, err
-	}
-	return matches, total, nil
-}
+// ListByAccountIDFiltered has been removed.
+// Use ListByAccountIDCursorFiltered instead, which uses keyset pagination and
+// returns has_more via the limit+1 pattern (no SELECT COUNT(*) per request).
+// Removed in: #2031 — Retire offset pagination on /api/v1/matches list endpoints.
 
 // GetByID returns a single match row scoped to accountID, or nil when the
 // row does not exist or belongs to a different account. The "scoped to

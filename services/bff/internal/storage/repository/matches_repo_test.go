@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"strings"
 	"testing"
 	"time"
 
@@ -59,7 +60,7 @@ func insertTestMatch(t *testing.T, db *sql.DB, matchID string, accountID int64, 
 }
 
 // TestMatchesRepository_ListByAccountID_ReturnsOnlyOwnRows verifies cross-account
-// isolation: account A cannot see account B's matches.
+// isolation: account A cannot see account B's matches (legacy offset method).
 func TestMatchesRepository_ListByAccountID_ReturnsOnlyOwnRows(t *testing.T) {
 	db := openTestDB(t)
 	repo := repository.NewMatchesRepository(db)
@@ -87,7 +88,7 @@ func TestMatchesRepository_ListByAccountID_ReturnsOnlyOwnRows(t *testing.T) {
 }
 
 // TestMatchesRepository_ListByAccountID_EmptyAccount verifies that an account
-// with no matches returns an empty slice (not an error).
+// with no matches returns an empty slice (not an error) — legacy offset method.
 func TestMatchesRepository_ListByAccountID_EmptyAccount(t *testing.T) {
 	db := openTestDB(t)
 	repo := repository.NewMatchesRepository(db)
@@ -109,7 +110,7 @@ func TestMatchesRepository_ListByAccountID_EmptyAccount(t *testing.T) {
 }
 
 // TestMatchesRepository_ListByAccountID_Pagination verifies offset/limit paging
-// and ordering (timestamp DESC).
+// and ordering (timestamp DESC) — deprecated method, retained for regression.
 func TestMatchesRepository_ListByAccountID_Pagination(t *testing.T) {
 	db := openTestDB(t)
 	repo := repository.NewMatchesRepository(db)
@@ -155,7 +156,7 @@ func TestMatchesRepository_ListByAccountID_Pagination(t *testing.T) {
 }
 
 // TestMatchesRepository_ListByAccountID_FormatFilter verifies that the optional
-// format filter restricts results correctly.
+// format filter restricts results correctly — deprecated method.
 func TestMatchesRepository_ListByAccountID_FormatFilter(t *testing.T) {
 	db := openTestDB(t)
 	repo := repository.NewMatchesRepository(db)
@@ -179,6 +180,162 @@ func TestMatchesRepository_ListByAccountID_FormatFilter(t *testing.T) {
 	for _, r := range stdRows {
 		if r.Format != "Standard" {
 			t.Errorf("format filter returned non-Standard row: %q", r.Format)
+		}
+	}
+}
+
+// ── Cursor-based tests (ListByAccountIDCursorFiltered) ────────────────────────
+
+// TestMatchesRepository_CursorFiltered_EmptyAccount verifies that cursor query
+// returns empty slice for an account with no matches.
+func TestMatchesRepository_CursorFiltered_EmptyAccount(t *testing.T) {
+	db := openTestDB(t)
+	repo := repository.NewMatchesRepository(db)
+
+	accountID := insertTestAccount(t, db, "cursor-test-empty")
+
+	rows, err := repo.ListByAccountIDCursorFiltered(context.Background(), accountID, repository.MatchFilter{}, nil, "", 50)
+	if err != nil {
+		t.Fatalf("ListByAccountIDCursorFiltered: %v", err)
+	}
+	if len(rows) != 0 {
+		t.Errorf("expected 0 rows for empty account, got %d", len(rows))
+	}
+}
+
+// TestMatchesRepository_CursorFiltered_CrossAccountIsolation verifies account
+// scoping: accountA cursor query must not return accountB rows.
+func TestMatchesRepository_CursorFiltered_CrossAccountIsolation(t *testing.T) {
+	db := openTestDB(t)
+	repo := repository.NewMatchesRepository(db)
+
+	accountA := insertTestAccount(t, db, "cursor-iso-a")
+	accountB := insertTestAccount(t, db, "cursor-iso-b")
+
+	now := time.Now().UTC().Truncate(time.Second)
+	insertTestMatch(t, db, fmt.Sprintf("cursor-iso-match-a-%d", accountA), accountA, "Standard", now)
+	insertTestMatch(t, db, fmt.Sprintf("cursor-iso-match-b-%d", accountB), accountB, "Standard", now)
+
+	rows, err := repo.ListByAccountIDCursorFiltered(context.Background(), accountA, repository.MatchFilter{}, nil, "", 100)
+	if err != nil {
+		t.Fatalf("ListByAccountIDCursorFiltered: %v", err)
+	}
+
+	bID := fmt.Sprintf("cursor-iso-match-b-%d", accountB)
+	for _, r := range rows {
+		if r.ID == bID {
+			t.Errorf("cross-account leak: accountA cursor query returned accountB row %q", r.ID)
+		}
+	}
+}
+
+// TestMatchesRepository_CursorFiltered_OrderAndHasMore verifies DESC ordering
+// and the limit+1 has_more probe pattern.
+func TestMatchesRepository_CursorFiltered_OrderAndHasMore(t *testing.T) {
+	db := openTestDB(t)
+	repo := repository.NewMatchesRepository(db)
+
+	accountID := insertTestAccount(t, db, "cursor-test-order")
+	base := time.Now().UTC().Truncate(time.Second)
+
+	// Insert 3 matches with distinct timestamps.
+	for i := 0; i < 3; i++ {
+		ts := base.Add(time.Duration(i) * time.Minute)
+		insertTestMatch(t, db, fmt.Sprintf("cursor-order-%d-%d", accountID, i), accountID, "Standard", ts)
+	}
+
+	// Fetch with limit=2 — should get 3 rows (limit+1 probe), signalling has_more.
+	rows, err := repo.ListByAccountIDCursorFiltered(context.Background(), accountID, repository.MatchFilter{}, nil, "", 2)
+	if err != nil {
+		t.Fatalf("ListByAccountIDCursorFiltered: %v", err)
+	}
+
+	// Expect 3 rows (limit+1) because has_more probe.
+	if len(rows) != 3 {
+		t.Fatalf("expected 3 rows (limit+1 probe), got %d", len(rows))
+	}
+
+	// Newest first.
+	if rows[0].Timestamp.Before(rows[1].Timestamp) {
+		t.Errorf("expected DESC order: rows[0]=%v < rows[1]=%v", rows[0].Timestamp, rows[1].Timestamp)
+	}
+}
+
+// TestMatchesRepository_CursorFiltered_KeysetCursor verifies that a cursor
+// correctly restricts results to rows older than the cursor row.
+func TestMatchesRepository_CursorFiltered_KeysetCursor(t *testing.T) {
+	db := openTestDB(t)
+	repo := repository.NewMatchesRepository(db)
+
+	accountID := insertTestAccount(t, db, "cursor-test-keyset")
+	base := time.Now().UTC().Truncate(time.Second)
+
+	ids := []string{
+		fmt.Sprintf("cursor-ks-0-%d", accountID),
+		fmt.Sprintf("cursor-ks-1-%d", accountID),
+		fmt.Sprintf("cursor-ks-2-%d", accountID),
+	}
+	for i, id := range ids {
+		insertTestMatch(t, db, id, accountID, "Standard", base.Add(time.Duration(2-i)*time.Minute))
+	}
+	// Timestamps: ids[0] newest (base+2m), ids[1] middle (base+1m), ids[2] oldest (base).
+
+	// First page: limit=2, no cursor → get ids[0] and ids[1] (+ probe=ids[2]).
+	firstPage, err := repo.ListByAccountIDCursorFiltered(context.Background(), accountID, repository.MatchFilter{}, nil, "", 2)
+	if err != nil {
+		t.Fatalf("first page: %v", err)
+	}
+	if len(firstPage) < 2 {
+		t.Fatalf("first page: expected ≥2 rows, got %d", len(firstPage))
+	}
+
+	// Use the second row as the cursor to fetch the next page.
+	cursorRow := firstPage[1] // ids[1]
+	cursorTS := cursorRow.Timestamp
+	cursorID := cursorRow.ID
+
+	secondPage, err := repo.ListByAccountIDCursorFiltered(context.Background(), accountID, repository.MatchFilter{}, &cursorTS, cursorID, 10)
+	if err != nil {
+		t.Fatalf("second page: %v", err)
+	}
+
+	// Should only contain ids[2] (the oldest row).
+	for _, r := range secondPage {
+		if r.Timestamp.After(cursorTS) || (r.Timestamp.Equal(cursorTS) && r.ID >= cursorID) {
+			t.Errorf("cursor leak: row %q ts=%v is not before cursor ts=%v id=%q", r.ID, r.Timestamp, cursorTS, cursorID)
+		}
+	}
+}
+
+// TestMatchesRepository_CursorFiltered_FilterDimensions verifies that the full
+// MatchFilter (date range, deck, result, format) is applied correctly.
+func TestMatchesRepository_CursorFiltered_FilterDimensions(t *testing.T) {
+	db := openTestDB(t)
+	repo := repository.NewMatchesRepository(db)
+
+	accountID := insertTestAccount(t, db, "cursor-test-filter")
+	now := time.Now().UTC().Truncate(time.Second)
+
+	insertTestMatch(t, db, fmt.Sprintf("cursor-flt-std-%d", accountID), accountID, "Standard", now)
+	insertTestMatch(t, db, fmt.Sprintf("cursor-flt-draft-%d", accountID), accountID, "PremierDraft", now.Add(-time.Second))
+
+	// Filter by format=Standard — should only return the Standard match.
+	f := repository.MatchFilter{Format: "Standard"}
+	rows, err := repo.ListByAccountIDCursorFiltered(context.Background(), accountID, f, nil, "", 50)
+	if err != nil {
+		t.Fatalf("filtered query: %v", err)
+	}
+
+	for _, r := range rows {
+		if strings.ToLower(r.Format) != "standard" {
+			t.Errorf("format filter leaked non-Standard row: format=%q id=%q", r.Format, r.ID)
+		}
+	}
+
+	draftID := fmt.Sprintf("cursor-flt-draft-%d", accountID)
+	for _, r := range rows {
+		if r.ID == draftID {
+			t.Errorf("format filter should have excluded PremierDraft row %q", draftID)
 		}
 	}
 }

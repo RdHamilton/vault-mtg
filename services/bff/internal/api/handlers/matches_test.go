@@ -31,9 +31,12 @@ func (s *matchesAccountLookup) GetAccountIDByUserID(_ context.Context, _ int64) 
 
 type stubMatchesReader struct {
 	listRows   []repository.MatchRow
-	listTotal  int
 	listFilter repository.MatchFilter
 	listErr    error
+
+	// Captured cursor args from the most recent ListByAccountIDCursorFiltered call.
+	capturedCursorTS *time.Time
+	capturedCursorID string
 
 	getRow *repository.MatchRow
 	getErr error
@@ -73,9 +76,11 @@ type stubMatchesReader struct {
 	exportErr  error
 }
 
-func (s *stubMatchesReader) ListByAccountIDFiltered(_ context.Context, _ int64, f repository.MatchFilter) ([]repository.MatchRow, int, error) {
+func (s *stubMatchesReader) ListByAccountIDCursorFiltered(_ context.Context, _ int64, f repository.MatchFilter, cursorTS *time.Time, cursorID string, _ int) ([]repository.MatchRow, error) {
 	s.listFilter = f
-	return s.listRows, s.listTotal, s.listErr
+	s.capturedCursorTS = cursorTS
+	s.capturedCursorID = cursorID
+	return s.listRows, s.listErr
 }
 
 func (s *stubMatchesReader) GetByID(_ context.Context, _ int64, _ string) (*repository.MatchRow, error) {
@@ -154,12 +159,11 @@ func TestMatchesList_HappyPath(t *testing.T) {
 			{ID: "m1", Format: "standard_bo1", Result: "win", Timestamp: timestamp, DurationSeconds: &dur, DeckID: &deck, PlayerWins: 2, OpponentWins: 1},
 			{ID: "m2", Format: "draft_bo1", Result: "loss", Timestamp: timestamp.Add(-time.Hour), PlayerWins: 0, OpponentWins: 2},
 		},
-		listTotal: 2,
 	}
 	accts := &matchesAccountLookup{accountID: 7, found: true}
 	h := handlers.NewMatchesHandler(reader, accts)
 
-	body, _ := json.Marshal(map[string]any{"format": "standard_bo1", "page": 1, "limit": 50})
+	body, _ := json.Marshal(map[string]any{"format": "standard_bo1", "limit": 50})
 	req := requestWithUserID(t, http.MethodPost, "/api/v1/matches", body, 168)
 	rr := httptest.NewRecorder()
 	h.List(rr, req)
@@ -174,16 +178,18 @@ func TestMatchesList_HappyPath(t *testing.T) {
 	var env struct {
 		Data struct {
 			Matches []map[string]any `json:"Matches"`
-			Total   int              `json:"Total"`
-			Page    int              `json:"Page"`
+			HasMore bool             `json:"HasMore"`
 			Limit   int              `json:"Limit"`
 		} `json:"data"`
 	}
 	if err := json.NewDecoder(rr.Body).Decode(&env); err != nil {
 		t.Fatalf("decode: %v", err)
 	}
-	if env.Data.Total != 2 || len(env.Data.Matches) != 2 {
-		t.Fatalf("totals: total=%d matches=%d body=%s", env.Data.Total, len(env.Data.Matches), rr.Body.String())
+	if len(env.Data.Matches) != 2 {
+		t.Fatalf("matches count: want 2, got %d, body=%s", len(env.Data.Matches), rr.Body.String())
+	}
+	if env.Data.HasMore {
+		t.Errorf("HasMore: want false for 2 rows with limit=50")
 	}
 	first := env.Data.Matches[0]
 	if _, ok := first["ID"]; !ok {
@@ -198,6 +204,104 @@ func TestMatchesList_HappyPath(t *testing.T) {
 	// filter was forwarded
 	if reader.listFilter.Format != "standard_bo1" {
 		t.Errorf("filter.Format: got %q", reader.listFilter.Format)
+	}
+}
+
+// TestMatchesList_HasMore verifies that when the repo returns limit+1 rows the
+// response sets HasMore=true and NextCursorTS/NextCursorID, and trims the list
+// to exactly limit items.
+func TestMatchesList_HasMore(t *testing.T) {
+	ts1 := time.Date(2026, 5, 11, 12, 0, 0, 0, time.UTC)
+	ts2 := ts1.Add(-time.Hour)
+	// Stub returns limit+1 rows (limit=2 → 3 rows) to trigger has_more=true.
+	reader := &stubMatchesReader{
+		listRows: []repository.MatchRow{
+			{ID: "m1", Format: "standard_bo1", Result: "win", Timestamp: ts1, PlayerWins: 1, OpponentWins: 0},
+			{ID: "m2", Format: "standard_bo1", Result: "loss", Timestamp: ts2, PlayerWins: 0, OpponentWins: 1},
+			{ID: "m3", Format: "standard_bo1", Result: "win", Timestamp: ts2.Add(-time.Minute), PlayerWins: 1, OpponentWins: 0}, // probe row
+		},
+	}
+	h := handlers.NewMatchesHandler(reader, &matchesAccountLookup{accountID: 7, found: true})
+
+	body, _ := json.Marshal(map[string]any{"limit": 2})
+	req := requestWithUserID(t, http.MethodPost, "/api/v1/matches", body, 168)
+	rr := httptest.NewRecorder()
+	h.List(rr, req)
+
+	if rr.Code != http.StatusOK {
+		t.Fatalf("status: %d body=%s", rr.Code, rr.Body.String())
+	}
+	var env struct {
+		Data struct {
+			Matches      []map[string]any `json:"Matches"`
+			HasMore      bool             `json:"HasMore"`
+			NextCursorTS string           `json:"NextCursorTS"`
+			NextCursorID string           `json:"NextCursorID"`
+		} `json:"data"`
+	}
+	if err := json.NewDecoder(rr.Body).Decode(&env); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if !env.Data.HasMore {
+		t.Error("HasMore: want true")
+	}
+	if len(env.Data.Matches) != 2 {
+		t.Errorf("Matches len: want 2 (probe trimmed), got %d", len(env.Data.Matches))
+	}
+	if env.Data.NextCursorTS == "" || env.Data.NextCursorID == "" {
+		t.Errorf("NextCursor tokens should be non-empty when HasMore=true: ts=%q id=%q",
+			env.Data.NextCursorTS, env.Data.NextCursorID)
+	}
+	// The cursor should point at the last returned row (m2).
+	if env.Data.NextCursorID != "m2" {
+		t.Errorf("NextCursorID: want m2, got %q", env.Data.NextCursorID)
+	}
+}
+
+// TestMatchesList_Cursor verifies that cursor params are forwarded to the repo.
+func TestMatchesList_Cursor(t *testing.T) {
+	cursorTime := time.Date(2026, 5, 10, 8, 0, 0, 0, time.UTC)
+	reader := &stubMatchesReader{
+		listRows: []repository.MatchRow{
+			{ID: "m5", Format: "standard_bo1", Result: "win", Timestamp: cursorTime.Add(-time.Hour), PlayerWins: 1, OpponentWins: 0},
+		},
+	}
+	h := handlers.NewMatchesHandler(reader, &matchesAccountLookup{accountID: 7, found: true})
+
+	body, _ := json.Marshal(map[string]any{
+		"cursorTS": cursorTime.UTC().Format(time.RFC3339Nano),
+		"cursorID": "m4",
+		"limit":    10,
+	})
+	req := requestWithUserID(t, http.MethodPost, "/api/v1/matches", body, 168)
+	rr := httptest.NewRecorder()
+	h.List(rr, req)
+
+	if rr.Code != http.StatusOK {
+		t.Fatalf("status: %d body=%s", rr.Code, rr.Body.String())
+	}
+	// Verify the cursor was forwarded to the repo.
+	if reader.capturedCursorID != "m4" {
+		t.Errorf("cursorID not forwarded: got %q", reader.capturedCursorID)
+	}
+	if reader.capturedCursorTS == nil || !reader.capturedCursorTS.Equal(cursorTime) {
+		t.Errorf("cursorTS not forwarded: got %v", reader.capturedCursorTS)
+	}
+}
+
+// TestMatchesList_CursorMissingID verifies that supplying only cursorTS (without
+// cursorID) is rejected with a 400.
+func TestMatchesList_CursorMissingID(t *testing.T) {
+	h := handlers.NewMatchesHandler(&stubMatchesReader{}, &matchesAccountLookup{accountID: 7, found: true})
+
+	ts := time.Now().UTC().Format(time.RFC3339Nano)
+	body, _ := json.Marshal(map[string]any{"cursorTS": ts}) // cursorID absent
+	req := requestWithUserID(t, http.MethodPost, "/api/v1/matches", body, 168)
+	rr := httptest.NewRecorder()
+	h.List(rr, req)
+
+	if rr.Code != http.StatusBadRequest {
+		t.Errorf("status: got %d, want 400", rr.Code)
 	}
 }
 
@@ -229,12 +333,12 @@ func TestMatchesList_NoAccountReturnsEmptyPage(t *testing.T) {
 	var env struct {
 		Data struct {
 			Matches []any `json:"Matches"`
-			Total   int   `json:"Total"`
+			HasMore bool  `json:"HasMore"`
 		} `json:"data"`
 	}
 	_ = json.NewDecoder(rr.Body).Decode(&env)
-	if env.Data.Total != 0 || len(env.Data.Matches) != 0 {
-		t.Errorf("expected empty page, got total=%d matches=%d", env.Data.Total, len(env.Data.Matches))
+	if env.Data.HasMore || len(env.Data.Matches) != 0 {
+		t.Errorf("expected empty page, got hasMore=%v matches=%d", env.Data.HasMore, len(env.Data.Matches))
 	}
 }
 

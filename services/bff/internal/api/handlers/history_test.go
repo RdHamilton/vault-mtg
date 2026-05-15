@@ -13,6 +13,11 @@ import (
 	"github.com/ramonehamilton/mtga-bff/internal/storage/repository"
 )
 
+// compile-time assertions: stubMatchReader must satisfy MatchHistoryReader.
+var _ interface {
+	ListByAccountIDCursorFiltered(context.Context, int64, repository.MatchFilter, *time.Time, string, int) ([]repository.MatchRow, error)
+} = (*stubMatchReader)(nil)
+
 // --- stubs ---
 
 type stubAccountLookup struct {
@@ -26,13 +31,21 @@ func (s *stubAccountLookup) GetAccountIDByUserID(_ context.Context, _ int64) (in
 }
 
 type stubMatchReader struct {
-	rows  []repository.MatchRow
-	total int
-	err   error
+	rows []repository.MatchRow
+	err  error
+
+	// Captured args from most recent call.
+	capturedCursorTS *time.Time
+	capturedCursorID string
 }
 
-func (s *stubMatchReader) ListByAccountID(_ context.Context, _ int64, _ string, _, _ int) ([]repository.MatchRow, int, error) {
-	return s.rows, s.total, s.err
+// ListByAccountIDCursorFiltered implements MatchHistoryReader using keyset
+// cursor pagination. Returns s.rows unchanged so the caller can set up the
+// exact slice it wants (including the probe row for has_more testing).
+func (s *stubMatchReader) ListByAccountIDCursorFiltered(_ context.Context, _ int64, _ repository.MatchFilter, cursorTS *time.Time, cursorID string, _ int) ([]repository.MatchRow, error) {
+	s.capturedCursorTS = cursorTS
+	s.capturedCursorID = cursorID
+	return s.rows, s.err
 }
 
 type stubDraftReader struct {
@@ -74,7 +87,6 @@ func TestGetMatches_HappyPath(t *testing.T) {
 		rows: []repository.MatchRow{
 			{ID: "m1", Format: "Standard", Result: "win", Timestamp: ts, DurationSeconds: &dur, PlayerWins: 2, OpponentWins: 1},
 		},
-		total: 1,
 	}
 	drafts := &stubDraftReader{}
 
@@ -99,12 +111,8 @@ func TestGetMatches_HappyPath(t *testing.T) {
 		t.Errorf("expected 1 match, got %d", len(data))
 	}
 
-	if resp["total"].(float64) != 1 {
-		t.Errorf("expected total=1, got %v", resp["total"])
-	}
-
-	if resp["page"].(float64) != 1 {
-		t.Errorf("expected page=1, got %v", resp["page"])
+	if resp["has_more"].(bool) {
+		t.Errorf("expected has_more=false for single row page")
 	}
 
 	if resp["limit"].(float64) != 20 {
@@ -114,7 +122,7 @@ func TestGetMatches_HappyPath(t *testing.T) {
 
 func TestGetMatches_EmptyResult(t *testing.T) {
 	accounts := &stubAccountLookup{accountID: 10, found: true}
-	matches := &stubMatchReader{rows: nil, total: 0}
+	matches := &stubMatchReader{rows: nil}
 	drafts := &stubDraftReader{}
 
 	h := handlers.NewHistoryHandler(accounts, matches, drafts)
@@ -138,8 +146,8 @@ func TestGetMatches_EmptyResult(t *testing.T) {
 		t.Errorf("expected empty data array, got %d items", len(data))
 	}
 
-	if resp["total"].(float64) != 0 {
-		t.Errorf("expected total=0, got %v", resp["total"])
+	if hasMore, _ := resp["has_more"].(bool); hasMore {
+		t.Errorf("expected has_more=false for empty result")
 	}
 }
 
@@ -167,6 +175,9 @@ func TestGetMatches_NoAccountYet(t *testing.T) {
 	data := resp["data"].([]interface{})
 	if len(data) != 0 {
 		t.Errorf("expected empty data, got %d items", len(data))
+	}
+	if hasMore, _ := resp["has_more"].(bool); hasMore {
+		t.Errorf("expected has_more=false for no-account")
 	}
 }
 
@@ -221,26 +232,59 @@ func TestGetMatches_InvalidFormat(t *testing.T) {
 	}
 }
 
-func TestGetMatches_PaginationPage2(t *testing.T) {
+// TestGetMatches_CursorForwarded verifies that cursor_ts and cursor_id query
+// params are forwarded to the repo method.
+func TestGetMatches_CursorForwarded(t *testing.T) {
 	accounts := &stubAccountLookup{accountID: 10, found: true}
 
-	var rows []repository.MatchRow
-	for i := 0; i < 5; i++ {
-		rows = append(rows, repository.MatchRow{
-			ID:        "m" + string(rune('a'+i)),
-			Format:    "Standard",
-			Result:    "win",
-			Timestamp: time.Now().UTC(),
-		})
+	cursorTime := time.Date(2026, 5, 9, 10, 0, 0, 0, time.UTC)
+	matches := &stubMatchReader{
+		rows: []repository.MatchRow{
+			{ID: "m5", Format: "Standard", Result: "win", Timestamp: cursorTime.Add(-time.Hour), PlayerWins: 1, OpponentWins: 0},
+		},
 	}
-
-	matches := &stubMatchReader{rows: rows, total: 45}
 	drafts := &stubDraftReader{}
 
 	h := handlers.NewHistoryHandler(accounts, matches, drafts)
 	handler := authedMatchHandler(h, 1)
 
-	req := httptest.NewRequest(http.MethodGet, "/api/v1/history/matches?page=2&limit=20", nil)
+	target := "/api/v1/history/matches?cursor_ts=" + cursorTime.UTC().Format(time.RFC3339Nano) + "&cursor_id=m4&limit=20"
+	req := httptest.NewRequest(http.MethodGet, target, nil)
+	rr := httptest.NewRecorder()
+	handler.ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rr.Code, rr.Body.String())
+	}
+	// The cursor args should have been passed through to the repo.
+	if matches.capturedCursorID != "m4" {
+		t.Errorf("cursor_id not forwarded: got %q", matches.capturedCursorID)
+	}
+	if matches.capturedCursorTS == nil || !matches.capturedCursorTS.Equal(cursorTime) {
+		t.Errorf("cursor_ts not forwarded: got %v", matches.capturedCursorTS)
+	}
+}
+
+// TestGetMatches_HasMore verifies the has_more + next_cursor_* fields are set
+// correctly when the repo returns limit+1 rows.
+func TestGetMatches_HasMore(t *testing.T) {
+	accounts := &stubAccountLookup{accountID: 10, found: true}
+
+	ts := time.Now().UTC().Truncate(time.Second)
+	// Return 3 rows with limit=2 → has_more=true, probe row trimmed.
+	matches := &stubMatchReader{
+		rows: []repository.MatchRow{
+			{ID: "ma", Format: "Standard", Result: "win", Timestamp: ts, PlayerWins: 1, OpponentWins: 0},
+			{ID: "mb", Format: "Standard", Result: "loss", Timestamp: ts.Add(-time.Minute), PlayerWins: 0, OpponentWins: 1},
+			{ID: "mc", Format: "Standard", Result: "win", Timestamp: ts.Add(-2 * time.Minute), PlayerWins: 1, OpponentWins: 0}, // probe
+		},
+	}
+	drafts := &stubDraftReader{}
+
+	h := handlers.NewHistoryHandler(accounts, matches, drafts)
+	handler := authedMatchHandler(h, 1)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/history/matches?limit=2", nil)
 	rr := httptest.NewRecorder()
 	handler.ServeHTTP(rr, req)
 
@@ -253,12 +297,18 @@ func TestGetMatches_PaginationPage2(t *testing.T) {
 		t.Fatalf("unmarshal: %v", err)
 	}
 
-	if resp["page"].(float64) != 2 {
-		t.Errorf("expected page=2, got %v", resp["page"])
+	data := resp["data"].([]interface{})
+	if len(data) != 2 {
+		t.Errorf("expected 2 items (probe trimmed), got %d", len(data))
 	}
-
-	if resp["total"].(float64) != 45 {
-		t.Errorf("expected total=45, got %v", resp["total"])
+	if hasMore, _ := resp["has_more"].(bool); !hasMore {
+		t.Error("expected has_more=true")
+	}
+	if resp["next_cursor_id"] == nil || resp["next_cursor_id"].(string) != "mb" {
+		t.Errorf("next_cursor_id: got %v, want mb", resp["next_cursor_id"])
+	}
+	if resp["next_cursor_ts"] == nil || resp["next_cursor_ts"].(string) == "" {
+		t.Errorf("next_cursor_ts should be set when has_more=true")
 	}
 }
 
@@ -273,8 +323,7 @@ func TestGetMatches_CrossTenantIsolation(t *testing.T) {
 
 	ts := time.Date(2026, 5, 5, 0, 0, 0, 0, time.UTC)
 	matchesStore := &stubMatchReader{
-		rows:  []repository.MatchRow{{ID: "userA-match", Format: "Standard", Result: "win", Timestamp: ts}},
-		total: 1,
+		rows: []repository.MatchRow{{ID: "userA-match", Format: "Standard", Result: "win", Timestamp: ts}},
 	}
 
 	hA := handlers.NewHistoryHandler(accountsA, matchesStore, &stubDraftReader{})
