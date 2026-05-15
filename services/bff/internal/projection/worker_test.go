@@ -3,6 +3,8 @@ package projection
 import (
 	"context"
 	"encoding/json"
+	"errors"
+	"fmt"
 	"testing"
 	"time"
 
@@ -517,8 +519,8 @@ func TestRunOnce_InventoryUpdated_ProjectsToInventory(t *testing.T) {
 		t.Fatalf("expected 1 inventory upsert, got %d", len(inv.upserts))
 	}
 	u := inv.upserts[0]
-	if u.AccountID != "acct-inv" {
-		t.Errorf("account_id: want acct-inv, got %q", u.AccountID)
+	if u.AccountID != 10 {
+		t.Errorf("account_id: want 10 (resolved accounts.id), got %d", u.AccountID)
 	}
 	if u.Gems != 1500 {
 		t.Errorf("gems: want 1500, got %d", u.Gems)
@@ -693,8 +695,8 @@ func TestRunOnce_QuestCompleted_InsertsToSessionTracking(t *testing.T) {
 	if ins.XPReward != 500 {
 		t.Errorf("xp_reward: want 500, got %d", ins.XPReward)
 	}
-	if ins.AccountID != "acct-qc" {
-		t.Errorf("account_id: want acct-qc, got %q", ins.AccountID)
+	if ins.AccountID != 10 {
+		t.Errorf("account_id: want 10 (resolved accounts.id), got %d", ins.AccountID)
 	}
 	if !ins.OccurredAt.Equal(now) {
 		t.Errorf("occurred_at: want %v, got %v", now, ins.OccurredAt)
@@ -1281,5 +1283,171 @@ func TestRunOnce_MatchCompleted_FallbackResultLoss(t *testing.T) {
 	}
 	if matches.upserts[0].Result != "loss" {
 		t.Errorf("expected result=loss, got %q", matches.upserts[0].Result)
+	}
+}
+
+// --- cross-tenant security tests (AC1, AC2, AC5) ---
+
+// fakeAccountStoreCrossTenant simulates the case where the daemon-supplied
+// client_id is registered under a different user_id — GetOrCreateByClientID
+// returns ErrCrosstenantAccount.
+type fakeAccountStoreCrossTenant struct{}
+
+func (f *fakeAccountStoreCrossTenant) GetOrCreateByClientID(_ context.Context, _ string, _ int64) (int64, error) {
+	return 0, fmt.Errorf("resolve account: %w", repository.ErrCrosstenantAccount)
+}
+
+// TestRunOnce_CrossTenantAccount_MatchCompleted_Rejected verifies that a
+// match.completed event whose client_id belongs to a different user is skipped
+// and no match row is written (AC1, AC5).
+func TestRunOnce_CrossTenantAccount_MatchCompleted_Rejected(t *testing.T) {
+	payload := makePayload(t, map[string]interface{}{
+		"match_id":       "match-cross",
+		"format":         "Standard",
+		"result":         "win",
+		"player_wins":    2,
+		"opponent_wins":  1,
+		"player_team_id": 1,
+	})
+
+	events := &fakeEventStore{
+		pending: []repository.DaemonEventRow{
+			{ID: 300, UserID: 1, AccountID: "acct-user-b", EventType: "match.completed", Payload: payload, OccurredAt: time.Now()},
+		},
+	}
+	matches := &fakeMatchStore{}
+
+	w := NewWorker(events, &fakeAccountStoreCrossTenant{}, matches, &fakeDraftStore{}, &fakeCollectionStore{}, &fakeInventoryStore{}, &fakeQuestStore{}, &fakeDeckStore{}, &fakeGamePlayStore{})
+	w.RunOnce(context.Background())
+
+	// The event must be marked projected so it does not block the queue.
+	if len(events.projected) != 1 || events.projected[0] != 300 {
+		t.Errorf("cross-tenant event must be marked projected; got %v", events.projected)
+	}
+	// No match must have been written.
+	if len(matches.upserts) != 0 {
+		t.Errorf("cross-tenant event must not write a match row; got %d upserts", len(matches.upserts))
+	}
+}
+
+// TestRunOnce_CrossTenantAccount_CollectionUpdated_Rejected verifies that a
+// collection.updated event whose client_id belongs to a different user is
+// skipped and no card_inventory row is written (AC1, AC5).
+func TestRunOnce_CrossTenantAccount_CollectionUpdated_Rejected(t *testing.T) {
+	payload := makePayload(t, map[string]interface{}{
+		"cards":    []map[string]interface{}{{"arena_id": 99999, "count": 4}},
+		"is_delta": false,
+	})
+
+	events := &fakeEventStore{
+		pending: []repository.DaemonEventRow{
+			{ID: 301, UserID: 1, AccountID: "acct-user-b", EventType: "collection.updated", Payload: payload, OccurredAt: time.Now()},
+		},
+	}
+	collection := &fakeCollectionStore{}
+
+	w := NewWorker(events, &fakeAccountStoreCrossTenant{}, &fakeMatchStore{}, &fakeDraftStore{}, collection, &fakeInventoryStore{}, &fakeQuestStore{}, &fakeDeckStore{}, &fakeGamePlayStore{})
+	w.RunOnce(context.Background())
+
+	if len(events.projected) != 1 || events.projected[0] != 301 {
+		t.Errorf("cross-tenant event must be marked projected; got %v", events.projected)
+	}
+	if len(collection.upserts) != 0 {
+		t.Errorf("cross-tenant event must not write a card_inventory row; got %d upserts", len(collection.upserts))
+	}
+}
+
+// TestRunOnce_CrossTenantAccount_InventoryUpdated_Rejected verifies that an
+// inventory.updated event whose client_id belongs to a different user is
+// skipped and no inventory row is written (AC1, AC5).
+func TestRunOnce_CrossTenantAccount_InventoryUpdated_Rejected(t *testing.T) {
+	payload := makePayload(t, map[string]interface{}{
+		"gems": 9999,
+		"gold": 99999,
+	})
+
+	events := &fakeEventStore{
+		pending: []repository.DaemonEventRow{
+			{ID: 302, UserID: 1, AccountID: "acct-user-b", EventType: "inventory.updated", Payload: payload, OccurredAt: time.Now()},
+		},
+	}
+	inv := &fakeInventoryStoreCapturing{}
+
+	w := NewWorker(events, &fakeAccountStoreCrossTenant{}, &fakeMatchStore{}, &fakeDraftStore{}, &fakeCollectionStore{}, inv, &fakeQuestStore{}, &fakeDeckStore{}, &fakeGamePlayStore{})
+	w.RunOnce(context.Background())
+
+	if len(events.projected) != 1 || events.projected[0] != 302 {
+		t.Errorf("cross-tenant event must be marked projected; got %v", events.projected)
+	}
+	if len(inv.upserts) != 0 {
+		t.Errorf("cross-tenant event must not write an inventory row; got %d upserts", len(inv.upserts))
+	}
+}
+
+// TestRunOnce_CrossTenantAccount_QuestCompleted_Rejected verifies that a
+// quest.completed event whose client_id belongs to a different user is
+// skipped and no quest_session_tracking row is written (AC1, AC5).
+func TestRunOnce_CrossTenantAccount_QuestCompleted_Rejected(t *testing.T) {
+	payload := makePayload(t, map[string]interface{}{
+		"quest_id":   "q-cross-001",
+		"quest_name": "Win 3 Games",
+		"progress":   3,
+		"goal":       3,
+		"xp_reward":  500,
+	})
+
+	events := &fakeEventStore{
+		pending: []repository.DaemonEventRow{
+			{ID: 303, UserID: 1, AccountID: "acct-user-b", EventType: "quest.completed", Payload: payload, OccurredAt: time.Now()},
+		},
+	}
+	quests := &fakeQuestStoreCapturing{}
+
+	w := NewWorker(events, &fakeAccountStoreCrossTenant{}, &fakeMatchStore{}, &fakeDraftStore{}, &fakeCollectionStore{}, &fakeInventoryStore{}, quests, &fakeDeckStore{}, &fakeGamePlayStore{})
+	w.RunOnce(context.Background())
+
+	if len(events.projected) != 1 || events.projected[0] != 303 {
+		t.Errorf("cross-tenant event must be marked projected; got %v", events.projected)
+	}
+	if len(quests.completedInserts) != 0 {
+		t.Errorf("cross-tenant event must not write a quest_session_tracking row; got %d inserts", len(quests.completedInserts))
+	}
+}
+
+// TestRunOnce_CrossTenantAccount_DeckUpdated_Rejected verifies that a
+// deck.updated event whose client_id belongs to a different user is
+// skipped and no deck row is written (AC1, AC5).
+func TestRunOnce_CrossTenantAccount_DeckUpdated_Rejected(t *testing.T) {
+	payload := makePayload(t, map[string]interface{}{
+		"deck_id": "deck-cross-001",
+		"name":    "Evil Deck",
+		"format":  "Standard",
+		"cards":   []map[string]interface{}{},
+	})
+
+	events := &fakeEventStore{
+		pending: []repository.DaemonEventRow{
+			{ID: 304, UserID: 1, AccountID: "acct-user-b", EventType: "deck.updated", Payload: payload, OccurredAt: time.Now()},
+		},
+	}
+	decks := &fakeDeckStoreCapturing{}
+
+	w := NewWorker(events, &fakeAccountStoreCrossTenant{}, &fakeMatchStore{}, &fakeDraftStore{}, &fakeCollectionStore{}, &fakeInventoryStore{}, &fakeQuestStore{}, decks, &fakeGamePlayStore{})
+	w.RunOnce(context.Background())
+
+	if len(events.projected) != 1 || events.projected[0] != 304 {
+		t.Errorf("cross-tenant event must be marked projected; got %v", events.projected)
+	}
+	if len(decks.upserts) != 0 {
+		t.Errorf("cross-tenant event must not write a deck row; got %d upserts", len(decks.upserts))
+	}
+}
+
+// TestRunOnce_CrossTenantAccount_ErrIsSentinel verifies that ErrCrosstenantAccount
+// is exported from the repository package and is unwrappable via errors.Is.
+func TestRunOnce_CrossTenantAccount_ErrIsSentinel(t *testing.T) {
+	wrapped := fmt.Errorf("resolve account: %w", repository.ErrCrosstenantAccount)
+	if !errors.Is(wrapped, repository.ErrCrosstenantAccount) {
+		t.Error("ErrCrosstenantAccount must be unwrappable via errors.Is")
 	}
 }

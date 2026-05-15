@@ -20,9 +20,11 @@ type QuestProgressUpsert struct {
 }
 
 // QuestCompletedInsert holds the fields written to quest_session_tracking
-// from a quest.completed daemon event.
+// from a quest.completed daemon event.  AccountID is the resolved accounts.id
+// BIGINT FK (migration 000080 converts the column from TEXT client_id to
+// BIGINT FK so every write is properly tenant-scoped).
 type QuestCompletedInsert struct {
-	AccountID        string
+	AccountID        int64
 	QuestID          string
 	QuestName        string
 	Progress         int
