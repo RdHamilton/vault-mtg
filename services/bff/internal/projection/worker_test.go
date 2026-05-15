@@ -1451,3 +1451,131 @@ func TestRunOnce_CrossTenantAccount_ErrIsSentinel(t *testing.T) {
 		t.Error("ErrCrosstenantAccount must be unwrappable via errors.Is")
 	}
 }
+
+// TestRunOnce_CrossTenantAccount_DraftStartedCompleted verifies that a
+// draft.started (or draft.completed) event whose client_id belongs to a
+// different user is skipped and no draft_sessions row is written (AC1).
+func TestRunOnce_CrossTenantAccount_DraftStartedCompleted(t *testing.T) {
+	for _, evtType := range []string{"draft.started", "draft.completed"} {
+		evtType := evtType
+		t.Run(evtType, func(t *testing.T) {
+			payload := makePayload(t, map[string]interface{}{
+				"session_id": "draft-cross-001",
+				"event_name": "QuickDraft_EOE",
+				"set_code":   "EOE",
+				"draft_type": "quick_draft",
+				"status":     "in_progress",
+			})
+
+			events := &fakeEventStore{
+				pending: []repository.DaemonEventRow{
+					{ID: 310, UserID: 1, AccountID: "acct-user-b", EventType: evtType, Payload: payload, OccurredAt: time.Now()},
+				},
+			}
+			drafts := &fakeDraftStore{}
+
+			w := NewWorker(events, &fakeAccountStoreCrossTenant{}, &fakeMatchStore{}, drafts, &fakeCollectionStore{}, &fakeInventoryStore{}, &fakeQuestStore{}, &fakeDeckStore{}, &fakeGamePlayStore{})
+			w.RunOnce(context.Background())
+
+			// The event must be marked projected so it does not block the queue.
+			if len(events.projected) != 1 || events.projected[0] != 310 {
+				t.Errorf("cross-tenant event must be marked projected; got %v", events.projected)
+			}
+			// No draft session must have been written.
+			if len(drafts.upserts) != 0 {
+				t.Errorf("cross-tenant event must not write a draft_sessions row; got %d upserts", len(drafts.upserts))
+			}
+		})
+	}
+}
+
+// TestRunOnce_CrossTenantAccount_DraftPick verifies that a draft.pick event
+// whose client_id belongs to a different user is skipped and no
+// draft_sessions row is written (AC2).
+func TestRunOnce_CrossTenantAccount_DraftPick(t *testing.T) {
+	payload := makePayload(t, map[string]interface{}{
+		"session_id": "draft-pick-cross-001",
+	})
+
+	events := &fakeEventStore{
+		pending: []repository.DaemonEventRow{
+			{ID: 311, UserID: 1, AccountID: "acct-user-b", EventType: "draft.pick", Payload: payload, OccurredAt: time.Now()},
+		},
+	}
+	drafts := &fakeDraftStore{}
+
+	w := NewWorker(events, &fakeAccountStoreCrossTenant{}, &fakeMatchStore{}, drafts, &fakeCollectionStore{}, &fakeInventoryStore{}, &fakeQuestStore{}, &fakeDeckStore{}, &fakeGamePlayStore{})
+	w.RunOnce(context.Background())
+
+	// The event must be marked projected so it does not block the queue.
+	if len(events.projected) != 1 || events.projected[0] != 311 {
+		t.Errorf("cross-tenant event must be marked projected; got %v", events.projected)
+	}
+	// No draft session must have been written.
+	if len(drafts.upserts) != 0 {
+		t.Errorf("cross-tenant event must not write a draft_sessions row; got %d upserts", len(drafts.upserts))
+	}
+}
+
+// TestRunOnce_CrossTenantAccount_QuestProgress verifies that a quest.progress
+// event whose client_id belongs to a different user is skipped and no
+// quest_progress row is written (AC3).
+func TestRunOnce_CrossTenantAccount_QuestProgress(t *testing.T) {
+	payload := makePayload(t, map[string]interface{}{
+		"quests": []map[string]interface{}{
+			{"quest_id": "q-cross-progress-001", "quest_name": "Win 3 Games", "progress": 1, "goal": 3, "can_swap": false},
+		},
+	})
+
+	events := &fakeEventStore{
+		pending: []repository.DaemonEventRow{
+			{ID: 312, UserID: 1, AccountID: "acct-user-b", EventType: "quest.progress", Payload: payload, OccurredAt: time.Now()},
+		},
+	}
+	quests := &fakeQuestStoreCapturing{}
+
+	w := NewWorker(events, &fakeAccountStoreCrossTenant{}, &fakeMatchStore{}, &fakeDraftStore{}, &fakeCollectionStore{}, &fakeInventoryStore{}, quests, &fakeDeckStore{}, &fakeGamePlayStore{})
+	w.RunOnce(context.Background())
+
+	// The event must be marked projected so it does not block the queue.
+	if len(events.projected) != 1 || events.projected[0] != 312 {
+		t.Errorf("cross-tenant event must be marked projected; got %v", events.projected)
+	}
+	// No quest progress must have been written.
+	if len(quests.progressUpserts) != 0 {
+		t.Errorf("cross-tenant event must not write a quest_progress row; got %d upserts", len(quests.progressUpserts))
+	}
+}
+
+// TestRunOnce_CrossTenantAccount_MatchGameEnded verifies that a
+// match.game_ended event whose client_id belongs to a different user is
+// skipped and no game_plays row is written (AC4).
+func TestRunOnce_CrossTenantAccount_MatchGameEnded(t *testing.T) {
+	payload := makePayload(t, map[string]interface{}{
+		"match_id":        "match-cross-game",
+		"game_number":     1,
+		"winning_team_id": 1,
+		"turn_count":      10,
+		"duration_secs":   240,
+		"life_changes":    []map[string]interface{}{},
+	})
+
+	events := &fakeEventStore{
+		pending: []repository.DaemonEventRow{
+			{ID: 313, UserID: 1, AccountID: "acct-user-b", EventType: "match.game_ended", Payload: payload, OccurredAt: time.Now(), Sequence: 1},
+		},
+	}
+	gp := &fakeGamePlayStoreCapturing{}
+
+	w := NewWorker(events, &fakeAccountStoreCrossTenant{}, &fakeMatchStore{}, &fakeDraftStore{}, &fakeCollectionStore{}, &fakeInventoryStore{}, &fakeQuestStore{}, &fakeDeckStore{}, gp)
+	w.RunOnce(context.Background())
+
+	// The event must be marked projected so it does not block the queue.
+	if len(events.projected) != 1 || events.projected[0] != 313 {
+		t.Errorf("cross-tenant event must be marked projected; got %v", events.projected)
+	}
+	// No game_plays row must have been written.
+	if len(gp.gamePlayInserts) != 0 {
+		t.Errorf("cross-tenant event must not write a game_plays row; got %d inserts", len(gp.gamePlayInserts))
+	}
+}
