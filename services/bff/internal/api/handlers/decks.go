@@ -34,7 +34,9 @@ import (
 	"strings"
 	"time"
 
+	"github.com/getsentry/sentry-go"
 	"github.com/go-chi/chi/v5"
+	"github.com/posthog/posthog-go"
 	bffmiddleware "github.com/ramonehamilton/mtga-bff/internal/api/middleware"
 	"github.com/ramonehamilton/mtga-bff/internal/storage/repository"
 )
@@ -63,13 +65,26 @@ type decksReader interface {
 
 // DecksHandler serves the cloud-data Phase 2 decks API.
 type DecksHandler struct {
-	decks    decksReader
-	accounts AccountLookup
+	decks         decksReader
+	accounts      AccountLookup
+	postHogClient PostHogClient
 }
 
 // NewDecksHandler returns a DecksHandler wired with the given repo + lookup.
+// PostHog defaults to the no-op client until WithPostHogClient is called.
 func NewDecksHandler(d decksReader, accounts AccountLookup) *DecksHandler {
-	return &DecksHandler{decks: d, accounts: accounts}
+	return &DecksHandler{decks: d, accounts: accounts, postHogClient: noopPostHogClient{}}
+}
+
+// WithPostHogClient returns a copy of h with the given PostHog client wired.
+// When not called, the handler uses a no-op client so the code path is always
+// exercised without network calls.
+func (h *DecksHandler) WithPostHogClient(client PostHogClient) *DecksHandler {
+	return &DecksHandler{
+		decks:         h.decks,
+		accounts:      h.accounts,
+		postHogClient: client,
+	}
 }
 
 // ─── wire shapes ────────────────────────────────────────────────────────────
@@ -266,6 +281,7 @@ func (h *DecksHandler) Get(w http.ResponseWriter, r *http.Request) {
 	d, err := h.decks.GetDeck(r.Context(), accountID, deckID)
 	if err != nil {
 		log.Printf("[DecksHandler.Get] accountID=%d deckID=%s: %v", accountID, deckID, err)
+		sentry.CaptureException(err)
 		writeJSONError(w, "internal server error", http.StatusInternalServerError)
 		return
 	}
@@ -273,6 +289,13 @@ func (h *DecksHandler) Get(w http.ResponseWriter, r *http.Request) {
 		writeJSONError(w, "deck not found", http.StatusNotFound)
 		return
 	}
+	_ = h.postHogClient.Enqueue(posthog.Capture{
+		DistinctId: strconv.FormatInt(accountID, 10),
+		Event:      "get_deck",
+		Properties: posthog.NewProperties().
+			Set("deck_id", deckID).
+			Set("account_id", accountID),
+	})
 	writeMatchesJSON(w, deckDetailToResponse(*d))
 }
 
@@ -335,6 +358,7 @@ func (h *DecksHandler) Update(w http.ResponseWriter, r *http.Request) {
 	})
 	if err != nil {
 		log.Printf("[DecksHandler.Update] accountID=%d deckID=%s: %v", accountID, deckID, err)
+		sentry.CaptureException(err)
 		writeJSONError(w, "internal server error", http.StatusInternalServerError)
 		return
 	}
@@ -342,6 +366,13 @@ func (h *DecksHandler) Update(w http.ResponseWriter, r *http.Request) {
 		writeJSONError(w, "deck not found", http.StatusNotFound)
 		return
 	}
+	_ = h.postHogClient.Enqueue(posthog.Capture{
+		DistinctId: strconv.FormatInt(accountID, 10),
+		Event:      "update_deck",
+		Properties: posthog.NewProperties().
+			Set("deck_id", deckID).
+			Set("account_id", accountID),
+	})
 	writeMatchesJSON(w, deckDetailToResponse(*d))
 }
 
@@ -363,6 +394,7 @@ func (h *DecksHandler) Delete(w http.ResponseWriter, r *http.Request) {
 	deleted, err := h.decks.DeleteDeck(r.Context(), accountID, deckID)
 	if err != nil {
 		log.Printf("[DecksHandler.Delete] accountID=%d deckID=%s: %v", accountID, deckID, err)
+		sentry.CaptureException(err)
 		writeJSONError(w, "internal server error", http.StatusInternalServerError)
 		return
 	}
@@ -370,6 +402,13 @@ func (h *DecksHandler) Delete(w http.ResponseWriter, r *http.Request) {
 		writeJSONError(w, "deck not found", http.StatusNotFound)
 		return
 	}
+	_ = h.postHogClient.Enqueue(posthog.Capture{
+		DistinctId: strconv.FormatInt(accountID, 10),
+		Event:      "delete_deck",
+		Properties: posthog.NewProperties().
+			Set("deck_id", deckID).
+			Set("account_id", accountID),
+	})
 	w.WriteHeader(http.StatusNoContent)
 }
 
@@ -400,6 +439,7 @@ func (h *DecksHandler) Clone(w http.ResponseWriter, r *http.Request) {
 	d, err := h.decks.CloneDeck(r.Context(), accountID, deckID, req.Name)
 	if err != nil {
 		log.Printf("[DecksHandler.Clone] accountID=%d deckID=%s: %v", accountID, deckID, err)
+		sentry.CaptureException(err)
 		writeJSONError(w, "internal server error", http.StatusInternalServerError)
 		return
 	}
@@ -407,6 +447,14 @@ func (h *DecksHandler) Clone(w http.ResponseWriter, r *http.Request) {
 		writeJSONError(w, "deck not found", http.StatusNotFound)
 		return
 	}
+	_ = h.postHogClient.Enqueue(posthog.Capture{
+		DistinctId: strconv.FormatInt(accountID, 10),
+		Event:      "clone_deck",
+		Properties: posthog.NewProperties().
+			Set("source_deck_id", deckID).
+			Set("new_deck_id", d.ID).
+			Set("account_id", accountID),
+	})
 	writeMatchesJSON(w, deckDetailToResponse(*d))
 }
 
@@ -895,6 +943,7 @@ func (h *DecksHandler) Export(w http.ResponseWriter, r *http.Request) {
 	d, err := h.decks.GetDeck(r.Context(), accountID, deckID)
 	if err != nil {
 		log.Printf("[DecksHandler.Export] accountID=%d deckID=%s: %v", accountID, deckID, err)
+		sentry.CaptureException(err)
 		writeJSONError(w, "internal server error", http.StatusInternalServerError)
 		return
 	}
@@ -902,6 +951,15 @@ func (h *DecksHandler) Export(w http.ResponseWriter, r *http.Request) {
 		writeJSONError(w, "deck not found", http.StatusNotFound)
 		return
 	}
+	_ = h.postHogClient.Enqueue(posthog.Capture{
+		DistinctId: strconv.FormatInt(accountID, 10),
+		Event:      "export_deck",
+		Properties: posthog.NewProperties().
+			Set("deck_id", deckID).
+			Set("deck_name", d.Name).
+			Set("account_id", accountID).
+			Set("format", "arena"),
+	})
 	writeMatchesJSON(w, map[string]any{
 		"content": formatArenaDeckList(d.Cards),
 		"format":  "arena",
