@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
-import { system } from '@/services/api';
+import { useAuth } from '@clerk/react';
+import { getDaemonHealth } from '@/services/api/bffHealth';
 import { showToast } from '../components/ToastContainer';
 import { gui } from '@/types/models';
 
@@ -47,20 +48,44 @@ const defaultConnectionStatus = new gui.ConnectionStatus({
 });
 
 export function useDaemonConnection(): UseDaemonConnectionReturn {
+  const { getToken, isSignedIn } = useAuth();
   const [connectionStatus, setConnectionStatus] = useState<gui.ConnectionStatus>(defaultConnectionStatus);
   const [daemonMode, setDaemonMode] = useState('auto');
   const [daemonPort, setDaemonPortState] = useState(9999);
   const [isReconnecting, setIsReconnecting] = useState(false);
 
   const loadConnectionStatus = useCallback(async () => {
+    // Only probe daemon health in the desktop app context.
+    // In browser/staging sessions window.__VAULTMTG_DESKTOP__ is unset,
+    // so we skip the call entirely and return the default state to avoid
+    // ERR_CONNECTION_REFUSED errors.
+    if (!window.__VAULTMTG_DESKTOP__) {
+      return;
+    }
+
+    if (!isSignedIn) {
+      return;
+    }
+
     try {
-      const status = await system.getStatus();
-      setConnectionStatus(gui.ConnectionStatus.createFrom(status));
-      setDaemonPortState(status.port || 9999);
+      const token = await getToken();
+      if (!token) return;
+
+      const result = await getDaemonHealth(token);
+      const connected = result.status === 'connected';
+      setConnectionStatus(
+        gui.ConnectionStatus.createFrom({
+          status: result.status,
+          connected,
+          mode: connected ? 'daemon' : 'standalone',
+          url: 'ws://localhost:9999',
+          port: 9999,
+        }),
+      );
     } catch {
       // Connection status load failed silently - UI will show default state
     }
-  }, []);
+  }, [getToken, isSignedIn]);
 
   useEffect(() => {
     loadConnectionStatus();

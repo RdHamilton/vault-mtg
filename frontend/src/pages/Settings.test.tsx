@@ -5,6 +5,9 @@ import Settings from './Settings';
 // Mock scrollIntoView (not available in jsdom)
 Element.prototype.scrollIntoView = vi.fn();
 
+// NOTE: @clerk/react and @/services/api/bffHealth are mocked globally in
+// src/test/setup.ts. This file uses vi.mocked() to override per-test.
+
 // Mock all API modules used by Settings and its hooks
 vi.mock('@/services/api', () => ({
   settings: {
@@ -61,8 +64,11 @@ vi.mock('@/context/DownloadContext', () => ({
 
 import { showToast } from '../components/ToastContainer';
 import { settings, system, matches } from '@/services/api';
+import { getDaemonHealth } from '@/services/api/bffHealth';
 
-// Default mock connection status
+const mockGetDaemonHealth = vi.mocked(getDaemonHealth);
+
+// Default mock connection status (kept for reference / skipped tests)
 const defaultConnectionStatus = {
   status: 'standalone',
   connected: false,
@@ -88,7 +94,8 @@ describe('Settings', () => {
     window.location.hash = '';
 
     // Default mock implementations
-    (system.getStatus as ReturnType<typeof vi.fn>).mockResolvedValue(defaultConnectionStatus);
+    // useDaemonConnection now calls getDaemonHealth (BFF proxy), not system.getStatus
+    mockGetDaemonHealth.mockResolvedValue({ status: 'disconnected' });
     (settings.getSettings as ReturnType<typeof vi.fn>).mockResolvedValue(defaultSettings);
     (settings.updateSettings as ReturnType<typeof vi.fn>).mockResolvedValue(undefined);
     (system.getVersion as ReturnType<typeof vi.fn>).mockResolvedValue('v1.3.1');
@@ -193,30 +200,33 @@ describe('Settings', () => {
     });
 
     it('displays connected status when daemon is connected', async () => {
-      (system.getStatus as ReturnType<typeof vi.fn>).mockResolvedValue({
-        ...defaultConnectionStatus,
-        status: 'connected',
-        connected: true,
-      });
+      // useDaemonConnection now calls getDaemonHealth (BFF proxy) — issue #1926.
+      // Set the desktop context flag so loadConnectionStatus runs the probe.
+      (window as Window).__VAULTMTG_DESKTOP__ = true;
+      mockGetDaemonHealth.mockResolvedValue({ status: 'connected' });
 
       render(<Settings />);
 
       await waitFor(() => {
         expect(screen.getByText('Connected to Daemon')).toBeInTheDocument();
       });
+
+      delete (window as Window).__VAULTMTG_DESKTOP__;
     });
 
     it('displays reconnecting status', async () => {
-      (system.getStatus as ReturnType<typeof vi.fn>).mockResolvedValue({
-        ...defaultConnectionStatus,
-        status: 'reconnecting',
-      });
+      // useDaemonConnection now calls getDaemonHealth (BFF proxy) — issue #1926.
+      // Set the desktop context flag so loadConnectionStatus runs the probe.
+      (window as Window).__VAULTMTG_DESKTOP__ = true;
+      mockGetDaemonHealth.mockResolvedValue({ status: 'reconnecting' });
 
       render(<Settings />);
 
       await waitFor(() => {
         expect(screen.getByText('Reconnecting...')).toBeInTheDocument();
       });
+
+      delete (window as Window).__VAULTMTG_DESKTOP__;
     });
 
     it('renders Connection Mode selector', async () => {
