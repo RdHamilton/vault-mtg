@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { decks } from '@/services/api';
 import type { SuggestDecksApiResponse } from '@/services/api/decks';
 import { downloadTextFile } from '@/utils/download';
@@ -41,13 +41,7 @@ export default function SuggestDecksModal({
   const [applying, setApplying] = useState(false);
   const [exporting, setExporting] = useState(false);
 
-  useEffect(() => {
-    if (isOpen && draftEventID) {
-      loadSuggestions();
-    }
-  }, [isOpen, draftEventID]);
-
-  const loadSuggestions = async () => {
+  const loadSuggestions = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
@@ -66,7 +60,13 @@ export default function SuggestDecksModal({
     } finally {
       setLoading(false);
     }
-  };
+  }, [draftEventID]);
+
+  useEffect(() => {
+    if (isOpen && draftEventID) {
+      loadSuggestions();
+    }
+  }, [isOpen, draftEventID, loadSuggestions]);
 
   const handleApplyDeck = async (suggestion: gui.SuggestedDeckResponse) => {
     setApplying(true);

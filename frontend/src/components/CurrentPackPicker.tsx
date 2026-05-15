@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { drafts } from '@/services/api';
 import { gui } from '@/types/models';
 import './CurrentPackPicker.css';
@@ -15,7 +15,7 @@ const CurrentPackPicker: React.FC<CurrentPackPickerProps> = ({ sessionID, onRefr
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
 
-    const loadPackData = async () => {
+    const loadPackData = useCallback(async () => {
         try {
             setLoading(true);
             setError(null);
@@ -27,13 +27,13 @@ const CurrentPackPicker: React.FC<CurrentPackPickerProps> = ({ sessionID, onRefr
         } finally {
             setLoading(false);
         }
-    };
+    }, [sessionID]);
 
     useEffect(() => {
         if (sessionID) {
             loadPackData();
         }
-    }, [sessionID]);
+    }, [sessionID, loadPackData]);
 
     const handleRefresh = () => {
         loadPackData();

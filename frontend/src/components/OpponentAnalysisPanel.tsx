@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { opponents } from '@/services/api';
 import type { OpponentAnalysis, ObservedCard, ExpectedCard, StrategicInsight } from '@/services/api';
 import LoadingSpinner from './LoadingSpinner';
@@ -16,13 +16,7 @@ const OpponentAnalysisPanel = ({ matchId, isExpanded = false, onToggle }: Oppone
   const [error, setError] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<'observed' | 'expected' | 'insights'>('observed');
 
-  useEffect(() => {
-    if (isExpanded && !analysis && !loading) {
-      loadAnalysis();
-    }
-  }, [isExpanded, matchId]);
-
-  const loadAnalysis = async () => {
+  const loadAnalysis = useCallback(async () => {
     try {
       setLoading(true);
       setError(null);
@@ -34,7 +28,13 @@ const OpponentAnalysisPanel = ({ matchId, isExpanded = false, onToggle }: Oppone
     } finally {
       setLoading(false);
     }
-  };
+  }, [matchId]);
+
+  useEffect(() => {
+    if (isExpanded && !analysis && !loading) {
+      loadAnalysis();
+    }
+  }, [isExpanded, matchId, analysis, loading, loadAnalysis]);
 
   const renderColorIdentity = (colors: string) => {
     const colorMap: Record<string, string> = {
