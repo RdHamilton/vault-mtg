@@ -7,7 +7,13 @@ vi.mock('../../daemonClient', () => ({
   post: vi.fn(),
 }));
 
+// Mock runtimeContext so we can toggle desktop vs browser
+vi.mock('@/lib/runtimeContext', () => ({
+  isDesktopApp: vi.fn(),
+}));
+
 import { get, post } from '../../daemonClient';
+import { isDesktopApp } from '@/lib/runtimeContext';
 
 describe('system API', () => {
   beforeEach(() => {
@@ -23,6 +29,37 @@ describe('system API', () => {
 
       expect(get).toHaveBeenCalledWith('/system/status');
       expect(result).toEqual(mockStatus);
+    });
+  });
+
+  describe('getHealth', () => {
+    it('routes through daemon client (port 9001) in desktop context', async () => {
+      vi.mocked(isDesktopApp).mockReturnValue(true);
+      const mockHealth = {
+        status: 'ok',
+        version: '1.0.0',
+        uptime: 3600,
+        database: { status: 'ok', lastWrite: '2026-05-15T00:00:00Z' },
+        logMonitor: { status: 'ok', lastRead: '2026-05-15T00:00:00Z' },
+        websocket: { status: 'ok', connectedClients: 1 },
+        metrics: { totalProcessed: 42, totalErrors: 0 },
+      };
+      vi.mocked(get).mockResolvedValue(mockHealth);
+
+      const result = await system.getHealth();
+
+      expect(isDesktopApp).toHaveBeenCalled();
+      expect(get).toHaveBeenCalledWith('/system/health');
+      expect(result).toEqual(mockHealth);
+    });
+
+    it('throws and does not call daemon client in non-desktop context', async () => {
+      vi.mocked(isDesktopApp).mockReturnValue(false);
+
+      await expect(system.getHealth()).rejects.toThrow(
+        'getHealth() is only available in the desktop app context'
+      );
+      expect(get).not.toHaveBeenCalled();
     });
   });
 

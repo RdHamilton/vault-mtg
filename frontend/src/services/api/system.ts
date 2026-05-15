@@ -5,6 +5,7 @@
 
 import { get, post } from '../daemonClient';
 import { gui, models } from '@/types/models';
+import { isDesktopApp } from '@/lib/runtimeContext';
 
 // Re-export types for convenience
 export type ConnectionStatus = gui.ConnectionStatus;
@@ -79,8 +80,18 @@ export async function getStatus(): Promise<ConnectionStatus> {
 
 /**
  * Get the system health status including backend sync timestamps.
+ *
+ * Only valid in the desktop app context — the `/system/health` endpoint is
+ * served by the daemon on port 9001 and is not reachable from a browser
+ * session. Callers in non-desktop contexts receive ERR_CONNECTION_REFUSED.
+ * Guard with `isDesktopApp()` before calling.
+ *
+ * @throws {Error} When called outside the desktop app context.
  */
 export async function getHealth(): Promise<HealthStatus> {
+  if (!isDesktopApp()) {
+    throw new Error('getHealth() is only available in the desktop app context');
+  }
   return get<HealthStatus>('/system/health');
 }
 
