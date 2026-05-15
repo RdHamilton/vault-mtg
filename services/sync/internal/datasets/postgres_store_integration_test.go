@@ -77,19 +77,22 @@ func TestPostgresStore_UpsertSets_Integration(t *testing.T) {
 
 	require.NoError(t, store.UpsertSets(ctx, sets))
 
-	// Verify rows were inserted with is_standard_legal = TRUE.
+	// Verify rows were inserted with is_draft_active = TRUE.
+	// Note: UpsertSets sets is_draft_active (not is_standard_legal). Standard
+	// legality is managed separately by BFF migrations and is not written by
+	// the sync service.
 	for _, s := range sets {
 		var name string
-		var isStandardLegal bool
+		var isDraftActive bool
 		var cardCount int
 		err := pool.QueryRow(
 			ctx,
-			`SELECT name, is_standard_legal, card_count FROM sets WHERE code = $1`,
+			`SELECT name, is_draft_active, card_count FROM sets WHERE code = $1`,
 			s.Code,
-		).Scan(&name, &isStandardLegal, &cardCount)
+		).Scan(&name, &isDraftActive, &cardCount)
 		require.NoError(t, err, "set %q not found", s.Code)
 		assert.Equal(t, s.Name, name)
-		assert.True(t, isStandardLegal, "is_standard_legal must be TRUE for %q", s.Code)
+		assert.True(t, isDraftActive, "is_draft_active must be TRUE for %q", s.Code)
 		assert.Equal(t, s.CardCount, cardCount)
 	}
 
