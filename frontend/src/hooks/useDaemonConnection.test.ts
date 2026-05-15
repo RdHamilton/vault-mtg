@@ -1,12 +1,15 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { renderHook, act, waitFor } from '@testing-library/react';
 import { useDaemonConnection } from './useDaemonConnection';
 
-// Mock the API modules
-vi.mock('@/services/api', () => ({
-  system: {
-    getStatus: vi.fn(),
-  },
+// Mock Clerk useAuth
+vi.mock('@clerk/react', () => ({
+  useAuth: vi.fn(),
+}));
+
+// Mock the BFF health adapter
+vi.mock('@/services/api/bffHealth', () => ({
+  getDaemonHealth: vi.fn(),
 }));
 
 // Mock showToast
@@ -16,22 +19,41 @@ vi.mock('../components/ToastContainer', () => ({
   },
 }));
 
-import { system } from '@/services/api';
+import { useAuth } from '@clerk/react';
+import { getDaemonHealth } from '@/services/api/bffHealth';
 import { showToast } from '../components/ToastContainer';
 
-const mockGetStatus = vi.mocked(system.getStatus);
+const mockUseAuth = vi.mocked(useAuth);
+const mockGetDaemonHealth = vi.mocked(getDaemonHealth);
+
+/** Helper: set up Clerk mock as signed-in with a valid token. */
+function signedInAuth(token = 'test-token') {
+  mockUseAuth.mockReturnValue({
+    getToken: vi.fn().mockResolvedValue(token),
+    isSignedIn: true,
+  } as unknown as ReturnType<typeof useAuth>);
+}
+
+/** Helper: set up Clerk mock as signed-out. */
+function signedOutAuth() {
+  mockUseAuth.mockReturnValue({
+    getToken: vi.fn().mockResolvedValue(null),
+    isSignedIn: false,
+  } as unknown as ReturnType<typeof useAuth>);
+}
 
 describe('useDaemonConnection', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    // Default mock for getStatus
-    mockGetStatus.mockResolvedValue({
-      status: 'standalone',
-      connected: false,
-      mode: 'standalone',
-      url: 'ws://localhost:9999',
-      port: 9999,
-    });
+    // Default: signed in, BFF returns standalone status.
+    signedInAuth();
+    mockGetDaemonHealth.mockResolvedValue({ status: 'disconnected' });
+    // Default: not in desktop context.
+    delete (window as Window).__VAULTMTG_DESKTOP__;
+  });
+
+  afterEach(() => {
+    delete (window as Window).__VAULTMTG_DESKTOP__;
   });
 
   describe('initial state', () => {
@@ -63,48 +85,90 @@ describe('useDaemonConnection', () => {
     });
   });
 
-  describe('loadConnectionStatus', () => {
-    it('loads connection status on mount', async () => {
-      mockGetStatus.mockResolvedValueOnce({
-        status: 'connected',
-        connected: true,
-        mode: 'daemon',
-        url: 'ws://localhost:8888',
-        port: 8888,
-      });
-
+  describe('browser context (window.__VAULTMTG_DESKTOP__ unset)', () => {
+    it('does NOT call getDaemonHealth', async () => {
       const { result } = renderHook(() => useDaemonConnection());
 
-      await waitFor(() => {
-        expect(result.current.connectionStatus.status).toBe('connected');
+      // Give any async effects a chance to settle.
+      await act(async () => {
+        await Promise.resolve();
       });
 
-      expect(result.current.daemonPort).toBe(8888);
-      expect(mockGetStatus).toHaveBeenCalled();
+      expect(mockGetDaemonHealth).not.toHaveBeenCalled();
+      // State stays at default — no ERR_CONNECTION_REFUSED.
+      expect(result.current.connectionStatus.status).toBe('standalone');
     });
 
-    it('handles load error silently', async () => {
-      mockGetStatus.mockRejectedValueOnce(new Error('Load failed'));
+    it('returns default state without probing daemon', async () => {
+      const { result } = renderHook(() => useDaemonConnection());
+
+      await act(async () => {
+        await Promise.resolve();
+      });
+
+      expect(result.current.connectionStatus.connected).toBe(false);
+      expect(result.current.daemonPort).toBe(9999);
+    });
+  });
+
+  describe('desktop context (window.__VAULTMTG_DESKTOP__ = true)', () => {
+    beforeEach(() => {
+      (window as Window).__VAULTMTG_DESKTOP__ = true;
+    });
+
+    it('calls getDaemonHealth via BFF proxy on mount', async () => {
+      mockGetDaemonHealth.mockResolvedValueOnce({ status: 'connected' });
 
       const { result } = renderHook(() => useDaemonConnection());
 
-      // Should still have default state after error
       await waitFor(() => {
-        expect(mockGetStatus).toHaveBeenCalled();
+        expect(mockGetDaemonHealth).toHaveBeenCalledWith('test-token');
+      });
+
+      expect(result.current.connectionStatus.status).toBe('connected');
+      expect(result.current.connectionStatus.connected).toBe(true);
+    });
+
+    it('reflects disconnected status from BFF', async () => {
+      mockGetDaemonHealth.mockResolvedValueOnce({ status: 'disconnected' });
+
+      const { result } = renderHook(() => useDaemonConnection());
+
+      await waitFor(() => {
+        expect(mockGetDaemonHealth).toHaveBeenCalled();
+      });
+
+      expect(result.current.connectionStatus.connected).toBe(false);
+    });
+
+    it('handles BFF health error silently and keeps default state', async () => {
+      mockGetDaemonHealth.mockRejectedValueOnce(new Error('network error'));
+
+      const { result } = renderHook(() => useDaemonConnection());
+
+      await waitFor(() => {
+        expect(mockGetDaemonHealth).toHaveBeenCalled();
       });
 
       expect(result.current.connectionStatus.status).toBe('standalone');
+    });
+
+    it('does NOT call getDaemonHealth when signed out', async () => {
+      signedOutAuth();
+
+      renderHook(() => useDaemonConnection());
+
+      await act(async () => {
+        await Promise.resolve();
+      });
+
+      expect(mockGetDaemonHealth).not.toHaveBeenCalled();
     });
   });
 
   describe('handleDaemonPortChange', () => {
     it('updates daemon port state', async () => {
       const { result } = renderHook(() => useDaemonConnection());
-
-      // Wait for initial load to complete
-      await waitFor(() => {
-        expect(mockGetStatus).toHaveBeenCalled();
-      });
 
       await act(async () => {
         await result.current.handleDaemonPortChange(8080);
@@ -134,8 +198,6 @@ describe('useDaemonConnection', () => {
 
       expect(result.current.daemonPort).toBe(initialPort);
     });
-
-    // Note: SetDaemonPort is a no-op in REST API mode, so error toast test is removed
   });
 
   describe('handleReconnect', () => {
@@ -156,34 +218,6 @@ describe('useDaemonConnection', () => {
       expect(result.current.isReconnecting).toBe(false);
     });
 
-    it('refreshes connection status after reconnect', async () => {
-      mockGetStatus
-        .mockResolvedValueOnce({
-          status: 'standalone',
-          connected: false,
-          mode: 'standalone',
-          url: 'ws://localhost:9999',
-          port: 9999,
-        })
-        .mockResolvedValueOnce({
-          status: 'connected',
-          connected: true,
-          mode: 'daemon',
-          url: 'ws://localhost:9999',
-          port: 9999,
-        });
-
-      const { result } = renderHook(() => useDaemonConnection());
-
-      await act(async () => {
-        await result.current.handleReconnect();
-      });
-
-      await waitFor(() => {
-        expect(result.current.connectionStatus.status).toBe('connected');
-      });
-    });
-
     it('shows success toast on successful reconnect', async () => {
       const { result } = renderHook(() => useDaemonConnection());
 
@@ -196,8 +230,6 @@ describe('useDaemonConnection', () => {
         'success'
       );
     });
-
-    // Note: reconnectToDaemon is a no-op in REST API mode, so it won't fail
   });
 
   describe('handleModeChange', () => {
@@ -246,7 +278,5 @@ describe('useDaemonConnection', () => {
         'success'
       );
     });
-
-    // Note: Mode switch functions are no-ops in REST API mode, so they won't fail
   });
 });
