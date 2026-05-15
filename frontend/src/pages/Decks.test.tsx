@@ -1304,4 +1304,92 @@ describe('Decks', () => {
       URL.revokeObjectURL = originalRevokeObjectURL;
     });
   });
+
+  describe('Create Deck Modal — Format Select Positioning (#2011)', () => {
+    it('AC1: Format select renders inside modal without scrolling ancestor', async () => {
+      mockDecks.getDecks.mockResolvedValue(createMockDeckList());
+
+      renderWithRouter(<Decks />);
+
+      await vi.advanceTimersByTimeAsync(100);
+
+      await waitFor(() => {
+        expect(screen.getByText('+ Create New Deck')).toBeInTheDocument();
+      });
+
+      fireEvent.click(screen.getByText('+ Create New Deck'));
+
+      const formatSelect = screen.getByLabelText('Format');
+      expect(formatSelect).toBeInTheDocument();
+
+      // AC1: The modal-content ancestor must NOT have overflow-y set to auto/scroll.
+      // overflow-y on the containing block creates a new stacking context
+      // that positions native <select> dropdowns incorrectly.
+      const modalContent = document.querySelector('.modal-content') as HTMLElement;
+      expect(modalContent).toBeInTheDocument();
+      const computedStyle = window.getComputedStyle(modalContent);
+      expect(computedStyle.overflowY).not.toBe('auto');
+      expect(computedStyle.overflowY).not.toBe('scroll');
+    });
+
+    it('AC2: Selecting a format reflects the selection in the field', async () => {
+      mockDecks.getDecks.mockResolvedValue(createMockDeckList());
+      mockDecks.createDeck.mockResolvedValue({ ID: 'new-deck-id' });
+
+      renderWithRouter(<Decks />);
+
+      await vi.advanceTimersByTimeAsync(100);
+
+      await waitFor(() => {
+        expect(screen.getByText('+ Create New Deck')).toBeInTheDocument();
+      });
+
+      fireEvent.click(screen.getByText('+ Create New Deck'));
+
+      const formatSelect = screen.getByLabelText('Format') as HTMLSelectElement;
+      fireEvent.change(formatSelect, { target: { value: 'alchemy' } });
+      expect(formatSelect.value).toBe('alchemy');
+
+      // No layout shift — modal and form are still visible
+      expect(screen.getByText('Create New Deck')).toBeInTheDocument();
+      expect(screen.getByLabelText('Deck Name')).toBeInTheDocument();
+    });
+
+    it('AC3: Other modal behaviors are not regressed by the fix', async () => {
+      mockDecks.getDecks.mockResolvedValue(createMockDeckList());
+      mockDecks.createDeck.mockResolvedValue({ ID: 'new-deck-id' });
+
+      renderWithRouter(<Decks />);
+
+      await vi.advanceTimersByTimeAsync(100);
+
+      await waitFor(() => {
+        expect(screen.getByText('+ Create New Deck')).toBeInTheDocument();
+      });
+
+      // Open modal
+      fireEvent.click(screen.getByText('+ Create New Deck'));
+      expect(screen.getByText('Create New Deck')).toBeInTheDocument();
+
+      // Cancel closes modal
+      fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
+      await waitFor(() => {
+        expect(screen.queryByText('Create New Deck')).not.toBeInTheDocument();
+      });
+
+      // Re-open and submit creates deck
+      fireEvent.click(screen.getByText('+ Create New Deck'));
+      const nameInput = screen.getByLabelText('Deck Name');
+      fireEvent.change(nameInput, { target: { value: 'AC3 Deck' } });
+      fireEvent.click(screen.getByRole('button', { name: 'Create Deck' }));
+
+      await waitFor(() => {
+        expect(mockDecks.createDeck).toHaveBeenCalledWith({
+          name: 'AC3 Deck',
+          format: 'standard',
+          source: 'manual',
+        });
+      });
+    });
+  });
 });

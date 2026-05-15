@@ -339,7 +339,10 @@
   width: 90%;
   max-width: 500px;
   max-height: 90vh;
-  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  /* overflow-y is intentionally on .modal-body so native <select> popups
+     are not constrained by a scrolling ancestor (#2011) */
 }
 
 .modal-header {
@@ -380,6 +383,8 @@
   display: flex;
   flex-direction: column;
   gap: 1.5rem;
+  overflow-y: auto;
+  flex: 1;
 }
 
 .form-group {
