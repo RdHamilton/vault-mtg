@@ -1300,4 +1300,58 @@ describe('Collection', () => {
       });
     });
   });
+
+  describe('Filter Select Dropdown Positioning (#2016)', () => {
+    it('AC1: collection-page container does not have overflow: hidden (which mispositions native selects)', async () => {
+      mockCollection.getCollectionWithMetadata.mockResolvedValue(createMockCollectionResponse([createMockCollectionCard()]));
+      mockCollection.getCollectionStats.mockResolvedValue(createMockCollectionStats());
+      mockCardsApi.getAllSetInfo.mockResolvedValue([]);
+
+      renderWithRouter(<Collection />);
+
+      await vi.advanceTimersByTimeAsync(100);
+
+      await waitFor(() => {
+        expect(screen.getByTestId('collection-set-filter')).toBeInTheDocument();
+      });
+
+      const collectionPage = document.querySelector('.collection-page') as HTMLElement;
+      expect(collectionPage).toBeInTheDocument();
+      const computedStyle = window.getComputedStyle(collectionPage);
+      // Must not be 'hidden' — that creates a stacking context that clips native <select> dropdowns
+      expect(computedStyle.overflow).not.toBe('hidden');
+      expect(computedStyle.overflowY).not.toBe('hidden');
+    });
+
+    it('AC3: filter selects (Set, Rarity, Sort) still function correctly', async () => {
+      mockCollection.getCollectionWithMetadata.mockResolvedValue(createMockCollectionResponse([createMockCollectionCard()]));
+      mockCollection.getCollectionStats.mockResolvedValue(createMockCollectionStats());
+      mockCardsApi.getAllSetInfo.mockResolvedValue([
+        createMockSetInfo({ code: 'DSK', name: 'Duskmourn' }),
+      ]);
+
+      renderWithRouter(<Collection />);
+
+      await vi.advanceTimersByTimeAsync(100);
+
+      await waitFor(() => {
+        expect(screen.getByTestId('collection-set-filter')).toBeInTheDocument();
+      });
+
+      // Set filter works
+      const setFilter = screen.getByTestId('collection-set-filter') as HTMLSelectElement;
+      fireEvent.change(setFilter, { target: { value: 'DSK' } });
+      expect(setFilter.value).toBe('DSK');
+
+      // Rarity filter works
+      const rarityFilter = screen.getByTestId('collection-rarity-filter') as HTMLSelectElement;
+      fireEvent.change(rarityFilter, { target: { value: 'rare' } });
+      expect(rarityFilter.value).toBe('rare');
+
+      // Sort filter works
+      const sortFilter = screen.getByTestId('collection-sort-select') as HTMLSelectElement;
+      fireEvent.change(sortFilter, { target: { value: 'rarity-desc' } });
+      expect(sortFilter.value).toBe('rarity-desc');
+    });
+  });
 });

@@ -3,7 +3,11 @@
   flex-direction: column;
   height: 100%;
   padding: 0;
-  overflow: hidden;
+  /* overflow: hidden removed — it creates a stacking context that positions
+     native <select> dropdown popups incorrectly (#2016). Card grid and
+     set-completion container both have their own overflow-y: auto which
+     is sufficient to contain scrollable content. */
+  overflow-x: hidden;
   position: relative;
 }
 

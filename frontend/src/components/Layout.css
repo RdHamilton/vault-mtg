@@ -98,7 +98,12 @@
 
 .content {
   flex: 1;
-  overflow: auto;
+  /* Use overflow-y: auto instead of overflow: auto so native <select> popup
+     positioning is not affected by a scroll-containing ancestor (#2016).
+     overflow: auto (both axes) creates a containing block that positions
+     native selects incorrectly in some browsers. */
+  overflow-y: auto;
+  overflow-x: hidden;
   display: flex;
   flex-direction: column;
   min-height: 0; /* Important for flexbox overflow */

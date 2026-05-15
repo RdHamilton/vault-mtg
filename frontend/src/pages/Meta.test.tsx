@@ -914,4 +914,44 @@ describe('Meta', () => {
       });
     });
   });
+
+  describe('Format Select Dropdown Positioning (#2016)', () => {
+    it('AC2: Meta format select renders and updates selection correctly', async () => {
+      mockGetMetaArchetypes.mockResolvedValue(createMockArchetypes());
+
+      renderMeta();
+
+      await waitFor(() => {
+        expect(screen.getByRole('combobox')).toBeInTheDocument();
+      });
+
+      const formatSelect = screen.getByRole('combobox') as HTMLSelectElement;
+      expect(formatSelect.value).toBe('standard');
+
+      fireEvent.change(formatSelect, { target: { value: 'historic' } });
+      expect(formatSelect.value).toBe('historic');
+    });
+
+    it('AC3: Meta page does not have overflow:hidden on ancestors of the format select', async () => {
+      mockGetMetaArchetypes.mockResolvedValue(createMockArchetypes());
+
+      renderMeta();
+
+      await waitFor(() => {
+        expect(screen.getByRole('combobox')).toBeInTheDocument();
+      });
+
+      // Walk up the DOM from the select and verify no overflow:hidden container
+      let el: HTMLElement | null = screen.getByRole('combobox').parentElement;
+      let depth = 0;
+      while (el && depth < 10) {
+        const style = window.getComputedStyle(el);
+        if (el.classList.contains('meta-page') || el.classList.contains('meta-controls') || el.classList.contains('meta-header')) {
+          expect(style.overflow).not.toBe('hidden');
+        }
+        el = el.parentElement;
+        depth++;
+      }
+    });
+  });
 });
