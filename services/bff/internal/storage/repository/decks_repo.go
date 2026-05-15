@@ -60,7 +60,7 @@ type DeckDetailRow struct {
 	Cards []DeckCardRow
 }
 
-// DeckCardRow is one row from deck_cards joined to cards (for name).
+// DeckCardRow is one row from deck_cards joined to set_cards (for name/metadata).
 type DeckCardRow struct {
 	CardID        int
 	Quantity      int
@@ -621,14 +621,23 @@ func (r *DecksRepository) deckOwned(ctx context.Context, accountID int64, deckID
 }
 
 // deckCards returns the joined deck_cards rows for a deck.
+// NOTE: the legacy `cards` table was dropped in migration 000025; the
+// canonical card-metadata table is now `set_cards` (created in 000014).
+// When the same arena_id appears in multiple sets we take the first row by
+// set_cards.id (DISTINCT ON) to avoid duplicate output rows.
 func (r *DecksRepository) deckCards(ctx context.Context, deckID string) ([]DeckCardRow, error) {
 	const q = `SELECT dc.card_id, dc.quantity, dc.board, (dc.from_draft_pick::boolean),
 	                  COALESCE(c.name, ''), COALESCE(c.set_code, ''),
 	                  COALESCE(c.mana_cost, ''), COALESCE(c.cmc, 0),
-	                  COALESCE(c.colors, '[]'), COALESCE(c.type_line, ''),
-	                  COALESCE(c.rarity, ''), COALESCE(c.image_uris, '{}')
+	                  COALESCE(c.colors, '[]'), COALESCE(c.types, ''),
+	                  COALESCE(c.rarity, ''), COALESCE(json_build_object('normal', c.image_url)::TEXT, '{}')
 	           FROM deck_cards dc
-	           LEFT JOIN cards c ON c.arena_id = dc.card_id
+	           LEFT JOIN LATERAL (
+	               SELECT * FROM set_cards
+	               WHERE arena_id = dc.card_id::TEXT
+	               ORDER BY id
+	               LIMIT 1
+	           ) c ON TRUE
 	           WHERE dc.deck_id = $1
 	           ORDER BY dc.board, c.name NULLS LAST, dc.card_id`
 	rows, err := r.db.QueryContext(ctx, q, deckID)
