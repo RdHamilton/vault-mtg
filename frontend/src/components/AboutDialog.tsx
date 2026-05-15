@@ -24,7 +24,7 @@ const AboutDialog = ({ isOpen, onClose }: AboutDialogProps) => {
     <div className="modal-overlay" onClick={onClose}>
       <div className="modal-content about-dialog" onClick={(e) => e.stopPropagation()}>
         <div className="modal-header">
-          <h2>About MTGA Companion</h2>
+          <h2>About VaultMTG</h2>
           <button className="modal-close" onClick={onClose} aria-label="Close">
             ×
           </button>
@@ -38,14 +38,14 @@ const AboutDialog = ({ isOpen, onClose }: AboutDialogProps) => {
                 <span style={{ fontSize: '48px' }}>🃏</span>
               </div>
             </div>
-            <h3 className="app-name">MTGA Companion</h3>
+            <h3 className="app-name">VaultMTG</h3>
             <p className="app-version">Version {version}</p>
           </div>
 
           <div className="about-section">
             <h4>About</h4>
             <p>
-              MTGA Companion is a desktop application for tracking and analyzing your Magic: The Gathering Arena matches.
+              VaultMTG is a desktop application for tracking and analyzing your Magic: The Gathering Arena matches.
               Built to help you improve your game with detailed statistics, trends, and insights.
             </p>
           </div>
@@ -75,7 +75,7 @@ const AboutDialog = ({ isOpen, onClose }: AboutDialogProps) => {
           <div className="about-section">
             <h4>License</h4>
             <p>
-              MTGA Companion is open source software licensed under the MIT License.
+              VaultMTG is open source software licensed under the MIT License.
             </p>
           </div>
 
