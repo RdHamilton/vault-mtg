@@ -511,8 +511,13 @@ func (w *Worker) projectInventoryUpdated(ctx context.Context, row *repository.Da
 		return fmt.Errorf("inventory.updated payload missing account_id")
 	}
 
+	accountID, err := w.accounts.GetOrCreateByClientID(ctx, row.AccountID, row.UserID)
+	if err != nil {
+		return fmt.Errorf("resolve account: %w", err)
+	}
+
 	return w.inventory.UpsertInventory(ctx, repository.InventoryUpsert{
-		AccountID:          row.AccountID,
+		AccountID:          accountID,
 		Gems:               p.Gems,
 		Gold:               p.Gold,
 		TotalVaultProgress: p.TotalVaultProgress,
@@ -593,8 +598,13 @@ func (w *Worker) projectQuestCompleted(ctx context.Context, row *repository.Daem
 		return fmt.Errorf("quest.completed payload missing quest_id")
 	}
 
+	accountID, err := w.accounts.GetOrCreateByClientID(ctx, row.AccountID, row.UserID)
+	if err != nil {
+		return fmt.Errorf("resolve account: %w", err)
+	}
+
 	return w.quests.InsertQuestCompleted(ctx, repository.QuestCompletedInsert{
-		AccountID:        row.AccountID,
+		AccountID:        accountID,
 		QuestID:          p.QuestID,
 		QuestName:        p.QuestName,
 		Progress:         p.Progress,

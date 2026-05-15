@@ -6,10 +6,11 @@ import (
 )
 
 // InventoryUpsert holds the fields written to the inventory table from an
-// inventory.updated daemon event.  account_id is the raw MTGA client_id
-// string (TEXT column added by migration 000068).
+// inventory.updated daemon event.  AccountID is the resolved accounts.id
+// BIGINT FK (migration 000080 converts the column from TEXT client_id to
+// BIGINT FK so every write is properly tenant-scoped).
 type InventoryUpsert struct {
-	AccountID          string
+	AccountID          int64
 	Gems               int
 	Gold               int
 	TotalVaultProgress int
