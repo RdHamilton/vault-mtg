@@ -160,7 +160,7 @@ export default function CardSearch({
     } finally {
       setLoading(false);
     }
-  }, [isDraftDeck, debouncedSearchTerm, selectedSets, collectionOnly]);
+  }, [isDraftDeck, debouncedSearchTerm, selectedSets]);
 
   // Trigger search when debounced term, set filter, or collection filter changes
   useEffect(() => {
