@@ -50,7 +50,7 @@ function createMockTrendAnalysis(
   overrides: Partial<TrendAnalysisInput> = {}
 ): analytics.TrendAnalysisResponse {
   const defaultData: TrendAnalysisInput = {
-    periodType: 'weekly',
+    periodType: 'week',
     setCode: undefined,
     direction: 'improving',
     trends: [
@@ -225,7 +225,20 @@ describe('TemporalTrends Component', () => {
   });
 
   describe('Period Type Selection', () => {
-    it('should allow switching between weekly and monthly views', async () => {
+    it('should default to "week" period type (AC4)', async () => {
+      const trends = createMockTrendAnalysis();
+      mockDrafts.getTemporalTrends.mockResolvedValue(trends);
+
+      render(<TemporalTrends />);
+
+      await waitFor(() => {
+        expect(mockDrafts.getTemporalTrends).toHaveBeenCalledWith(
+          expect.objectContaining({ period_type: 'week' })
+        );
+      });
+    });
+
+    it('should send "month" when monthly view is selected (AC4)', async () => {
       const trends = createMockTrendAnalysis();
       mockDrafts.getTemporalTrends.mockResolvedValue(trends);
 
@@ -236,12 +249,79 @@ describe('TemporalTrends Component', () => {
       });
 
       const select = screen.getByTestId('temporal-trends-period-select');
-      fireEvent.change(select, { target: { value: 'monthly' } });
+      fireEvent.change(select, { target: { value: 'month' } });
 
-      // Should trigger a re-fetch with monthly period type
+      // Should trigger a re-fetch with month period type (not "monthly")
       await waitFor(() => {
         expect(mockDrafts.getTemporalTrends).toHaveBeenCalledWith(
-          expect.objectContaining({ period_type: 'monthly' })
+          expect.objectContaining({ period_type: 'month' })
+        );
+      });
+    });
+
+    it('should send "week" when weekly view is selected (AC4)', async () => {
+      const trends = createMockTrendAnalysis();
+      mockDrafts.getTemporalTrends.mockResolvedValue(trends);
+
+      render(<TemporalTrends periodType="month" />);
+
+      await waitFor(() => {
+        expect(screen.getByText('Draft Performance Trends')).toBeInTheDocument();
+      });
+
+      const select = screen.getByTestId('temporal-trends-period-select');
+      fireEvent.change(select, { target: { value: 'week' } });
+
+      await waitFor(() => {
+        expect(mockDrafts.getTemporalTrends).toHaveBeenCalledWith(
+          expect.objectContaining({ period_type: 'week' })
+        );
+      });
+    });
+
+    it('should never send "weekly" or "monthly" as period_type (AC4)', async () => {
+      const trends = createMockTrendAnalysis();
+      mockDrafts.getTemporalTrends.mockResolvedValue(trends);
+
+      render(<TemporalTrends />);
+
+      await waitFor(() => {
+        expect(screen.getByText('Draft Performance Trends')).toBeInTheDocument();
+      });
+
+      const select = screen.getByTestId('temporal-trends-period-select');
+      // Switch to month (1 re-fetch) — going from default 'week' to 'month'
+      fireEvent.change(select, { target: { value: 'month' } });
+
+      await waitFor(() => {
+        expect(mockDrafts.getTemporalTrends).toHaveBeenCalledTimes(2);
+      });
+
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const calls = mockDrafts.getTemporalTrends.mock.calls as any[][];
+      const forbidden = ['weekly', 'monthly', 'daily'];
+      for (const [req] of calls) {
+        expect(forbidden).not.toContain(req.period_type);
+      }
+    });
+
+    it('should allow switching between week and month views', async () => {
+      const trends = createMockTrendAnalysis();
+      mockDrafts.getTemporalTrends.mockResolvedValue(trends);
+
+      render(<TemporalTrends />);
+
+      await waitFor(() => {
+        expect(screen.getByText('Draft Performance Trends')).toBeInTheDocument();
+      });
+
+      const select = screen.getByTestId('temporal-trends-period-select');
+      fireEvent.change(select, { target: { value: 'month' } });
+
+      // Should trigger a re-fetch with month period type
+      await waitFor(() => {
+        expect(mockDrafts.getTemporalTrends).toHaveBeenCalledWith(
+          expect.objectContaining({ period_type: 'month' })
         );
       });
     });

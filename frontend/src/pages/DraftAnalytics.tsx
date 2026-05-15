@@ -97,7 +97,7 @@ const DraftAnalytics: React.FC = () => {
         <div className="draft-analytics__section draft-analytics__section--full">
           <TemporalTrends
             setCode={selectedSet}
-            periodType="weekly"
+            periodType="week"
             numPeriods={12}
             showLearningCurve={true}
             autoRefresh={autoRefresh}

@@ -417,7 +417,7 @@ export type LearningPeriodEntry = analytics.LearningPeriodEntry;
  * Request for temporal trends analysis.
  */
 export interface TemporalTrendsRequest {
-  period_type: 'weekly' | 'monthly';
+  period_type: 'week' | 'month';
   num_periods?: number;
   set_code?: string;
 }

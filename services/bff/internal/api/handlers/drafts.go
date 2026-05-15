@@ -16,6 +16,7 @@ package handlers
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"log"
 	"net/http"
 	"strconv"
@@ -571,8 +572,16 @@ func (h *DraftsHandler) Trends(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	period := normalizePeriodType(body.PeriodType)
+	if period == "" {
+		writeJSONError(w, "period_type must be week|month", http.StatusBadRequest)
+		return
+	}
 	rows, err := h.drafts.TemporalTrends(r.Context(), period, body.SetCode, body.NumPeriods)
 	if err != nil {
+		if errors.Is(err, repository.ErrInvalidDraftPeriodType) {
+			writeJSONError(w, err.Error(), http.StatusBadRequest)
+			return
+		}
 		log.Printf("[DraftsHandler.Trends] period=%s set=%s: %v", period, body.SetCode, err)
 		writeJSONError(w, "internal server error", http.StatusInternalServerError)
 		return
@@ -949,17 +958,21 @@ func parseIntArray(raw string) []int {
 	return out
 }
 
-// normalizePeriodType folds the SPA's "weekly"/"monthly" payload (and
-// other common variants like "week"/"month"/"WEEKLY") down to the SQL
-// names accepted by repository.TemporalTrends. Unknown values fall back
-// to "week" so the SPA never sees a 400 from a typo.
+// normalizePeriodType folds the SPA's "week"/"month" payload (and legacy
+// "weekly"/"monthly" variants) down to the SQL names accepted by
+// repository.TemporalTrends ("week" or "month"). Returns an empty string
+// for unrecognised values so the caller can return a 400 to the client.
 func normalizePeriodType(raw string) string {
 	v := strings.ToLower(strings.TrimSpace(raw))
-	v = strings.TrimSuffix(v, "ly") // "weekly" → "week", "monthly" → "month"
-	if v != "week" && v != "month" {
+	// Accept both canonical ("week", "month") and legacy long-form values.
+	switch v {
+	case "week", "weekly":
 		return "week"
+	case "month", "monthly":
+		return "month"
+	default:
+		return ""
 	}
-	return v
 }
 
 // draftGradeStub returns a zero-confidence DraftGrade placeholder.

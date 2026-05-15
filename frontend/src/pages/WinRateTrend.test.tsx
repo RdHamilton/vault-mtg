@@ -354,7 +354,7 @@ describe('WinRateTrend', () => {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const calls = mockMatches.getTrendAnalysis.mock.calls as any[][];
       const call = calls[0][0];
-      expect(call.periodType).toBe('daily'); // periodType for 7days
+      expect(call.periodType).toBe('day'); // AC3: periodType for 7days must be 'day', not 'daily'
       expect(call.formats).toBeUndefined(); // formats for 'all' is undefined
     });
 
@@ -390,6 +390,81 @@ describe('WinRateTrend', () => {
       await waitFor(() => {
         expect(mockMatches.getTrendAnalysis).toHaveBeenCalledTimes(2);
       });
+    });
+
+    it('should send period type "day" for 7days date range (AC3)', async () => {
+      mockMatches.getTrendAnalysis.mockResolvedValue(createMockTrendAnalysis());
+      renderWithProvider(<WinRateTrend />);
+      await waitFor(() => expect(mockMatches.getTrendAnalysis).toHaveBeenCalled());
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const calls = mockMatches.getTrendAnalysis.mock.calls as any[][];
+      expect(calls[0][0].periodType).toBe('day');
+    });
+
+    it('should send period type "week" for 30days date range (AC3)', async () => {
+      mockMatches.getTrendAnalysis.mockResolvedValue(createMockTrendAnalysis());
+      renderWithProvider(<WinRateTrend />);
+
+      await waitFor(() => expect(screen.getByTestId('line-chart')).toBeInTheDocument());
+
+      const dateRangeSelect = (screen.getByText('Date Range').closest('.filter-group') as HTMLElement)?.querySelector('select') as HTMLSelectElement;
+      fireEvent.change(dateRangeSelect, { target: { value: '30days' } });
+
+      await waitFor(() => expect(mockMatches.getTrendAnalysis).toHaveBeenCalledTimes(2));
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const calls = mockMatches.getTrendAnalysis.mock.calls as any[][];
+      expect(calls[1][0].periodType).toBe('week');
+    });
+
+    it('should send period type "week" for 90days date range (AC3)', async () => {
+      mockMatches.getTrendAnalysis.mockResolvedValue(createMockTrendAnalysis());
+      renderWithProvider(<WinRateTrend />);
+
+      await waitFor(() => expect(screen.getByTestId('line-chart')).toBeInTheDocument());
+
+      const dateRangeSelect = (screen.getByText('Date Range').closest('.filter-group') as HTMLElement)?.querySelector('select') as HTMLSelectElement;
+      fireEvent.change(dateRangeSelect, { target: { value: '90days' } });
+
+      await waitFor(() => expect(mockMatches.getTrendAnalysis).toHaveBeenCalledTimes(2));
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const calls = mockMatches.getTrendAnalysis.mock.calls as any[][];
+      expect(calls[1][0].periodType).toBe('week');
+    });
+
+    it('should send period type "month" for all-time date range (AC3)', async () => {
+      mockMatches.getTrendAnalysis.mockResolvedValue(createMockTrendAnalysis());
+      renderWithProvider(<WinRateTrend />);
+
+      await waitFor(() => expect(screen.getByTestId('line-chart')).toBeInTheDocument());
+
+      const dateRangeSelect = (screen.getByText('Date Range').closest('.filter-group') as HTMLElement)?.querySelector('select') as HTMLSelectElement;
+      fireEvent.change(dateRangeSelect, { target: { value: 'all' } });
+
+      await waitFor(() => expect(mockMatches.getTrendAnalysis).toHaveBeenCalledTimes(2));
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const calls = mockMatches.getTrendAnalysis.mock.calls as any[][];
+      expect(calls[1][0].periodType).toBe('month');
+    });
+
+    it('should never send "daily", "weekly", or "monthly" as periodType (AC3)', async () => {
+      mockMatches.getTrendAnalysis.mockResolvedValue(createMockTrendAnalysis());
+      renderWithProvider(<WinRateTrend />);
+
+      await waitFor(() => expect(screen.getByTestId('line-chart')).toBeInTheDocument());
+
+      const dateRangeSelect = (screen.getByText('Date Range').closest('.filter-group') as HTMLElement)?.querySelector('select') as HTMLSelectElement;
+      // Trigger 3 distinct range changes (skip '7days' since it's the default and won't re-fetch)
+      for (const range of ['30days', '90days', 'all']) {
+        fireEvent.change(dateRangeSelect, { target: { value: range } });
+      }
+
+      await waitFor(() => expect(mockMatches.getTrendAnalysis).toHaveBeenCalledTimes(4));
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const calls = mockMatches.getTrendAnalysis.mock.calls as any[][];
+      const forbidden = ['daily', 'weekly', 'monthly'];
+      for (const [{ periodType }] of calls) {
+        expect(forbidden).not.toContain(periodType);
+      }
     });
 
     it('should pass constructed formats for constructed filter', async () => {

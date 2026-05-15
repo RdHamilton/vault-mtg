@@ -25,24 +25,24 @@ const WinRateTrend = () => {
       // Calculate date range
       const now = new Date();
       const start = new Date();
-      let periodType = 'daily';
+      let periodType = 'day';
 
       switch (dateRange) {
         case '7days':
           start.setDate(now.getDate() - 7);
-          periodType = 'daily';
+          periodType = 'day';
           break;
         case '30days':
           start.setDate(now.getDate() - 30);
-          periodType = 'weekly';
+          periodType = 'week';
           break;
         case '90days':
           start.setDate(now.getDate() - 90);
-          periodType = 'weekly';
+          periodType = 'week';
           break;
         case 'all':
           start.setFullYear(now.getFullYear() - 1);
-          periodType = 'monthly';
+          periodType = 'month';
           break;
       }
 

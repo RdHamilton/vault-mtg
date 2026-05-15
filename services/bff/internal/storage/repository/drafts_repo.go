@@ -3,10 +3,15 @@ package repository
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"strconv"
 	"strings"
 	"time"
 )
+
+// ErrInvalidDraftPeriodType is returned by TemporalTrends when the
+// period_type argument is not one of the accepted values (week|month).
+var ErrInvalidDraftPeriodType = errors.New("period_type must be week|month")
 
 // DraftsRepository serves the Phase 2 /api/v1/drafts/* surface — reads
 // against draft_sessions + draft_picks + draft_temporal_trends +
@@ -333,7 +338,11 @@ type TemporalTrendRow struct {
 
 // TemporalTrends returns trend rows filtered by period type. setCode may
 // be empty to match all sets; numPeriods caps the result count.
+// periodType must be "week" or "month"; anything else returns ErrInvalidDraftPeriodType.
 func (r *DraftsRepository) TemporalTrends(ctx context.Context, periodType, setCode string, numPeriods int) ([]TemporalTrendRow, error) {
+	if periodType != "week" && periodType != "month" {
+		return nil, ErrInvalidDraftPeriodType
+	}
 	if numPeriods <= 0 {
 		numPeriods = 12
 	}

@@ -17,7 +17,7 @@ import './TemporalTrends.css';
 
 interface TemporalTrendsProps {
   setCode?: string;
-  periodType?: 'weekly' | 'monthly';
+  periodType?: 'week' | 'month';
   numPeriods?: number;
   showLearningCurve?: boolean;
   autoRefresh?: boolean;
@@ -39,7 +39,7 @@ interface LearningChartDataPoint {
 
 const TemporalTrends: React.FC<TemporalTrendsProps> = ({
   setCode,
-  periodType = 'weekly',
+  periodType = 'week',
   numPeriods = 12,
   showLearningCurve = false,
   autoRefresh = false,
@@ -48,7 +48,7 @@ const TemporalTrends: React.FC<TemporalTrendsProps> = ({
   const [learningData, setLearningData] = useState<LearningCurveResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [selectedPeriodType, setSelectedPeriodType] = useState<'weekly' | 'monthly'>(periodType);
+  const [selectedPeriodType, setSelectedPeriodType] = useState<'week' | 'month'>(periodType);
 
   const fetchTrends = useCallback(async () => {
     try {
@@ -167,12 +167,12 @@ const TemporalTrends: React.FC<TemporalTrendsProps> = ({
         <div className="temporal-trends__controls">
           <select
             value={selectedPeriodType}
-            onChange={(e) => setSelectedPeriodType(e.target.value as 'weekly' | 'monthly')}
+            onChange={(e) => setSelectedPeriodType(e.target.value as 'week' | 'month')}
             className="temporal-trends__select"
             data-testid="temporal-trends-period-select"
           >
-            <option value="weekly">Weekly</option>
-            <option value="monthly">Monthly</option>
+            <option value="week">Weekly</option>
+            <option value="month">Monthly</option>
           </select>
           <button onClick={fetchTrends} className="temporal-trends__refresh" data-testid="temporal-trends-refresh-button">
             Refresh
