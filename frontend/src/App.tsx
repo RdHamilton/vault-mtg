@@ -25,6 +25,7 @@ import ApiKeysPage from './pages/ApiKeys';
 import Setup from './pages/Setup';
 import KeyboardShortcutsHandler from './components/KeyboardShortcutsHandler';
 import ProtectedRoute from './components/ProtectedRoute';
+import { SseInitializer } from './components/SseInitializer';
 import { EventsOn } from './services/adapter';
 import { setClerkTokenProvider } from './services/apiClient';
 import { updateReplayState } from './utils/replayState';
@@ -163,6 +164,7 @@ function App() {
   return (
     <Router>
       <ClerkApiClientSync />
+      <SseInitializer />
       <SentryUserSync />
       <ReplayEventHandler />
       <KeyboardShortcutsHandler />
