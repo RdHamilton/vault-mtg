@@ -62,15 +62,29 @@ export async function initializeServices(options?: {
     throw new Error('REST API not available');
   }
 
-  // Connect SSE stream
+  isInitialized = true;
+  console.log('[Adapter] REST API mode enabled');
+}
+
+/**
+ * Open the SSE stream. Call this only after Clerk confirms isLoaded && isSignedIn
+ * so the first request carries a valid Bearer token and avoids a guaranteed 401.
+ */
+export async function initializeSse(): Promise<void> {
   try {
     await sseConnect();
-    console.log('[Adapter] REST API mode enabled with SSE');
+    console.log('[Adapter] SSE connected');
   } catch (error) {
     console.error('[Adapter] SSE connection failed:', error);
+    throw error;
   }
+}
 
-  isInitialized = true;
+/**
+ * Close the SSE stream. Call on sign-out or app teardown.
+ */
+export function disconnectSse(): void {
+  sseDisconnect();
 }
 
 /**
