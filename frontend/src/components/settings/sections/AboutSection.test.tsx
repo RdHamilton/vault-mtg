@@ -35,14 +35,14 @@ describe('AboutSection', () => {
 
   it('renders about button', () => {
     render(<AboutSection {...defaultProps} />);
-    expect(screen.getByRole('button', { name: 'About MTGA Companion' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'About VaultMTG' })).toBeInTheDocument();
   });
 
   it('calls onShowAboutDialog when button is clicked', () => {
     const onShowAboutDialog = vi.fn();
     render(<AboutSection {...defaultProps} onShowAboutDialog={onShowAboutDialog} />);
 
-    fireEvent.click(screen.getByRole('button', { name: 'About MTGA Companion' }));
+    fireEvent.click(screen.getByRole('button', { name: 'About VaultMTG' }));
 
     expect(onShowAboutDialog).toHaveBeenCalled();
   });
