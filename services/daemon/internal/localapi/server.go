@@ -58,6 +58,7 @@ type Server struct {
 	draftStore    DraftStore              // nil → draft endpoints respond with empty/no-session
 	cardsLookup   draftalgo.CardLookup    // nil → noopCards; defaults applied lazily in drafts.go
 	ratingsLookup draftalgo.RatingsLookup // nil → noopRatings; defaults applied lazily in drafts.go
+	replayTrigger ReplayFunc              // nil → /api/v1/replay returns 503
 }
 
 // New returns a Server bound to 127.0.0.1:port. Use DefaultPort unless tests
@@ -149,6 +150,10 @@ func (s *Server) Start() error {
 	mux.HandleFunc("/api/v1/drafts/grade-pick", s.handleDraftGradePick)
 	mux.HandleFunc("/api/v1/drafts/win-probability", s.handleDraftWinProbability)
 	mux.HandleFunc("/api/v1/drafts/", s.handleDraftsPathPrefix)
+
+	// Data Recovery — triggers a historical log replay.  Progress is
+	// reported via the BFF SSE stream as replay:* events.
+	mux.HandleFunc("/api/v1/replay", s.handleReplay)
 
 	s.srv = &http.Server{
 		Handler:           withCORS(mux),
