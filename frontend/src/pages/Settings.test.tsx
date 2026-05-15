@@ -47,21 +47,6 @@ vi.mock('../components/ToastContainer', () => ({
   },
 }));
 
-// Mock useDownload since Settings uses useSeventeenLands which now uses download progress
-vi.mock('@/context/DownloadContext', () => ({
-  useDownload: () => ({
-    state: { tasks: [], activeTask: null },
-    isDownloading: false,
-    overallProgress: 0,
-    startDownload: vi.fn(),
-    updateProgress: vi.fn(),
-    completeDownload: vi.fn(),
-    failDownload: vi.fn(),
-    cancelDownload: vi.fn(),
-  }),
-  DownloadProvider: ({ children }: { children: React.ReactNode }) => children,
-}));
-
 import { showToast } from '../components/ToastContainer';
 import { settings, system, matches } from '@/services/api';
 import { getDaemonHealth } from '@/services/api/bffHealth';
@@ -116,8 +101,9 @@ describe('Settings', () => {
       expect(screen.getByRole('button', { name: /preferences/i })).toBeInTheDocument();
       expect(screen.getByRole('button', { name: /Export▼?$/i })).toBeInTheDocument();
       expect(screen.getByRole('button', { name: /data recovery/i })).toBeInTheDocument();
-      expect(screen.getByRole('button', { name: /17lands integration/i })).toBeInTheDocument();
-      expect(screen.getByRole('button', { name: /about/i })).toBeInTheDocument();
+      // 17Lands and About sections removed in v0.3.1 cleanup (#1976)
+      expect(screen.queryByRole('button', { name: /17lands integration/i })).not.toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: /^about/i })).not.toBeInTheDocument();
     });
 
     it('renders Expand All and Collapse All buttons', () => {
@@ -438,158 +424,8 @@ describe('Settings', () => {
     });
   });
 
-  describe('17Lands Integration section', () => {
-    it('renders set code input', () => {
-      render(<Settings />);
-
-      // Expand 17lands section
-      const seventeenLandsHeader = screen.getByRole('button', { name: /17lands integration/i });
-      fireEvent.click(seventeenLandsHeader);
-
-      expect(screen.getByText('Set Code')).toBeInTheDocument();
-      expect(screen.getByPlaceholderText(/tla, blb, dsk/i)).toBeInTheDocument();
-    });
-
-    it('renders draft format selector', () => {
-      render(<Settings />);
-
-      // Expand 17lands section
-      const seventeenLandsHeader = screen.getByRole('button', { name: /17lands integration/i });
-      fireEvent.click(seventeenLandsHeader);
-
-      expect(screen.getByText('Draft Format')).toBeInTheDocument();
-    });
-
-    it('renders fetch ratings button', () => {
-      render(<Settings />);
-
-      // Expand 17lands section
-      const seventeenLandsHeader = screen.getByRole('button', { name: /17lands integration/i });
-      fireEvent.click(seventeenLandsHeader);
-
-      expect(screen.getByRole('button', { name: /fetch ratings/i })).toBeInTheDocument();
-    });
-
-    it('renders fetch card data button', () => {
-      render(<Settings />);
-
-      // Expand 17lands section
-      const seventeenLandsHeader = screen.getByRole('button', { name: /17lands integration/i });
-      fireEvent.click(seventeenLandsHeader);
-
-      expect(screen.getByRole('button', { name: /fetch card data/i })).toBeInTheDocument();
-    });
-
-    it('renders recalculate draft grades button', () => {
-      render(<Settings />);
-
-      // Expand 17lands section
-      const seventeenLandsHeader = screen.getByRole('button', { name: /17lands integration/i });
-      fireEvent.click(seventeenLandsHeader);
-
-      expect(screen.getByRole('button', { name: /recalculate all drafts/i })).toBeInTheDocument();
-    });
-
-    it('renders clear dataset cache button', () => {
-      render(<Settings />);
-
-      // Expand 17lands section
-      const seventeenLandsHeader = screen.getByRole('button', { name: /17lands integration/i });
-      fireEvent.click(seventeenLandsHeader);
-
-      expect(screen.getByRole('button', { name: /clear dataset cache/i })).toBeInTheDocument();
-    });
-
-    it('disables fetch buttons when set code is empty', () => {
-      render(<Settings />);
-
-      // Expand 17lands section
-      const seventeenLandsHeader = screen.getByRole('button', { name: /17lands integration/i });
-      fireEvent.click(seventeenLandsHeader);
-
-      const fetchRatingsButton = screen.getByRole('button', { name: /fetch ratings/i });
-      expect(fetchRatingsButton).toBeDisabled();
-    });
-
-    // Tests removed: FetchSetRatings, FetchSetCards, recalculateAllDraftGrades, clearDatasetCache
-    // are not implemented in REST API - useSeventeenLands uses no-op functions
-
-    it('shows warning when set code is empty and fetch is clicked', async () => {
-      render(<Settings />);
-
-      // Expand 17lands section
-      const seventeenLandsHeader = screen.getByRole('button', { name: /17lands integration/i });
-      fireEvent.click(seventeenLandsHeader);
-
-      // Don't enter a set code, just try to fetch
-      // Since button is disabled, we need to test the message via the handler
-      // This tests that the button is properly disabled
-      const fetchRatingsButton = screen.getByRole('button', { name: /fetch ratings/i });
-      expect(fetchRatingsButton).toBeDisabled();
-    });
-  });
-
-  describe('About section', () => {
-    it('renders version information', () => {
-      render(<Settings />);
-
-      // Expand about section
-      const aboutHeader = screen.getByRole('button', { name: /about/i });
-      fireEvent.click(aboutHeader);
-
-      expect(screen.getByText('Version:')).toBeInTheDocument();
-      expect(screen.getByText('1.3.1')).toBeInTheDocument();
-    });
-
-    it('renders build information', () => {
-      render(<Settings />);
-
-      // Expand about section
-      const aboutHeader = screen.getByRole('button', { name: /about/i });
-      fireEvent.click(aboutHeader);
-
-      expect(screen.getByText('Build:')).toBeInTheDocument();
-      expect(screen.getByText('Development')).toBeInTheDocument();
-    });
-
-    it('renders platform information', () => {
-      render(<Settings />);
-
-      // Expand about section
-      const aboutHeader = screen.getByRole('button', { name: /about/i });
-      fireEvent.click(aboutHeader);
-
-      expect(screen.getByText('Platform:')).toBeInTheDocument();
-      expect(screen.getByText('Wails + React')).toBeInTheDocument();
-    });
-
-    it('renders about dialog button', () => {
-      render(<Settings />);
-
-      // Expand about section
-      const aboutHeader = screen.getByRole('button', { name: /about/i });
-      fireEvent.click(aboutHeader);
-
-      expect(screen.getByRole('button', { name: /about mtga companion/i })).toBeInTheDocument();
-    });
-
-    it('opens about dialog when button is clicked', () => {
-      render(<Settings />);
-
-      // Expand about section
-      const aboutHeader = screen.getByRole('button', { name: /about/i });
-      fireEvent.click(aboutHeader);
-
-      const aboutButton = screen.getByRole('button', { name: /about mtga companion/i });
-      fireEvent.click(aboutButton);
-
-      // About dialog should be open - check for modal-specific content
-      // The modal has a heading "About MTGA Companion" and app description text
-      expect(screen.getByText(/desktop application for tracking and analyzing/i)).toBeInTheDocument();
-      // Modal has a close button with modal-close class
-      expect(document.querySelector('.modal-close')).toBeInTheDocument();
-    });
-  });
+  // 17Lands Integration section removed in v0.3.1 cleanup (#1976) — sync is now handled globally by Lambda.
+  // About section removed in v0.3.1 cleanup (#1976) — version info was stale.
 
   describe('Developer Mode', () => {
     it('does not show Developer Tools section by default', () => {
@@ -607,53 +443,10 @@ describe('Settings', () => {
       expect(screen.getByRole('button', { name: /developer tools/i })).toBeInTheDocument();
     });
 
-    it('activates developer mode after clicking version 5 times', async () => {
-      render(<Settings />);
-
-      // Expand about section
-      const aboutHeader = screen.getByRole('button', { name: /about/i });
-      fireEvent.click(aboutHeader);
-
-      // Click version 5 times quickly (within 3 second timeout)
-      const versionElement = screen.getByText('1.3.1');
-      for (let i = 0; i < 5; i++) {
-        fireEvent.click(versionElement);
-      }
-
-      // Developer mode should now be enabled
-      await waitFor(() => {
-        expect(screen.getByRole('button', { name: /developer tools/i })).toBeInTheDocument();
-      });
-    });
-
-    it('shows developer mode indicator in About section when enabled', () => {
-      localStorage.setItem('mtga-companion-developer-mode', 'true');
-
-      render(<Settings />);
-
-      // Expand about section
-      const aboutHeader = screen.getByRole('button', { name: /about/i });
-      fireEvent.click(aboutHeader);
-
-      expect(screen.getByText('Developer Mode:')).toBeInTheDocument();
-      expect(screen.getByText('Enabled')).toBeInTheDocument();
-    });
-
-    it('allows disabling developer mode via toggle', () => {
-      localStorage.setItem('mtga-companion-developer-mode', 'true');
-
-      render(<Settings />);
-
-      // Expand about section
-      const aboutHeader = screen.getByRole('button', { name: /about/i });
-      fireEvent.click(aboutHeader);
-
-      const disableButton = screen.getByRole('button', { name: /disable/i });
-      fireEvent.click(disableButton);
-
-      // Developer Tools section should be hidden
-      expect(screen.queryByRole('button', { name: /developer tools/i })).not.toBeInTheDocument();
-    });
+    // 'activates developer mode after clicking version 5 times' removed — that interaction
+    // was gated behind the About section which was removed in v0.3.1 cleanup (#1976).
+    // 'shows developer mode indicator in About section when enabled' removed — About section removed (#1976).
+    // 'allows disabling developer mode via toggle' removed — toggle lived in About section (#1976).
   });
 
   describe('Save/Reset actions', () => {

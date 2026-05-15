@@ -1,14 +1,11 @@
 import { useState } from 'react';
-import AboutDialog from '../components/AboutDialog';
 import {
   DaemonConnectionSection,
   AppPreferencesSection,
   ImportExportSection,
   DataRecoverySection,
   ReplayToolSection,
-  SeventeenLandsSection,
   MLSettingsSection,
-  AboutSection,
   ApiKeySection,
   UserProfileSection,
 } from '../components/settings/sections';
@@ -18,7 +15,6 @@ import {
   useDaemonConnection,
   useLogReplay,
   useReplayTool,
-  useSeventeenLands,
   useDataManagement,
   useDeveloperMode,
   useSettings,
@@ -29,7 +25,6 @@ import './Settings.css';
 const Settings = () => {
   // Local UI state
   const [saved, setSaved] = useState(false);
-  const [showAbout, setShowAbout] = useState(false);
 
   // Settings from backend
   const {
@@ -87,11 +82,7 @@ const Settings = () => {
   } = useSettings();
 
   // Developer mode hook
-  const {
-    isDeveloperMode,
-    handleVersionClick,
-    toggleDeveloperMode,
-  } = useDeveloperMode();
+  const { isDeveloperMode } = useDeveloperMode();
 
   // Custom hooks for state management
   const {
@@ -127,25 +118,6 @@ const Settings = () => {
     handleResumeReplayTool,
     handleStopReplayTool,
   } = useReplayTool();
-
-  const {
-    setCode,
-    setSetCode,
-    draftFormat,
-    setDraftFormat,
-    isFetchingRatings,
-    isFetchingCards,
-    isRecalculating,
-    recalculateMessage,
-    dataSource,
-    isClearingCache,
-    handleFetchSetRatings,
-    handleRefreshSetRatings,
-    handleFetchSetCards,
-    handleRefreshSetCards,
-    handleRecalculateGrades,
-    handleClearDatasetCache,
-  } = useSeventeenLands();
 
   const { handleExportData } = useDataManagement();
 
@@ -248,31 +220,6 @@ const Settings = () => {
         ),
       },
       {
-        id: '17lands',
-        label: '17Lands Integration',
-        icon: '📊',
-        content: (
-          <SeventeenLandsSection
-            setCode={setCode}
-            onSetCodeChange={setSetCode}
-            draftFormat={draftFormat}
-            onDraftFormatChange={setDraftFormat}
-            isFetchingRatings={isFetchingRatings}
-            isFetchingCards={isFetchingCards}
-            isRecalculating={isRecalculating}
-            recalculateMessage={recalculateMessage}
-            dataSource={dataSource}
-            isClearingCache={isClearingCache}
-            onFetchSetRatings={handleFetchSetRatings}
-            onRefreshSetRatings={handleRefreshSetRatings}
-            onFetchSetCards={handleFetchSetCards}
-            onRefreshSetCards={handleRefreshSetCards}
-            onRecalculateGrades={handleRecalculateGrades}
-            onClearDatasetCache={handleClearDatasetCache}
-          />
-        ),
-      },
-      {
         id: 'ml-recommendations',
         label: 'ML / AI',
         icon: '🤖',
@@ -339,21 +286,6 @@ const Settings = () => {
       });
     }
 
-    // About section is always last
-    items.push({
-      id: 'about',
-      label: 'About',
-      icon: 'ℹ️',
-      content: (
-        <AboutSection
-          onShowAboutDialog={() => setShowAbout(true)}
-          isDeveloperMode={isDeveloperMode}
-          onVersionClick={handleVersionClick}
-          onToggleDeveloperMode={toggleDeveloperMode}
-        />
-      ),
-    });
-
     return items;
   })();
 
@@ -395,8 +327,6 @@ const Settings = () => {
         </div>
       </div>
 
-      {/* About Dialog */}
-      <AboutDialog isOpen={showAbout} onClose={() => setShowAbout(false)} />
     </div>
   );
 };

@@ -13,12 +13,6 @@ export type { DataRecoverySectionProps } from './DataRecoverySection';
 export { ReplayToolSection } from './ReplayToolSection';
 export type { ReplayToolSectionProps } from './ReplayToolSection';
 
-export { SeventeenLandsSection } from './SeventeenLandsSection';
-export type { SeventeenLandsSectionProps } from './SeventeenLandsSection';
-
-export { AboutSection } from './AboutSection';
-export type { AboutSectionProps } from './AboutSection';
-
 // Deprecated - kept for backwards compatibility during transition
 export { DatabaseSection } from './DatabaseSection';
 export type { DatabaseSectionProps } from './DatabaseSection';
