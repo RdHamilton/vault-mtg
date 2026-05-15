@@ -21,7 +21,7 @@ func runHelperInstaller(helperBinary, scriptDir string) error {
 	if err != nil {
 		return fmt.Errorf("create staging dir: %w", err)
 	}
-	defer os.RemoveAll(stagingDir)
+	defer func() { _ = os.RemoveAll(stagingDir) }()
 
 	// Stage the helper binary too — the root shell can't cp from ~/Documents.
 	stagedBinary := filepath.Join(stagingDir, "collection-helper")
