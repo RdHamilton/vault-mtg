@@ -26,6 +26,7 @@ static kern_return_t vmRead(mach_port_t task, uint64_t addr, uint64_t size,
 }
 */
 import "C"
+
 import (
 	"fmt"
 	"unsafe"
@@ -63,7 +64,7 @@ func listReadableRegions(task C.mach_port_t, minSize uint64) []vmRegion {
 			&addr,
 			&size,
 			C.VM_REGION_BASIC_INFO_64,
-			(C.vm_region_info_t)(unsafe.Pointer(&info)),
+			C.vm_region_info_t(unsafe.Pointer(&info)),
 			&count,
 			&objName,
 		)

@@ -64,7 +64,6 @@ DELETE FROM quest_session_tracking WHERE account_id_new IS NULL;
 
 -- Drop old TEXT column and its supporting index.
 DROP INDEX IF EXISTS idx_qst_account_id;
-DROP CONSTRAINT IF EXISTS uq_quest_session_tracking_account_quest_time;
 
 -- Some Postgres versions require explicit syntax; use IF EXISTS for safety.
 ALTER TABLE quest_session_tracking
