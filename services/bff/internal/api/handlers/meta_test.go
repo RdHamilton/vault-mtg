@@ -279,3 +279,96 @@ func TestMetaRefresh_HappyPath(t *testing.T) {
 		t.Errorf("refresh: %v", resp)
 	}
 }
+
+// TestMetaRefresh_MissingFormat verifies that Refresh returns 400 when the
+// required format query param is absent.
+func TestMetaRefresh_MissingFormat(t *testing.T) {
+	h := handlers.NewMetaHandler(&stubMetaReader{})
+	req := authedMetaRequest(t, http.MethodPost, "/api/v1/meta/refresh", nil, 168)
+	rr := httptest.NewRecorder()
+	h.Refresh(rr, req)
+	if rr.Code != http.StatusBadRequest {
+		t.Errorf("status: got %d, want 400", rr.Code)
+	}
+}
+
+// TestMetaRefresh_Unauthorized verifies that Refresh returns 401 when the
+// request context carries no user ID (unauthenticated caller).
+func TestMetaRefresh_Unauthorized(t *testing.T) {
+	h := handlers.NewMetaHandler(&stubMetaReader{})
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/meta/refresh?format=standard", nil)
+	rr := httptest.NewRecorder()
+	h.Refresh(rr, req)
+	if rr.Code != http.StatusUnauthorized {
+		t.Errorf("status: got %d, want 401", rr.Code)
+	}
+}
+
+// TestMetaRefresh_EmptyArchetypes verifies that Refresh returns 200 with a
+// valid dashboard response shape (empty archetypes slice, not null) when the
+// mtgzone_archetypes table has no rows for the format. This is the empty-state
+// case that triggers the "no meta data available" UI on the frontend.
+func TestMetaRefresh_EmptyArchetypes(t *testing.T) {
+	reader := &stubMetaReader{
+		archetypes: nil, // empty table — no rows
+		latestOK:   false,
+	}
+	h := handlers.NewMetaHandler(reader)
+	req := authedMetaRequest(t, http.MethodPost, "/api/v1/meta/refresh?format=standard", nil, 168)
+	rr := httptest.NewRecorder()
+	h.Refresh(rr, req)
+	if rr.Code != http.StatusOK {
+		t.Fatalf("status: %d body=%s", rr.Code, rr.Body.String())
+	}
+	var resp map[string]any
+	decodeMetaEnvelope(t, rr.Body.Bytes(), &resp)
+	// format must be echoed back
+	if resp["format"] != "standard" {
+		t.Errorf("format: got %v, want %q", resp["format"], "standard")
+	}
+	// totalArchetypes must be 0, not missing
+	if n, ok := resp["totalArchetypes"].(float64); !ok || n != 0 {
+		t.Errorf("totalArchetypes: got %v, want 0", resp["totalArchetypes"])
+	}
+	// archetypes must be a non-null empty array, not null — frontend depends on this
+	archetypes, ok := resp["archetypes"].([]any)
+	if !ok {
+		t.Fatalf("archetypes: expected []any, got %T: %v", resp["archetypes"], resp["archetypes"])
+	}
+	if len(archetypes) != 0 {
+		t.Errorf("archetypes: expected empty array, got %v", archetypes)
+	}
+	// sources must be present
+	if _, ok := resp["sources"]; !ok {
+		t.Errorf("sources field missing from response: %v", resp)
+	}
+}
+
+// TestMetaRefresh_LatestUpdateFallback verifies that when LatestArchetypeUpdate
+// returns ok=false (no rows in the DB for the format), the handler falls back to
+// time.Now() for lastUpdated and still returns 200 with a valid response body.
+// This guards against a nil-pointer panic in the Refresh handler when the DB
+// has no archetypes.
+func TestMetaRefresh_LatestUpdateFallback(t *testing.T) {
+	reader := &stubMetaReader{
+		archetypes: []repository.ArchetypeRow{{ID: 1, Name: "Some Deck"}},
+		latestOK:   false, // LatestArchetypeUpdate returns ok=false
+	}
+	h := handlers.NewMetaHandler(reader)
+	req := authedMetaRequest(t, http.MethodPost, "/api/v1/meta/refresh?format=historic", nil, 168)
+	rr := httptest.NewRecorder()
+	h.Refresh(rr, req)
+	if rr.Code != http.StatusOK {
+		t.Fatalf("status: %d body=%s", rr.Code, rr.Body.String())
+	}
+	var resp map[string]any
+	decodeMetaEnvelope(t, rr.Body.Bytes(), &resp)
+	if resp["format"] != "historic" {
+		t.Errorf("format: got %v, want %q", resp["format"], "historic")
+	}
+	// lastUpdated must be a non-empty string (ISO-8601 from time.Now() fallback)
+	lastUpdated, ok := resp["lastUpdated"].(string)
+	if !ok || lastUpdated == "" {
+		t.Errorf("lastUpdated: expected non-empty string, got %v", resp["lastUpdated"])
+	}
+}
