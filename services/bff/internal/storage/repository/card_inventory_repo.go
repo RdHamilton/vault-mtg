@@ -100,7 +100,7 @@ func (r *CardInventoryRepository) ListByAccountIDCursor(
 		return nil, err
 	}
 
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var cards []CardInventoryRow
 

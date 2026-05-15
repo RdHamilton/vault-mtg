@@ -194,7 +194,7 @@ func (r *GamePlayRepository) ListGamePlaysByMatch(ctx context.Context, accountID
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var out []GamePlayRow
 	for rows.Next() {

@@ -45,7 +45,7 @@ func RunMigrations(databaseURL string) error {
 	if err != nil {
 		return fmt.Errorf("migration init: %w", err)
 	}
-	defer m.Close()
+	defer func() { _, _ = m.Close() }()
 
 	if err := m.Up(); err != nil && !errors.Is(err, migrate.ErrNoChange) {
 		return fmt.Errorf("migration up: %w", err)
@@ -82,7 +82,7 @@ func MigrationStatus(databaseURL string) string {
 		return MigrationStatusUnknown
 	}
 
-	defer m.Close()
+	defer func() { _, _ = m.Close() }()
 
 	// Current applied version in the database.
 	current, dirty, err := m.Version()

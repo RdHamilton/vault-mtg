@@ -406,15 +406,6 @@ func (h *MLHandler) ProcessMatchHistory(w http.ResponseWriter, r *http.Request) 
 	if _, _, ok := h.resolveAccount(w, r, "ProcessMatchHistory"); !ok {
 		return
 	}
-	days := 90
-	if v := strings.TrimSpace(r.URL.Query().Get("days")); v != "" {
-		if n, err := strconv.Atoi(v); err == nil && n > 0 {
-			days = n
-		}
-	}
-	if days > 365 {
-		days = 365
-	}
 	writeMatchesJSON(w, mlStatusResponse{
 		Status:  "queued",
 		Message: "Match history processing is queued. The analytics pipeline will populate synergy data on its next run.",

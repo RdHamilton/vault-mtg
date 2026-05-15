@@ -168,7 +168,7 @@ func (b *Broker) Handler(extractUserID UserIDExtractor) http.HandlerFunc {
 		log.Printf("[sse] client_connected userID=%d", userID)
 
 		// Send a comment frame immediately so the client knows it is connected.
-		fmt.Fprintf(w, ": connected\n\n")
+		_, _ = fmt.Fprintf(w, ": connected\n\n")
 		flusher.Flush()
 
 		ctx := r.Context()
@@ -192,7 +192,7 @@ func (b *Broker) Handler(extractUserID UserIDExtractor) http.HandlerFunc {
 				return
 
 			case <-tickerC:
-				fmt.Fprintf(w, ": heartbeat\n\n")
+				_, _ = fmt.Fprintf(w, ": heartbeat\n\n")
 				flusher.Flush()
 
 			case ev, ok := <-sub.ch:
@@ -202,10 +202,10 @@ func (b *Broker) Handler(extractUserID UserIDExtractor) http.HandlerFunc {
 				}
 
 				if ev.Name != "" {
-					fmt.Fprintf(w, "event: %s\n", ev.Name)
+					_, _ = fmt.Fprintf(w, "event: %s\n", ev.Name)
 				}
 
-				fmt.Fprintf(w, "data: %s\n\n", ev.Data)
+				_, _ = fmt.Fprintf(w, "data: %s\n\n", ev.Data)
 				flusher.Flush()
 			}
 		}

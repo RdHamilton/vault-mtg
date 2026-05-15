@@ -81,7 +81,7 @@ func (r *DaemonEventsRepository) ListByUserID(
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var events []DaemonEventRow
 
@@ -121,7 +121,7 @@ func (r *DaemonEventsRepository) ListPendingProjection(
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var events []DaemonEventRow
 

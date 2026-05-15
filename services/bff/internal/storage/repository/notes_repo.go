@@ -49,7 +49,7 @@ func (r *NotesRepository) ListDeckNotes(ctx context.Context, accountID int64, de
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	var out []DeckNoteRow
 	for rows.Next() {
 		var n DeckNoteRow
@@ -239,7 +239,7 @@ func (r *NotesRepository) ListSuggestions(ctx context.Context, accountID int64, 
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	var out []SuggestionRow
 	for rows.Next() {
 		var s SuggestionRow

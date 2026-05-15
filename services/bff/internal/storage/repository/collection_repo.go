@@ -149,7 +149,7 @@ func (r *CollectionRepository) ListCollection(ctx context.Context, accountID int
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var out []CollectionItem
 	for rows.Next() {
@@ -211,7 +211,7 @@ func (r *CollectionRepository) CountByRarity(ctx context.Context, accountID int6
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	var out []RarityCount
 	for rows.Next() {
 		var rc RarityCount
@@ -266,7 +266,7 @@ func (r *CollectionRepository) SetCompletion(ctx context.Context, accountID int6
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	var out []SetCompletionRow
 	for rows.Next() {
 		var s SetCompletionRow
@@ -313,7 +313,7 @@ func (r *CollectionRepository) SetRarityBreakdown(ctx context.Context, accountID
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	var out []SetRarityRow
 	for rows.Next() {
 		var s SetRarityRow
@@ -365,7 +365,7 @@ func (r *CollectionRepository) ValueRows(ctx context.Context, accountID int64) (
 	if err != nil {
 		return nil, 0, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	var out []CardValueRow
 	for rows.Next() {
 		var v CardValueRow

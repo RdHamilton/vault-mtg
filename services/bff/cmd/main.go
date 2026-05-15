@@ -29,10 +29,7 @@ import (
 	_ "github.com/jackc/pgx/v5/stdlib"
 )
 
-var (
-	port        = flag.Int("port", 8080, "HTTP server port")
-	databaseURL = flag.String("database-url", os.Getenv("DATABASE_URL"), "PostgreSQL connection string")
-)
+var port = flag.Int("port", 8080, "HTTP server port")
 
 func runMigrationsWithRetry(dsn string, timeout time.Duration) error {
 	deadline := time.Now().Add(timeout)
@@ -135,7 +132,11 @@ func main() {
 		if err != nil {
 			log.Fatalf("posthog.NewWithConfig: %v", err)
 		}
-		defer phClient.Close()
+		defer func() {
+			if err := phClient.Close(); err != nil {
+				log.Printf("posthog close: %v", err)
+			}
+		}()
 		postHogClient = phClient
 		log.Println("PostHog initialised.")
 	} else {

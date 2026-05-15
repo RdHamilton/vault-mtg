@@ -76,7 +76,7 @@ func (r *DraftRatingsRepository) GetRatings(ctx context.Context, setCode, draftF
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var (
 		cards    []CardRating
@@ -123,7 +123,7 @@ func (r *DraftRatingsRepository) GetRatings(ctx context.Context, setCode, draftF
 	if err != nil {
 		return nil, err
 	}
-	defer cRows.Close()
+	defer func() { _ = cRows.Close() }()
 
 	var colors []ColorRating
 

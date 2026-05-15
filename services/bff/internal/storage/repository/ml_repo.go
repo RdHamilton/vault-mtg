@@ -131,12 +131,12 @@ func (r *MLRepository) SynergyReport(ctx context.Context, accountID int64, deckI
 	for rows.Next() {
 		var id int
 		if err := rows.Scan(&id); err != nil {
-			rows.Close()
+			_ = rows.Close()
 			return nil, err
 		}
 		cardIDs = append(cardIDs, id)
 	}
-	rows.Close()
+	_ = rows.Close()
 	if err := rows.Err(); err != nil {
 		return nil, err
 	}
@@ -158,7 +158,7 @@ func (r *MLRepository) SynergyReport(ctx context.Context, accountID int64, deckI
 	if err != nil {
 		return nil, err
 	}
-	defer prows.Close()
+	defer func() { _ = prows.Close() }()
 	var total float64
 	for prows.Next() {
 		var p SynergyReportPair
@@ -206,7 +206,7 @@ func (r *MLRepository) CardSynergies(ctx context.Context, cardID int, format str
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	out := make([]CardCombinationStatsRow, 0, limit)
 	for rows.Next() {
 		var c CardCombinationStatsRow

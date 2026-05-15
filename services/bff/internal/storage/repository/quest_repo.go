@@ -272,7 +272,7 @@ func (r *QuestRepository) scanQuestRows(ctx context.Context, q string, args ...a
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var out []QuestRow
 	for rows.Next() {

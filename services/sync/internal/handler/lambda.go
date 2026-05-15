@@ -5,8 +5,12 @@ package handler
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/json"
+	"fmt"
 	"log"
 	"os"
+	"sort"
 	"strings"
 	"time"
 
@@ -108,6 +112,27 @@ func (h *SyncHandler) Handle(ctx context.Context, _ any) error {
 				continue
 			}
 
+			// ADR-005: compute a SHA-256 hash over the sorted payload and skip the
+			// upsert when the hash matches the previously stored value in sync_hashes.
+			hashKey := setCode + "/" + format
+			newHash, err := computeRatingsHash(ratings)
+			if err != nil {
+				log.Printf("[sync] hash compute %s/%s: %v", setCode, format, err)
+				continue
+			}
+
+			storedHash, err := h.store.GetHash(ctx, hashKey)
+			if err != nil {
+				log.Printf("[sync] get hash %s/%s: %v — proceeding with upsert", setCode, format, err)
+				// Non-fatal: fall through and upsert anyway.
+				storedHash = ""
+			}
+
+			if storedHash != "" && storedHash == newHash {
+				log.Printf("[sync] skipped %s/%s: payload unchanged (hash=%s)", setCode, format, newHash[:8])
+				continue
+			}
+
 			sr := draftdata.SetRatings{
 				SetCode:     setCode,
 				DraftFormat: format,
@@ -120,7 +145,13 @@ func (h *SyncHandler) Handle(ctx context.Context, _ any) error {
 				continue
 			}
 
-			log.Printf("[sync] refreshed %s/%s: %d cards", setCode, format, len(ratings))
+			if err := h.store.SetHash(ctx, hashKey, newHash); err != nil {
+				// Non-fatal: the upsert succeeded; log and continue so the next run
+				// simply re-upserts rather than silently losing data.
+				log.Printf("[sync] set hash %s/%s: %v", setCode, format, err)
+			}
+
+			log.Printf("[sync] refreshed %s/%s: %d cards (hash=%s)", setCode, format, len(ratings), newHash[:8])
 
 			// Fetch and persist per-color-combination win rates. A failure here is
 			// non-fatal — card ratings are already stored and color data is best-effort.
@@ -157,4 +188,23 @@ func (h *SyncHandler) activeSets(ctx context.Context) ([]string, error) {
 	}
 
 	return h.store.GetActiveSets(ctx)
+}
+
+// computeRatingsHash returns a deterministic SHA-256 hex string over the given
+// card ratings slice. Cards are sorted by MtgaID ascending before marshalling so
+// that ordering differences in upstream responses do not produce false cache misses.
+func computeRatingsHash(ratings []seventeenlands.CardRating) (string, error) {
+	sorted := make([]seventeenlands.CardRating, len(ratings))
+	copy(sorted, ratings)
+	sort.Slice(sorted, func(i, j int) bool {
+		return sorted[i].MtgaID < sorted[j].MtgaID
+	})
+
+	b, err := json.Marshal(sorted)
+	if err != nil {
+		return "", fmt.Errorf("marshal ratings for hash: %w", err)
+	}
+
+	sum := sha256.Sum256(b)
+	return fmt.Sprintf("%x", sum), nil
 }

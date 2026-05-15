@@ -133,7 +133,7 @@ func (r *OpponentsRepository) ListOpponentDecks(ctx context.Context, accountID i
 	if err != nil {
 		return nil, 0, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	var out []OpponentDeckProfileRow
 	for rows.Next() {
 		var p OpponentDeckProfileRow
@@ -188,7 +188,6 @@ func (r *OpponentsRepository) ListMatchups(ctx context.Context, accountID int64,
 	if format != "" {
 		clauses = append(clauses, "lower(format) = lower($"+strconv.Itoa(next)+")")
 		args = append(args, format)
-		next++
 	}
 	q := `SELECT id, account_id, player_archetype, opponent_archetype, format,
 	             total_matches, wins, losses, avg_game_duration, last_match_at,
@@ -201,7 +200,7 @@ func (r *OpponentsRepository) ListMatchups(ctx context.Context, accountID int64,
 	if err != nil {
 		return nil, 0, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	var out []MatchupStatRow
 	for rows.Next() {
 		var m MatchupStatRow
@@ -282,7 +281,7 @@ func (r *OpponentsRepository) ExpectedCardsForArchetype(ctx context.Context, arc
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	var out []ExpectedCardRow
 	for rows.Next() {
 		var e ExpectedCardRow
@@ -376,7 +375,7 @@ func (r *OpponentsRepository) ArchetypeBreakdown(ctx context.Context, accountID 
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	var out []ArchetypeBreakdownRow
 	for rows.Next() {
 		var b ArchetypeBreakdownRow
@@ -419,7 +418,7 @@ func (r *OpponentsRepository) ColorIdentityBreakdown(ctx context.Context, accoun
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	var out []ColorIdentityBreakdownRow
 	for rows.Next() {
 		var c ColorIdentityBreakdownRow
@@ -456,7 +455,7 @@ func (r *OpponentsRepository) OpponentCardsForMatch(ctx context.Context, account
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	var out []OpponentObservedCardRow
 	for rows.Next() {
 		var c OpponentObservedCardRow

@@ -32,7 +32,7 @@ func (r *SettingsRepository) ListByAccount(ctx context.Context, accountID int64)
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	out := map[string]json.RawMessage{}
 	for rows.Next() {
 		var key string
@@ -89,7 +89,7 @@ func (r *SettingsRepository) UpsertMany(ctx context.Context, accountID int64, va
 	if err != nil {
 		return err
 	}
-	defer stmt.Close()
+	defer func() { _ = stmt.Close() }()
 	for key, value := range values {
 		if _, err := stmt.ExecContext(ctx, accountID, key, []byte(value)); err != nil {
 			return err

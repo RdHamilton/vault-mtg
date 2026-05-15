@@ -43,7 +43,7 @@ func (r *StandardRepository) ListStandardSets(ctx context.Context) ([]StandardSe
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	var out []StandardSetRow
 	for rows.Next() {
 		var s StandardSetRow
@@ -138,7 +138,7 @@ func (r *StandardRepository) DeckCardsForValidation(ctx context.Context, deckID 
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	var out []DeckCardForValidation
 	for rows.Next() {
 		var d DeckCardForValidation
@@ -190,7 +190,7 @@ func (r *StandardRepository) ListAccountStandardDecks(ctx context.Context, accou
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	var out []AccountStandardDeckRow
 	for rows.Next() {
 		var d AccountStandardDeckRow
@@ -257,7 +257,7 @@ func (r *StandardRepository) SetsRotatingOn(ctx context.Context, rotationDate st
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	var out []StandardSetRow
 	for rows.Next() {
 		var s StandardSetRow

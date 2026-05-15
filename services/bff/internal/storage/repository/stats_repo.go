@@ -80,7 +80,7 @@ func (r *StatsRepository) GetDeckPerformance(ctx context.Context, accountID int6
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var out []DeckPerformanceRow
 	for rows.Next() {
@@ -132,7 +132,7 @@ func (r *StatsRepository) GetWinRateTrend(ctx context.Context, accountID int64, 
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var out []WinRateBucket
 	for rows.Next() {
@@ -171,7 +171,7 @@ func (r *StatsRepository) GetFormatDistribution(ctx context.Context, accountID i
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var out []FormatDistributionRow
 	for rows.Next() {
@@ -321,7 +321,7 @@ func (r *StatsRepository) ListDraftAnalytics(
 		return nil, err
 	}
 
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var out []DraftAnalyticsRow
 
@@ -420,7 +420,7 @@ func (r *StatsRepository) ListRankProgression(
 		return nil, err
 	}
 
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var out []RankProgressionRow
 
@@ -487,7 +487,7 @@ func (r *StatsRepository) GetResultBreakdown(
 		return nil, err
 	}
 
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var out []ResultBreakdownRow
 

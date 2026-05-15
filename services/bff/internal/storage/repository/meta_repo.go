@@ -49,7 +49,6 @@ func (r *MetaRepository) ListArchetypesByFormat(ctx context.Context, format stri
 	if tier > 0 {
 		clauses = append(clauses, "tier = $"+strconv.Itoa(next))
 		args = append(args, strconv.Itoa(tier))
-		next++
 	}
 	q := `SELECT id, name, format, tier, description, play_style, source_url, last_updated
 	      FROM mtgzone_archetypes
@@ -60,7 +59,7 @@ func (r *MetaRepository) ListArchetypesByFormat(ctx context.Context, format stri
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	var out []ArchetypeRow
 	for rows.Next() {
 		var a ArchetypeRow
@@ -134,7 +133,7 @@ func (r *MetaRepository) ArchetypeCardsByID(ctx context.Context, archetypeID int
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	var out []ArchetypeCardRow
 	for rows.Next() {
 		var c ArchetypeCardRow

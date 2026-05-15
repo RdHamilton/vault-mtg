@@ -65,7 +65,7 @@ func (r *APIKeyRepository) ListActive(ctx context.Context, userID int64) ([]APIK
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var keys []APIKey
 
@@ -97,7 +97,7 @@ func (r *APIKeyRepository) ListAllActive(ctx context.Context) ([]APIKey, error) 
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var keys []APIKey
 

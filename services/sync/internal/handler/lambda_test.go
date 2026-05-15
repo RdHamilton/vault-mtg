@@ -2,7 +2,11 @@ package handler_test
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/json"
 	"errors"
+	"fmt"
+	"sort"
 	"testing"
 	"time"
 
@@ -42,12 +46,25 @@ type stubStore struct {
 	upserted             []draftdata.SetRatings
 	upsertFn             func(setCode string) error
 	upsertedColorRatings []stubColorUpsert
+
+	// Hash control fields.
+	// storedHashes maps hash key -> hash value returned by GetHash.
+	// setHashCalls records every (key, hash) pair passed to SetHash.
+	storedHashes map[string]string
+	getHashErr   error
+	setHashErr   error
+	setHashCalls []stubSetHashCall
 }
 
 type stubColorUpsert struct {
 	setCode     string
 	draftFormat string
 	ratings     []seventeenlands.ColorRating
+}
+
+type stubSetHashCall struct {
+	key  string
+	hash string
 }
 
 func (s *stubStore) GetActiveSets(_ context.Context) ([]string, error) {
@@ -75,12 +92,19 @@ func (s *stubStore) UpsertColorRatings(_ context.Context, setCode, draftFormat s
 	return nil
 }
 
-func (s *stubStore) GetHash(_ context.Context, _ string) (string, error) {
+func (s *stubStore) GetHash(_ context.Context, key string) (string, error) {
+	if s.getHashErr != nil {
+		return "", s.getHashErr
+	}
+	if s.storedHashes != nil {
+		return s.storedHashes[key], nil
+	}
 	return "", nil
 }
 
-func (s *stubStore) SetHash(_ context.Context, _ string, _ string) error {
-	return nil
+func (s *stubStore) SetHash(_ context.Context, key, hash string) error {
+	s.setHashCalls = append(s.setHashCalls, stubSetHashCall{key, hash})
+	return s.setHashErr
 }
 
 // Compile-time check that stubStore satisfies datasets.Store.
@@ -98,7 +122,7 @@ func TestHandle_WithOverrideSets(t *testing.T) {
 	err := h.Handle(context.Background(), nil)
 
 	require.NoError(t, err)
-	// 2 sets × 1 format = 2 card-rating calls.
+	// 2 sets x 1 format = 2 card-rating calls.
 	assert.Equal(t, 2, fetcher.called)
 	require.Len(t, store.upserted, 2)
 	setCodes := map[string]bool{}
@@ -121,7 +145,7 @@ func TestHandle_WithDBSets(t *testing.T) {
 	err := h.Handle(context.Background(), nil)
 
 	require.NoError(t, err)
-	// 1 set × 1 format = 1 call.
+	// 1 set x 1 format = 1 call.
 	assert.Equal(t, 1, fetcher.called)
 	require.Len(t, store.upserted, 1)
 	for _, u := range store.upserted {
@@ -166,14 +190,14 @@ func TestHandle_FetchErrorContinues(t *testing.T) {
 	}
 
 	store := &stubStore{}
-	// Use a single format so call counts are deterministic: 2 sets × 1 format = 2 calls.
+	// Use a single format so call counts are deterministic: 2 sets x 1 format = 2 calls.
 	h := handler.NewWithFormats(custom, store, []string{"SET1", "SET2"}, []string{"PremierDraft"})
 	err := h.Handle(context.Background(), nil)
 
 	require.NoError(t, err)
-	// 2 sets × 1 format = 2 card-fetch calls.
+	// 2 sets x 1 format = 2 card-fetch calls.
 	assert.Equal(t, 2, custom.called)
-	// Only SET2 should have been upserted (once — single format).
+	// Only SET2 should have been upserted (once -- single format).
 	require.Len(t, store.upserted, 1)
 	for _, u := range store.upserted {
 		assert.Equal(t, "SET2", u.SetCode)
@@ -189,7 +213,7 @@ func TestHandle_EmptyCardsSkipsUpsert(t *testing.T) {
 	err := h.Handle(context.Background(), nil)
 
 	require.NoError(t, err)
-	assert.Equal(t, 1, fetcher.called) // 1 set × 1 format
+	assert.Equal(t, 1, fetcher.called) // 1 set x 1 format
 	assert.Empty(t, store.upserted)
 }
 
@@ -212,12 +236,12 @@ func TestHandle_UpsertErrorContinues(t *testing.T) {
 		},
 	}
 
-	// Single format so upsert count is deterministic: 2 sets × 1 format = 2 upsert calls.
+	// Single format so upsert count is deterministic: 2 sets x 1 format = 2 upsert calls.
 	h := handler.NewWithFormats(fetcher, store, []string{"SET1", "SET2"}, []string{"PremierDraft"})
 	err := h.Handle(context.Background(), nil)
 
 	require.NoError(t, err)
-	// 2 sets × 1 format = 2 upsert attempts.
+	// 2 sets x 1 format = 2 upsert attempts.
 	assert.Equal(t, 2, upsertCalls)
 	// Only SET2 row succeeds (1 format).
 	require.Len(t, upserted, 1)
@@ -258,9 +282,9 @@ func TestHandle_ColorRatingsFetchedAndStored(t *testing.T) {
 	err := h.Handle(context.Background(), nil)
 
 	require.NoError(t, err)
-	// Card ratings: 1 set × 2 formats = 2 fetches.
+	// Card ratings: 1 set x 2 formats = 2 fetches.
 	assert.Equal(t, 2, fetcher.called)
-	// Color ratings: 1 set × 2 formats = 2 fetches.
+	// Color ratings: 1 set x 2 formats = 2 fetches.
 	assert.Equal(t, 2, fetcher.colorsCalled)
 	// Both persisted.
 	assert.Len(t, store.upserted, 2)
@@ -309,13 +333,13 @@ func TestHandle_FetchedAtIsNonZero(t *testing.T) {
 	require.Len(t, store.upserted, 1)
 
 	sr := store.upserted[0]
-	assert.False(t, sr.FetchedAt.IsZero(), "FetchedAt must not be zero — cached_at would be 0001-01-01 in Postgres")
+	assert.False(t, sr.FetchedAt.IsZero(), "FetchedAt must not be zero -- cached_at would be 0001-01-01 in Postgres")
 	assert.True(t, sr.FetchedAt.After(before) || sr.FetchedAt.Equal(before),
 		"FetchedAt should be >= time before Handle was called")
 }
 
 // TestHandle_MultiFormat_AllFormatsPerSet verifies that each (set, format) pair is
-// fetched independently — the core behaviour introduced by #1123.
+// fetched independently -- the core behaviour introduced by #1123.
 func TestHandle_MultiFormat_AllFormatsPerSet(t *testing.T) {
 	fetcher := &formatTrackingFetcher{
 		cards: []seventeenlands.CardRating{{Name: "Lightning Bolt", ALSA: 1.5}},
@@ -327,7 +351,7 @@ func TestHandle_MultiFormat_AllFormatsPerSet(t *testing.T) {
 	err := h.Handle(context.Background(), nil)
 
 	require.NoError(t, err)
-	// 1 set × 2 formats = 2 fetch calls.
+	// 1 set x 2 formats = 2 fetch calls.
 	assert.Equal(t, 2, fetcher.called)
 	// Both formats should be persisted.
 	require.Len(t, store.upserted, 2)
@@ -349,7 +373,7 @@ func TestHandle_MultiFormat_MultipleSetsCrossFormats(t *testing.T) {
 	err := h.Handle(context.Background(), nil)
 
 	require.NoError(t, err)
-	// 3 sets × 2 formats = 6 fetch calls.
+	// 3 sets x 2 formats = 6 fetch calls.
 	assert.Equal(t, 6, fetcher.called)
 	require.Len(t, store.upserted, 6)
 
@@ -397,7 +421,7 @@ func TestHandle_SyncFormatsEnvVar(t *testing.T) {
 	err := h.Handle(context.Background(), nil)
 
 	require.NoError(t, err)
-	// 1 set × 3 formats (from env) = 3 fetch calls.
+	// 1 set x 3 formats (from env) = 3 fetch calls.
 	assert.Equal(t, 3, fetcher.called)
 	require.Len(t, store.upserted, 3)
 	gotFormats := make([]string, len(store.upserted))
@@ -405,6 +429,172 @@ func TestHandle_SyncFormatsEnvVar(t *testing.T) {
 		gotFormats[i] = sr.DraftFormat
 	}
 	assert.ElementsMatch(t, []string{"PremierDraft", "QuickDraft", "Sealed"}, gotFormats)
+}
+
+// --- hash-delta-skip helpers ---
+
+// computeExpectedHash mirrors the production computeRatingsHash so tests can
+// build the exact hash value the handler will produce for a given slice.
+func computeExpectedHash(ratings []seventeenlands.CardRating) string {
+	sorted := make([]seventeenlands.CardRating, len(ratings))
+	copy(sorted, ratings)
+	sort.Slice(sorted, func(i, j int) bool {
+		return sorted[i].MtgaID < sorted[j].MtgaID
+	})
+
+	b, _ := json.Marshal(sorted)
+	sum := sha256.Sum256(b)
+	return fmt.Sprintf("%x", sum)
+}
+
+// --- hash-delta-skip tests (ADR-005, #1100) ---
+
+// TestHandle_HashMatch_SkipsUpsert verifies that when the stored hash equals the
+// computed hash of the fetched payload, UpsertRatings is not called.
+func TestHandle_HashMatch_SkipsUpsert(t *testing.T) {
+	cards := []seventeenlands.CardRating{
+		{MtgaID: 101, Name: "Lightning Bolt", ALSA: 1.5},
+		{MtgaID: 202, Name: "Plains", ALSA: 9.0},
+	}
+	existingHash := computeExpectedHash(cards)
+
+	fetcher := &stubFetcher{cards: cards}
+	store := &stubStore{
+		storedHashes: map[string]string{
+			"FDN/PremierDraft": existingHash,
+		},
+	}
+
+	h := handler.NewWithFormats(fetcher, store, []string{"FDN"}, []string{"PremierDraft"})
+	err := h.Handle(context.Background(), nil)
+
+	require.NoError(t, err)
+	// Fetch was called (always fetch to compute the hash).
+	assert.Equal(t, 1, fetcher.called)
+	// Upsert must NOT have been called -- payload is unchanged.
+	assert.Empty(t, store.upserted, "UpsertRatings must be skipped when hash matches")
+	// SetHash must NOT have been called -- nothing changed.
+	assert.Empty(t, store.setHashCalls, "SetHash must not be called when hash matches")
+}
+
+// TestHandle_HashMismatch_Upserts verifies that when the stored hash differs from
+// the computed hash, UpsertRatings is called and the new hash is persisted via SetHash.
+func TestHandle_HashMismatch_Upserts(t *testing.T) {
+	cards := []seventeenlands.CardRating{
+		{MtgaID: 101, Name: "Lightning Bolt", ALSA: 1.5},
+	}
+
+	fetcher := &stubFetcher{cards: cards}
+	store := &stubStore{
+		storedHashes: map[string]string{
+			"FDN/PremierDraft": "stale-hash-from-previous-run",
+		},
+	}
+
+	h := handler.NewWithFormats(fetcher, store, []string{"FDN"}, []string{"PremierDraft"})
+	err := h.Handle(context.Background(), nil)
+
+	require.NoError(t, err)
+	// Upsert must have been called -- hash differs.
+	require.Len(t, store.upserted, 1, "UpsertRatings must be called when hash differs")
+	assert.Equal(t, "FDN", store.upserted[0].SetCode)
+	// SetHash must have been called with the new hash.
+	require.Len(t, store.setHashCalls, 1, "SetHash must be called once after successful upsert")
+	assert.Equal(t, "FDN/PremierDraft", store.setHashCalls[0].key)
+	assert.Equal(t, computeExpectedHash(cards), store.setHashCalls[0].hash)
+}
+
+// TestHandle_FirstRun_NoPriorHash_Upserts verifies that when no hash has been
+// stored (GetHash returns ""), the handler proceeds with the upsert and stores
+// the new hash.
+func TestHandle_FirstRun_NoPriorHash_Upserts(t *testing.T) {
+	cards := []seventeenlands.CardRating{
+		{MtgaID: 303, Name: "Island", ALSA: 8.0},
+	}
+
+	fetcher := &stubFetcher{cards: cards}
+	store := &stubStore{} // storedHashes is nil -- GetHash returns "" for any key
+
+	h := handler.NewWithFormats(fetcher, store, []string{"BLB"}, []string{"PremierDraft"})
+	err := h.Handle(context.Background(), nil)
+
+	require.NoError(t, err)
+	// Upsert must have proceeded -- no prior hash.
+	require.Len(t, store.upserted, 1, "UpsertRatings must be called on first run (no prior hash)")
+	assert.Equal(t, "BLB", store.upserted[0].SetCode)
+	// SetHash must have been called to store the new hash.
+	require.Len(t, store.setHashCalls, 1, "SetHash must be called after first-run upsert")
+	assert.Equal(t, "BLB/PremierDraft", store.setHashCalls[0].key)
+	assert.Equal(t, computeExpectedHash(cards), store.setHashCalls[0].hash)
+}
+
+// TestHandle_HashSortOrder_Deterministic verifies that reordering the same cards
+// in the fetched slice produces the same hash (ordering differences in the 17Lands
+// response must not cause unnecessary upserts).
+func TestHandle_HashSortOrder_Deterministic(t *testing.T) {
+	// Cards provided in unsorted order (MtgaID 202 before 101).
+	cards := []seventeenlands.CardRating{
+		{MtgaID: 202, Name: "Plains", ALSA: 9.0},
+		{MtgaID: 101, Name: "Lightning Bolt", ALSA: 1.5},
+	}
+	// computeExpectedHash always sorts, so it produces the canonical hash.
+	existingHash := computeExpectedHash(cards)
+
+	fetcher := &stubFetcher{cards: cards}
+	store := &stubStore{
+		storedHashes: map[string]string{
+			"DSK/PremierDraft": existingHash,
+		},
+	}
+
+	h := handler.NewWithFormats(fetcher, store, []string{"DSK"}, []string{"PremierDraft"})
+	err := h.Handle(context.Background(), nil)
+
+	require.NoError(t, err)
+	// Hash must match regardless of original slice order -- upsert must be skipped.
+	assert.Empty(t, store.upserted, "upsert must be skipped when sorted hash matches")
+}
+
+// TestHandle_GetHashError_FallsThrough verifies that a GetHash error is non-fatal:
+// the handler logs and falls through to perform the upsert rather than skipping it.
+func TestHandle_GetHashError_FallsThrough(t *testing.T) {
+	cards := []seventeenlands.CardRating{
+		{MtgaID: 404, Name: "Mountain", ALSA: 9.0},
+	}
+
+	fetcher := &stubFetcher{cards: cards}
+	store := &stubStore{
+		getHashErr: errors.New("db connection error"),
+	}
+
+	h := handler.NewWithFormats(fetcher, store, []string{"FDN"}, []string{"PremierDraft"})
+	err := h.Handle(context.Background(), nil)
+
+	require.NoError(t, err)
+	// GetHash failed but upsert must still proceed (non-fatal).
+	require.Len(t, store.upserted, 1, "upsert must proceed when GetHash errors")
+}
+
+// TestHandle_SetHashError_NonFatal verifies that a SetHash error after a successful
+// upsert does not cause Handle to return an error -- the upsert data is preserved
+// and the next invocation will simply re-upsert.
+func TestHandle_SetHashError_NonFatal(t *testing.T) {
+	cards := []seventeenlands.CardRating{
+		{MtgaID: 505, Name: "Swamp", ALSA: 9.0},
+	}
+
+	fetcher := &stubFetcher{cards: cards}
+	store := &stubStore{
+		setHashErr: errors.New("hash write failed"),
+	}
+
+	h := handler.NewWithFormats(fetcher, store, []string{"BLB"}, []string{"PremierDraft"})
+	err := h.Handle(context.Background(), nil)
+
+	// SetHash failed but Handle must still return nil -- data is preserved.
+	require.NoError(t, err, "SetHash failure must not bubble up as a fatal error")
+	// Upsert must have succeeded.
+	require.Len(t, store.upserted, 1, "UpsertRatings must succeed even if SetHash fails")
 }
 
 // --- helpers ---

@@ -75,7 +75,7 @@ func (r *DraftSessionsRepository) ListByAccountID(
 	if err != nil {
 		return nil, 0, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var sessions []DraftSessionRow
 
@@ -211,7 +211,7 @@ func (r *DraftSessionsRepository) ListByAccountIDCursorP(
 		return nil, err
 	}
 
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var sessions []DraftSessionRow
 

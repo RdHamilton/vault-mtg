@@ -142,7 +142,7 @@ func (r *DraftsRepository) DistinctSets(ctx context.Context, accountID int64) ([
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	var out []string
 	for rows.Next() {
 		var s string
@@ -183,7 +183,7 @@ func (r *DraftsRepository) PicksForSession(ctx context.Context, accountID int64,
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	var out []DraftPickRow
 	for rows.Next() {
 		var p DraftPickRow
@@ -239,7 +239,6 @@ func (r *DraftsRepository) AggregateStats(ctx context.Context, accountID int64, 
 	if f.EndDate != nil {
 		clauses = append(clauses, "start_time <= $"+strconv.Itoa(next))
 		args = append(args, *f.EndDate)
-		next++
 	}
 	q := `SELECT
 	        COUNT(*),
@@ -265,7 +264,7 @@ func (r *DraftsRepository) AggregateStats(ctx context.Context, accountID int64, 
 	if err != nil {
 		return s, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	s.GradeDistribution = map[string]int{}
 	for rows.Next() {
 		var grade string
@@ -366,7 +365,7 @@ func (r *DraftsRepository) TemporalTrends(ctx context.Context, periodType, setCo
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	var out []TemporalTrendRow
 	for rows.Next() {
 		var t TemporalTrendRow
@@ -395,7 +394,7 @@ func (r *DraftsRepository) LearningCurve(ctx context.Context, setCode string) ([
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	var out []TemporalTrendRow
 	for rows.Next() {
 		var t TemporalTrendRow
@@ -455,7 +454,7 @@ func (r *DraftsRepository) scanSessions(ctx context.Context, q string, args ...a
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	var out []DraftSessionDetailRow
 	for rows.Next() {
 		var s DraftSessionDetailRow
@@ -480,7 +479,7 @@ func (r *DraftsRepository) scanComparisons(ctx context.Context, q string, args .
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	var out []CommunityComparisonRow
 	for rows.Next() {
 		var c CommunityComparisonRow

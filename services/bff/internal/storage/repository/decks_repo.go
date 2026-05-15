@@ -102,7 +102,6 @@ func (r *DecksRepository) ListDecks(ctx context.Context, accountID int64, f Deck
 	if len(f.Tags) > 0 {
 		clauses = append(clauses, "d.id IN (SELECT deck_id FROM deck_tags WHERE lower(tag) = ANY($"+strconv.Itoa(next)+"))")
 		args = append(args, lowerSlice(f.Tags))
-		next++
 	}
 	q := `SELECT d.id, d.name, d.format, d.source, d.draft_event_id,
 	             d.matches_played, d.matches_won, d.games_played, d.games_won,
@@ -117,7 +116,7 @@ func (r *DecksRepository) ListDecks(ctx context.Context, accountID int64, f Deck
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	var out []DeckSummaryRow
 	deckIDs := []string{}
 	for rows.Next() {
@@ -279,7 +278,6 @@ func (r *DecksRepository) UpdateDeck(ctx context.Context, accountID int64, deckI
 	if in.Format != nil {
 		clauses = append(clauses, "format = $"+strconv.Itoa(next))
 		args = append(args, *in.Format)
-		next++
 	}
 	if len(clauses) == 0 {
 		return r.GetDeck(ctx, accountID, deckID)
@@ -594,7 +592,7 @@ func (r *DecksRepository) DistinctTagsForAccount(ctx context.Context, accountID 
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	var out []string
 	for rows.Next() {
 		var t string
@@ -637,7 +635,7 @@ func (r *DecksRepository) deckCards(ctx context.Context, deckID string) ([]DeckC
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	var out []DeckCardRow
 	for rows.Next() {
 		var c DeckCardRow
@@ -664,7 +662,7 @@ func (r *DecksRepository) tagsForDecks(ctx context.Context, deckIDs []string) (m
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	for rows.Next() {
 		var deckID, tag string
 		if err := rows.Scan(&deckID, &tag); err != nil {
@@ -681,7 +679,7 @@ func (r *DecksRepository) scanPermutations(ctx context.Context, q string, args .
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	var out []PermutationRow
 	for rows.Next() {
 		var p PermutationRow

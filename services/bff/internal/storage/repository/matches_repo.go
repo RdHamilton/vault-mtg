@@ -86,7 +86,7 @@ func (r *MatchesRepository) ListByAccountIDCursor(
 		return nil, err
 	}
 
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var matches []MatchRow
 
@@ -172,7 +172,7 @@ func (r *MatchesRepository) ListByAccountID(
 	if err != nil {
 		return nil, 0, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var matches []MatchRow
 
@@ -308,7 +308,7 @@ func (r *MatchesRepository) ListByAccountIDFiltered(ctx context.Context, account
 	if err != nil {
 		return nil, 0, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var matches []MatchRow
 	for rows.Next() {
@@ -371,7 +371,7 @@ func (r *MatchesRepository) DistinctFormats(ctx context.Context, accountID int64
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var out []string
 	for rows.Next() {
@@ -424,7 +424,6 @@ func buildMatchWhere(accountID int64, f MatchFilter) (string, []any) {
 	if f.Result != "" {
 		clauses = append(clauses, "lower(result) = lower($"+itoa(next)+")")
 		args = append(args, f.Result)
-		next++
 	}
 
 	return "WHERE " + strings.Join(clauses, " AND "), args
@@ -470,7 +469,7 @@ func (r *MatchesRepository) GamesByMatchID(ctx context.Context, accountID int64,
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var out []GameRow
 	for rows.Next() {
@@ -555,7 +554,7 @@ func (r *MatchesRepository) FormatDistribution(ctx context.Context, accountID in
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	var out []FormatStatsRow
 	for rows.Next() {
 		var fr FormatStatsRow
@@ -600,7 +599,7 @@ func (r *MatchesRepository) PerformanceByHour(ctx context.Context, accountID int
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	var out []HourBucket
 	for rows.Next() {
 		var b HourBucket
@@ -642,7 +641,7 @@ func (r *MatchesRepository) MatchupMatrix(ctx context.Context, accountID int64, 
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	var out []MatchupRow
 	for rows.Next() {
 		var mr MatchupRow
@@ -669,7 +668,7 @@ func (r *MatchesRepository) DistinctArchetypes(ctx context.Context, accountID in
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	var out []string
 	for rows.Next() {
 		var s string
@@ -714,7 +713,7 @@ func (r *MatchesRepository) Trends(ctx context.Context, accountID int64, period 
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	var out []TrendBucket
 	for rows.Next() {
 		var b TrendBucket
@@ -784,7 +783,7 @@ func (r *MatchesRepository) RankTimelineForFormat(ctx context.Context, accountID
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	var out []RankTimelineRow
 	for rows.Next() {
 		var rt RankTimelineRow
@@ -829,7 +828,7 @@ func (r *MatchesRepository) ExportAll(ctx context.Context, accountID int64) ([]E
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	var out []ExportRow
 	for rows.Next() {
 		var ex ExportRow

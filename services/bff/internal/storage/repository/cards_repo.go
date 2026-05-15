@@ -179,7 +179,7 @@ func (r *CardsRepository) SearchCardsWithCollection(ctx context.Context, account
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	var out []SetCardWithQty
 	for rows.Next() {
 		var row SetCardWithQty
@@ -212,7 +212,7 @@ func (r *CardsRepository) CollectionQuantities(ctx context.Context, accountID in
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	out := map[int]int{}
 	for rows.Next() {
 		var id, n int
@@ -245,7 +245,7 @@ func (r *CardsRepository) AllSetInfo(ctx context.Context) ([]SetInfoRow, error) 
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	var out []SetInfoRow
 	for rows.Next() {
 		var s SetInfoRow
@@ -285,7 +285,7 @@ func (r *CardsRepository) CardRatings(ctx context.Context, setCode, format strin
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	var out []CardRatingRow
 	for rows.Next() {
 		var rr CardRatingRow
@@ -319,7 +319,7 @@ func (r *CardsRepository) ColorRatings(ctx context.Context, setCode string) ([]C
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	var out []ColorRatingRow
 	for rows.Next() {
 		var c ColorRatingRow
@@ -520,7 +520,7 @@ func (r *CardsRepository) scanSetCardRows(ctx context.Context, q string, args ..
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	var out []SetCardRow
 	for rows.Next() {
 		var row SetCardRow
@@ -544,7 +544,7 @@ func (r *CardsRepository) scanCFBRows(ctx context.Context, q string, args ...any
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	var out []CFBRatingRow
 	for rows.Next() {
 		var c CFBRatingRow

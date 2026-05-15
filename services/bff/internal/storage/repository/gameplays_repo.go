@@ -85,7 +85,7 @@ func (r *GamePlaysRepository) scanGamePlayRows(ctx context.Context, q string, ar
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	var out []GamePlayActionRow
 	for rows.Next() {
 		var p GamePlayActionRow
@@ -140,7 +140,7 @@ func (r *GamePlaysRepository) SnapshotsByMatch(ctx context.Context, accountID in
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	var out []GameSnapshotRow
 	for rows.Next() {
 		var s GameSnapshotRow
@@ -183,7 +183,7 @@ func (r *GamePlaysRepository) OpponentCardsByMatch(ctx context.Context, accountI
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	var out []OpponentCardRow
 	for rows.Next() {
 		var o OpponentCardRow

@@ -97,7 +97,7 @@ func (h *SettingsHandler) UpdateSettings(w http.ResponseWriter, r *http.Request)
 		writeJSONError(w, "request body too large", http.StatusBadRequest)
 		return
 	}
-	defer r.Body.Close()
+	defer func() { _ = r.Body.Close() }()
 	if len(body) == 0 {
 		writeJSONError(w, "request body is required", http.StatusBadRequest)
 		return
