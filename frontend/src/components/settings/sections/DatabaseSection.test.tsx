@@ -40,6 +40,6 @@ describe('DatabaseSection', () => {
 
   it('renders description text', () => {
     render(<DatabaseSection {...defaultProps} />);
-    expect(screen.getByText(/Location of the MTGA Companion database file/)).toBeInTheDocument();
+    expect(screen.getByText(/Location of the VaultMTG database file/)).toBeInTheDocument();
   });
 });
