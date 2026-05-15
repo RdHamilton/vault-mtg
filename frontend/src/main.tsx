@@ -1,6 +1,7 @@
 import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
 import { ClerkProvider } from '@clerk/react'
+import { ui } from '@clerk/ui'
 import * as Sentry from '@sentry/react'
 import './index.css'
 import App from './App.tsx'
@@ -13,6 +14,10 @@ import { initializeServices } from './services/adapter'
 // under "Social connections" — no additional code required here.
 // Dashboard: https://dashboard.clerk.com → Social connections
 // VITE_CLERK_PUBLISHABLE_KEY is read automatically by ClerkProvider from the environment.
+//
+// `ui` from @clerk/ui pins the bundled Clerk component version so structural CSS
+// selectors like .api-keys-content .cl-apiKeys are stable across Clerk CDN updates.
+// This suppresses the structural_css_pin_clerk_ui console warning (#2006).
 
 // Initialize Sentry only when VITE_SENTRY_DSN is provided (skip silently in dev/test).
 const sentryDsn = import.meta.env.VITE_SENTRY_DSN
@@ -36,7 +41,7 @@ const renderApp = () => {
   createRoot(rootElement).render(
     <StrictMode>
       <Sentry.ErrorBoundary fallback={<p>Something went wrong</p>}>
-        <ClerkProvider publishableKey={import.meta.env.VITE_CLERK_PUBLISHABLE_KEY}>
+        <ClerkProvider publishableKey={import.meta.env.VITE_CLERK_PUBLISHABLE_KEY} ui={ui}>
           <AppProvider>
             <DownloadProvider>
               <TaskProgressProvider>
