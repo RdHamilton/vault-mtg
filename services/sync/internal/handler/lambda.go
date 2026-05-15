@@ -36,6 +36,13 @@ const (
 	// trigger the SyncLambdaErrorAlarm. See: docs/runbooks/sync-dlq-alarms.md
 	defaultMaxConsecutiveSkipDays = 3
 
+	// defaultInterRequestSleepMs is the inter-request pause injected between
+	// consecutive set×format API calls in the sync loop. 150 ms is a conservative
+	// courtesy delay that keeps us well under 17Lands' undocumented rate limit while
+	// adding only ~30 s to a typical sync run (2 formats × 10 active sets).
+	// Override with SYNC_INTER_REQUEST_SLEEP_MS.
+	defaultInterRequestSleepMs = 150
+
 	// skipHashPrefix namespaces the consecutive-skip counter inside the sync_hashes
 	// table so it cannot collide with ADR-005 payload hashes (which use set/format keys).
 	skipHashPrefix = "skip_count:"
@@ -52,10 +59,11 @@ type Fetcher interface {
 type SyncHandler struct {
 	fetcher             Fetcher
 	store               datasets.Store
-	overrideSets        []string // non-empty when caller provides an explicit set list
-	formats             []string // draft formats to sync; read from SYNC_FORMATS env var
-	maxRetries          int      // per-fetch/upsert retry attempts (0 = no retries)
-	maxConsecutiveSkips int      // zero-card invocations before returning error (0 = disabled)
+	overrideSets        []string      // non-empty when caller provides an explicit set list
+	formats             []string      // draft formats to sync; read from SYNC_FORMATS env var
+	maxRetries          int           // per-fetch/upsert retry attempts (0 = no retries)
+	maxConsecutiveSkips int           // zero-card invocations before returning error (0 = disabled)
+	interRequestSleep   time.Duration // courtesy pause between consecutive set×format API calls
 	// retryBackoff returns the duration to sleep before attempt n (1-indexed).
 	// Defaults to exponentialBackoff. Injectable for tests to use noBackoff.
 	retryBackoff func(attempt int) time.Duration
@@ -96,6 +104,13 @@ func New(fetcher Fetcher, store datasets.Store, overrideSets []string) *SyncHand
 		}
 	}
 
+	interRequestSleep := time.Duration(defaultInterRequestSleepMs) * time.Millisecond
+	if v := os.Getenv("SYNC_INTER_REQUEST_SLEEP_MS"); v != "" {
+		if n, err := strconv.Atoi(strings.TrimSpace(v)); err == nil && n >= 0 {
+			interRequestSleep = time.Duration(n) * time.Millisecond
+		}
+	}
+
 	return &SyncHandler{
 		fetcher:             fetcher,
 		store:               store,
@@ -103,6 +118,7 @@ func New(fetcher Fetcher, store datasets.Store, overrideSets []string) *SyncHand
 		formats:             formats,
 		maxRetries:          maxRetries,
 		maxConsecutiveSkips: maxConsecutiveSkips,
+		interRequestSleep:   interRequestSleep,
 		retryBackoff:        exponentialBackoff,
 	}
 }
@@ -110,8 +126,8 @@ func New(fetcher Fetcher, store datasets.Store, overrideSets []string) *SyncHand
 // NewWithFormats creates a SyncHandler with an explicit formats list, bypassing the
 // SYNC_FORMATS env var. Intended for tests that need deterministic format control.
 //
-// maxRetries and maxConsecutiveSkips are both 0 (disabled) to preserve existing test
-// expectations around exact fetch/upsert call counts.
+// maxRetries, maxConsecutiveSkips, and interRequestSleep are all 0 (disabled) to
+// preserve existing test expectations around exact fetch/upsert call counts and timing.
 func NewWithFormats(fetcher Fetcher, store datasets.Store, overrideSets, formats []string) *SyncHandler {
 	return &SyncHandler{
 		fetcher:             fetcher,
@@ -120,17 +136,20 @@ func NewWithFormats(fetcher Fetcher, store datasets.Store, overrideSets, formats
 		formats:             formats,
 		maxRetries:          0,
 		maxConsecutiveSkips: 0,
+		interRequestSleep:   0,
 		retryBackoff:        exponentialBackoff,
 	}
 }
 
 // NewWithOptions creates a SyncHandler with fully explicit configuration.
-// Intended for tests that need fine-grained control over retry and skip-guard behaviour.
+// Intended for tests that need fine-grained control over retry, skip-guard, and
+// inter-request sleep behaviour.
 func NewWithOptions(
 	fetcher Fetcher,
 	store datasets.Store,
 	overrideSets, formats []string,
 	maxRetries, maxConsecutiveSkips int,
+	interRequestSleep time.Duration,
 	backoff func(attempt int) time.Duration,
 ) *SyncHandler {
 	if backoff == nil {
@@ -143,6 +162,7 @@ func NewWithOptions(
 		formats:             formats,
 		maxRetries:          maxRetries,
 		maxConsecutiveSkips: maxConsecutiveSkips,
+		interRequestSleep:   interRequestSleep,
 		retryBackoff:        backoff,
 	}
 }
@@ -188,11 +208,21 @@ func (h *SyncHandler) Handle(ctx context.Context, _ any) error {
 
 // syncSet fetches and upserts ratings for all formats of a single set. It returns
 // an error only when the consecutive-skip guard trips for one of the formats.
+// A courtesy inter-request pause (h.interRequestSleep) is injected between each
+// set×format API call to stay within 17Lands' undocumented rate limit.
 func (h *SyncHandler) syncSet(ctx context.Context, setCode string) error {
 	var firstErr error
-	for _, format := range h.formats {
+	for i, format := range h.formats {
 		if ctx.Err() != nil {
 			return ctx.Err()
+		}
+		// Inject inter-request sleep before every call except the first.
+		if i > 0 && h.interRequestSleep > 0 {
+			select {
+			case <-ctx.Done():
+				return ctx.Err()
+			case <-time.After(h.interRequestSleep):
+			}
 		}
 		if err := h.syncFormat(ctx, setCode, format); err != nil {
 			log.Printf("[sync] %s/%s: %v", setCode, format, err)

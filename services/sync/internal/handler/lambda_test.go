@@ -610,7 +610,7 @@ func TestHandle_RetrySucceedsAfterTransientError(t *testing.T) {
 	store := &stubStore{}
 
 	// 1 retry allowed, instant backoff.
-	h := handler.NewWithOptions(f, store, []string{"FDN"}, []string{"PremierDraft"}, 1, 0, noBackoff)
+	h := handler.NewWithOptions(f, store, []string{"FDN"}, []string{"PremierDraft"}, 1, 0, 0, noBackoff)
 	err := h.Handle(context.Background(), nil)
 
 	require.NoError(t, err)
@@ -629,7 +629,7 @@ func TestHandle_RetryExhausted(t *testing.T) {
 	store := &stubStore{}
 
 	// 2 retries = 3 total attempts, all will fail.
-	h := handler.NewWithOptions(f, store, []string{"FDN"}, []string{"PremierDraft"}, 2, 0, noBackoff)
+	h := handler.NewWithOptions(f, store, []string{"FDN"}, []string{"PremierDraft"}, 2, 0, 0, noBackoff)
 	err := h.Handle(context.Background(), nil)
 
 	require.NoError(t, err, "exhausted fetch retries must be non-fatal")
@@ -673,7 +673,7 @@ func TestHandle_ConsecutiveSkipGuard_UnderThreshold(t *testing.T) {
 	store := newPersistentHashStore()
 
 	// Threshold = 3. Call Handle twice — under threshold, no error.
-	h := handler.NewWithOptions(f, store, []string{"FDN"}, []string{"PremierDraft"}, 0, 3, noBackoff)
+	h := handler.NewWithOptions(f, store, []string{"FDN"}, []string{"PremierDraft"}, 0, 3, 0, noBackoff)
 
 	require.NoError(t, h.Handle(context.Background(), nil), "first miss — no error")
 	require.NoError(t, h.Handle(context.Background(), nil), "second miss — still under threshold")
@@ -685,7 +685,7 @@ func TestHandle_ConsecutiveSkipGuard_AtThreshold(t *testing.T) {
 	f := &stubFetcher{cards: []seventeenlands.CardRating{}}
 	store := newPersistentHashStore()
 
-	h := handler.NewWithOptions(f, store, []string{"FDN"}, []string{"PremierDraft"}, 0, 3, noBackoff)
+	h := handler.NewWithOptions(f, store, []string{"FDN"}, []string{"PremierDraft"}, 0, 3, 0, noBackoff)
 
 	require.NoError(t, h.Handle(context.Background(), nil), "1st miss")
 	require.NoError(t, h.Handle(context.Background(), nil), "2nd miss")
@@ -711,7 +711,7 @@ func TestHandle_ConsecutiveSkipGuard_ResetOnSuccess(t *testing.T) {
 	store := newPersistentHashStore()
 
 	// Threshold = 3. The hit on invocation 3 resets the counter.
-	h := handler.NewWithOptions(f, store, []string{"FDN"}, []string{"PremierDraft"}, 0, 3, noBackoff)
+	h := handler.NewWithOptions(f, store, []string{"FDN"}, []string{"PremierDraft"}, 0, 3, 0, noBackoff)
 
 	for i := 0; i < 5; i++ {
 		err := h.Handle(context.Background(), nil)
