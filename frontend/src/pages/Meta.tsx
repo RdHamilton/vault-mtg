@@ -128,6 +128,9 @@ export default function Meta() {
         const data = await meta.refreshMetaData(currentFormat);
         if (cancelled) return; // Don't update if format changed
         updateProgress(downloadId, 90);
+        if (data == null) {
+          throw new Error('No data returned from meta refresh');
+        }
         if (!data.error) {
           setDashboardData(data);
           saveRefreshTimestamp(currentFormat);
@@ -167,6 +170,9 @@ export default function Meta() {
       // Call refresh endpoint to fetch fresh data from external sources
       const data = await meta.refreshMetaData(format);
       updateProgress(downloadId, 90);
+      if (data == null) {
+        throw new Error('No data returned from meta refresh');
+      }
       if (data.error) {
         setError(data.error);
         failDownload(downloadId, data.error);

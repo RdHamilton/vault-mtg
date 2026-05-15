@@ -254,6 +254,62 @@ describe('Meta', () => {
     });
   });
 
+  describe('auto-refresh null guard', () => {
+    beforeEach(() => {
+      // Remove any stored refresh timestamp so isDataStale returns true,
+      // which triggers the auto-refresh effect after initial load.
+      localStorage.removeItem('mtga-companion-meta-refresh-timestamps');
+    });
+
+    afterEach(() => {
+      localStorage.removeItem('mtga-companion-meta-refresh-timestamps');
+    });
+
+    it('handles null return from refreshMetaData in refreshStaleData without TypeError', async () => {
+      // Regression test for #1979: refreshStaleData accessed data.error without a
+      // null guard, causing TypeError when refreshMetaData resolves to null/undefined
+      // during the auto-refresh path.
+      mockGetMetaArchetypes.mockResolvedValue(createMockArchetypes());
+      mockRefreshMetaData.mockResolvedValue(null as unknown as gui.MetaDashboardResponse);
+
+      renderMeta();
+
+      // Initial load completes — this triggers the auto-refresh effect because
+      // no timestamp is stored (isDataStale returns true).
+      await waitFor(() => {
+        expect(screen.getByText('Mono Red Aggro')).toBeInTheDocument();
+      });
+
+      // The auto-refresh fires; with the null guard it should NOT throw a TypeError.
+      // It throws and the catch block calls failDownload — the component stays stable.
+      await waitFor(() => {
+        expect(mockRefreshMetaData).toHaveBeenCalled();
+      });
+
+      // The component must remain mounted and not crash (no unhandled TypeError).
+      expect(screen.getByText('Metagame Dashboard')).toBeInTheDocument();
+    });
+
+    it('handles undefined return from refreshMetaData in refreshStaleData without TypeError', async () => {
+      // Covers the undefined variant of the null guard in the auto-refresh path.
+      mockGetMetaArchetypes.mockResolvedValue(createMockArchetypes());
+      mockRefreshMetaData.mockResolvedValue(undefined as unknown as gui.MetaDashboardResponse);
+
+      renderMeta();
+
+      await waitFor(() => {
+        expect(screen.getByText('Mono Red Aggro')).toBeInTheDocument();
+      });
+
+      await waitFor(() => {
+        expect(mockRefreshMetaData).toHaveBeenCalled();
+      });
+
+      // Component must remain stable — no unhandled TypeError from data.error access.
+      expect(screen.getByText('Metagame Dashboard')).toBeInTheDocument();
+    });
+  });
+
   describe('error handling', () => {
     it('displays error when API call fails', async () => {
       mockGetMetaArchetypes.mockRejectedValue(new Error('Network error'));
@@ -446,6 +502,46 @@ describe('Meta', () => {
 
       await waitFor(() => {
         expect(screen.getByText(/refresh failed/i)).toBeInTheDocument();
+      });
+    });
+
+    it('handles null return from refreshMetaData in handleRefresh without TypeError', async () => {
+      // Regression test for #1979: handleRefresh accessed data.error without a null
+      // guard, causing TypeError when refreshMetaData resolves to null/undefined.
+      mockGetMetaArchetypes.mockResolvedValue(createMockArchetypes());
+      mockRefreshMetaData.mockResolvedValue(null as unknown as gui.MetaDashboardResponse);
+
+      renderMeta();
+
+      await waitFor(() => {
+        expect(screen.getByText('Mono Red Aggro')).toBeInTheDocument();
+      });
+
+      const refreshButton = screen.getByRole('button', { name: /refresh/i });
+      fireEvent.click(refreshButton);
+
+      // Should surface an error message rather than throw a TypeError
+      await waitFor(() => {
+        expect(screen.getByText(/no data returned from meta refresh/i)).toBeInTheDocument();
+      });
+    });
+
+    it('handles undefined return from refreshMetaData in handleRefresh without TypeError', async () => {
+      // Regression test for #1979: covers the undefined case alongside null.
+      mockGetMetaArchetypes.mockResolvedValue(createMockArchetypes());
+      mockRefreshMetaData.mockResolvedValue(undefined as unknown as gui.MetaDashboardResponse);
+
+      renderMeta();
+
+      await waitFor(() => {
+        expect(screen.getByText('Mono Red Aggro')).toBeInTheDocument();
+      });
+
+      const refreshButton = screen.getByRole('button', { name: /refresh/i });
+      fireEvent.click(refreshButton);
+
+      await waitFor(() => {
+        expect(screen.getByText(/no data returned from meta refresh/i)).toBeInTheDocument();
       });
     });
   });
