@@ -60,7 +60,7 @@ const GETTING_STARTED_STEPS = [
     number: 4,
     title: 'Open the companion app',
     description:
-      'With the daemon running, open the MTGA Companion web app. Your match history and draft data will begin syncing.',
+      'With the daemon running, open the VaultMTG web app. Your match history and draft data will begin syncing.',
   },
 ];
 
@@ -129,7 +129,7 @@ const DaemonDownload = () => {
     <section className="daemon-download" data-testid="daemon-download-section">
       <div className="daemon-download-header">
         <h1 className="daemon-download-title" data-testid="daemon-download-title">
-          Get Started with MTGA Companion
+          Get Started with VaultMTG
         </h1>
         <p className="daemon-download-subtitle">
           Download the daemon for your platform to start tracking your MTG Arena matches,
