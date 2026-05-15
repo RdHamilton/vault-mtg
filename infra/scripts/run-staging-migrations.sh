@@ -113,42 +113,14 @@ DATABASE_URL="${DATABASE_URL/postgresql:\/\//postgres://}"
 echo "[run-staging-migrations] Applying migrations from $MIGRATIONS_DIR ..."
 echo "[run-staging-migrations] Target DB: ${DATABASE_URL%%@*}@<host redacted>"
 
-# If a previous migration run failed mid-flight, golang-migrate marks the
-# schema_migrations table as dirty and refuses to proceed.  Detect that state
-# and force the version back to the last clean version so the fixed migration
-# can re-run automatically without manual intervention.
-VERSION_OUTPUT=$(migrate \
-    -path     "$MIGRATIONS_DIR" \
-    -database "$DATABASE_URL" \
-    version 2>&1 || true)
-if echo "$VERSION_OUTPUT" | grep -q "dirty"; then
-    DIRTY_VER=$(echo "$VERSION_OUTPUT" | grep -oE '[0-9]+' | head -1)
-    CLEAN_VER=$((DIRTY_VER - 1))
-    echo "[run-staging-migrations] Dirty state detected at version $DIRTY_VER — forcing back to $CLEAN_VER ..."
-    migrate \
-        -path     "$MIGRATIONS_DIR" \
-        -database "$DATABASE_URL" \
-        force "$CLEAN_VER"
-    echo "[run-staging-migrations] Forced to version $CLEAN_VER."
-fi
-
-migrate \
-    -path    "$MIGRATIONS_DIR" \
-    -database "$DATABASE_URL" \
-    up
-
-echo "[run-staging-migrations] Migrations complete."
-
 # ---------------------------------------------------------------------------
-# Post-migration: grant table and sequence privileges to vaultmtg_staging_app.
-# Executed as the master user (stored in the DATABASE_URL at this point we
-# re-fetch master creds).
+# Pre-migration: fetch master credentials and transfer table ownership to the
+# migration user. ALTER TABLE (e.g. DROP COLUMN) requires the executing user
+# to OWN the table. Tables created by a superuser on initial staging setup
+# will block the migration without this step.
 # ---------------------------------------------------------------------------
-echo "[run-staging-migrations] Applying table-level grants..."
+echo "[run-staging-migrations] Fetching master credentials for pre-migration ownership grant..."
 
-# Staging master credentials are stored under the staging SSM path tree,
-# not production. Using production paths here was a bug that caused a
-# permissions error on every staging deploy.
 SECRET_ARN=$(aws ssm get-parameter \
     "${_PROFILE_ARG[@]}" \
     --region  "$REGION" \
@@ -172,6 +144,56 @@ DB_ENDPOINT=$(aws ssm get-parameter \
     --name    "/mtga-companion/staging/db-endpoint" \
     --query   "Parameter.Value" \
     --output  text)
+
+MIGRATION_USER=$(echo "$DATABASE_URL" | sed 's|postgres://\([^:]*\):.*|\1|')
+
+echo "[run-staging-migrations] Transferring table ownership to ${MIGRATION_USER} ..."
+PGPASSWORD="$MASTER_PASSWORD" psql \
+    -h "$DB_ENDPOINT" \
+    -U "$MASTER_USER" \
+    -d vaultmtg_staging \
+    -v ON_ERROR_STOP=1 \
+    -c "DO \$\$
+DECLARE
+    r RECORD;
+BEGIN
+    FOR r IN SELECT tablename FROM pg_tables WHERE schemaname = 'public' LOOP
+        EXECUTE format('ALTER TABLE public.%I OWNER TO %I', r.tablename, '${MIGRATION_USER}');
+    END LOOP;
+END \$\$;"
+echo "[run-staging-migrations] Table ownership transferred."
+
+# If a previous migration run failed mid-flight, golang-migrate marks the
+# schema_migrations table as dirty and refuses to proceed.  Detect that state
+# and force the version back to the last clean version so the fixed migration
+# can re-run automatically without manual intervention.
+VERSION_OUTPUT=$(migrate \
+    -path     "$MIGRATIONS_DIR" \
+    -database "$DATABASE_URL" \
+    version 2>&1 || true)
+if echo "$VERSION_OUTPUT" | grep -qi "dirty"; then
+    DIRTY_VER=$(echo "$VERSION_OUTPUT" | grep -oE '[0-9]+' | head -1)
+    CLEAN_VER=$((DIRTY_VER - 1))
+    echo "[run-staging-migrations] Dirty state detected at version $DIRTY_VER — forcing back to $CLEAN_VER ..."
+    migrate \
+        -path     "$MIGRATIONS_DIR" \
+        -database "$DATABASE_URL" \
+        force "$CLEAN_VER"
+    echo "[run-staging-migrations] Forced to version $CLEAN_VER."
+fi
+
+migrate \
+    -path    "$MIGRATIONS_DIR" \
+    -database "$DATABASE_URL" \
+    up
+
+echo "[run-staging-migrations] Migrations complete."
+
+# ---------------------------------------------------------------------------
+# Post-migration: grant table and sequence privileges to the migration user.
+# Master credentials were already fetched in the pre-migration step above.
+# ---------------------------------------------------------------------------
+echo "[run-staging-migrations] Applying table-level grants..."
 
 GRANT_SQL="$REPO_ROOT/infra/db/grant-staging-tables.sql"
 if [[ ! -f "$GRANT_SQL" ]] && [[ -n "$DEPLOY_BUCKET" ]]; then
