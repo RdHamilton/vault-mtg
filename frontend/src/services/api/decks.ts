@@ -13,6 +13,139 @@
 import { get, post, put, del } from '../apiClient';
 import { models, gui } from '@/types/models';
 
+// ---------------------------------------------------------------------------
+// BFF wire shapes
+// ---------------------------------------------------------------------------
+//
+// The BFF deck-detail endpoint (GET /decks/:id) returns a flat object that
+// embeds the deck metadata alongside the cards array.  This does NOT match the
+// frontend's gui.DeckWithCards type (which nests metadata under a "deck" key
+// and uses PascalCase card fields).  The mappers below normalise the BFF wire
+// shape into the types the SPA components expect.
+//
+// See services/bff/internal/api/handlers/decks.go: deckWithCardsResponse.
+
+/**
+ * Raw card shape returned by the BFF deck-detail endpoint.
+ * Field names are camelCase as serialised by encoding/json.
+ */
+interface BffDeckCardRaw {
+  cardId: number;
+  quantity: number;
+  board: string;
+  fromDraftPick: boolean;
+  name: string;
+  setCode: string;
+  manaCost: string;
+  cmc: number;
+  typeLine: string;
+  rarity: string;
+  imageUri: string;
+  colors: string[];
+}
+
+/**
+ * Raw deck-detail response from the BFF (after the { data: ... } envelope is
+ * unwrapped by apiClient).  The deck metadata is flat — there is no nested
+ * "deck" key.
+ */
+interface BffDeckDetailRaw {
+  id: string;
+  name: string;
+  format: string;
+  source: string;
+  draftEventId?: string | null;
+  matchesPlayed: number;
+  matchesWon: number;
+  gamesPlayed: number;
+  gamesWon: number;
+  winRate: number;
+  isAppCreated: boolean;
+  createdAt: string;
+  modifiedAt: string;
+  lastPlayed?: string | null;
+  colorIdentity?: string;
+  description?: string;
+  cardCount: number;
+  tags: string[];
+  cards: BffDeckCardRaw[];
+}
+
+/**
+ * Map a raw BFF card row to the models.DeckCard shape expected by the SPA.
+ *
+ * The BFF sends camelCase fields (cardId, fromDraftPick …).  models.DeckCard
+ * reads PascalCase keys (CardID, FromDraftPick …) from the source object.
+ */
+function mapBffCard(raw: BffDeckCardRaw): models.DeckCard {
+  return new models.DeckCard({
+    ID: 0, // not provided by detail endpoint; unused by DeckBuilder
+    DeckID: '', // not provided by detail endpoint; unused by DeckBuilder
+    CardID: raw.cardId,
+    Quantity: raw.quantity,
+    Board: raw.board,
+    FromDraftPick: raw.fromDraftPick ?? false,
+  });
+}
+
+/**
+ * Map a raw BFF deck-detail response to the gui.DeckWithCards shape.
+ *
+ * Constructs the nested { deck, cards, tags } structure that DeckBuilder
+ * and related components rely on.
+ */
+function mapBffDeckDetail(raw: BffDeckDetailRaw): gui.DeckWithCards {
+  const deck = new models.Deck({
+    ID: raw.id,
+    AccountID: 0, // not returned by detail endpoint; unused by DeckBuilder
+    Name: raw.name,
+    Format: raw.format,
+    Source: raw.source,
+    DraftEventID: raw.draftEventId ?? undefined,
+    Description: raw.description,
+    ColorIdentity: raw.colorIdentity,
+    MatchesPlayed: raw.matchesPlayed ?? 0,
+    MatchesWon: raw.matchesWon ?? 0,
+    GamesPlayed: raw.gamesPlayed ?? 0,
+    GamesWon: raw.gamesWon ?? 0,
+    CreatedAt: raw.createdAt,
+    ModifiedAt: raw.modifiedAt,
+    LastPlayed: raw.lastPlayed ?? undefined,
+  });
+
+  const cards = (raw.cards ?? []).map(mapBffCard);
+
+  // BFF does not return tags on the detail endpoint — tags come from the list
+  // summary row.  Return an empty array so consumers don't break.
+  const tags: models.DeckTag[] = [];
+
+  return new gui.DeckWithCards({ deck, cards, tags });
+}
+
+/**
+ * Map a raw BFF deck-detail response to a models.Deck, discarding card data.
+ * Used by createDeck / updateDeck which only need the deck metadata.
+ */
+function mapBffDeckToModel(raw: BffDeckDetailRaw): models.Deck {
+  return new models.Deck({
+    ID: raw.id,
+    AccountID: 0,
+    Name: raw.name,
+    Format: raw.format,
+    Source: raw.source,
+    DraftEventID: raw.draftEventId ?? undefined,
+    Description: raw.description,
+    ColorIdentity: raw.colorIdentity,
+    MatchesPlayed: raw.matchesPlayed ?? 0,
+    MatchesWon: raw.matchesWon ?? 0,
+    GamesPlayed: raw.gamesPlayed ?? 0,
+    GamesWon: raw.gamesWon ?? 0,
+    CreatedAt: raw.createdAt,
+    ModifiedAt: raw.modifiedAt,
+    LastPlayed: raw.lastPlayed ?? undefined,
+  });
+}
+
 // Re-export types for convenience
 export type Deck = models.Deck;
 export type DeckWithCards = gui.DeckWithCards;
@@ -91,23 +224,35 @@ export async function getDecks(options?: {
 
 /**
  * Get a single deck by ID with cards.
+ *
+ * The BFF returns a flat object (deckWithCardsResponse); mapBffDeckDetail
+ * normalises it into the nested gui.DeckWithCards shape the SPA expects.
  */
 export async function getDeck(deckId: string): Promise<DeckWithCards> {
-  return get<DeckWithCards>(`/decks/${deckId}`);
+  const raw = await get<BffDeckDetailRaw>(`/decks/${deckId}`);
+  return mapBffDeckDetail(raw);
 }
 
 /**
  * Create a new deck.
+ *
+ * The BFF returns a deckWithCardsResponse (flat camelCase); we extract only
+ * the deck metadata and return it as models.Deck so callers can read deck.ID.
  */
 export async function createDeck(request: CreateDeckRequest): Promise<Deck> {
-  return post<Deck>('/decks', request);
+  const raw = await post<BffDeckDetailRaw>('/decks', request);
+  return mapBffDeckToModel(raw);
 }
 
 /**
  * Update a deck.
+ *
+ * The BFF returns a deckWithCardsResponse (flat camelCase); mapBffDeckDetail
+ * normalises it into the nested gui.DeckWithCards shape the SPA expects.
  */
 export async function updateDeck(deckId: string, request: UpdateDeckRequest): Promise<DeckWithCards> {
-  return put<DeckWithCards>(`/decks/${deckId}`, request);
+  const raw = await put<BffDeckDetailRaw>(`/decks/${deckId}`, request);
+  return mapBffDeckDetail(raw);
 }
 
 /**
@@ -231,16 +376,24 @@ export async function getDeckLibrary(filter: gui.DeckLibraryFilter): Promise<Dec
 
 /**
  * Clone a deck.
+ *
+ * The BFF returns a deckWithCardsResponse (flat camelCase); we extract only
+ * the deck metadata and return it as models.Deck so callers can read deck.ID.
  */
 export async function cloneDeck(deckId: string, newName: string): Promise<Deck> {
-  return post<Deck>(`/decks/${deckId}/clone`, { name: newName });
+  const raw = await post<BffDeckDetailRaw>(`/decks/${deckId}/clone`, { name: newName });
+  return mapBffDeckToModel(raw);
 }
 
 /**
  * Get deck by draft event ID.
+ *
+ * The BFF returns a deckWithCardsResponse (flat camelCase); mapBffDeckDetail
+ * normalises it into the nested gui.DeckWithCards shape the SPA expects.
  */
 export async function getDeckByDraftEvent(draftEventId: string): Promise<DeckWithCards> {
-  return get<DeckWithCards>(`/decks/by-draft/${draftEventId}`);
+  const raw = await get<BffDeckDetailRaw>(`/decks/by-draft/${draftEventId}`);
+  return mapBffDeckDetail(raw);
 }
 
 /**

@@ -57,6 +57,7 @@ export const mockDecks = {
   deleteDeck: vi.fn((() => Promise.resolve()) as MockFn),
   addCard: vi.fn((() => Promise.resolve()) as MockFn),
   removeCard: vi.fn((() => Promise.resolve()) as MockFn),
+  removeAllCopies: vi.fn((() => Promise.resolve()) as MockFn),
   exportDeck: vi.fn((() => Promise.resolve({} as unknown)) as MockFn),
   suggestDecks: vi.fn((() => Promise.resolve([] as unknown[])) as MockFn),
   applySuggestedDeck: vi.fn((() => Promise.resolve()) as MockFn),

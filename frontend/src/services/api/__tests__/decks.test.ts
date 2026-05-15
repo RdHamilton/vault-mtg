@@ -11,6 +11,51 @@ vi.mock('../../apiClient', () => ({
 
 import { get, post, put, del } from '../../apiClient';
 
+// ---------------------------------------------------------------------------
+// Helpers — BFF wire shapes matching decks.go deckWithCardsResponse
+// ---------------------------------------------------------------------------
+
+/** Minimal BFF flat deck-detail response (matching decks.go deckWithCardsResponse). */
+function makeBffDeckDetail(overrides: Record<string, unknown> = {}) {
+  return {
+    id: 'deck-123',
+    name: 'Test Deck',
+    format: 'standard',
+    source: 'constructed',
+    draftEventId: null,
+    matchesPlayed: 0,
+    matchesWon: 0,
+    gamesPlayed: 0,
+    gamesWon: 0,
+    winRate: 0,
+    isAppCreated: false,
+    createdAt: '2025-01-01T00:00:00Z',
+    modifiedAt: '2025-01-02T00:00:00Z',
+    lastPlayed: null,
+    colorIdentity: 'WU',
+    description: '',
+    cardCount: 2,
+    tags: [],
+    cards: [
+      {
+        cardId: 12345,
+        quantity: 4,
+        board: 'main',
+        fromDraftPick: false,
+        name: 'Lightning Bolt',
+        setCode: 'M21',
+        manaCost: '{R}',
+        cmc: 1,
+        typeLine: 'Instant',
+        rarity: 'common',
+        imageUri: 'https://example.com/card.jpg',
+        colors: ['R'],
+      },
+    ],
+    ...overrides,
+  };
+}
+
 describe('decks API', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -44,17 +89,77 @@ describe('decks API', () => {
 
   describe('getDeck', () => {
     it('should call get with correct path', async () => {
-      vi.mocked(get).mockResolvedValue({ deck: {}, cards: [] });
+      vi.mocked(get).mockResolvedValue(makeBffDeckDetail());
 
       await decks.getDeck('deck-123');
 
       expect(get).toHaveBeenCalledWith('/decks/deck-123');
     });
+
+    it('should map flat BFF response to nested DeckWithCards shape', async () => {
+      const bffResponse = makeBffDeckDetail({
+        id: 'deck-abc',
+        name: 'My Deck',
+        format: 'limited',
+        source: 'draft',
+        draftEventId: 'event-xyz',
+      });
+      vi.mocked(get).mockResolvedValue(bffResponse);
+
+      const result = await decks.getDeck('deck-abc');
+
+      // deck must be a nested object — not undefined (the root bug)
+      expect(result.deck).toBeDefined();
+      expect(result.deck?.ID).toBe('deck-abc');
+      expect(result.deck?.Name).toBe('My Deck');
+      expect(result.deck?.Format).toBe('limited');
+      expect(result.deck?.Source).toBe('draft');
+      expect(result.deck?.DraftEventID).toBe('event-xyz');
+    });
+
+    it('should map BFF card fields (camelCase) to models.DeckCard (PascalCase)', async () => {
+      const bffResponse = makeBffDeckDetail();
+      vi.mocked(get).mockResolvedValue(bffResponse);
+
+      const result = await decks.getDeck('deck-123');
+
+      expect(result.cards).toHaveLength(1);
+      const card = result.cards[0];
+      // PascalCase field names must be present and correctly mapped
+      expect(card.CardID).toBe(12345);
+      expect(card.Quantity).toBe(4);
+      expect(card.Board).toBe('main');
+      expect(card.FromDraftPick).toBe(false);
+    });
+
+    it('should return empty cards array when BFF cards is empty', async () => {
+      vi.mocked(get).mockResolvedValue(makeBffDeckDetail({ cards: [] }));
+
+      const result = await decks.getDeck('deck-123');
+
+      expect(result.cards).toHaveLength(0);
+      expect(result.deck).toBeDefined();
+    });
+
+    it('should handle missing optional deck fields gracefully', async () => {
+      vi.mocked(get).mockResolvedValue(makeBffDeckDetail({
+        draftEventId: null,
+        lastPlayed: null,
+        description: undefined,
+        colorIdentity: undefined,
+      }));
+
+      const result = await decks.getDeck('deck-123');
+
+      expect(result.deck).toBeDefined();
+      expect(result.deck?.DraftEventID).toBeUndefined();
+      expect(result.deck?.LastPlayed).toBeUndefined();
+    });
   });
 
   describe('createDeck', () => {
     it('should call post with correct path and body', async () => {
-      vi.mocked(post).mockResolvedValue({ ID: 'new-deck' });
+      vi.mocked(post).mockResolvedValue(makeBffDeckDetail({ id: 'new-deck', name: 'Test Deck' }));
 
       await decks.createDeck({
         name: 'Test Deck',
@@ -70,7 +175,7 @@ describe('decks API', () => {
     });
 
     it('should include draft_event_id when provided', async () => {
-      vi.mocked(post).mockResolvedValue({ ID: 'new-deck' });
+      vi.mocked(post).mockResolvedValue(makeBffDeckDetail({ id: 'new-deck', name: 'Draft Deck' }));
 
       await decks.createDeck({
         name: 'Draft Deck',
@@ -86,15 +191,35 @@ describe('decks API', () => {
         draft_event_id: 'draft-event-123',
       });
     });
+
+    it('should return models.Deck with ID mapped from BFF id field', async () => {
+      vi.mocked(post).mockResolvedValue(makeBffDeckDetail({ id: 'created-deck-id', name: 'My New Deck' }));
+
+      const result = await decks.createDeck({ name: 'My New Deck', format: 'standard', source: 'manual' });
+
+      // ID must be populated from the BFF "id" camelCase field
+      expect(result.ID).toBe('created-deck-id');
+      expect(result.Name).toBe('My New Deck');
+    });
   });
 
   describe('updateDeck', () => {
     it('should call put with correct path and body', async () => {
-      vi.mocked(put).mockResolvedValue({ deck: {}, cards: [] });
+      vi.mocked(put).mockResolvedValue(makeBffDeckDetail({ name: 'Updated Name' }));
 
       await decks.updateDeck('deck-123', { name: 'Updated Name' });
 
       expect(put).toHaveBeenCalledWith('/decks/deck-123', { name: 'Updated Name' });
+    });
+
+    it('should return DeckWithCards with mapped deck field', async () => {
+      vi.mocked(put).mockResolvedValue(makeBffDeckDetail({ id: 'deck-123', name: 'Updated Name' }));
+
+      const result = await decks.updateDeck('deck-123', { name: 'Updated Name' });
+
+      expect(result.deck).toBeDefined();
+      expect(result.deck?.ID).toBe('deck-123');
+      expect(result.deck?.Name).toBe('Updated Name');
     });
   });
 
@@ -354,11 +479,20 @@ describe('decks API', () => {
 
   describe('cloneDeck', () => {
     it('should call post with correct path and name', async () => {
-      vi.mocked(post).mockResolvedValue({ ID: 'cloned-deck' });
+      vi.mocked(post).mockResolvedValue(makeBffDeckDetail({ id: 'cloned-deck', name: 'Cloned Deck' }));
 
       await decks.cloneDeck('deck-123', 'Cloned Deck');
 
       expect(post).toHaveBeenCalledWith('/decks/deck-123/clone', { name: 'Cloned Deck' });
+    });
+
+    it('should return models.Deck with ID mapped from BFF id field', async () => {
+      vi.mocked(post).mockResolvedValue(makeBffDeckDetail({ id: 'cloned-deck-id', name: 'Cloned Deck' }));
+
+      const result = await decks.cloneDeck('deck-123', 'Cloned Deck');
+
+      expect(result.ID).toBe('cloned-deck-id');
+      expect(result.Name).toBe('Cloned Deck');
     });
   });
 
