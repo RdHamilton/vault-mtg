@@ -106,6 +106,22 @@ describe('Settings', () => {
       expect(screen.queryByRole('button', { name: /^about/i })).not.toBeInTheDocument();
     });
 
+    it('renders Danger Zone as a top-level accordion section (AC1 #2027)', async () => {
+      render(<Settings />);
+      // Danger Zone is now its own top-level accordion item, separate from Data Recovery
+      expect(screen.getByRole('button', { name: /danger zone/i })).toBeInTheDocument();
+    });
+
+    it('Data Recovery section is separate from Danger Zone (AC2 #2027)', async () => {
+      render(<Settings />);
+
+      const dataRecoveryHeader = screen.getByRole('button', { name: /data recovery/i });
+      const dangerZoneHeader = screen.getByRole('button', { name: /danger zone/i });
+
+      // Both exist as distinct accordion buttons — they are not the same element
+      expect(dataRecoveryHeader).not.toBe(dangerZoneHeader);
+    });
+
     it('renders Expand All and Collapse All buttons', () => {
       render(<Settings />);
 

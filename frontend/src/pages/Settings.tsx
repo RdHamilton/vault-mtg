@@ -4,6 +4,7 @@ import {
   AppPreferencesSection,
   ImportExportSection,
   DataRecoverySection,
+  DangerZoneSection,
   ReplayToolSection,
   MLSettingsSection,
   ApiKeySection,
@@ -209,6 +210,16 @@ const Settings = () => {
             isReplaying={isReplaying}
             replayProgress={replayProgress}
             onReplayLogs={() => handleReplayLogs(isConnected)}
+          />
+        ),
+      },
+      {
+        id: 'danger-zone',
+        label: 'Danger Zone',
+        icon: '⚠️',
+        content: (
+          <DangerZoneSection
+            isConnected={isConnected}
             onUninstallDaemon={async (purge) => {
               const response = await uninstallDaemon({ purge });
               // Forward the backend's user-facing message (residual
