@@ -188,6 +188,29 @@ func (r *CollectionRepository) CountCollection(ctx context.Context, accountID in
 	return c, nil
 }
 
+// SetCardCount returns the number of unique cards in set_cards for the given
+// set code. When setCode is empty it returns the count across all sets.
+// This is the source for the "CARDS IN SET" stat in the Collection header —
+// it deliberately reads set_cards rather than card_inventory so the number
+// reflects the set's full catalogue, not just what the account owns.
+func (r *CollectionRepository) SetCardCount(ctx context.Context, setCode string) (int, error) {
+	var (
+		q    string
+		args []any
+	)
+	if strings.TrimSpace(setCode) == "" {
+		q = `SELECT COUNT(DISTINCT arena_id) FROM set_cards`
+	} else {
+		q = `SELECT COUNT(DISTINCT arena_id) FROM set_cards WHERE lower(set_code) = lower($1)`
+		args = []any{setCode}
+	}
+	var n int
+	if err := r.db.QueryRowContext(ctx, q, args...).Scan(&n); err != nil {
+		return 0, err
+	}
+	return n, nil
+}
+
 // RarityCount aggregates copies of cards at a single rarity. Used by
 // /api/v1/collection/stats.
 type RarityCount struct {

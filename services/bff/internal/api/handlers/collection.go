@@ -36,6 +36,7 @@ type collectionReader interface {
 	ListCollection(ctx context.Context, accountID int64, f repository.CollectionFilter) ([]repository.CollectionItem, error)
 	CountCollection(ctx context.Context, accountID int64) (repository.CollectionCounts, error)
 	CountByRarity(ctx context.Context, accountID int64) ([]repository.RarityCount, error)
+	SetCardCount(ctx context.Context, setCode string) (int, error)
 	SetCompletion(ctx context.Context, accountID int64) ([]repository.SetCompletionRow, error)
 	SetRarityBreakdown(ctx context.Context, accountID int64) ([]repository.SetRarityRow, error)
 	ValueRows(ctx context.Context, accountID int64) ([]repository.CardValueRow, int, error)
@@ -107,6 +108,11 @@ type collectionStatsResponse struct {
 	UncommonCount    int `json:"uncommonCount"`
 	RareCount        int `json:"rareCount"`
 	MythicCount      int `json:"mythicCount"`
+	// CardsInSet is the total number of unique cards available in the selected
+	// set from set_cards.  When no setCode query param is provided, it reflects
+	// the total across all sets.  This is the authoritative source for the
+	// "CARDS IN SET" header stat on the Collection page (issue #2017).
+	CardsInSet int `json:"cardsInSet"`
 }
 
 // rarityCompletionResponse mirrors models.RarityCompletion. PascalCase per
@@ -204,7 +210,9 @@ func (h *CollectionHandler) List(w http.ResponseWriter, r *http.Request) {
 }
 
 // Stats handles GET /api/v1/collection/stats. Aggregated owned-card counts
-// and per-rarity breakdown.
+// and per-rarity breakdown. Accepts an optional ?set_code= query parameter;
+// when present, cardsInSet reflects that set's catalogue size; otherwise it
+// reflects the total across all sets.
 func (h *CollectionHandler) Stats(w http.ResponseWriter, r *http.Request) {
 	accountID, found, ok := h.resolveAccount(w, r, "Stats")
 	if !ok {
@@ -214,6 +222,8 @@ func (h *CollectionHandler) Stats(w http.ResponseWriter, r *http.Request) {
 		writeMatchesJSON(w, collectionStatsResponse{})
 		return
 	}
+	setCode := strings.TrimSpace(r.URL.Query().Get("set_code"))
+
 	totals, err := h.collection.CountCollection(r.Context(), accountID)
 	if err != nil {
 		log.Printf("[CollectionHandler.Stats] CountCollection accountID=%d: %v", accountID, err)
@@ -226,9 +236,16 @@ func (h *CollectionHandler) Stats(w http.ResponseWriter, r *http.Request) {
 		writeJSONError(w, "internal server error", http.StatusInternalServerError)
 		return
 	}
+	cardsInSet, err := h.collection.SetCardCount(r.Context(), setCode)
+	if err != nil {
+		log.Printf("[CollectionHandler.Stats] SetCardCount setCode=%q: %v", setCode, err)
+		writeJSONError(w, "internal server error", http.StatusInternalServerError)
+		return
+	}
 	resp := collectionStatsResponse{
 		TotalUniqueCards: totals.UniqueCards,
 		TotalCards:       totals.TotalCards,
+		CardsInSet:       cardsInSet,
 	}
 	for _, r := range rarities {
 		switch strings.ToLower(r.Rarity) {

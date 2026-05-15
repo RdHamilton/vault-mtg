@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -38,6 +39,10 @@ type stubCollectionReader struct {
 	rarity    []repository.RarityCount
 	rarityErr error
 
+	setCardCount    int
+	setCardCountErr error
+	setCardCountArg string // last setCode passed to SetCardCount
+
 	sets      []repository.SetCompletionRow
 	setsErr   error
 	setRarity []repository.SetRarityRow
@@ -61,6 +66,11 @@ func (s *stubCollectionReader) CountCollection(_ context.Context, _ int64) (repo
 
 func (s *stubCollectionReader) CountByRarity(_ context.Context, _ int64) ([]repository.RarityCount, error) {
 	return s.rarity, s.rarityErr
+}
+
+func (s *stubCollectionReader) SetCardCount(_ context.Context, setCode string) (int, error) {
+	s.setCardCountArg = setCode
+	return s.setCardCount, s.setCardCountErr
 }
 
 func (s *stubCollectionReader) SetCompletion(_ context.Context, _ int64) ([]repository.SetCompletionRow, error) {
@@ -214,6 +224,71 @@ func TestCollectionStats_HappyPath(t *testing.T) {
 	decodeCollectionEnvelope(t, rr.Body.Bytes(), &stats)
 	if stats["totalUniqueCards"].(float64) != 50 || stats["commonCount"].(float64) != 120 || stats["mythicCount"].(float64) != 5 {
 		t.Errorf("stats: %v", stats)
+	}
+}
+
+// TestCollectionStats_CardsInSet_NoSetCode verifies that, when no set_code
+// query param is supplied, SetCardCount is called with an empty string and
+// the result is returned as cardsInSet in the response.
+func TestCollectionStats_CardsInSet_NoSetCode(t *testing.T) {
+	reader := &stubCollectionReader{
+		counts:       repository.CollectionCounts{UniqueCards: 10, TotalCards: 40},
+		setCardCount: 300,
+	}
+	h := handlers.NewCollectionHandler(reader, &collectionAccountLookup{accountID: 7, found: true})
+	req := authedCollectionRequest(t, http.MethodGet, "/api/v1/collection/stats", nil, 168)
+	rr := httptest.NewRecorder()
+	h.Stats(rr, req)
+	if rr.Code != http.StatusOK {
+		t.Fatalf("status: %d body=%s", rr.Code, rr.Body.String())
+	}
+	var stats map[string]any
+	decodeCollectionEnvelope(t, rr.Body.Bytes(), &stats)
+	if stats["cardsInSet"].(float64) != 300 {
+		t.Errorf("cardsInSet: got %v, want 300", stats["cardsInSet"])
+	}
+	if reader.setCardCountArg != "" {
+		t.Errorf("SetCardCount arg: got %q, want empty string", reader.setCardCountArg)
+	}
+}
+
+// TestCollectionStats_CardsInSet_WithSetCode verifies that, when ?set_code=DOM
+// is supplied, SetCardCount is called with "DOM" and the result flows through.
+func TestCollectionStats_CardsInSet_WithSetCode(t *testing.T) {
+	reader := &stubCollectionReader{
+		counts:       repository.CollectionCounts{UniqueCards: 10, TotalCards: 40},
+		setCardCount: 247,
+	}
+	h := handlers.NewCollectionHandler(reader, &collectionAccountLookup{accountID: 7, found: true})
+	req := authedCollectionRequest(t, http.MethodGet, "/api/v1/collection/stats?set_code=DOM", nil, 168)
+	rr := httptest.NewRecorder()
+	h.Stats(rr, req)
+	if rr.Code != http.StatusOK {
+		t.Fatalf("status: %d body=%s", rr.Code, rr.Body.String())
+	}
+	var stats map[string]any
+	decodeCollectionEnvelope(t, rr.Body.Bytes(), &stats)
+	if stats["cardsInSet"].(float64) != 247 {
+		t.Errorf("cardsInSet: got %v, want 247", stats["cardsInSet"])
+	}
+	if reader.setCardCountArg != "DOM" {
+		t.Errorf("SetCardCount arg: got %q, want DOM", reader.setCardCountArg)
+	}
+}
+
+// TestCollectionStats_CardsInSet_DBError verifies that a SetCardCount failure
+// surfaces as a 500 rather than silently returning zero.
+func TestCollectionStats_CardsInSet_DBError(t *testing.T) {
+	reader := &stubCollectionReader{
+		counts:          repository.CollectionCounts{UniqueCards: 5, TotalCards: 20},
+		setCardCountErr: fmt.Errorf("connection reset"),
+	}
+	h := handlers.NewCollectionHandler(reader, &collectionAccountLookup{accountID: 7, found: true})
+	req := authedCollectionRequest(t, http.MethodGet, "/api/v1/collection/stats", nil, 168)
+	rr := httptest.NewRecorder()
+	h.Stats(rr, req)
+	if rr.Code != http.StatusInternalServerError {
+		t.Errorf("expected 500 on SetCardCount error, got %d body=%s", rr.Code, rr.Body.String())
 	}
 }
 

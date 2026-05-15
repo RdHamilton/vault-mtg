@@ -374,6 +374,97 @@ func TestCollectionRepository_ValueRows_MixedPriced(t *testing.T) {
 }
 
 // ----------------------------------------------------------------------------
+// CollectionRepository.SetCardCount
+// ----------------------------------------------------------------------------
+
+// TestCollectionRepository_SetCardCount_BySetCode verifies that SetCardCount
+// returns only the distinct arena_ids belonging to the requested set.
+func TestCollectionRepository_SetCardCount_BySetCode(t *testing.T) {
+	db := openTestDB(t)
+	repo := repository.NewCollectionRepository(db)
+	ctx := context.Background()
+
+	insertTestSet(t, db, "SCT", "Set Card Count Test")
+	insertTestSetCard(t, db, setCardSeed{SetCode: "SCT", ArenaID: "90001", Name: "Card A", Rarity: "common"})
+	insertTestSetCard(t, db, setCardSeed{SetCode: "SCT", ArenaID: "90002", Name: "Card B", Rarity: "rare"})
+	// Card in a different set — must not be counted.
+	insertTestSet(t, db, "OTH", "Other Set")
+	insertTestSetCard(t, db, setCardSeed{SetCode: "OTH", ArenaID: "90003", Name: "Card C", Rarity: "uncommon"})
+
+	n, err := repo.SetCardCount(ctx, "SCT")
+	if err != nil {
+		t.Fatalf("SetCardCount: %v", err)
+	}
+	if n != 2 {
+		t.Errorf("SetCardCount(SCT): got %d, want 2", n)
+	}
+}
+
+// TestCollectionRepository_SetCardCount_EmptySetCode verifies that an empty
+// set code returns the total distinct arena_id count across all sets.
+func TestCollectionRepository_SetCardCount_EmptySetCode(t *testing.T) {
+	// This test verifies the sum-across-all-sets behaviour. Because the test DB
+	// may have rows from other tests we seed our own isolated set and assert the
+	// returned total is at least the 3 cards we inserted.
+	db := openTestDB(t)
+	repo := repository.NewCollectionRepository(db)
+	ctx := context.Background()
+
+	insertTestSet(t, db, "ALL1", "All Sets One")
+	insertTestSet(t, db, "ALL2", "All Sets Two")
+	insertTestSetCard(t, db, setCardSeed{SetCode: "ALL1", ArenaID: "91001", Name: "Card X", Rarity: "common"})
+	insertTestSetCard(t, db, setCardSeed{SetCode: "ALL1", ArenaID: "91002", Name: "Card Y", Rarity: "rare"})
+	insertTestSetCard(t, db, setCardSeed{SetCode: "ALL2", ArenaID: "91003", Name: "Card Z", Rarity: "mythic"})
+	// arena_id 91001 exists in ALL2 too — DISTINCT ON should not double-count.
+	insertTestSetCard(t, db, setCardSeed{SetCode: "ALL2", ArenaID: "91001", Name: "Card X Reprint", Rarity: "common"})
+
+	n, err := repo.SetCardCount(ctx, "")
+	if err != nil {
+		t.Fatalf("SetCardCount empty: %v", err)
+	}
+	// Three distinct arena_ids (91001, 91002, 91003) — regardless of how many
+	// other rows exist in the DB.
+	if n < 3 {
+		t.Errorf("SetCardCount (empty): expected >= 3 for our seeded cards, got %d", n)
+	}
+}
+
+// TestCollectionRepository_SetCardCount_CaseInsensitive verifies that the
+// set_code match is case-insensitive (e.g. "sct" == "SCT").
+func TestCollectionRepository_SetCardCount_CaseInsensitive(t *testing.T) {
+	db := openTestDB(t)
+	repo := repository.NewCollectionRepository(db)
+	ctx := context.Background()
+
+	insertTestSet(t, db, "CSI", "Case Insensitive Set")
+	insertTestSetCard(t, db, setCardSeed{SetCode: "CSI", ArenaID: "92001", Name: "Case Card", Rarity: "common"})
+
+	n, err := repo.SetCardCount(ctx, "csi")
+	if err != nil {
+		t.Fatalf("SetCardCount: %v", err)
+	}
+	if n != 1 {
+		t.Errorf("SetCardCount(csi): got %d, want 1", n)
+	}
+}
+
+// TestCollectionRepository_SetCardCount_UnknownSet verifies that an unknown
+// set code returns 0 (not an error).
+func TestCollectionRepository_SetCardCount_UnknownSet(t *testing.T) {
+	db := openTestDB(t)
+	repo := repository.NewCollectionRepository(db)
+	ctx := context.Background()
+
+	n, err := repo.SetCardCount(ctx, "ZZZ_DOES_NOT_EXIST")
+	if err != nil {
+		t.Fatalf("SetCardCount unknown set: %v", err)
+	}
+	if n != 0 {
+		t.Errorf("SetCardCount unknown set: expected 0, got %d", n)
+	}
+}
+
+// ----------------------------------------------------------------------------
 // CollectionRepository.SetCompletion + LastPriceUpdate
 // ----------------------------------------------------------------------------
 
