@@ -4,6 +4,7 @@
  */
 
 import { get, post } from '../daemonClient';
+import { get as bffGet } from '../apiClient';
 import { gui, models } from '@/types/models';
 import { isDesktopApp } from '@/lib/runtimeContext';
 
@@ -139,9 +140,14 @@ export async function setDatabasePath(path: string): Promise<{ status: string }>
 
 /**
  * Get current account.
+ *
+ * Routes through the BFF client (port 8080) — `/system/account` is a
+ * user-data endpoint served exclusively by the BFF. Routing this through
+ * the daemon client (port 9001) caused ERR_CONNECTION_REFUSED whenever
+ * the daemon was offline (see #2008).
  */
 export async function getCurrentAccount(): Promise<models.Account> {
-  return get<models.Account>('/system/account');
+  return bffGet<models.Account>('/system/account');
 }
 
 /**

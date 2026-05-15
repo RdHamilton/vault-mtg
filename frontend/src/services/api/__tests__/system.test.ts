@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import * as system from '../system';
 
-// Mock the daemonClient (system routes go to the local daemon)
+// Mock the daemonClient (daemon-specific routes only)
 vi.mock('../../daemonClient', () => ({
   get: vi.fn(),
   post: vi.fn(),
@@ -12,7 +12,13 @@ vi.mock('@/lib/runtimeContext', () => ({
   isDesktopApp: vi.fn(),
 }));
 
+// Mock the apiClient / BFF client (user-data routes: /system/account, etc.)
+vi.mock('../../apiClient', () => ({
+  get: vi.fn(),
+}));
+
 import { get, post } from '../../daemonClient';
+import { get as bffGet } from '../../apiClient';
 import { isDesktopApp } from '@/lib/runtimeContext';
 
 describe('system API', () => {
@@ -136,14 +142,23 @@ describe('system API', () => {
   });
 
   describe('getCurrentAccount', () => {
-    it('should call get with correct path', async () => {
+    it('should call BFF client get with correct path', async () => {
       const mockAccount = { id: 123, name: 'Player' };
-      vi.mocked(get).mockResolvedValue(mockAccount);
+      vi.mocked(bffGet).mockResolvedValue(mockAccount);
 
       const result = await system.getCurrentAccount();
 
-      expect(get).toHaveBeenCalledWith('/system/account');
+      expect(bffGet).toHaveBeenCalledWith('/system/account');
       expect(result).toEqual(mockAccount);
+    });
+
+    it('should NOT call the daemon client get (avoids ERR_CONNECTION_REFUSED when daemon is offline)', async () => {
+      const mockAccount = { id: 456, name: 'AnotherPlayer' };
+      vi.mocked(bffGet).mockResolvedValue(mockAccount);
+
+      await system.getCurrentAccount();
+
+      expect(get).not.toHaveBeenCalled();
     });
   });
 
