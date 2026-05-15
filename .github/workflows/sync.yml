@@ -11,6 +11,12 @@ on:
       - 'services/sync/**'
       - '.github/workflows/sync.yml'
 
+# NOTE: This workflow does NOT deploy the sync Lambda. The canonical deploy
+# path is `mtga-companion-infra/.github/workflows/deploy-sync-lambda.yml`,
+# which builds arm64 (matching the Lambda runtime) and holds a concurrency
+# lock. See `vault_mtg_docs/engineering/architecture/decisions/` for the
+# canonical-deploy-path decision note.
+
 jobs:
   build-and-test:
     name: Build & Test
@@ -38,11 +44,16 @@ jobs:
           GOPRIVATE: github.com/RdHamilton/MTGA-Companion
         run: go build ./...
 
-      - name: Build Lambda binary (bootstrap)
+      - name: Build Lambda binary (smoke check, arm64 — no deploy)
         env:
+          GOOS: linux
+          GOARCH: arm64
+          CGO_ENABLED: "0"
           GONOSUMDB: github.com/RdHamilton/MTGA-Companion
           GOPRIVATE: github.com/RdHamilton/MTGA-Companion
-        run: GOOS=linux GOARCH=amd64 go build -o bootstrap ./cmd/lambda/main.go
+        run: |
+          go build -tags lambda.norpc -trimpath -o /tmp/bootstrap ./cmd/lambda
+          echo "Smoke-built Lambda bootstrap: $(ls -lh /tmp/bootstrap)"
 
       - name: Test
         env:
@@ -55,48 +66,3 @@ jobs:
           GONOSUMDB: github.com/RdHamilton/MTGA-Companion
           GOPRIVATE: github.com/RdHamilton/MTGA-Companion
         run: go vet ./...
-
-  deploy-lambda:
-    name: Deploy Sync Lambda
-    runs-on: ubuntu-latest
-    needs: [build-and-test]
-    # Only deploy on push to main (not on PRs)
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-    environment: production
-
-    permissions:
-      contents: read
-      id-token: write  # required for OIDC-based AWS auth
-
-    steps:
-      - uses: actions/checkout@v6
-
-      - uses: actions/setup-go@v5
-        with:
-          go-version-file: services/sync/go.mod
-
-      - name: Build Lambda bootstrap binary
-        env:
-          GONOSUMDB: github.com/RdHamilton/MTGA-Companion
-          GOPRIVATE: github.com/RdHamilton/MTGA-Companion
-        run: |
-          cd services/sync
-          GOOS=linux GOARCH=amd64 go build -o bootstrap ./cmd/lambda/main.go
-          zip sync-lambda.zip bootstrap
-
-      - name: Configure AWS credentials (OIDC)
-        uses: aws-actions/configure-aws-credentials@v6
-        with:
-          role-to-assume: ${{ secrets.AWS_DEPLOY_ROLE_ARN }}
-          aws-region: us-east-1
-
-      - name: Deploy to Lambda
-        run: |
-          aws lambda update-function-code \
-            --function-name mtga-sync \
-            --zip-file fileb://services/sync/sync-lambda.zip \
-            --region us-east-1
-          aws lambda wait function-updated \
-            --function-name mtga-sync \
-            --region us-east-1
-          echo "Lambda deploy complete: ${{ github.sha }}"
