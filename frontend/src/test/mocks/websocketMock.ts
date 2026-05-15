@@ -44,6 +44,9 @@ class MockEventEmitter {
 export const mockEventEmitter = new MockEventEmitter();
 
 export const mockWailsRuntime = {
+  connect: vi.fn(() => Promise.resolve()),
+  disconnect: vi.fn(),
+
   EventsOn: vi.fn((eventName: string, callback: EventCallback) => {
     return mockEventEmitter.on(eventName, callback);
   }),
