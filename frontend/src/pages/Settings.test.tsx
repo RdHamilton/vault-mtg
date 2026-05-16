@@ -106,13 +106,13 @@ describe('Settings', () => {
     });
 
     it('renders Danger Zone as a top-level accordion section (AC1 #2027)', async () => {
-      render(<Settings />);
+      render(<MemoryRouter><Settings /></MemoryRouter>);
       // Danger Zone is now its own top-level accordion item, separate from Data Recovery
       expect(screen.getByRole('button', { name: /danger zone/i })).toBeInTheDocument();
     });
 
     it('Data Recovery section is separate from Danger Zone (AC2 #2027)', async () => {
-      render(<Settings />);
+      render(<MemoryRouter><Settings /></MemoryRouter>);
 
       const dataRecoveryHeader = screen.getByRole('button', { name: /data recovery/i });
       const dangerZoneHeader = screen.getByRole('button', { name: /danger zone/i });
@@ -226,7 +226,7 @@ describe('Settings', () => {
 
     // AC1–AC3: connection mode dropdown, daemon port input, reconnect button are removed (#2021).
     it('does not render Connection Mode selector (AC1)', async () => {
-      render(<Settings />);
+      render(<MemoryRouter><Settings /></MemoryRouter>);
 
       // Expand connection section
       const connectionHeader = screen.getByRole('button', { name: /connection/i });
