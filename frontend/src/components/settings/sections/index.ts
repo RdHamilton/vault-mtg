@@ -10,6 +10,9 @@ export type { ImportExportSectionProps } from './ImportExportSection';
 export { DataRecoverySection } from './DataRecoverySection';
 export type { DataRecoverySectionProps } from './DataRecoverySection';
 
+export { DangerZoneSection } from './DangerZoneSection';
+export type { DangerZoneSectionProps } from './DangerZoneSection';
+
 export { ReplayToolSection } from './ReplayToolSection';
 export type { ReplayToolSectionProps } from './ReplayToolSection';
 
