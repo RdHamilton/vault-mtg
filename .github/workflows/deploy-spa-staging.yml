@@ -102,8 +102,7 @@ jobs:
         run: npm run test:e2e:staging-spa
         env:
           STAGING_SPA_URL: ${{ vars.STAGING_SPA_URL }}
-          SMOKE_CLERK_EMAIL: ${{ secrets.SMOKE_CLERK_EMAIL }}
-          SMOKE_CLERK_PASSWORD: ${{ secrets.SMOKE_CLERK_PASSWORD }}
+          CLERK_SECRET_KEY: ${{ secrets.CLERK_SECRET_KEY }}
 
       - name: Upload Playwright SPA smoke report
         if: always()

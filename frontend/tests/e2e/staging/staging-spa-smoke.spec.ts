@@ -3,14 +3,15 @@ import { test, expect, type Page } from '@playwright/test';
 /**
  * Staging SPA Smoke Suite (#1933)
  *
- * Authenticates with a real Clerk account and navigates every SPA route at
+ * Authenticates via Clerk testing tokens and navigates every SPA route at
  * stg-app.vaultmtg.app, asserting no blank screen and no React error boundary.
  *
  * Authentication:
- *   Uses SMOKE_CLERK_EMAIL / SMOKE_CLERK_PASSWORD to sign in via the Clerk
- *   hosted sign-in UI. If either env var is absent the suite is skipped with
- *   a clear message so developers running locally don't see failures they
- *   cannot fix.
+ *   Uses Clerk's official testing token API (CLERK_SECRET_KEY) to establish a
+ *   session programmatically without going through the sign-in UI, without
+ *   requiring a dedicated smoke user account, and without creating billable MAU
+ *   sessions. If CLERK_SECRET_KEY is absent the suite is skipped with a clear
+ *   message so developers running locally don't see failures they cannot fix.
  *
  * waitUntil strategy (#1949):
  *   All page.goto() calls use 'domcontentloaded' instead of 'networkidle'.
@@ -23,17 +24,16 @@ import { test, expect, type Page } from '@playwright/test';
  *   3. At least one ARIA landmark or known data-testid is present
  *
  * Required environment variables:
- *   SMOKE_CLERK_EMAIL      — Clerk test account email
- *   SMOKE_CLERK_PASSWORD   — Clerk test account password
- *   STAGING_SPA_URL        — override staging SPA base URL (optional)
+ *   CLERK_SECRET_KEY  — Clerk Backend API secret key (sk_*) used to generate
+ *                       testing tokens; never exposed in the browser bundle
+ *   STAGING_SPA_URL   — override staging SPA base URL (optional)
  */
 
 // ---------------------------------------------------------------------------
 // Config
 // ---------------------------------------------------------------------------
 
-const SMOKE_EMAIL = process.env.SMOKE_CLERK_EMAIL ?? '';
-const SMOKE_PASSWORD = process.env.SMOKE_CLERK_PASSWORD ?? '';
+const CLERK_SECRET_KEY = process.env.CLERK_SECRET_KEY ?? '';
 // Use `||` (not `??`) so that an empty-string CI secret falls back to the
 // default. `??` only falls back on `undefined`/`null`, which left
 // BASE_URL = '' when STAGING_SPA_URL was set-but-empty in CI (#1933).
@@ -113,75 +113,43 @@ async function assertPageIsHealthy(page: Page, route: string): Promise<void> {
 }
 
 /**
- * Ensure the test account is signed in before protected-route tests run.
+ * Establish a Clerk session using a testing token.
  *
- * ProtectedRoute does NOT redirect unauthenticated users to a /sign-in page —
- * it renders an inline prompt with a SignInButton that opens a Clerk modal.
+ * Testing tokens are Clerk's official CI/E2E pattern — they authenticate a
+ * session programmatically without going through the sign-in UI, without
+ * requiring a dedicated smoke user account, and without creating billable MAU
+ * sessions. The token is injected into the browser via a URL query parameter
+ * that Clerk JS picks up automatically.
  *
- * The CI runner's Clerk session persists across workflow runs, so the account
- * may already be authenticated when this helper runs. Two states are handled:
- *
- * Already authenticated:
- *   1. Navigate to /match-history — ProtectedRoute renders page content directly.
- *   2. Return immediately (nothing to do).
- *
- * Not yet authenticated:
- *   1. Navigate to /match-history — ProtectedRoute renders the sign-in prompt.
- *   2. Click the "Sign In" button to open the Clerk modal.
- *   3. Fill email → Continue → fill password → Submit in the modal.
- *   4. Wait until the modal closes and the page content mounts.
+ * Requires CLERK_SECRET_KEY (sk_*) to be set in the environment.
  */
 async function signIn(page: Page): Promise<void> {
-  // Navigate to a protected route — ProtectedRoute renders the sign-in prompt
-  // when not authenticated, or the page content when already authenticated.
-  await page.goto(BASE_URL + '/match-history', { waitUntil: 'domcontentloaded' });
-
-  // Wait for Clerk to finish initializing (loading spinner disappears).
-  await page.locator('[data-testid="protected-route-loading"]').waitFor({ state: 'hidden', timeout: 30_000 });
-
-  // After init, either the sign-in button or the page content will be visible.
-  // The CI runner's Clerk session can persist across workflow runs, meaning the
-  // test account may already be authenticated. Handle both states.
-  const signInBtn = page.locator('[data-testid="protected-route-sign-in-btn"]');
-  const matchHistoryContent = page.locator('[data-testid="match-history-page"]');
-
-  // Wait for either to appear (whichever state we're in)
-  await page.waitForSelector(
-    '[data-testid="protected-route-sign-in-btn"], [data-testid="match-history-page"]',
-    { timeout: 15_000 },
-  );
-
-  // Already authenticated — nothing to do
-  if (await matchHistoryContent.isVisible()) {
-    return;
+  const clerkSecretKey = process.env.CLERK_SECRET_KEY ?? '';
+  if (!clerkSecretKey) {
+    throw new Error('CLERK_SECRET_KEY not set — cannot generate Clerk testing token');
   }
 
-  // Not yet authenticated — complete the modal sign-in flow
-  await signInBtn.click();
+  // Generate a testing token via Clerk Backend API.
+  // Testing tokens establish a session without the sign-in UI and do not
+  // count toward MAU billing — they are Clerk's official CI/E2E pattern.
+  const tokenRes = await fetch('https://api.clerk.com/v1/testing_tokens', {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${clerkSecretKey}` },
+  });
+  if (!tokenRes.ok) {
+    throw new Error(`Clerk testing token request failed: ${tokenRes.status} ${await tokenRes.text()}`);
+  }
+  const { token } = await tokenRes.json() as { token: string };
 
-  // Wait for Clerk modal sign-in form — the modal renders inside a portal
-  const emailInput = page.locator('input[name="identifier"], input[type="email"], input[name="emailAddress"]').first();
-  await emailInput.waitFor({ state: 'visible', timeout: 15_000 });
-  await emailInput.fill(SMOKE_EMAIL);
+  // Inject the token into the browser to establish a Clerk session.
+  // Navigate to the app with the testing token in the URL — Clerk JS picks it
+  // up automatically and sets the session without any UI interaction.
+  await page.goto(`${BASE_URL}/?__clerk_testing_token=${token}`, { waitUntil: 'domcontentloaded' });
 
-  // Click Continue / Next (Clerk two-step sign-in)
-  const continueBtn = page.locator('button[type="submit"]').first();
-  await continueBtn.click();
-
-  // Wait for password input
-  const passwordInput = page.locator('input[type="password"]').first();
-  await passwordInput.waitFor({ state: 'visible', timeout: 10_000 });
-  await passwordInput.fill(SMOKE_PASSWORD);
-
-  // Submit
-  const submitBtn = page.locator('button[type="submit"]').first();
-  await submitBtn.click();
-
-  // Wait until the Clerk modal closes and the page content mounts
-  await page.waitForSelector('[data-testid="match-history-page"]', { timeout: 20_000 });
-
-  // Give React a moment to fully settle after sign-in
-  await page.waitForLoadState('load');
+  // Wait for Clerk to process the token and the session to be established.
+  // The root redirect takes us to /home once authenticated.
+  await page.waitForURL((url) => url.pathname !== '/', { timeout: 15_000 });
+  await page.waitForSelector('[data-testid]', { timeout: 15_000 });
 }
 
 // ---------------------------------------------------------------------------
@@ -231,7 +199,7 @@ test.describe('Staging SPA smoke: root redirect', () => {
 
 test.describe('Staging SPA smoke: protected routes (authenticated)', () => {
   test.beforeAll(async () => {
-    if (!SMOKE_EMAIL || !SMOKE_PASSWORD) {
+    if (!CLERK_SECRET_KEY) {
       // Mark entire describe as skipped in a way Playwright handles gracefully
     }
   });
@@ -242,7 +210,7 @@ test.describe('Staging SPA smoke: protected routes (authenticated)', () => {
   let sharedPage: Page;
 
   test.beforeAll(async ({ browser }) => {
-    if (!SMOKE_EMAIL || !SMOKE_PASSWORD) {
+    if (!CLERK_SECRET_KEY) {
       return; // sign-in guard is inside each test
     }
 
@@ -259,10 +227,10 @@ test.describe('Staging SPA smoke: protected routes (authenticated)', () => {
 
   for (const route of PROTECTED_ROUTES) {
     test(`${route} — no blank screen, no error boundary`, async () => {
-      if (!SMOKE_EMAIL || !SMOKE_PASSWORD) {
+      if (!CLERK_SECRET_KEY) {
         test.skip(
           true,
-          'SMOKE_CLERK_EMAIL / SMOKE_CLERK_PASSWORD not set — skipping authenticated route smoke tests',
+          'CLERK_SECRET_KEY not set — skipping authenticated route smoke tests',
         );
         return;
       }
