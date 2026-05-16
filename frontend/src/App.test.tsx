@@ -200,11 +200,12 @@ describe('App', () => {
       });
     });
 
-    it('should redirect root to /match-history', async () => {
+    it('should redirect root to /home (AC3 #2005)', async () => {
       renderAppWithRoute('/');
 
       await waitFor(() => {
-        expect(screen.getByTestId('match-history-page')).toBeInTheDocument();
+        // Root redirects to /home — home page renders the welcome heading
+        expect(screen.getByTestId('home-page')).toBeInTheDocument();
       });
     });
 

@@ -24,6 +24,7 @@ import BffDraftHistory from './pages/BffDraftHistory';
 import DraftLive from './pages/DraftLive';
 import ApiKeysPage from './pages/ApiKeys';
 import Setup from './pages/Setup';
+import Home from './pages/Home';
 import KeyboardShortcutsHandler from './components/KeyboardShortcutsHandler';
 import ProtectedRoute from './components/ProtectedRoute';
 import { SseInitializer } from './components/SseInitializer';
@@ -202,12 +203,13 @@ function App() {
       <Layout>
         <Routes>
           {/* Public routes — no auth required */}
-          <Route path="/" element={<Navigate to="/match-history" replace />} />
+          <Route path="/" element={<Navigate to="/home" replace />} />
           <Route path="/download" element={<Download />} />
           <Route path="/setup" element={<Setup />} />
 
           {/* Protected routes — require Clerk authentication */}
           <Route element={<ProtectedRoute />}>
+            <Route path="/home" element={<Home />} />
             <Route path="/match-history" element={<BffMatchHistory />} />
             <Route path="/quests" element={<Quests />} />
             <Route path="/draft" element={<Draft />} />
