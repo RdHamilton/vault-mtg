@@ -349,6 +349,7 @@ export async function healthCheck(): Promise<boolean> {
   try {
     const response = await fetch(`${config.baseUrl.replace('/api/v1', '')}/healthz`, {
       method: 'GET',
+      signal: AbortSignal.timeout(5_000),
     });
     return response.ok;
   } catch {

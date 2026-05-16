@@ -147,6 +147,12 @@ async function signIn(page: Page): Promise<void> {
   // up automatically and sets the session without any UI interaction.
   await page.goto(`${BASE_URL}/?__clerk_testing_token=${token}`, { waitUntil: 'domcontentloaded' });
 
+  // In CI, DOMContentLoaded fires before the JS bundle executes because Vite
+  // emits <script type="module"> which Chromium headless treats as async.
+  // Explicitly wait for React to mount before checking the URL — otherwise
+  // waitForURL times out because the root <Navigate> hasn't rendered yet.
+  await page.waitForSelector('#root > *', { timeout: 30_000 });
+
   // Wait for Clerk to process the token and the session to be established.
   // The root redirect takes us to /home once authenticated.
   await page.waitForURL((url) => url.pathname !== '/', { timeout: 15_000 });
