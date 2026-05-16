@@ -35,8 +35,8 @@ const mockUser = {
   fullName: 'Planeswalker Mock',
   primaryEmailAddress: { emailAddress: 'planeswalker@vaultmtg.test' },
   imageUrl: '',
-  update: async (_params: { firstName?: string; lastName?: string }) => {},
-  setProfileImage: async (_params: { file: File | null }) => {},
+  update: async () => {},
+  setProfileImage: async () => {},
 };
 
 /**
