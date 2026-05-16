@@ -15,8 +15,7 @@ import { defineConfig, devices } from '@playwright/test';
  *
  * Required environment variables:
  *   STAGING_SPA_URL        — override the staging SPA base URL (optional)
- *   SMOKE_CLERK_EMAIL      — Clerk test account email (required for auth tests)
- *   SMOKE_CLERK_PASSWORD   — Clerk test account password (required for auth tests)
+ *   CLERK_SECRET_KEY       — Clerk secret key for generating testing tokens (required for auth tests)
  *
  * Suite constraints:
  *   - 60 s per test timeout (increased from 30 s — CI networkidle too strict, see #1949)
