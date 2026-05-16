@@ -1,3 +1,5 @@
+//go:build cgo
+
 // Package tray manages the system tray (menu bar) icon and menu for the
 // VaultMTG daemon. systray.Run must be called on the main OS thread; callers
 // must invoke App.Run from main() and start the daemon event loop inside the
