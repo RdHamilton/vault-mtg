@@ -38,6 +38,7 @@ const CLERK_SECRET_KEY = process.env.CLERK_SECRET_KEY ?? '';
 // default. `??` only falls back on `undefined`/`null`, which left
 // BASE_URL = '' when STAGING_SPA_URL was set-but-empty in CI (#1933).
 const BASE_URL = process.env.STAGING_SPA_URL || 'https://stg-app.vaultmtg.app';
+const API_BASE_URL = 'staging-api.vaultmtg.app';
 
 // ---------------------------------------------------------------------------
 // Routes from App.tsx
@@ -209,6 +210,11 @@ test.describe('Staging SPA smoke: protected routes (authenticated)', () => {
   // the shared page manually via a beforeAll/afterAll block.
   let sharedPage: Page;
 
+  // Collects any 401/403 responses from the staging BFF during authenticated
+  // route navigation. Any entry here indicates a Clerk instance mismatch or
+  // auth regression — the suite fails with a descriptive message.
+  const apiAuthErrors: string[] = [];
+
   test.beforeAll(async ({ browser }) => {
     if (!CLERK_SECRET_KEY) {
       return; // sign-in guard is inside each test
@@ -216,10 +222,31 @@ test.describe('Staging SPA smoke: protected routes (authenticated)', () => {
 
     const context = await browser.newContext();
     sharedPage = await context.newPage();
+
+    // Attach a response listener BEFORE sign-in so we catch any auth errors
+    // during the initial session establishment as well as subsequent navigation.
+    sharedPage.on('response', (response) => {
+      if (
+        response.url().includes(API_BASE_URL) &&
+        (response.status() === 401 || response.status() === 403)
+      ) {
+        apiAuthErrors.push(`${response.status()} ${response.url()}`);
+      }
+    });
+
     await signIn(sharedPage);
   });
 
   test.afterAll(async () => {
+    // Assert no authenticated API calls returned 401/403 across the entire suite.
+    // A non-empty list here means the staging BFF rejected the Clerk session —
+    // most likely a Clerk instance mismatch (staging key vs prod key) or an
+    // auth regression on the BFF.
+    expect(
+      apiAuthErrors,
+      `Authenticated API calls returned 401/403 — Clerk instance mismatch or auth regression: ${apiAuthErrors.join(', ')}`,
+    ).toHaveLength(0);
+
     if (sharedPage) {
       await sharedPage.context().close();
     }
@@ -235,6 +262,9 @@ test.describe('Staging SPA smoke: protected routes (authenticated)', () => {
         return;
       }
 
+      // Clear per-route errors so failures are attributed to the right route.
+      apiAuthErrors.length = 0;
+
       await sharedPage.goto(BASE_URL + route, { waitUntil: 'domcontentloaded' });
 
       // If Clerk redirected us to sign-in, the session expired — fail loudly
@@ -246,6 +276,12 @@ test.describe('Staging SPA smoke: protected routes (authenticated)', () => {
       }
 
       await assertPageIsHealthy(sharedPage, route);
+
+      // Assert no authenticated API calls returned 401/403 for this route.
+      expect(
+        [...apiAuthErrors],
+        `Route ${route}: authenticated API calls returned 401/403 — Clerk instance mismatch or auth regression: ${apiAuthErrors.join(', ')}`,
+      ).toHaveLength(0);
     });
   }
 });
