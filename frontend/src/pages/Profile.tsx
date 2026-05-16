@@ -33,7 +33,10 @@ export interface ProfilePageProps {
 const defaultUseUser = () => {
   // eslint-disable-next-line react-hooks/rules-of-hooks
   const { isLoaded, isSignedIn, user } = useUser();
-  return { isLoaded, isSignedIn, user };
+  // Coerce undefined → null so the return type matches the useUserHook prop shape,
+  // which only allows null (not undefined) for user. useUser() returns undefined
+  // while loading but our prop interface uses null as the "no user" sentinel.
+  return { isLoaded, isSignedIn, user: user ?? null };
 };
 
 const Profile = ({ useUserHook = defaultUseUser }: ProfilePageProps) => {
