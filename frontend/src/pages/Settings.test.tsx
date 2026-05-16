@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { MemoryRouter } from 'react-router-dom';
 import Settings from './Settings';
 
 // Mock scrollIntoView (not available in jsdom)
@@ -86,13 +87,13 @@ describe('Settings', () => {
 
   describe('rendering', () => {
     it('renders the Settings page title', async () => {
-      render(<Settings />);
+      render(<MemoryRouter><Settings /></MemoryRouter>);
 
       expect(screen.getByRole('heading', { level: 1, name: 'Settings' })).toBeInTheDocument();
     });
 
     it('renders accordion with all sections', async () => {
-      render(<Settings />);
+      render(<MemoryRouter><Settings /></MemoryRouter>);
 
       // Check accordion section headers
       expect(screen.getByRole('button', { name: /connection/i })).toBeInTheDocument();
@@ -105,13 +106,13 @@ describe('Settings', () => {
     });
 
     it('renders Danger Zone as a top-level accordion section (AC1 #2027)', async () => {
-      render(<Settings />);
+      render(<MemoryRouter><Settings /></MemoryRouter>);
       // Danger Zone is now its own top-level accordion item, separate from Data Recovery
       expect(screen.getByRole('button', { name: /danger zone/i })).toBeInTheDocument();
     });
 
     it('Data Recovery section is separate from Danger Zone (AC2 #2027)', async () => {
-      render(<Settings />);
+      render(<MemoryRouter><Settings /></MemoryRouter>);
 
       const dataRecoveryHeader = screen.getByRole('button', { name: /data recovery/i });
       const dangerZoneHeader = screen.getByRole('button', { name: /danger zone/i });
@@ -121,21 +122,21 @@ describe('Settings', () => {
     });
 
     it('renders Expand All and Collapse All buttons', () => {
-      render(<Settings />);
+      render(<MemoryRouter><Settings /></MemoryRouter>);
 
       expect(screen.getByRole('button', { name: /expand all/i })).toBeInTheDocument();
       expect(screen.getByRole('button', { name: /collapse all/i })).toBeInTheDocument();
     });
 
     it('renders Save Settings and Reset to Defaults buttons', () => {
-      render(<Settings />);
+      render(<MemoryRouter><Settings /></MemoryRouter>);
 
       expect(screen.getByRole('button', { name: /save settings/i })).toBeInTheDocument();
       expect(screen.getByRole('button', { name: /reset to defaults/i })).toBeInTheDocument();
     });
 
     it('expands connection section by default', () => {
-      render(<Settings />);
+      render(<MemoryRouter><Settings /></MemoryRouter>);
 
       // Connection section should be expanded by default
       const connectionHeader = screen.getByRole('button', { name: /connection/i });
@@ -145,7 +146,7 @@ describe('Settings', () => {
 
   describe('accordion navigation', () => {
     it('expands section when clicked', () => {
-      render(<Settings />);
+      render(<MemoryRouter><Settings /></MemoryRouter>);
 
       const preferencesHeader = screen.getByRole('button', { name: /preferences/i });
       expect(preferencesHeader).toHaveAttribute('aria-expanded', 'false');
@@ -156,7 +157,7 @@ describe('Settings', () => {
     });
 
     it('expands all sections when Expand All is clicked', () => {
-      render(<Settings />);
+      render(<MemoryRouter><Settings /></MemoryRouter>);
 
       const expandAllButton = screen.getByRole('button', { name: /expand all/i });
       fireEvent.click(expandAllButton);
@@ -168,7 +169,7 @@ describe('Settings', () => {
     });
 
     it('collapses all sections when Collapse All is clicked', () => {
-      render(<Settings />);
+      render(<MemoryRouter><Settings /></MemoryRouter>);
 
       // First expand all
       const expandAllButton = screen.getByRole('button', { name: /expand all/i });
@@ -186,7 +187,7 @@ describe('Settings', () => {
 
   describe('Connection section', () => {
     it('displays connection status', async () => {
-      render(<Settings />);
+      render(<MemoryRouter><Settings /></MemoryRouter>);
 
       // Expand connection section if not already
       const connectionHeader = screen.getByRole('button', { name: /connection/i });
@@ -204,7 +205,7 @@ describe('Settings', () => {
       // (no isDesktopApp() guard — #2020 / #2021).
       mockGetDaemonHealth.mockResolvedValue({ status: 'connected' });
 
-      render(<Settings />);
+      render(<MemoryRouter><Settings /></MemoryRouter>);
 
       await waitFor(() => {
         expect(screen.getByText('Connected to Daemon')).toBeInTheDocument();
@@ -216,7 +217,7 @@ describe('Settings', () => {
       // (no isDesktopApp() guard — #2020 / #2021).
       mockGetDaemonHealth.mockResolvedValue({ status: 'reconnecting' });
 
-      render(<Settings />);
+      render(<MemoryRouter><Settings /></MemoryRouter>);
 
       await waitFor(() => {
         expect(screen.getByText('Reconnecting...')).toBeInTheDocument();
@@ -225,7 +226,7 @@ describe('Settings', () => {
 
     // AC1–AC3: connection mode dropdown, daemon port input, reconnect button are removed (#2021).
     it('does not render Connection Mode selector (AC1)', async () => {
-      render(<Settings />);
+      render(<MemoryRouter><Settings /></MemoryRouter>);
 
       // Expand connection section
       const connectionHeader = screen.getByRole('button', { name: /connection/i });
@@ -248,7 +249,7 @@ describe('Settings', () => {
       });
       (system.connectDaemon as ReturnType<typeof vi.fn>).mockResolvedValue(undefined);
 
-      render(<Settings />);
+      render(<MemoryRouter><Settings /></MemoryRouter>);
 
       // Wait for initial load
       await waitFor(() => {
@@ -277,7 +278,7 @@ describe('Settings', () => {
 
   describe('Preferences section', () => {
     it('renders theme selector', () => {
-      render(<Settings />);
+      render(<MemoryRouter><Settings /></MemoryRouter>);
 
       // Expand preferences section
       const preferencesHeader = screen.getByRole('button', { name: /preferences/i });
@@ -287,7 +288,7 @@ describe('Settings', () => {
     });
 
     it('renders auto-refresh toggle', () => {
-      render(<Settings />);
+      render(<MemoryRouter><Settings /></MemoryRouter>);
 
       // Expand preferences section
       const preferencesHeader = screen.getByRole('button', { name: /preferences/i });
@@ -297,7 +298,7 @@ describe('Settings', () => {
     });
 
     it('shows refresh interval when auto-refresh is enabled', () => {
-      render(<Settings />);
+      render(<MemoryRouter><Settings /></MemoryRouter>);
 
       // Expand preferences section
       const preferencesHeader = screen.getByRole('button', { name: /preferences/i });
@@ -311,7 +312,7 @@ describe('Settings', () => {
     });
 
     it('renders notifications toggle', () => {
-      render(<Settings />);
+      render(<MemoryRouter><Settings /></MemoryRouter>);
 
       // Expand preferences section
       const preferencesHeader = screen.getByRole('button', { name: /preferences/i });
@@ -323,7 +324,7 @@ describe('Settings', () => {
 
   describe('Import/Export section', () => {
     it('renders export buttons', () => {
-      render(<Settings />);
+      render(<MemoryRouter><Settings /></MemoryRouter>);
 
       // Expand import/export section
       const importExportHeader = screen.getByRole('button', { name: /Export▼?$/i });
@@ -336,7 +337,7 @@ describe('Settings', () => {
     it('handles export to JSON', async () => {
       (matches.exportMatches as ReturnType<typeof vi.fn>).mockResolvedValue(undefined);
 
-      render(<Settings />);
+      render(<MemoryRouter><Settings /></MemoryRouter>);
 
       // Expand import/export section
       const importExportHeader = screen.getByRole('button', { name: /Export▼?$/i });
@@ -353,7 +354,7 @@ describe('Settings', () => {
     it('handles export to CSV', async () => {
       (matches.exportMatches as ReturnType<typeof vi.fn>).mockResolvedValue('csv data');
 
-      render(<Settings />);
+      render(<MemoryRouter><Settings /></MemoryRouter>);
 
       // Expand import/export section
       const importExportHeader = screen.getByRole('button', { name: /Export▼?$/i });
@@ -372,7 +373,7 @@ describe('Settings', () => {
     it('shows error when export fails', async () => {
       (matches.exportMatches as ReturnType<typeof vi.fn>).mockRejectedValue(new Error('Export failed'));
 
-      render(<Settings />);
+      render(<MemoryRouter><Settings /></MemoryRouter>);
 
       // Expand import/export section
       const importExportHeader = screen.getByRole('button', { name: /Export▼?$/i });
@@ -392,7 +393,7 @@ describe('Settings', () => {
 
   describe('Data Recovery section', () => {
     it('renders replay historical logs button', () => {
-      render(<Settings />);
+      render(<MemoryRouter><Settings /></MemoryRouter>);
 
       // Expand data recovery section
       const dataRecoveryHeader = screen.getByRole('button', { name: /data recovery/i });
@@ -402,7 +403,7 @@ describe('Settings', () => {
     });
 
     it('shows clear data before replay checkbox', () => {
-      render(<Settings />);
+      render(<MemoryRouter><Settings /></MemoryRouter>);
 
       // Expand data recovery section
       const dataRecoveryHeader = screen.getByRole('button', { name: /data recovery/i });
@@ -412,7 +413,7 @@ describe('Settings', () => {
     });
 
     it('disables replay button when not connected', () => {
-      render(<Settings />);
+      render(<MemoryRouter><Settings /></MemoryRouter>);
 
       // Expand data recovery section
       const dataRecoveryHeader = screen.getByRole('button', { name: /data recovery/i });
@@ -423,7 +424,7 @@ describe('Settings', () => {
     });
 
     it('shows daemon warning when not connected', () => {
-      render(<Settings />);
+      render(<MemoryRouter><Settings /></MemoryRouter>);
 
       // Expand data recovery section
       const dataRecoveryHeader = screen.getByRole('button', { name: /data recovery/i });
@@ -438,7 +439,7 @@ describe('Settings', () => {
 
   describe('Developer Mode', () => {
     it('does not show Developer Tools section by default', () => {
-      render(<Settings />);
+      render(<MemoryRouter><Settings /></MemoryRouter>);
 
       expect(screen.queryByRole('button', { name: /developer tools/i })).not.toBeInTheDocument();
     });
@@ -447,7 +448,7 @@ describe('Settings', () => {
       // Enable developer mode in localStorage
       localStorage.setItem('mtga-companion-developer-mode', 'true');
 
-      render(<Settings />);
+      render(<MemoryRouter><Settings /></MemoryRouter>);
 
       expect(screen.getByRole('button', { name: /developer tools/i })).toBeInTheDocument();
     });
@@ -460,7 +461,7 @@ describe('Settings', () => {
 
   describe('Save/Reset actions', () => {
     it('shows success notification when save is clicked', async () => {
-      render(<Settings />);
+      render(<MemoryRouter><Settings /></MemoryRouter>);
 
       // Wait for settings to load from backend first (button is disabled while loading)
       const saveButton = screen.getByRole('button', { name: /save settings/i });
@@ -481,7 +482,7 @@ describe('Settings', () => {
     });
 
     it('resets preferences when reset is clicked', async () => {
-      render(<Settings />);
+      render(<MemoryRouter><Settings /></MemoryRouter>);
 
       // Wait for settings to load from backend (button becomes enabled)
       const resetButton = screen.getByRole('button', { name: /reset to defaults/i });
@@ -511,7 +512,7 @@ describe('Settings', () => {
 
   describe('Keyboard navigation', () => {
     it('toggles section on Enter key', () => {
-      render(<Settings />);
+      render(<MemoryRouter><Settings /></MemoryRouter>);
 
       const preferencesHeader = screen.getByRole('button', { name: /preferences/i });
       preferencesHeader.focus();
@@ -521,7 +522,7 @@ describe('Settings', () => {
     });
 
     it('toggles section on Space key', () => {
-      render(<Settings />);
+      render(<MemoryRouter><Settings /></MemoryRouter>);
 
       const preferencesHeader = screen.getByRole('button', { name: /preferences/i });
       preferencesHeader.focus();

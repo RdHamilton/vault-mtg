@@ -1,7 +1,11 @@
 import { describe, it, expect } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { screen } from '@testing-library/react';
+import { renderWithRouter } from '@/test/utils/testUtils';
 import { UserProfileSection } from './UserProfileSection';
 import type { UserProfileData } from './UserProfileSection';
+
+// Alias renderWithRouter as render for brevity
+const render = renderWithRouter;
 
 // ---------------------------------------------------------------------------
 // Helpers — inject pre-built state via the useUserHook prop (adapter pattern)
@@ -139,5 +143,28 @@ describe('UserProfileSection — container', () => {
   it('renders the section data-testid attribute', () => {
     render(<UserProfileSection useUserHook={() => signedInState()} />);
     expect(screen.getByTestId('user-profile-section')).toBeInTheDocument();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Tests: profile link (AC4 — settings section links to /profile)
+// ---------------------------------------------------------------------------
+
+describe('UserProfileSection — profile link (AC4)', () => {
+  it('renders a link to /profile when signed in', () => {
+    render(<UserProfileSection useUserHook={() => signedInState()} />);
+    const link = screen.getByTestId('user-profile-link');
+    expect(link).toBeInTheDocument();
+    expect(link).toHaveAttribute('href', '/profile');
+  });
+
+  it('does NOT render the profile link when signed out', () => {
+    render(<UserProfileSection useUserHook={signedOutState} />);
+    expect(screen.queryByTestId('user-profile-link')).not.toBeInTheDocument();
+  });
+
+  it('does NOT render the profile link while loading', () => {
+    render(<UserProfileSection useUserHook={loadingState} />);
+    expect(screen.queryByTestId('user-profile-link')).not.toBeInTheDocument();
   });
 });

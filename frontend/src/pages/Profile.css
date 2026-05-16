@@ -1,0 +1,191 @@
+/* Profile page layout */
+
+.profile-page {
+  max-width: 680px;
+  margin: 0 auto;
+}
+
+.profile-header {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  margin-bottom: 32px;
+}
+
+.profile-back-button {
+  background: none;
+  border: 1px solid #444;
+  color: #ccc;
+  border-radius: 6px;
+  padding: 6px 14px;
+  font-size: 14px;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+}
+
+.profile-back-button:hover {
+  background: #2a2a2a;
+  color: #f0f0f0;
+}
+
+.profile-loading,
+.profile-unauthenticated {
+  color: #aaa;
+  font-size: 15px;
+  padding: 24px 0;
+}
+
+/* Card-style sections */
+.profile-content {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+}
+
+.profile-section {
+  background: #1a1a1a;
+  border: 1px solid #333;
+  border-radius: 10px;
+  padding: 24px;
+}
+
+.profile-section-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: #aaa;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  margin: 0 0 16px;
+}
+
+/* Avatar */
+.profile-avatar-container {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+}
+
+.profile-avatar {
+  width: 80px;
+  height: 80px;
+  border-radius: 50%;
+  object-fit: cover;
+  border: 2px solid #444;
+  flex-shrink: 0;
+}
+
+.profile-avatar-placeholder {
+  width: 80px;
+  height: 80px;
+  border-radius: 50%;
+  background: #2e5aaa;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 32px;
+  font-weight: 700;
+  color: #fff;
+  flex-shrink: 0;
+}
+
+.profile-avatar-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+/* Hide the native file input; the button opens it via ref */
+.profile-avatar-input {
+  display: none;
+}
+
+/* Display name */
+.profile-name-display {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.profile-name-value {
+  font-size: 18px;
+  font-weight: 600;
+  color: #f0f0f0;
+}
+
+.profile-edit-button {
+  flex-shrink: 0;
+}
+
+/* Name edit form */
+.profile-name-form {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.profile-name-fields {
+  display: flex;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+
+.profile-field-label {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 13px;
+  color: #aaa;
+  flex: 1;
+  min-width: 160px;
+}
+
+.profile-field-input {
+  background: #111;
+  border: 1px solid #444;
+  border-radius: 6px;
+  color: #f0f0f0;
+  font-size: 15px;
+  padding: 8px 12px;
+  outline: none;
+  transition: border-color 0.15s;
+}
+
+.profile-field-input:focus {
+  border-color: #6060c0;
+}
+
+.profile-name-actions {
+  display: flex;
+  gap: 10px;
+}
+
+/* Email */
+.profile-email-display {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.profile-email-value {
+  font-size: 16px;
+  color: #f0f0f0;
+}
+
+.profile-email-note {
+  font-size: 12px;
+  color: #666;
+  margin: 0;
+}
+
+/* Feedback messages */
+.profile-error {
+  margin-top: 8px;
+  color: #e06060;
+  font-size: 13px;
+}
+
+.profile-success {
+  margin-top: 8px;
+  color: #60c060;
+  font-size: 13px;
+}

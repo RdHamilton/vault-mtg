@@ -150,6 +150,10 @@ vi.mock('./pages/ResultBreakdown', () => ({
   default: () => <div data-testid="result-breakdown-page">Result Breakdown</div>,
 }));
 
+vi.mock('./pages/Profile', () => ({
+  default: () => <div data-testid="profile-page">Profile</div>,
+}));
+
 describe('App', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -302,6 +306,14 @@ describe('App', () => {
 
       await waitFor(() => {
         expect(screen.getByTestId('result-breakdown-page')).toBeInTheDocument();
+      });
+    });
+
+    it('should render Profile page at /profile (AC3 #2025)', async () => {
+      renderAppWithRoute('/profile');
+
+      await waitFor(() => {
+        expect(screen.getByTestId('profile-page')).toBeInTheDocument();
       });
     });
   });

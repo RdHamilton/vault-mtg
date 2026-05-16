@@ -23,6 +23,7 @@ import BffMatchHistory from './pages/BffMatchHistory';
 import BffDraftHistory from './pages/BffDraftHistory';
 import DraftLive from './pages/DraftLive';
 import ApiKeysPage from './pages/ApiKeys';
+import Profile from './pages/Profile';
 import Setup from './pages/Setup';
 import Home from './pages/Home';
 import KeyboardShortcutsHandler from './components/KeyboardShortcutsHandler';
@@ -228,6 +229,7 @@ function App() {
             <Route path="/history/drafts" element={<BffDraftHistory />} />
             <Route path="/draft/live" element={<DraftLive />} />
             <Route path="/api-keys" element={<ApiKeysPage />} />
+            <Route path="/profile" element={<Profile />} />
           </Route>
         </Routes>
       </Layout>

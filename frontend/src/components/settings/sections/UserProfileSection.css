@@ -40,3 +40,15 @@
   font-size: 13px;
   color: #aaa;
 }
+
+.user-profile-link {
+  font-size: 13px;
+  color: #7a7ae8;
+  text-decoration: none;
+  margin-top: 4px;
+}
+
+.user-profile-link:hover {
+  text-decoration: underline;
+  color: #9a9af0;
+}
