@@ -27,7 +27,7 @@ _make_stub_dir() {
 # Absorb all flags; write empty content to -o <file> if present.
 while [[ $# -gt 0 ]]; do
   case "$1" in
-    -o) shift; touch "$1" ;;
+    -o) shift; > "$1" ;;
   esac
   shift
 done
@@ -153,7 +153,7 @@ EOF
 echo "stub-curl-args: $*" >&2
 while [[ $# -gt 0 ]]; do
   case "$1" in
-    -o) shift; touch "$1" ;;
+    -o) shift; > "$1" ;;
   esac
   shift
 done
@@ -217,7 +217,7 @@ TMPFILE="${TMPDIR:-/tmp}/stub-mktemp-$$-${RANDOM}"
 if [[ "$1" == "-d" ]]; then
   mkdir -p "${TMPFILE}"
 else
-  touch "${TMPFILE}"
+  > "${TMPFILE}"
 fi
 echo "${TMPFILE}"
 MKTEMP
