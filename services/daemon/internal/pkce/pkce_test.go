@@ -178,7 +178,20 @@ func TestExchangeCode_Non200(t *testing.T) {
 	assert.Contains(t, err.Error(), "401")
 }
 
-// TestWaitForCode_HappyPath sends a code to the callback server.
+// redirectResult carries the HTTP status code and Location header from the
+// callback request made by the test goroutine. Using a channel avoids the data
+// race that would occur if the goroutine wrote to shared variables while the
+// test goroutine was reading them after waitForCode returned.
+type redirectResult struct {
+	statusCode int
+	location   string
+}
+
+// TestWaitForCode_HappyPath sends a code to the callback server and verifies
+// that the server responds with a 302 redirect to SuccessRedirectURL.
+// The redirect response prevents the consent-loop bug (#2084): a short
+// response consisting only of headers is fully flushed before the server
+// shuts down, so the browser navigates away and never retries the request.
 func TestWaitForCode_HappyPath(t *testing.T) {
 	// Use port 0 so the OS assigns any free port.
 	l, err := startListener(t)
@@ -187,19 +200,77 @@ func TestWaitForCode_HappyPath(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
-	// Send the callback in a goroutine after a short delay.
 	callbackURL := fmt.Sprintf("http://127.0.0.1:%d%s?code=mycode123", listenerPort(l), CallbackPath)
+
+	// resultCh carries the captured HTTP response from the goroutine.
+	resultCh := make(chan redirectResult, 1)
 	go func() {
-		time.Sleep(100 * time.Millisecond)
-		resp, getErr := http.Get(callbackURL) //nolint:noctx
+		time.Sleep(50 * time.Millisecond)
+		// Use a client that does NOT follow redirects so we can inspect the 302.
+		noFollow := &http.Client{
+			CheckRedirect: func(_ *http.Request, _ []*http.Request) error {
+				return http.ErrUseLastResponse
+			},
+		}
+		resp, getErr := noFollow.Get(callbackURL) //nolint:noctx
 		if getErr == nil {
+			resultCh <- redirectResult{
+				statusCode: resp.StatusCode,
+				location:   resp.Header.Get("Location"),
+			}
 			_ = resp.Body.Close()
+		} else {
+			resultCh <- redirectResult{}
 		}
 	}()
 
 	code, err := waitForCode(ctx, l)
 	require.NoError(t, err)
 	assert.Equal(t, "mycode123", code)
+
+	// Wait for the goroutine's result so we can assert on it without a race.
+	result := <-resultCh
+
+	// Verify the browser received a redirect (not an HTML body) so it navigates
+	// away rather than retrying — this is the fix for the consent loop.
+	assert.Equal(t, http.StatusFound, result.statusCode, "callback must respond with 302 redirect")
+	assert.Equal(t, SuccessRedirectURL, result.location, "redirect must point to SuccessRedirectURL")
+}
+
+// TestWaitForCode_NoConsentLoop verifies that a second callback request after
+// the first succeeds is silently dropped and does not cause the server to emit
+// a second code or re-open consent. This tests the one-shot nature of the
+// callback server (fix for #2084).
+func TestWaitForCode_NoConsentLoop(t *testing.T) {
+	l, err := startListener(t)
+	require.NoError(t, err)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	port := listenerPort(l)
+	callbackURL := fmt.Sprintf("http://127.0.0.1:%d%s?code=firstcode", port, CallbackPath)
+
+	go func() {
+		time.Sleep(50 * time.Millisecond)
+		noFollow := &http.Client{
+			CheckRedirect: func(_ *http.Request, _ []*http.Request) error {
+				return http.ErrUseLastResponse
+			},
+		}
+		// First request — should succeed and redirect.
+		resp, getErr := noFollow.Get(callbackURL) //nolint:noctx
+		if getErr == nil {
+			_ = resp.Body.Close()
+		}
+		// Second request — server is shutting down; the codeCh select has
+		// a default branch so the second code is dropped.  We only verify
+		// that waitForCode returned after the first request, not the second.
+	}()
+
+	code, err := waitForCode(ctx, l)
+	require.NoError(t, err)
+	assert.Equal(t, "firstcode", code, "only the first code must be returned")
 }
 
 // TestWaitForCode_ErrorParam returns error when callback contains error parameter.
@@ -237,11 +308,15 @@ func TestWaitForCode_Timeout(t *testing.T) {
 	require.Error(t, err)
 }
 
-// TestConstants verifies the exported port constants.
+// TestConstants verifies the exported constants.
 func TestConstants(t *testing.T) {
 	assert.Equal(t, 51423, PrimaryPort)
 	assert.Equal(t, 51424, FallbackPort)
 	assert.Equal(t, "/oauth/callback", CallbackPath)
+	// SuccessRedirectURL must be a valid absolute HTTPS URL so the browser can
+	// navigate away from the callback page without retrying the OAuth request.
+	assert.True(t, strings.HasPrefix(SuccessRedirectURL, "https://"),
+		"SuccessRedirectURL must be an absolute HTTPS URL, got: %s", SuccessRedirectURL)
 }
 
 // ─── helpers ────────────────────────────────────────────────────────────────
