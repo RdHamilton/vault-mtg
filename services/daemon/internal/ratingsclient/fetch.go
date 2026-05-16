@@ -171,7 +171,7 @@ func (c *Client) fetchOnce(ctx context.Context, endpoint, set, format string) (*
 	if err != nil {
 		return nil, true, err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	switch {
 	case resp.StatusCode == http.StatusNotFound:

@@ -45,7 +45,7 @@ func Check(ctx context.Context, baseURL string, currentVersion string) {
 		log.Printf("[updatecheck] version check failed: %v", err)
 		return
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
 		log.Printf("[updatecheck] version check returned %d", resp.StatusCode)

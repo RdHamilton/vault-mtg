@@ -9,6 +9,16 @@
 //  5. Exchange code + verifier for a Clerk session JWT.
 //  6. Return the JWT to the caller for BFF registration.
 //
+// # Consent-loop prevention
+//
+// The callback handler responds with a 302 redirect to a VaultMTG success page
+// instead of writing an HTML body. A redirect header (< 300 bytes) is fully
+// flushed to the browser before the TCP connection closes, so the browser
+// navigates away and never retries the consent request. Writing a full HTML body
+// and then calling srv.Shutdown immediately caused the connection to be torn
+// down mid-transfer, which made macOS browsers treat the response as incomplete
+// and re-submit the OAuth request — creating the observed consent loop.
+//
 // The package is CGO-free and cross-compiles cleanly for darwin/amd64,
 // darwin/arm64, and windows/amd64.
 package pkce
@@ -42,6 +52,13 @@ const (
 	// CallbackPath is the URI path that Clerk redirects to after auth.
 	CallbackPath = "/oauth/callback"
 
+	// SuccessRedirectURL is where the browser is sent after a successful OAuth
+	// callback. Using a redirect (302) instead of an inline HTML body ensures
+	// the short redirect response is fully flushed before the callback server
+	// shuts down, preventing the browser from treating a mid-transfer TCP close
+	// as a request failure and re-submitting the OAuth consent request.
+	SuccessRedirectURL = "https://vaultmtg.app/auth/success"
+
 	// codeVerifierBytes is the length of the random code_verifier in bytes.
 	// base64url(32 bytes) = 43 characters, well within OAuth 43–128 char limit.
 	codeVerifierBytes = 32
@@ -50,7 +67,15 @@ const (
 	callbackTimeout = 5 * time.Minute
 
 	// serverShutdownTimeout is the graceful shutdown window for the callback server.
+	// Must be long enough for any in-flight HTTP response to be fully flushed.
 	serverShutdownTimeout = 5 * time.Second
+
+	// responseFlushDelay is the time the callback handler waits after writing
+	// its response before signalling codeCh. This gives the OS network stack
+	// time to flush the response to the browser before srv.Shutdown tears down
+	// the listener. Without this delay, a 302 redirect can be lost when the
+	// server closes the connection immediately after the handler returns.
+	responseFlushDelay = 100 * time.Millisecond
 )
 
 // Config holds the Clerk OAuth parameters needed to build the authorization URL.
@@ -218,8 +243,18 @@ func waitForCode(ctx context.Context, l net.Listener) (string, error) {
 			return
 		}
 
-		w.Header().Set("Content-Type", "text/html; charset=utf-8")
-		_, _ = fmt.Fprint(w, "<html><body><h2>Authentication successful!</h2><p>You may close this tab and return to the app.</p></body></html>")
+		// Respond with a 302 redirect to the VaultMTG success page. A redirect
+		// consists only of response headers (no body), which the OS flushes
+		// immediately. The browser navigates away before we call srv.Shutdown,
+		// so it never retries the OAuth request and the consent loop cannot occur.
+		http.Redirect(w, r, SuccessRedirectURL, http.StatusFound)
+
+		// Give the network stack a moment to deliver the redirect response to the
+		// browser before signalling codeCh, which causes the deferred srv.Shutdown
+		// to fire.  100 ms is imperceptible to the user and is orders of magnitude
+		// longer than a loopback RTT.
+		time.Sleep(responseFlushDelay)
+
 		select {
 		case codeCh <- code:
 		default:

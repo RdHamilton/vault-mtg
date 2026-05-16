@@ -88,7 +88,7 @@ func (d *Dispatcher) Send(ctx context.Context, event contract.DaemonEvent) error
 	var lastErr error
 	for attempt := 1; attempt <= maxAttempts; attempt++ {
 		var statusCode int
-		lastErr, statusCode = d.doSend(ctx, body)
+		statusCode, lastErr = d.doSend(ctx, body)
 		if lastErr == nil {
 			log.Printf("[dispatch] event %q sent (session=%s)", event.Type, event.SessionID)
 			return nil
@@ -118,12 +118,12 @@ func (d *Dispatcher) Send(ctx context.Context, event contract.DaemonEvent) error
 }
 
 // doSend performs a single POST of body to the ingest endpoint.
-// Returns the error and the HTTP status code (0 on transport failure).
-func (d *Dispatcher) doSend(ctx context.Context, body []byte) (error, int) {
+// Returns the HTTP status code (0 on transport failure) and any error.
+func (d *Dispatcher) doSend(ctx context.Context, body []byte) (int, error) {
 	url := d.cloudAPIURL + d.ingestPath
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewReader(body))
 	if err != nil {
-		return fmt.Errorf("create request: %w", err), 0
+		return 0, fmt.Errorf("create request: %w", err)
 	}
 	req.Header.Set("Content-Type", "application/json")
 	if d.apiKey != "" {
@@ -132,15 +132,15 @@ func (d *Dispatcher) doSend(ctx context.Context, body []byte) (error, int) {
 
 	resp, err := d.client.Do(req)
 	if err != nil {
-		return fmt.Errorf("post event: %w", err), 0
+		return 0, fmt.Errorf("post event: %w", err)
 	}
 	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return fmt.Errorf("BFF returned %d", resp.StatusCode), resp.StatusCode
+		return resp.StatusCode, fmt.Errorf("BFF returned %d", resp.StatusCode)
 	}
 
-	return nil, resp.StatusCode
+	return resp.StatusCode, nil
 }
 
 // BuildEvent constructs a contract.DaemonEvent from raw log entry data.
