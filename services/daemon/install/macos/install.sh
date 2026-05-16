@@ -9,6 +9,13 @@
 #   2. Downloads the correct release binary from GitHub Releases.
 #   3. Installs the binary to /usr/local/bin/.
 #   4. Writes a launchd plist to ~/Library/LaunchAgents/ and loads it.
+#
+# DRY_RUN mode (for CI validation):
+#   Set DRY_RUN=1 to skip the sudo install and launchctl load steps.
+#   The script will still validate architecture detection, tag resolution,
+#   config/plist generation, and output all paths — but will not write to
+#   system directories or touch launchd.
+#   Example:  DRY_RUN=1 bash install.sh
 
 set -euo pipefail
 
@@ -86,7 +93,11 @@ curl -fsSL --progress-bar -o "${TMP_BIN}" "${DOWNLOAD_URL}"
 # ---------------------------------------------------------------------------
 chmod +x "${TMP_BIN}"
 echo "Installing binary to ${INSTALL_DIR}/${BINARY_NAME} (may prompt for sudo)..."
-sudo install -m 755 "${TMP_BIN}" "${INSTALL_DIR}/${BINARY_NAME}"
+if [[ -z "${DRY_RUN:-}" ]]; then
+  sudo install -m 755 "${TMP_BIN}" "${INSTALL_DIR}/${BINARY_NAME}"
+else
+  echo "[DRY_RUN] skipping: sudo install -m 755 ${TMP_BIN} ${INSTALL_DIR}/${BINARY_NAME}"
+fi
 rm -f "${TMP_BIN}"
 
 echo "Binary installed: ${INSTALL_DIR}/${BINARY_NAME}"
@@ -175,7 +186,11 @@ echo "launchd plist written: ${PLIST_PATH}"
 # Load (and enable) the launchd job.
 # -w flag persists the job across reboots by writing to the LaunchAgents DB.
 # ---------------------------------------------------------------------------
-launchctl load -w "${PLIST_PATH}"
+if [[ -z "${DRY_RUN:-}" ]]; then
+  launchctl load -w "${PLIST_PATH}"
+else
+  echo "[DRY_RUN] skipping: launchctl load -w ${PLIST_PATH}"
+fi
 
 echo ""
 echo "MTGA Companion daemon installed and running."

@@ -151,3 +151,25 @@ jobs:
           GOPRIVATE: github.com/RdHamilton/MTGA-Companion
           MTGA_DAEMON_HEADLESS: "1"
         run: go test -v -race -tags integration -run TestDaemonBinarySmoke -timeout 5m ./internal/daemon/...
+
+  macos-install-test:
+    name: macOS Install Script Validation
+    # Runs on a macOS runner so bats can exercise real macOS paths (launchctl,
+    # /usr/local/bin, ~/Library/LaunchAgents) without needing root — the
+    # DRY_RUN guard in install.sh prevents any actual system writes.
+    runs-on: macos-latest
+    timeout-minutes: 10
+    needs: test
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+
+      - name: Install bats-core
+        run: brew install bats-core
+
+      - name: Validate install.sh syntax
+        run: bash -n services/daemon/install/macos/install.sh
+
+      - name: Run install script bats tests
+        run: bats services/daemon/install/macos/install_test.bats
