@@ -195,12 +195,11 @@ echo "arm64"
 EOF
   chmod +x "${stub_dir}/uname"
 
-  # Mask jq so the script falls through to the python3 path
-  cat > "${stub_dir}/jq" <<'EOF'
-#!/usr/bin/env bash
-exit 127
-EOF
-  chmod +x "${stub_dir}/jq"
+  # Remove jq from the stub dir entirely so command -v jq returns false
+  # and the script falls through to the python3 path.
+  # (A stub that exits 127 is still found by command -v, causing set -e to
+  # abort the script before the fallback branch is reached.)
+  rm -f "${stub_dir}/jq"
 
   local fake_home
   fake_home="$(mktemp -d)"
