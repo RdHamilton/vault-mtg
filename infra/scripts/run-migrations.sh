@@ -7,8 +7,10 @@
 # Idempotent: golang-migrate tracks applied versions in the schema_migrations
 # table. Re-running this script when already at HEAD is a no-op.
 #
-# The DATABASE_URL is read from /etc/mtga-companion/env (written by
-# provision-db-url.sh earlier in the deploy pipeline).
+# Credentials are fetched from Secrets Manager (via the SSM parameter
+# /mtga-companion/production/db-secret-arn) rather than reading DATABASE_URL
+# from /etc/mtga-companion/env.  The env-file URL is credential-free by design
+# (the BFF resolves creds at startup); it must not be passed to migrate.
 #
 # Usage (via SSM from the deploy workflow — not run locally):
 #   SSM command with DEPLOY_BUCKET and AWS_REGION env vars injected.
@@ -17,7 +19,6 @@ set -euo pipefail
 
 REGION="${AWS_REGION:-us-east-1}"
 DEPLOY_BUCKET="${DEPLOY_BUCKET:-}"
-ENV_FILE="/etc/mtga-companion/env"
 
 # Download migrations from S3 (uploaded by release.yml).
 if [[ -n "$DEPLOY_BUCKET" ]]; then
@@ -43,35 +44,6 @@ if ! command -v migrate &>/dev/null; then
     echo "[run-migrations] migrate ${MIGRATE_VERSION} installed."
 fi
 
-# Read DATABASE_URL from the env file provisioned earlier in the deploy.
-if [[ ! -f "$ENV_FILE" ]]; then
-    echo "[run-migrations] ERROR: $ENV_FILE not found. Run provision-db-url.sh first." >&2
-    exit 1
-fi
-
-DATABASE_URL=$(grep '^DATABASE_URL=' "$ENV_FILE" | cut -d= -f2- | tr -d '"')
-if [[ -z "$DATABASE_URL" ]]; then
-    echo "[run-migrations] ERROR: DATABASE_URL not found in $ENV_FILE." >&2
-    exit 1
-fi
-
-# Normalize to postgres:// scheme.
-DATABASE_URL="${DATABASE_URL/pgx5:\/\//postgres://}"
-DATABASE_URL="${DATABASE_URL/postgresql:\/\//postgres://}"
-
-echo "[run-migrations] Applying migrations ..."
-echo "[run-migrations] Target DB: ${DATABASE_URL%%@*}@<host redacted>"
-
-migrate \
-    -path     "$MIGRATIONS_DIR" \
-    -database "$DATABASE_URL" \
-    up
-
-echo "[run-migrations] Migrations complete."
-
-# Apply table-level grants to the production app user.
-echo "[run-migrations] Applying production table grants ..."
-
 # Install psql if not present (EC2 UserData does not install postgresql).
 if ! command -v psql &>/dev/null; then
     echo "[run-migrations] psql not found -- installing postgresql15 ..."
@@ -79,9 +51,8 @@ if ! command -v psql &>/dev/null; then
     echo "[run-migrations] postgresql15 installed."
 fi
 
-GRANT_SQL="/tmp/grant-production-tables.sql"
-aws s3 cp "s3://$DEPLOY_BUCKET/infra-db/grant-production-tables.sql" "$GRANT_SQL" --region "$REGION"
-
+# Fetch master credentials from Secrets Manager.
+# These are used for both the migrate step and the grant step below.
 SECRET_ARN=$(aws ssm get-parameter \
     --region  "$REGION" \
     --name    "/mtga-companion/production/db-secret-arn" \
@@ -108,6 +79,28 @@ DB_NAME=$(aws ssm get-parameter \
     --name    "/mtga-companion/production/db-name" \
     --query   "Parameter.Value" \
     --output  text)
+
+# URL-encode the password so that any URL-special characters in the
+# RDS-managed secret do not break the connection string.
+ENC_PASS=$(python3 -c 'import urllib.parse,sys; print(urllib.parse.quote(sys.argv[1], safe=""))' "$MASTER_PASSWORD")
+
+MIGRATE_DB_URL="postgres://${MASTER_USER}:${ENC_PASS}@${DB_ENDPOINT}:5432/${DB_NAME}?sslmode=require"
+
+echo "[run-migrations] Applying migrations ..."
+echo "[run-migrations] Target DB: postgres://${MASTER_USER}@${DB_ENDPOINT}:5432/${DB_NAME}?sslmode=require"
+
+migrate \
+    -path     "$MIGRATIONS_DIR" \
+    -database "$MIGRATE_DB_URL" \
+    up
+
+echo "[run-migrations] Migrations complete."
+
+# Apply table-level grants to the production app user.
+echo "[run-migrations] Applying production table grants ..."
+
+GRANT_SQL="/tmp/grant-production-tables.sql"
+aws s3 cp "s3://$DEPLOY_BUCKET/infra-db/grant-production-tables.sql" "$GRANT_SQL" --region "$REGION"
 
 PGPASSWORD="$MASTER_PASSWORD" psql \
     -h "$DB_ENDPOINT" \
