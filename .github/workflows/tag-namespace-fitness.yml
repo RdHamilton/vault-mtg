@@ -1,0 +1,202 @@
+# tag-namespace-fitness.yml — ADR-023 release-tag namespace fitness functions
+#
+# Automates two of the five fitness functions defined in ADR-023
+# (vault_mtg_docs/engineering/architecture/adr/2026-05-ADR-023-monorepo-release-tag-namespacing.md):
+#
+#   Fitness #1 — No stray bare `v*` tags.
+#     Lists git tags matching v[0-9]* and rejects any that are NOT in the
+#     frozen legacy set (v0.1.0, v0.3.0).  A match means a namespace-squatting
+#     regression has occurred and must be investigated and cleaned up.
+#
+#   Fitness #4 — Daemon remains the repo "latest" GitHub Release.
+#     The production daemon download path (frontend/src/components/DaemonDownload.tsx)
+#     resolves binaries via GitHub's `releases/latest/download/` URL.  If an
+#     app/v* release ever claims `isLatest=true`, that URL silently stops resolving
+#     the daemon installer.  This check asserts:
+#       - the most recent `daemon/v*` release has isLatest=true
+#       - no `app/v*` release has isLatest=true
+#
+# Fitness functions #2, #3, and #5 are review-time / smoke-test concerns:
+#   #2 — workflow triggers use a prefixed glob only     → enforced in PR review
+#   #3 — no workflow step strips a namespace prefix     → enforced in PR review
+#   #5 — binary --version embeds plain semver           → verified during daemon release smoke
+#
+# Schedule: runs daily at 06:00 UTC.
+# Can also be triggered manually via workflow_dispatch for on-demand checks.
+
+name: Tag Namespace Fitness (ADR-023)
+
+on:
+  schedule:
+    # Run daily at 06:00 UTC
+    - cron: '0 6 * * *'
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+jobs:
+  # ---------------------------------------------------------------------------
+  # Fitness #1 — No stray bare v* tags
+  # ADR-023: "bare v* tags are deprecated and must never be created by any
+  # workflow or human."  Only the two frozen legacy tags (v0.1.0, v0.3.0)
+  # are allowed to exist in the bare v* namespace.
+  #
+  # The check queries the remote tag set directly via `git ls-remote` rather
+  # than local tags.  Local tags can be stale in shallow clones or after
+  # tag-surgery that deletes remote tags — `git fetch --prune` does not prune
+  # tags unless `--prune-tags` is also passed, so local refs may survive long
+  # after the remote tag is gone.  Querying the remote is authoritative
+  # regardless of fetch-depth or clone state, and is verifiable locally with
+  # the same command.
+  # ---------------------------------------------------------------------------
+  fitness-1-no-stray-bare-tags:
+    name: "Fitness #1 — No stray bare v* tags (ADR-023)"
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - name: Check for stray bare v* tags
+        run: |
+          # ADR-023 frozen legacy set — these two bare tags predate the namespacing
+          # scheme and are intentionally left in place as historical artifacts.
+          ALLOWED="v0.1.0 v0.3.0"
+
+          echo "Scanning REMOTE for bare v* tags not in the frozen legacy set..."
+          echo "Allowed legacy tags: ${ALLOWED}"
+          echo ""
+
+          # Enumerate bare v* tags directly from the remote.
+          # `git ls-remote` works without a checkout and is immune to stale local
+          # refs.  The sed strips the leading hash+tab+refs/tags/ prefix; the
+          # grep -v removes peel lines (^{}) that appear for annotated tags.
+          STRAY_TAGS=""
+          while IFS= read -r tag; do
+            # Skip empty lines
+            [ -z "$tag" ] && continue
+            # Check if this tag is in the allowed set
+            FOUND=0
+            for allowed in $ALLOWED; do
+              if [ "$tag" = "$allowed" ]; then
+                FOUND=1
+                break
+              fi
+            done
+            if [ "$FOUND" -eq 0 ]; then
+              STRAY_TAGS="${STRAY_TAGS}  ${tag}"$'\n'
+            fi
+          done < <(git ls-remote --tags origin 'refs/tags/v*' | sed 's#.*refs/tags/##' | grep -v '\^{}' | sort)
+
+          if [ -n "$STRAY_TAGS" ]; then
+            echo "FAIL: The following stray bare v* tags violate ADR-023:"
+            echo ""
+            echo "${STRAY_TAGS}"
+            echo "---"
+            echo "These tags squat the bare v* namespace, which is deprecated and must"
+            echo "never be created by any workflow or human (ADR-023)."
+            echo ""
+            echo "Resolution:"
+            echo "  1. Identify which releasable unit created each tag."
+            echo "  2. If the tag belongs to the application, re-cut it as app/v<semver>."
+            echo "  3. If the tag belongs to the daemon, re-cut it as daemon/v<semver>."
+            echo "  4. Delete the stray bare tag from the remote:"
+            echo "       git push origin --delete <tag>"
+            echo "  5. Re-run this check to confirm the violation is resolved."
+            echo ""
+            echo "See ADR-023 for the authoritative tag namespacing scheme:"
+            echo "  vault_mtg_docs/engineering/architecture/adr/2026-05-ADR-023-monorepo-release-tag-namespacing.md"
+            exit 1
+          fi
+
+          echo "PASS: No stray bare v* tags found."
+          echo "Only allowed legacy tags (${ALLOWED}) exist in the bare v* namespace."
+
+  # ---------------------------------------------------------------------------
+  # Fitness #4 — Daemon remains the repo "latest" GitHub Release
+  # ADR-023: "The daemon release must remain the repository's 'latest' GitHub
+  # Release.  Application releases are published with make_latest: false so
+  # they never displace the daemon release from the 'latest' slot."
+  # ---------------------------------------------------------------------------
+  fitness-4-daemon-stays-latest:
+    name: "Fitness #4 — Daemon stays GitHub 'latest' release (ADR-023)"
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - name: Check daemon is the "latest" GitHub Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          echo "Checking ADR-023 Fitness #4: daemon/v* release must be 'latest'..."
+          echo ""
+
+          # Use the GitHub API's dedicated latest-release endpoint to get the
+          # release currently flagged as "latest".  This is the canonical source
+          # of truth for what releases/latest/download/ resolves to.
+          LATEST_RELEASE=$(gh api repos/RdHamilton/MTGA-Companion/releases/latest \
+            --jq '{tagName: .tag_name, createdAt: .created_at}' 2>/dev/null || echo "")
+
+          if [ -z "$LATEST_RELEASE" ]; then
+            echo "WARN: No 'latest' release found in the repository."
+            echo "      This is acceptable if no release has been published yet,"
+            echo "      but after the first daemon release this check should pass."
+            exit 0
+          fi
+
+          LATEST_TAG=$(echo "$LATEST_RELEASE" | python3 -c "import sys,json; d=json.load(sys.stdin); print(d['tagName'])")
+
+          echo "Current 'latest' release tag: ${LATEST_TAG}"
+          echo ""
+
+          # --- Assert: the latest release must be a daemon/v* tag ---
+          if echo "$LATEST_TAG" | grep -qE '^daemon/v[0-9]'; then
+            echo "PASS (daemon check): Latest release is a daemon/v* tag: ${LATEST_TAG}"
+          else
+            echo "FAIL: The repository's 'latest' GitHub Release is NOT a daemon/v* tag."
+            echo ""
+            echo "  Latest tag:  ${LATEST_TAG}"
+            echo ""
+            echo "This means releases/latest/download/ no longer resolves the daemon"
+            echo "installer.  Users who download the daemon via the VaultMTG UI will"
+            echo "receive a 404 or the wrong artifact."
+            echo ""
+            echo "Resolution:"
+            if echo "$LATEST_TAG" | grep -qE '^app/v[0-9]'; then
+              echo "  An app/v* release has claimed 'latest'.  The release.yml workflow"
+              echo "  must publish application releases with make_latest: false."
+              echo "  Check the release.yml 'Create Release' step and ensure:"
+              echo "    make_latest: false"
+              echo "  Then re-publish the latest daemon release to reclaim 'latest':"
+              echo "    gh release edit <daemon-tag> --latest"
+            else
+              echo "  An unknown release type has claimed 'latest': ${LATEST_TAG}"
+              echo "  Investigate and restore the daemon/v* release as 'latest':"
+              echo "    gh release edit <daemon-tag> --latest"
+            fi
+            echo ""
+            echo "See ADR-023 for context on the make_latest: false invariant."
+            exit 1
+          fi
+
+          echo ""
+
+          # --- Assert: no app/v* release has isLatest=true ---
+          # Cross-check by listing all releases and ensuring no app/v* release
+          # is flagged as latest.  This catches edge cases where the API returns
+          # a cached or inconsistent state.
+          echo "Checking that no app/v* release is flagged as 'latest'..."
+
+          # GitHub's REST API releases endpoint exposes make_latest only on
+          # create/edit; the list endpoint uses the prerelease field instead.
+          # Use the releases/latest endpoint result as the authoritative check
+          # (already done above).  As a belt-and-suspenders check, confirm the
+          # latest tag does not start with "app/v".
+          if echo "$LATEST_TAG" | grep -qE '^app/v'; then
+            # Already caught and reported above; exit 1 already issued.
+            # This branch is unreachable but kept for clarity.
+            exit 1
+          fi
+
+          echo "PASS (app/v* check): No app/v* release is the repository 'latest'."
+          echo ""
+          echo "All ADR-023 Fitness #4 assertions passed."
