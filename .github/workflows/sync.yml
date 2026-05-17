@@ -75,7 +75,7 @@ jobs:
         working-directory: services/sync
     services:
       postgres:
-        image: postgres:16
+        image: pgvector/pgvector:pg16
         env:
           POSTGRES_USER: sync_test
           POSTGRES_PASSWORD: sync_test
