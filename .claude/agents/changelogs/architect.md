@@ -11,6 +11,29 @@ This is the system-wide record of all changes made across the project. Every age
 **Summary**: One sentence summary of what was done and why.
 -->
 
+## 2026-05-16 — [architect] Bug: daemon postinstall multi-instance on reinstall
+**PR**: #2154
+**ADR**: N/A
+**Files changed**:
+- `services/daemon/install/macos/pkg/postinstall` — expanded stop/cleanup block: label-based bootout, pkill fallback, sleep 1 before bootstrap
+- `services/daemon/install/macos/pkg/postinstall_test.bats` — added test #8 verifying bootout precedes bootstrap on reinstall
+**Summary**: Fixed a bug where reinstalling the daemon pkg could spawn multiple vaultmtg-daemon processes because postinstall loaded the new LaunchAgent without first stopping the old one via label-based bootout and pkill fallback.
+
+## 2026-05-17 — [architect] RC24 tag cut
+**PR**: N/A — release tag
+**ADR**: N/A
+**Summary**: Cut daemon/v0.3.1-rc24 from main to trigger RC24 installer build; includes PRs #2150 and #2152 (keychain reinstall fix + retry/tray-error-state).
+
+## 2026-05-17 — [architect] Issue #2151: feat(daemon): keychain retry loop, StatusKeychainError tray state, BFF dispatch gating
+**PR**: #2152
+**ADR**: N/A
+**Summary**: Added 3-attempt exponential-backoff retry loop when keychain.Get() fails at startup; StatusKeychainError tray status + "Try Again" menu item; BFF event dispatch gated behind successful keychain resolution; headless exit path when all retries exhausted; 4 new unit tests covering all retry paths.
+
+## 2026-05-17 — [architect] Issue #2136: fix(daemon): NeedsFirstRunAuth verifies keychain entry before trusting sentinel
+**PR**: #2150
+**ADR**: N/A
+**Summary**: Fixed silent reinstall bug where NeedsFirstRunAuth returned false when keychain:true without verifying the OS keychain entry actually exists; refactored to accept keychainGetter func() (string, error) parameter to avoid import cycle.
+
 ## 2026-05-09 — [architect] v0.3.1 Wave 0 architectural review and gate
 **PR**: #1673
 **ADR**: N/A — review note only; flags need for ADR-020 addendum (keychain naming, contracts section) and potential ADR-021 (daemon_api_keys lifecycle)
