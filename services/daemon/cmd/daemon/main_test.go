@@ -14,7 +14,18 @@ import (
 	"github.com/ramonehamilton/mtga-daemon/internal/keychain"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"github.com/zalando/go-keyring"
 )
+
+// useMemoryKeyring switches go-keyring to its in-memory mock backend for the
+// duration of the test.  This avoids touching the real OS keychain and works
+// on every platform including headless CI Linux runners that have no D-Bus
+// secret service daemon.
+func useMemoryKeyring(t *testing.T) {
+	t.Helper()
+	keyring.MockInit()
+	t.Cleanup(func() { keyring.MockInitWithError(nil) }) // reset after test
+}
 
 // TestHandleMissingConfig_DefaultCloudAPIURL verifies that when no
 // MTGA_DAEMON_CLOUD_API_URL env var is set, handleMissingConfig writes a stub
@@ -259,6 +270,10 @@ func TestRunPKCEAuth_BothMissing(t *testing.T) {
 // holds a valid entry, runPKCEAuth returns nil (success) and writes daemon.json
 // with keychain:true — without overwriting the existing keychain entry.
 func TestRunPKCEAuth_AlreadyRegistered_KeychainPresent(t *testing.T) {
+	// Use an in-memory keyring mock so this test works on CI Linux runners that
+	// have no D-Bus secret service daemon (org.freedesktop.secrets).
+	useMemoryKeyring(t)
+
 	// Seed the OS keychain with a pre-existing key.
 	const existingKey = "sk_live_existing_key_abc"
 	require.NoError(t, keychain.Set(existingKey), "test setup: seed OS keychain")
@@ -335,6 +350,10 @@ func TestRunPKCEAuth_AlreadyRegistered_KeychainPresent(t *testing.T) {
 // directing the user to delete daemon.json. This prevents a silent failure
 // where the daemon starts but cannot authenticate with the BFF.
 func TestRunPKCEAuth_AlreadyRegistered_KeychainMissing(t *testing.T) {
+	// Use an in-memory keyring mock so this test works on CI Linux runners that
+	// have no D-Bus secret service daemon (org.freedesktop.secrets).
+	useMemoryKeyring(t)
+
 	// Ensure no keychain entry exists for this test.
 	_ = keychain.Delete()
 	t.Cleanup(func() { _ = keychain.Delete() })
