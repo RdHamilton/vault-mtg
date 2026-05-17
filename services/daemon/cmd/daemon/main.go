@@ -86,6 +86,11 @@ func main() {
 		log.Printf("[mtga-daemon] first-run: no API key detected — starting PKCE auth flow")
 		if err := runPKCEAuth(cfg, *cfgPath); err != nil {
 			fmt.Fprintf(os.Stderr, "auth error: %v\n", err)
+			// Signal launchd that this exit is intentional so KeepAlive=true in
+			// the plist does not respawn the process and trigger PKCE again every
+			// ~10 seconds (ThrottleInterval). os.Exit bypasses defers, so we call
+			// stopLaunchAgent explicitly here before exiting.
+			stopLaunchAgent()
 			os.Exit(1)
 		}
 	}
@@ -200,8 +205,12 @@ func migrateLegacyAPIKey(cfg *config.Config) error {
 // runPKCEAuth executes the PKCE browser-redirect flow and:
 //  1. Obtains a Clerk session JWT.
 //  2. Calls POST /v1/daemon/register on the BFF to mint an API key.
-//  3. Stores the API key in the OS keychain.
-//  4. Writes daemon.json with keychain:true.
+//  3. On fresh registration (201 Created + non-empty api_key): stores the key
+//     in the OS keychain and writes daemon.json with keychain:true.
+//  4. On already-registered (200 OK + empty api_key): verifies the existing
+//     keychain entry is still present and writes daemon.json without touching
+//     the keychain. If the keychain entry is missing the user must re-register
+//     (delete daemon.json to trigger a fresh flow).
 func runPKCEAuth(cfg *config.Config, cfgPath string) error {
 	clerkFrontendAPI := os.Getenv("CLERK_FRONTEND_API")
 	clientID := os.Getenv("CLERK_OAUTH_CLIENT_ID")
@@ -236,11 +245,42 @@ func runPKCEAuth(cfg *config.Config, cfgPath string) error {
 		cfg.DaemonID = uuid.NewString()
 	}
 
-	apiKey, accountID, err := registerWithBFF(ctx, cfg.CloudAPIURL, tok.AccessToken, cfg.DaemonID, runtime.GOOS, Version)
+	apiKey, accountID, alreadyRegistered, err := registerWithBFF(ctx, cfg.CloudAPIURL, tok.AccessToken, cfg.DaemonID, runtime.GOOS, Version)
 	if err != nil {
 		return fmt.Errorf("BFF registration: %w", err)
 	}
 
+	if alreadyRegistered {
+		// BFF returned HTTP 200 + empty api_key: the device was already registered.
+		// The API key is still in the OS keychain from the original install — do not
+		// overwrite it. Just verify it is still there (OS keychain could have been
+		// wiped by an OS reinstall even though daemon.json survived).
+		log.Printf("[mtga-daemon] device already registered; using existing keychain key")
+
+		existing, kcErr := keychain.Get()
+		if kcErr != nil || existing == "" {
+			return fmt.Errorf(
+				"device is already registered with the BFF but the OS keychain entry is missing " +
+					"(OS keychain was likely wiped); delete daemon.json to trigger a fresh registration",
+			)
+		}
+
+		// Keychain entry is intact. Write/refresh daemon.json with the account_id
+		// returned by the BFF (it may have changed if the user re-authenticated
+		// with a different Clerk account on the same device).
+		cfg.Keychain = true
+		cfg.APIKey = ""
+		cfg.AccountID = accountID
+
+		if err := cfg.SaveTo(cfgPath); err != nil {
+			return fmt.Errorf("write daemon.json: %w", err)
+		}
+
+		log.Printf("[mtga-daemon] already-registered device — daemon.json refreshed, keychain untouched")
+		return nil
+	}
+
+	// Fresh registration (201 Created + non-empty api_key).
 	log.Printf("[mtga-daemon] BFF registered (account_id=%s); storing key in OS keychain", accountID)
 	if err := keychain.Set(apiKey); err != nil {
 		return fmt.Errorf("store API key in keychain: %w", err)
@@ -261,11 +301,18 @@ func runPKCEAuth(cfg *config.Config, cfgPath string) error {
 
 // registerWithBFF calls POST /daemon/register (relative to the configured
 // cloud_api_url, which already includes the /api/v1 prefix) with the Clerk JWT
-// and returns the minted API key and account_id.
+// and returns the minted API key, account_id, and whether the device was
+// already registered.
+//
+// alreadyRegistered is true when the BFF returns HTTP 200 with an empty
+// api_key field, meaning the device_id is already known to the BFF and the
+// caller should reuse the existing OS keychain entry rather than storing a
+// new key. On a fresh registration the BFF returns HTTP 201 with a non-empty
+// api_key.
 //
 // deviceID is a per-installation UUID, platform is runtime.GOOS, and daemonVer
 // is the build-time version string — all three are required by the BFF handler.
-func registerWithBFF(ctx context.Context, bffBaseURL, clerkJWT, deviceID, platform, daemonVer string) (apiKey, accountID string, err error) {
+func registerWithBFF(ctx context.Context, bffBaseURL, clerkJWT, deviceID, platform, daemonVer string) (apiKey, accountID string, alreadyRegistered bool, err error) {
 	url := strings.TrimRight(bffBaseURL, "/") + "/daemon/register"
 
 	body, err := json.Marshal(map[string]string{
@@ -274,12 +321,12 @@ func registerWithBFF(ctx context.Context, bffBaseURL, clerkJWT, deviceID, platfo
 		"daemon_ver": daemonVer,
 	})
 	if err != nil {
-		return "", "", fmt.Errorf("marshal request body: %w", err)
+		return "", "", false, fmt.Errorf("marshal request body: %w", err)
 	}
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewReader(body))
 	if err != nil {
-		return "", "", fmt.Errorf("create request: %w", err)
+		return "", "", false, fmt.Errorf("create request: %w", err)
 	}
 	req.Header.Set("Authorization", "Bearer "+clerkJWT)
 	req.Header.Set("Content-Type", "application/json")
@@ -287,17 +334,17 @@ func registerWithBFF(ctx context.Context, bffBaseURL, clerkJWT, deviceID, platfo
 	client := &http.Client{Timeout: 30 * time.Second}
 	resp, err := client.Do(req)
 	if err != nil {
-		return "", "", fmt.Errorf("http: %w", err)
+		return "", "", false, fmt.Errorf("http: %w", err)
 	}
 	defer func() { _ = resp.Body.Close() }()
 
 	respBody, err := io.ReadAll(resp.Body)
 	if err != nil {
-		return "", "", fmt.Errorf("read body: %w", err)
+		return "", "", false, fmt.Errorf("read body: %w", err)
 	}
 
 	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusCreated {
-		return "", "", fmt.Errorf("BFF returned %d: %s", resp.StatusCode, string(respBody))
+		return "", "", false, fmt.Errorf("BFF returned %d: %s", resp.StatusCode, string(respBody))
 	}
 
 	var result struct {
@@ -305,13 +352,18 @@ func registerWithBFF(ctx context.Context, bffBaseURL, clerkJWT, deviceID, platfo
 		AccountID string `json:"account_id"`
 	}
 	if err := json.Unmarshal(respBody, &result); err != nil {
-		return "", "", fmt.Errorf("decode response: %w", err)
-	}
-	if result.APIKey == "" {
-		return "", "", fmt.Errorf("BFF returned empty api_key (reinstall? use existing key from keychain)")
+		return "", "", false, fmt.Errorf("decode response: %w", err)
 	}
 
-	return result.APIKey, result.AccountID, nil
+	// HTTP 200 + empty api_key means the BFF already has this device_id on file.
+	// Signal the caller to reuse the existing OS keychain entry rather than
+	// treating this as an error — previously this caused os.Exit(1) and a
+	// launchd respawn loop every 10 s (Issue #2169).
+	if resp.StatusCode == http.StatusOK && result.APIKey == "" {
+		return "", result.AccountID, true, nil
+	}
+
+	return result.APIKey, result.AccountID, false, nil
 }
 
 // fileExists returns true when path exists and is readable.
