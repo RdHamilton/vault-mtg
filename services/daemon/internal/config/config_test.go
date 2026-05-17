@@ -539,7 +539,8 @@ func TestNeedsFirstRunAuth_NoCredentials(t *testing.T) {
 	t.Setenv("MTGA_DAEMON_CLOUD_API_URL", "http://localhost:9000")
 	cfg, err := config.Load("")
 	require.NoError(t, err)
-	assert.True(t, cfg.NeedsFirstRunAuth())
+	// keychainGetter is never reached because Keychain is false.
+	assert.True(t, cfg.NeedsFirstRunAuth(func() (string, error) { return "", nil }))
 }
 
 // TestNeedsFirstRunAuth_PlaintextAPIKey returns false when api_key is present.
@@ -548,10 +549,12 @@ func TestNeedsFirstRunAuth_PlaintextAPIKey(t *testing.T) {
 	t.Setenv("MTGA_DAEMON_API_KEY", "sk_live_somekey")
 	cfg, err := config.Load("")
 	require.NoError(t, err)
-	assert.False(t, cfg.NeedsFirstRunAuth())
+	// keychainGetter is never reached because Keychain is false.
+	assert.False(t, cfg.NeedsFirstRunAuth(func() (string, error) { return "", nil }))
 }
 
-// TestNeedsFirstRunAuth_KeychainTrue returns false when keychain sentinel is set.
+// TestNeedsFirstRunAuth_KeychainTrue returns false when keychain sentinel is set
+// and the OS keychain entry is present (normal post-install state).
 func TestNeedsFirstRunAuth_KeychainTrue(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "daemon.json")
@@ -560,7 +563,8 @@ func TestNeedsFirstRunAuth_KeychainTrue(t *testing.T) {
 
 	cfg, err := config.Load(path)
 	require.NoError(t, err)
-	assert.False(t, cfg.NeedsFirstRunAuth())
+	// Simulate the happy path: OS keychain holds a valid key.
+	assert.False(t, cfg.NeedsFirstRunAuth(func() (string, error) { return "sk_live_valid_key", nil }))
 }
 
 // TestNeedsFirstRunAuth_DaemonJWT returns false when a daemon JWT is present.
@@ -569,7 +573,8 @@ func TestNeedsFirstRunAuth_DaemonJWT(t *testing.T) {
 	cfg, err := config.Load("")
 	require.NoError(t, err)
 	cfg.DaemonJWT = "some.jwt.token"
-	assert.False(t, cfg.NeedsFirstRunAuth())
+	// keychainGetter is never reached because Keychain is false.
+	assert.False(t, cfg.NeedsFirstRunAuth(func() (string, error) { return "", nil }))
 }
 
 // ── Keychain field serialisation ─────────────────────────────────────────────
@@ -612,31 +617,53 @@ func TestAPIKeyOmittedFromJSONWhenKeychain(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
-// T3 — NeedsFirstRunAuth with keychain=true but no keychain entry
+// NeedsFirstRunAuth — keychain sentinel present but entry missing or empty
 // ---------------------------------------------------------------------------
 
-// TestNeedsFirstRunAuth_KeychainTrueNoEntry documents the current behavior of
-// NeedsFirstRunAuth when Keychain is true but no entry actually exists in the
-// OS keychain. Today the function returns false (trusts the sentinel without
-// verifying the keychain store).
-//
-// Known gap — tracked in issue #2136: a future fix will call keychain.Get()
-// inside NeedsFirstRunAuth and return true when ErrNotFound is returned, so
-// the PKCE re-auth flow fires for reinstalls with a stale daemon.json.
+// TestNeedsFirstRunAuth_KeychainTrueNoEntry verifies that NeedsFirstRunAuth
+// returns true when Keychain is true but the OS keychain entry does not exist
+// (ErrNotFound). This covers reinstalls where daemon.json still carries
+// keychain:true but the keychain was wiped (e.g. full OS reinstall). Fixed by
+// issue #2136.
 func TestNeedsFirstRunAuth_KeychainTrueNoEntry(t *testing.T) {
-	// Construct a Config with Keychain:true but no API key or JWT — simulating
-	// a daemon.json written by a previous PKCE install where the OS keychain
-	// entry has since been deleted (e.g. after a full OS reinstall).
+	// Simulate a reinstall: daemon.json has keychain:true but the OS keychain
+	// entry is gone — the getter returns an error (ErrNotFound).
 	cfg := &config.Config{
 		Keychain:  true,
 		APIKey:    "",
 		DaemonJWT: "",
 	}
-	// Current behavior: returns false because Keychain sentinel is set.
-	// When issue #2136 is implemented this assertion must change to assert.True.
-	assert.False(t, cfg.NeedsFirstRunAuth(),
-		"current behavior: keychain sentinel short-circuits NeedsFirstRunAuth "+
-			"without verifying the actual keychain entry exists (gap #2136)")
+	assert.True(t, cfg.NeedsFirstRunAuth(func() (string, error) {
+		return "", fmt.Errorf("keychain: api key not found")
+	}), "keychain:true with missing keychain entry must trigger PKCE re-auth")
+}
+
+// TestNeedsFirstRunAuth_KeychainTrueEmptyEntry verifies that NeedsFirstRunAuth
+// returns true when Keychain is true but the OS keychain returns an empty string
+// (defensive check against a corrupted or blank keychain value).
+func TestNeedsFirstRunAuth_KeychainTrueEmptyEntry(t *testing.T) {
+	cfg := &config.Config{
+		Keychain:  true,
+		APIKey:    "",
+		DaemonJWT: "",
+	}
+	assert.True(t, cfg.NeedsFirstRunAuth(func() (string, error) {
+		return "", nil // empty key returned without error
+	}), "keychain:true with empty keychain entry must trigger PKCE re-auth")
+}
+
+// TestNeedsFirstRunAuth_KeychainTrueEntryPresent verifies that NeedsFirstRunAuth
+// returns false when Keychain is true AND the OS keychain holds a non-empty key
+// (normal happy-path post-install state — no re-auth needed).
+func TestNeedsFirstRunAuth_KeychainTrueEntryPresent(t *testing.T) {
+	cfg := &config.Config{
+		Keychain:  true,
+		APIKey:    "",
+		DaemonJWT: "",
+	}
+	assert.False(t, cfg.NeedsFirstRunAuth(func() (string, error) {
+		return "sk_live_valid_api_key", nil
+	}), "keychain:true with a valid keychain entry must NOT trigger PKCE re-auth")
 }
 
 func TestLoadMigratesOldIngestPath(t *testing.T) {

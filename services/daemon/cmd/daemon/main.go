@@ -79,8 +79,10 @@ func main() {
 	}
 
 	// ── Step 3: PKCE auth flow if no valid credentials ─────────────────────────
-	// Runs when: no keychain sentinel, no plaintext key, no daemon JWT.
-	if cfg.NeedsFirstRunAuth() && cfg.CloudAPIURL != "" {
+	// Runs when: no keychain sentinel, no plaintext key, no daemon JWT, OR when
+	// the keychain sentinel is set but the OS keychain entry is missing/empty
+	// (reinstall scenario — OS keychain was wiped after a full reinstall).
+	if cfg.NeedsFirstRunAuth(keychain.Get) && cfg.CloudAPIURL != "" {
 		log.Printf("[mtga-daemon] first-run: no API key detected — starting PKCE auth flow")
 		if err := runPKCEAuth(cfg, *cfgPath); err != nil {
 			fmt.Fprintf(os.Stderr, "auth error: %v\n", err)

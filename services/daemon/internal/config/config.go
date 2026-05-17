@@ -170,13 +170,26 @@ func (c *Config) FilePath() string {
 // Returns true when:
 //   - No daemon.json exists (first install), OR
 //   - daemon.json exists but has neither Keychain:true nor a plaintext APIKey
-//     and no DaemonJWT (unconfigured stub).
+//     and no DaemonJWT (unconfigured stub), OR
+//   - Keychain is true but the keychain entry is missing or empty (reinstall
+//     where the OS keychain was wiped, e.g. after an OS reinstall).
 //
 // When the MTGA_DAEMON_API_KEY env var is set the caller already has a key —
 // first-run auth is not needed.
-func (c *Config) NeedsFirstRunAuth() bool {
-	// If a key exists in any form, we do not need first-run auth.
+//
+// keychainGetter is called only when c.Keychain is true. In production, pass
+// keychain.Get. In tests, pass a func that returns the desired stub value.
+// This avoids a direct import of the keychain package from config (keeping the
+// dependency inverted) and makes the function fully testable without OS keychain access.
+func (c *Config) NeedsFirstRunAuth(keychainGetter func() (string, error)) bool {
 	if c.Keychain {
+		// Trust the sentinel only if the OS keychain entry is actually present
+		// and non-empty. A missing or empty entry means a reinstall wiped the
+		// keychain; re-run PKCE so the user re-authenticates.
+		key, err := keychainGetter()
+		if err != nil || key == "" {
+			return true
+		}
 		return false
 	}
 	if c.APIKey != "" {
