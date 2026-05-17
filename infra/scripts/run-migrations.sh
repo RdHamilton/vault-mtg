@@ -72,6 +72,13 @@ echo "[run-migrations] Migrations complete."
 # Apply table-level grants to the production app user.
 echo "[run-migrations] Applying production table grants ..."
 
+# Install psql if not present (EC2 UserData does not install postgresql).
+if ! command -v psql &>/dev/null; then
+    echo "[run-migrations] psql not found -- installing postgresql15 ..."
+    dnf install -y postgresql15
+    echo "[run-migrations] postgresql15 installed."
+fi
+
 GRANT_SQL="/tmp/grant-production-tables.sql"
 aws s3 cp "s3://$DEPLOY_BUCKET/infra-db/grant-production-tables.sql" "$GRANT_SQL" --region "$REGION"
 
