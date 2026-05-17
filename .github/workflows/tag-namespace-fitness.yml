@@ -41,6 +41,14 @@ jobs:
   # ADR-023: "bare v* tags are deprecated and must never be created by any
   # workflow or human."  Only the two frozen legacy tags (v0.1.0, v0.3.0)
   # are allowed to exist in the bare v* namespace.
+  #
+  # The check queries the remote tag set directly via `git ls-remote` rather
+  # than local tags.  Local tags can be stale in shallow clones or after
+  # tag-surgery that deletes remote tags — `git fetch --prune` does not prune
+  # tags unless `--prune-tags` is also passed, so local refs may survive long
+  # after the remote tag is gone.  Querying the remote is authoritative
+  # regardless of fetch-depth or clone state, and is verifiable locally with
+  # the same command.
   # ---------------------------------------------------------------------------
   fitness-1-no-stray-bare-tags:
     name: "Fitness #1 — No stray bare v* tags (ADR-023)"
@@ -48,25 +56,24 @@ jobs:
     timeout-minutes: 5
 
     steps:
-      - name: Checkout code (full history for complete tag list)
-        uses: actions/checkout@v6
-        with:
-          fetch-depth: 0
-
       - name: Check for stray bare v* tags
         run: |
           # ADR-023 frozen legacy set — these two bare tags predate the namespacing
           # scheme and are intentionally left in place as historical artifacts.
           ALLOWED="v0.1.0 v0.3.0"
 
-          echo "Scanning for bare v* tags not in the frozen legacy set..."
+          echo "Scanning REMOTE for bare v* tags not in the frozen legacy set..."
           echo "Allowed legacy tags: ${ALLOWED}"
           echo ""
 
-          # Collect all tags matching the bare semver pattern v<digit>...
-          # (i.e., NOT prefixed with app/, daemon/, services/contract/, etc.)
+          # Enumerate bare v* tags directly from the remote.
+          # `git ls-remote` works without a checkout and is immune to stale local
+          # refs.  The sed strips the leading hash+tab+refs/tags/ prefix; the
+          # grep -v removes peel lines (^{}) that appear for annotated tags.
           STRAY_TAGS=""
           while IFS= read -r tag; do
+            # Skip empty lines
+            [ -z "$tag" ] && continue
             # Check if this tag is in the allowed set
             FOUND=0
             for allowed in $ALLOWED; do
@@ -78,7 +85,7 @@ jobs:
             if [ "$FOUND" -eq 0 ]; then
               STRAY_TAGS="${STRAY_TAGS}  ${tag}"$'\n'
             fi
-          done < <(git tag --list 'v[0-9]*' | sort)
+          done < <(git ls-remote --tags origin 'refs/tags/v*' | sed 's#.*refs/tags/##' | grep -v '\^{}' | sort)
 
           if [ -n "$STRAY_TAGS" ]; then
             echo "FAIL: The following stray bare v* tags violate ADR-023:"
