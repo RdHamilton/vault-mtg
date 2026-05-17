@@ -1,13 +1,63 @@
-import { test, expect } from '@playwright/test';
+import { test, expect, type Page } from '@playwright/test';
 
 /**
- * Decks Page E2E Tests
+ * Decks Page E2E Tests (#2178)
  *
  * Tests the Decks page functionality including navigation and deck management.
- * Uses REST API backend for testing.
+ *
+ * /decks is behind ProtectedRoute. Tests inject a signed-in Clerk test state via
+ * window.__CLERK_TEST_STATE__ so ProtectedRoute renders the Decks content rather
+ * than the sign-in prompt (requires VITE_CLERK_TEST_MODE=true, set in
+ * playwright.config.ts webServer command).
+ *
+ * BFF-data mocking (#2178): in CI the BFF runs with a Clerk secret that does not
+ * accept the Clerk mock's stub token, so the real Clerk-protected /api/v1/decks
+ * endpoint rejects every request and the Decks page renders its error state. To
+ * keep these tests independent of a live authenticated BFF, GET /api/v1/decks is
+ * mocked via page.route() before navigation.
+ *
+ * Response envelope: the shared apiClient (services/apiClient.ts) unwraps every
+ * response as `data.data`, so mocked endpoints routed through it must return a
+ * `{ "data": <payload> }` envelope — a bare array would be dropped.
+ *
+ * The mock returns an empty deck list. The DeckBuilder "Build Around" tests are
+ * all guarded by `if (hasCards)` and therefore no-op safely when no decks exist.
  */
+
+/** Inject signed-in Clerk state before page load. Must be called before page.goto(). */
+async function setClerkSignedIn(page: Page): Promise<void> {
+  await page.addInitScript(() => {
+    (window as unknown as Record<string, unknown>).__CLERK_TEST_STATE__ = { isSignedIn: true };
+  });
+}
+
+/**
+ * Mock GET /api/v1/decks so the Decks page renders without a live authenticated
+ * BFF. Returns an empty list — the page reaches its empty state, not an error.
+ * Registered before page.goto().
+ */
+async function mockDecksEndpoint(page: Page): Promise<void> {
+  await page.route('**/api/v1/decks**', (route) => {
+    if (route.request().method() === 'GET') {
+      void route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        // apiClient unwraps response.data — return a { data } envelope.
+        body: JSON.stringify({ data: [] }),
+      });
+      return;
+    }
+    void route.continue();
+  });
+}
+
 test.describe('Decks', () => {
   test.beforeEach(async ({ page }) => {
+    // Inject signed-in Clerk state so ProtectedRoute passes through to Decks content.
+    await setClerkSignedIn(page);
+    // Mock the BFF deck list so the page does not depend on a live authenticated BFF.
+    await mockDecksEndpoint(page);
+
     await page.goto('/');
     await expect(page.locator('[data-testid="app-container"]')).toBeVisible();
 

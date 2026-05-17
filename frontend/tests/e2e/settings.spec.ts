@@ -1,10 +1,23 @@
 import { test, expect, type Page } from '@playwright/test';
 
 /**
- * Settings Page E2E Tests
+ * Settings Page E2E Tests (#2178)
  *
  * Tests the Settings page functionality including sections and buttons.
- * Uses REST API backend for testing.
+ *
+ * /settings is behind ProtectedRoute. Tests inject a signed-in Clerk test state
+ * via window.__CLERK_TEST_STATE__ so ProtectedRoute renders the Settings content
+ * rather than the sign-in prompt (requires VITE_CLERK_TEST_MODE=true, set in
+ * playwright.config.ts webServer command).
+ *
+ * BFF-data mocking (#2178): useSettings() fetches GET /api/v1/settings on mount.
+ * In CI the BFF runs with a Clerk secret that does not accept the Clerk mock's
+ * stub token, so that endpoint is mocked via page.route() before navigation so
+ * the page does not depend on a live authenticated BFF.
+ *
+ * Root cause of prior failure: the "Settings" describe block navigated to a
+ * protected route without injecting signed-in Clerk state, so ProtectedRoute
+ * rendered the sign-in prompt and every selector assertion timed out.
  */
 
 // ---------------------------------------------------------------------------
@@ -30,8 +43,33 @@ async function setClerkSignedIn(page: Page, user?: Partial<ClerkTestState>): Pro
   }, state);
 }
 
+/**
+ * Mock GET /api/v1/settings so the Settings page renders without a live
+ * authenticated BFF. Registered before page.goto().
+ *
+ * The shared apiClient (services/apiClient.ts) unwraps every response as
+ * `data.data`, so the body is a `{ "data": <payload> }` envelope.
+ */
+async function mockSettingsEndpoint(page: Page): Promise<void> {
+  await page.route('**/api/v1/settings', (route) => {
+    if (route.request().method() === 'GET') {
+      void route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ data: {} }),
+      });
+      return;
+    }
+    void route.continue();
+  });
+}
+
 test.describe('Settings', () => {
   test.beforeEach(async ({ page }) => {
+    // Inject signed-in Clerk state so ProtectedRoute passes through to Settings.
+    await setClerkSignedIn(page);
+    await mockSettingsEndpoint(page);
+
     await page.goto('/');
     await expect(page.locator('[data-testid="app-container"]')).toBeVisible();
 
@@ -110,7 +148,11 @@ test.describe('Settings', () => {
       const settingsContent = page.locator('.settings-content');
       await expect(settingsContent).toBeVisible();
 
-      const saveButton = page.locator('button').filter({ hasText: /save/i });
+      // Scope to the page-level action bar: the API-key section also renders a
+      // "Save" button, so an unscoped /save/i filter is ambiguous (#2178).
+      const saveButton = page
+        .locator('.settings-actions button')
+        .filter({ hasText: 'Save Settings' });
       await expect(saveButton).toBeVisible();
     });
 
@@ -119,7 +161,9 @@ test.describe('Settings', () => {
       const settingsContent = page.locator('.settings-content');
       await expect(settingsContent).toBeVisible();
 
-      const resetButton = page.locator('button').filter({ hasText: /reset|defaults/i });
+      const resetButton = page
+        .locator('.settings-actions button')
+        .filter({ hasText: 'Reset to Defaults' });
       await expect(resetButton).toBeVisible();
     });
   });
@@ -193,10 +237,10 @@ test.describe('@smoke Settings — User Profile section', () => {
   test('authenticated user navigates to /settings and sees their email address', async ({ page }) => {
     // Inject Clerk signed-in state with a known email before the page loads.
     await setClerkSignedIn(page, { email: 'smoke@example.com', firstName: 'Smoke', lastName: 'Tester' });
+    await mockSettingsEndpoint(page);
 
     await page.goto('/settings');
     await expect(page.locator('[data-testid="app-container"]')).toBeVisible();
-    await page.waitForURL('**/settings');
 
     // Expand the User Profile accordion section
     const userProfileButton = page.locator('button').filter({ hasText: /user profile/i });
@@ -210,6 +254,7 @@ test.describe('@smoke Settings — User Profile section', () => {
 
   test('authenticated user sees their display name on /settings', async ({ page }) => {
     await setClerkSignedIn(page, { firstName: 'Smoke', lastName: 'Tester', email: 'smoke@example.com' });
+    await mockSettingsEndpoint(page);
 
     await page.goto('/settings');
     await expect(page.locator('[data-testid="app-container"]')).toBeVisible();

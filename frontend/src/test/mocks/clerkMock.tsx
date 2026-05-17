@@ -72,7 +72,11 @@ export const useAuth = () => {
   };
 };
 
-// useUser — returns user info based on test state
+// useUser — returns user info based on test state.
+//
+// The user object exposes update() and setProfileImage() stubs that resolve
+// immediately so Profile.tsx's name-edit / avatar-edit save flows run through
+// their happy path in E2E tests without a real Clerk session (#2178).
 export const useUser = () => {
   const state = getTestState();
   if (!state.isSignedIn) return { isLoaded: true, isSignedIn: false, user: null };
@@ -87,6 +91,8 @@ export const useUser = () => {
       fullName: `${state.firstName ?? 'Test'} ${state.lastName ?? 'User'}`,
       imageUrl: '',
       primaryEmailAddress: { emailAddress: email },
+      update: (_params: { firstName?: string; lastName?: string }) => Promise.resolve(),
+      setProfileImage: (_params: { file: File | null }) => Promise.resolve(),
     },
   };
 };

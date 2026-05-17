@@ -1,18 +1,89 @@
-import { test, expect } from '@playwright/test';
+import { test, expect, type Page } from '@playwright/test';
 
 /**
- * Quests Page E2E Tests
+ * Quests Page E2E Tests (#2178)
  *
  * Tests the Quests page functionality.
- * Uses REST API backend for testing.
+ *
+ * /quests is behind ProtectedRoute. Tests inject a signed-in Clerk test state
+ * via window.__CLERK_TEST_STATE__ so ProtectedRoute renders the Quests content
+ * rather than the sign-in prompt (requires VITE_CLERK_TEST_MODE=true, set in
+ * playwright.config.ts webServer command).
+ *
+ * BFF-data mocking (#2178): the Quests page fetches several Clerk-protected
+ * endpoints on mount (/quests/*, /system/account). In CI the BFF runs with a
+ * Clerk secret that does not accept the Clerk mock's stub token, so those
+ * endpoints are mocked via page.route() before navigation so the page does not
+ * depend on a live authenticated BFF.
+ *
+ * Root cause of prior failure: navigating to a protected route without injecting
+ * signed-in Clerk state — ProtectedRoute rendered the sign-in prompt and the
+ * Quests `h1` never appeared.
  *
  * AC4 coverage (#2008): Quest page navigation must produce no ERR_CONNECTION_REFUSED
  * errors for /system/account — that endpoint is served by the BFF (port 8080),
  * not the daemon (port 9001). The fix routes getCurrentAccount() through the BFF
  * client so the page loads account data even when the daemon is offline.
  */
+
+/** Inject signed-in Clerk state before page load. Must be called before page.goto(). */
+async function setClerkSignedIn(page: Page): Promise<void> {
+  await page.addInitScript(() => {
+    (window as unknown as Record<string, unknown>).__CLERK_TEST_STATE__ = { isSignedIn: true };
+  });
+}
+
+/**
+ * Mock the Clerk-protected endpoints the Quests page fetches on mount so it
+ * renders without a live authenticated BFF. Registered before page.goto().
+ *
+ * The shared apiClient (services/apiClient.ts) unwraps every response as
+ * `data.data`, so every body below is a `{ "data": <payload> }` envelope.
+ */
+async function mockQuestsEndpoints(page: Page): Promise<void> {
+  await page.route('**/api/v1/quests/active', (route) => {
+    void route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({ data: { quests: [] } }),
+    });
+  });
+  await page.route('**/api/v1/quests/history**', (route) => {
+    void route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({ data: [] }),
+    });
+  });
+  await page.route('**/api/v1/quests/wins/daily', (route) => {
+    void route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({ data: { dailyWins: 0, goal: 0 } }),
+    });
+  });
+  await page.route('**/api/v1/quests/wins/weekly', (route) => {
+    void route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({ data: { weeklyWins: 0, goal: 0 } }),
+    });
+  });
+  await page.route('**/api/v1/system/account', (route) => {
+    void route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({ data: {} }),
+    });
+  });
+}
+
 test.describe('Quests', () => {
   test.beforeEach(async ({ page }) => {
+    // Inject signed-in Clerk state so ProtectedRoute passes through to Quests.
+    await setClerkSignedIn(page);
+    await mockQuestsEndpoints(page);
+
     await page.goto('/');
     await expect(page.locator('[data-testid="app-container"]')).toBeVisible();
 

@@ -1,10 +1,9 @@
-import { test, expect } from '@playwright/test';
+import { test, expect, type Page } from '@playwright/test';
 
 /**
- * Collection Page E2E Tests
+ * Collection Page E2E Tests (#1459, #2178)
  *
  * Tests the Collection page functionality including navigation and filters.
- * Uses REST API backend for testing.
  *
  * /collection is behind ProtectedRoute. Tests inject a signed-in Clerk test
  * state via window.__CLERK_TEST_STATE__ so ProtectedRoute renders the
@@ -12,16 +11,108 @@ import { test, expect } from '@playwright/test';
  * to be started with VITE_CLERK_TEST_MODE=true (set in playwright.config.ts
  * webServer command).
  *
- * Fixes: https://github.com/RdHamilton/MTGA-Companion/issues/1459
- * Root cause of prior skip: missing Clerk test state injection meant
- * ProtectedRoute redirected to sign-in and the page never loaded.
+ * BFF-data mocking (#2178): in CI the BFF runs with a Clerk secret that does
+ * not accept the Clerk mock's stub token, so the real Clerk-protected
+ * /api/v1/collection/* and /api/v1/cards/* endpoints reject every request and
+ * the page renders its error state instead of the collection UI. To keep these
+ * tests independent of a live authenticated BFF, the collection and card
+ * endpoints are mocked via page.route() before navigation.
+ *
+ * Root cause of prior failure: the Clerk mock's stub token was rejected by the
+ * real Clerk-backed BFF, so getCollectionWithMetadata() / getAllSetInfo() threw
+ * and the Collection page never rendered its content.
  */
+
+// ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
+
+/** Inject signed-in Clerk state before page load. Must be called before page.goto(). */
+async function setClerkSignedIn(page: Page): Promise<void> {
+  await page.addInitScript(() => {
+    (window as unknown as Record<string, unknown>).__CLERK_TEST_STATE__ = { isSignedIn: true };
+  });
+}
+
+/**
+ * Mock the Clerk-protected collection + card endpoints so the Collection page
+ * renders without a live authenticated BFF. Registered before page.goto().
+ *
+ * Empty-but-valid envelopes are returned so the page reaches its rendered
+ * (empty) state rather than an error state.
+ *
+ * Response envelope: the shared apiClient (services/apiClient.ts) unwraps every
+ * response as `data.data`, so every body below is a `{ "data": <payload> }`
+ * envelope — a bare object/array would be dropped.
+ */
+async function mockCollectionEndpoints(page: Page): Promise<void> {
+  // POST /api/v1/collection — the main collection query.
+  await page.route('**/api/v1/collection', (route) => {
+    void route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({
+        data: {
+          cards: [],
+          totalCount: 0,
+          filterCount: 0,
+          unknownCardsRemaining: 0,
+          unknownCardsFetched: 0,
+        },
+      }),
+    });
+  });
+
+  // GET /api/v1/collection/value — collection value summary.
+  await page.route('**/api/v1/collection/value', (route) => {
+    void route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({
+        data: {
+          totalValueUsd: 0,
+          totalValueEur: 0,
+          uniqueCardsWithPrice: 0,
+          cardCount: 0,
+          valueByRarity: {},
+          topCards: [],
+        },
+      }),
+    });
+  });
+
+  // GET /api/v1/collection/stats and /collection/sets — defensive coverage.
+  await page.route('**/api/v1/collection/stats', (route) => {
+    void route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({ data: {} }),
+    });
+  });
+  await page.route('**/api/v1/collection/sets', (route) => {
+    void route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({ data: [] }),
+    });
+  });
+
+  // GET /api/v1/cards/sets — set metadata used by the set filter.
+  await page.route('**/api/v1/cards/sets', (route) => {
+    void route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({ data: [] }),
+    });
+  });
+}
+
 test.describe('Collection', () => {
   test.beforeEach(async ({ page }) => {
     // Inject signed-in Clerk state so ProtectedRoute passes through to Collection content.
-    await page.addInitScript(() => {
-      (window as unknown as Record<string, unknown>).__CLERK_TEST_STATE__ = { isSignedIn: true };
-    });
+    await setClerkSignedIn(page);
+    // Mock the BFF data endpoints so the page does not depend on a live authenticated BFF.
+    await mockCollectionEndpoints(page);
 
     await page.goto('/');
     await expect(page.locator('[data-testid="app-container"]')).toBeVisible();

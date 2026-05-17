@@ -27,10 +27,17 @@ async function mockPostHogFlag(
 }
 
 /**
- * Download Page E2E Tests
+ * Download Page E2E Tests (#2178)
  *
  * Verifies the daemon download section is visible, download links have correct
  * hrefs pointing to GitHub Releases, and the getting-started steps are displayed.
+ *
+ * Updated for the VaultMTG rebrand (#2178): the daemon download UI now reads
+ * "Get Started with VaultMTG", ships a single macOS Universal binary
+ * (vaultmtg-daemon-darwin-universal) plus a Windows binary
+ * (vaultmtg-daemon-windows-amd64) — the legacy "MTGA Companion" copy and the
+ * separate Apple-Silicon / Intel artifacts no longer exist. Assertions track
+ * src/components/DaemonDownload.tsx.
  */
 test.describe('Download Page', () => {
   test.beforeEach(async ({ page }) => {
@@ -45,7 +52,7 @@ test.describe('Download Page', () => {
 
   test('@smoke should display the page title', async ({ page }) => {
     await expect(page.locator('[data-testid="daemon-download-title"]')).toHaveText(
-      'Get Started with MTGA Companion'
+      'Get Started with VaultMTG'
     );
   });
 
@@ -55,35 +62,26 @@ test.describe('Download Page', () => {
 
   test.describe('Download Links', () => {
     test('@smoke Windows download link has correct href', async ({ page }) => {
-      const link = page.locator('[data-testid="download-link-windows-amd64"]');
+      const link = page.locator('[data-testid="download-link-vaultmtg-daemon-windows-amd64"]');
       await expect(link).toBeVisible();
       await expect(link).toHaveAttribute(
         'href',
-        `${RELEASES_BASE}/mtga-companion-daemon-windows-amd64.exe`
+        `${RELEASES_BASE}/vaultmtg-daemon-windows-amd64.exe`
       );
     });
 
-    test('@smoke macOS Apple Silicon download link has correct href', async ({ page }) => {
-      const link = page.locator('[data-testid="download-link-darwin-arm64"]');
+    test('@smoke macOS Universal download link has correct href', async ({ page }) => {
+      const link = page.locator('[data-testid="download-link-vaultmtg-daemon-darwin-universal"]');
       await expect(link).toBeVisible();
       await expect(link).toHaveAttribute(
         'href',
-        `${RELEASES_BASE}/mtga-companion-daemon-darwin-arm64.dmg`
+        `${RELEASES_BASE}/vaultmtg-daemon-darwin-universal.dmg`
       );
     });
 
-    test('@smoke macOS Intel download link has correct href', async ({ page }) => {
-      const link = page.locator('[data-testid="download-link-darwin-amd64"]');
-      await expect(link).toBeVisible();
-      await expect(link).toHaveAttribute(
-        'href',
-        `${RELEASES_BASE}/mtga-companion-daemon-darwin-amd64.dmg`
-      );
-    });
-
-    test('exactly 3 download links are rendered', async ({ page }) => {
+    test('exactly 2 download links are rendered', async ({ page }) => {
       const buttons = page.locator('[data-testid="daemon-download-buttons"] a');
-      await expect(buttons).toHaveCount(3);
+      await expect(buttons).toHaveCount(2);
     });
 
     test('each download link has the download attribute', async ({ page }) => {
@@ -96,8 +94,7 @@ test.describe('Download Page', () => {
 
     test('platform descriptions are visible', async ({ page }) => {
       await expect(page.getByText('Windows 10/11 64-bit')).toBeVisible();
-      await expect(page.getByText('macOS 12+ on M1/M2/M3')).toBeVisible();
-      await expect(page.getByText('macOS 12+ on Intel')).toBeVisible();
+      await expect(page.getByText('macOS 12+ — Apple Silicon and Intel')).toBeVisible();
     });
   });
 
@@ -120,7 +117,7 @@ test.describe('Download Page', () => {
   });
 
   test('navigating from nav tab reaches download page', async ({ page }) => {
-    // Start from match history
+    // Start from the default landing page.
     await page.goto('/');
     await expect(page.locator('[data-testid="app-container"]')).toBeVisible();
 
@@ -132,6 +129,19 @@ test.describe('Download Page', () => {
   });
 });
 
+/**
+ * Feature-flag-OFF coverage.
+ *
+ * NOT @smoke-tagged (#2178): the coming-soon CTA only renders when the
+ * `daemon_download_enabled` PostHog flag resolves to false. useFeatureFlag
+ * (src/hooks/useFeatureFlag.ts) defaults to `true` whenever PostHog is not
+ * initialized — and the CI smoke harness does not set VITE_POSTHOG_KEY, so
+ * posthog.init() never runs, PostHog never requests /decide, and the
+ * mockPostHogFlag() route is never hit. The flag is therefore always ON in the
+ * smoke project, so the flag-OFF assertions cannot pass there. These tests stay
+ * in the `full` project, to be run against an environment with PostHog
+ * configured. The flag-ON @smoke tests above match the CI default and remain.
+ */
 test.describe('Download Page — feature flag OFF (coming soon)', () => {
   test.beforeEach(async ({ page }) => {
     await mockPostHogFlag(page, 'daemon_download_enabled', false);
@@ -139,7 +149,7 @@ test.describe('Download Page — feature flag OFF (coming soon)', () => {
     await expect(page.locator('[data-testid="app-container"]')).toBeVisible();
   });
 
-  test('@smoke should show coming-soon CTA when daemon_download_enabled flag is off', async ({ page }) => {
+  test('should show coming-soon CTA when daemon_download_enabled flag is off', async ({ page }) => {
     await expect(page.locator('[data-testid="daemon-download-coming-soon"]')).toBeVisible();
   });
 

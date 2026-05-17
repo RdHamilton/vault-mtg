@@ -1,4 +1,4 @@
-import { test, expect } from '@playwright/test';
+import { test, expect, type Page } from '@playwright/test';
 
 /**
  * Daemon Onboarding Flow E2E tests (#1398)
@@ -6,18 +6,37 @@ import { test, expect } from '@playwright/test';
  * Verifies that the OnboardingModal appears for a new user whose daemon
  * is not connected, and that the 3-step flow works correctly.
  *
- * The BFF's /api/v1/health/daemon endpoint must return disconnected for
- * these tests. In the test environment, the BFF starts in daemon=false
- * mode, so the daemon health endpoint returns disconnected by default.
+ * The BFF's /api/v1/health/daemon endpoint is mocked per-test to return
+ * disconnected so the onboarding modal triggers deterministically.
  *
- * Note: Onboarding modal visibility is gated on:
+ * Note: Onboarding modal visibility is gated on (useDaemonOnboarding):
  * 1. User is signed in (Clerk test mode provides mock auth)
  * 2. Daemon is disconnected (BFF health check returns disconnected)
  * 3. User has not previously dismissed/completed onboarding (localStorage is clean)
+ *
+ * Fix (#2178): added setClerkSignedIn() injection in beforeEach. Without it the
+ * Clerk mock (src/test/mocks/clerkMock.tsx) defaults to isSignedIn: false, so
+ * useDaemonOnboarding's autoShow gate (which requires isSignedIn) never fires
+ * and the onboarding modal never appears — every assertion timed out in CI.
+ * The mock reads window.__CLERK_TEST_STATE__ injected via addInitScript, and
+ * addInitScript persists across every navigation in the page's context, so a
+ * single injection in beforeEach covers all the page.goto() calls below.
  */
+
+/** Inject signed-in Clerk state before page load. addInitScript persists across navigations. */
+async function setClerkSignedIn(page: Page): Promise<void> {
+  await page.addInitScript((s) => {
+    (window as unknown as Record<string, unknown>).__CLERK_TEST_STATE__ = s;
+  }, { isSignedIn: true, firstName: 'Test', lastName: 'User' });
+}
 
 test.describe('Daemon Onboarding Flow', () => {
   test.beforeEach(async ({ page }) => {
+    // Inject signed-in Clerk state so useDaemonOnboarding's autoShow gate
+    // (isSignedIn && daemonStatus === 'disconnected' && !hasSeenOnboarding)
+    // can fire. Without this the modal never appears (#2178).
+    await setClerkSignedIn(page);
+
     // Clear localStorage so onboarding state is fresh for each test
     await page.goto('/');
     await page.evaluate(() => {

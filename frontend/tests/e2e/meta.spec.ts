@@ -1,13 +1,56 @@
-import { test, expect } from '@playwright/test';
+import { test, expect, type Page } from '@playwright/test';
 
 /**
- * Meta Page E2E Tests
+ * Meta Page E2E Tests (#2178)
  *
  * Tests the Meta page functionality including format selection and error states.
- * Uses REST API backend for testing.
+ *
+ * /meta is behind ProtectedRoute. Tests inject a signed-in Clerk test state via
+ * window.__CLERK_TEST_STATE__ so ProtectedRoute renders the Meta content rather
+ * than the sign-in prompt (requires VITE_CLERK_TEST_MODE=true, set in
+ * playwright.config.ts webServer command).
+ *
+ * BFF-data mocking (#2178): the Meta page fetches the Clerk-protected
+ * /api/v1/meta/archetypes endpoint on mount. In CI the BFF runs with a Clerk
+ * secret that does not accept the Clerk mock's stub token, so that endpoint is
+ * mocked via page.route() before navigation so the page does not depend on a
+ * live authenticated BFF.
+ *
+ * Root cause of prior failure: navigating to a protected route without
+ * injecting signed-in Clerk state — ProtectedRoute rendered the sign-in prompt
+ * and the `.meta-page` container never appeared.
  */
+
+/** Inject signed-in Clerk state before page load. Must be called before page.goto(). */
+async function setClerkSignedIn(page: Page): Promise<void> {
+  await page.addInitScript(() => {
+    (window as unknown as Record<string, unknown>).__CLERK_TEST_STATE__ = { isSignedIn: true };
+  });
+}
+
+/**
+ * Mock GET /api/v1/meta/archetypes so the Meta page renders without a live
+ * authenticated BFF. Registered before page.goto().
+ *
+ * The shared apiClient (services/apiClient.ts) unwraps every response as
+ * `data.data`, so the body is a `{ "data": <payload> }` envelope.
+ */
+async function mockMetaEndpoint(page: Page): Promise<void> {
+  await page.route('**/api/v1/meta/archetypes**', (route) => {
+    void route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({ data: [] }),
+    });
+  });
+}
+
 test.describe('Meta', () => {
   test.beforeEach(async ({ page }) => {
+    // Inject signed-in Clerk state so ProtectedRoute passes through to Meta.
+    await setClerkSignedIn(page);
+    await mockMetaEndpoint(page);
+
     await page.goto('/');
     await expect(page.locator('[data-testid="app-container"]')).toBeVisible();
 

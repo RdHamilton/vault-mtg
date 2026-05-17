@@ -1,16 +1,22 @@
 import { test, expect } from '@playwright/test';
 
 /**
- * Vercel BFF Connectivity Smoke Tests (#1243)
+ * Vercel BFF Connectivity tests (#1243)
  *
  * Verifies that the SPA loads correctly and that the BFF API is reachable
- * from the deployed Vercel frontend without CORS errors.
+ * from a *deployed* frontend without CORS errors.
  *
  * Run against a Vercel preview URL:
  *   PLAYWRIGHT_BASE_URL=https://<preview>.vercel.app npx playwright test tests/e2e/smoke.spec.ts
  *
- * Note: The baseURL in playwright.config.ts defaults to localhost:3000.
- * Override with PLAYWRIGHT_BASE_URL env var when targeting Vercel previews.
+ * These tests are intentionally NOT tagged @smoke (#2178):
+ * the smoke project's CI webServer builds a production bundle and runs the BFF
+ * on localhost. The cross-origin CORS path these tests exercise only exists on
+ * a real Vercel preview deployment with a distinct origin — against localhost
+ * the SPA and BFF share an origin so there is no CORS preflight to verify, and
+ * the BFF connectivity probes are redundant with the page-level smoke checks in
+ * the page-specific specs. Keep them in the `full` project, run against a live
+ * preview URL via PLAYWRIGHT_BASE_URL.
  *
  * Coverage gap: Automated CORS header inspection requires a live preview URL
  * with a distinct origin. Run this suite against the Vercel preview URL and
@@ -20,7 +26,7 @@ import { test, expect } from '@playwright/test';
 const BASE_URL = process.env.PLAYWRIGHT_BASE_URL ?? 'http://localhost:3000';
 const BFF_URL = process.env.VITE_API_BASE_URL ?? 'http://localhost:8080';
 
-test.describe('@smoke Vercel BFF Connectivity', () => {
+test.describe('Vercel BFF Connectivity', () => {
   test('SPA loads — root element visible', async ({ page }) => {
     await page.goto(BASE_URL);
 
@@ -100,28 +106,41 @@ test.describe('@smoke Vercel BFF Connectivity', () => {
 });
 
 // ---------------------------------------------------------------------------
-// EnvBadge smoke assertions (#1495)
+// EnvBadge visibility (#1495, #2178)
 //
 // The EnvBadge component is gated by import.meta.env.MODE !== 'production'.
 // In development / preview / staging the badge renders with data-testid="env-badge".
-// In production builds it returns null — the element must NOT be present.
+// In production builds it returns null AND is dead-code-eliminated by the bundler.
 //
-// The dev server (playwright.config.ts webServer) starts Vite in development
-// mode, so MODE is always 'development' during local Playwright runs and in CI
-// preview deployments — the badge WILL be visible.
+// The smoke project's CI webServer runs `vite build` (a *production*-mode build)
+// then `vite preview`, so MODE === 'production' there — the badge is absent and
+// the element is tree-shaken out. The dev-build badge assertion therefore cannot
+// be validated by the smoke webServer and must NOT be @smoke-tagged (#2178).
 //
-// Against the production CloudFront URL (PLAYWRIGHT_BASE_URL=https://app.vaultmtg.app)
-// the badge must be absent. The test is skipped when no production URL is provided
-// rather than failing, so CI stays green on preview runs.
+// - "EnvBadge is visible in development build" runs only against an explicitly
+//   dev-mode target (local `vite dev`, or PLAYWRIGHT_ENV=development) and is
+//   skipped otherwise. Not @smoke.
+// - "EnvBadge is NOT present in production build" verifies the production
+//   guarantee. It runs against the production bundle the smoke webServer builds,
+//   or against the production CloudFront URL, and IS @smoke-tagged.
 // ---------------------------------------------------------------------------
 
 const IS_PRODUCTION_URL =
   BASE_URL.includes('app.vaultmtg.app') ||
   process.env.PLAYWRIGHT_ENV === 'production';
 
-test.describe('@smoke EnvBadge visibility', () => {
-  test('EnvBadge is visible in development / preview build', async ({ page }) => {
-    test.skip(IS_PRODUCTION_URL, 'Skipped: targeting a production URL where EnvBadge is hidden');
+// In CI the smoke webServer builds a production bundle, so the badge is absent.
+// Treat the smoke run as a production-mode target unless explicitly told the
+// target was built in development mode.
+const IS_DEV_BUILD = process.env.PLAYWRIGHT_ENV === 'development';
+
+test.describe('EnvBadge visibility', () => {
+  test('EnvBadge is visible in a development build', async ({ page }) => {
+    test.skip(
+      !IS_DEV_BUILD,
+      'Skipped: the smoke webServer builds a production bundle (EnvBadge is tree-shaken). ' +
+        'Run with PLAYWRIGHT_ENV=development against a dev build to validate.',
+    );
 
     await page.goto(BASE_URL);
     await expect(page.locator('[data-testid="app-container"]')).toBeVisible();
@@ -129,8 +148,21 @@ test.describe('@smoke EnvBadge visibility', () => {
     await expect(page.locator('[data-testid="env-badge"]')).toBeVisible();
   });
 
-  test('EnvBadge is NOT present in production build', async ({ page }) => {
-    test.skip(!IS_PRODUCTION_URL, 'Skipped: not targeting a production URL');
+  test('@smoke EnvBadge is NOT present in a production build', async ({ page }) => {
+    test.skip(
+      IS_DEV_BUILD,
+      'Skipped: target was built in development mode where EnvBadge is intentionally visible.',
+    );
+
+    await page.goto(BASE_URL);
+    await expect(page.locator('[data-testid="app-container"]')).toBeVisible();
+
+    // In a production build the badge returns null and is dead-code-eliminated.
+    await expect(page.locator('[data-testid="env-badge"]')).not.toBeAttached();
+  });
+
+  test('production CloudFront URL hides EnvBadge', async ({ page }) => {
+    test.skip(!IS_PRODUCTION_URL, 'Skipped: not targeting the production CloudFront URL');
 
     await page.goto(BASE_URL);
     await expect(page.locator('[data-testid="app-container"]')).toBeVisible();
