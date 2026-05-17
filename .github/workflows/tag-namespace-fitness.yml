@@ -130,13 +130,6 @@ jobs:
           echo "Checking ADR-023 Fitness #4: daemon/v* release must be 'latest'..."
           echo ""
 
-          # Fetch all releases with their isLatest flag, tag name, and creation date.
-          # Limit to 50 releases — more than enough for any realistic release history.
-          RELEASES=$(gh api repos/RdHamilton/MTGA-Companion/releases \
-            --paginate \
-            --jq '.[] | {tagName: .tag_name, isLatest: .make_latest // false, createdAt: .created_at, id: .id}' \
-            2>/dev/null || true)
-
           # Use the GitHub API's dedicated latest-release endpoint to get the
           # release currently flagged as "latest".  This is the canonical source
           # of truth for what releases/latest/download/ resolves to.
@@ -192,11 +185,6 @@ jobs:
           # is flagged as latest.  This catches edge cases where the API returns
           # a cached or inconsistent state.
           echo "Checking that no app/v* release is flagged as 'latest'..."
-
-          APP_LATEST=$(gh api repos/RdHamilton/MTGA-Companion/releases \
-            --paginate \
-            --jq '[.[] | select(.tag_name | startswith("app/v")) | select(.make_latest == true)] | length' \
-            2>/dev/null || echo "0")
 
           # GitHub's REST API releases endpoint exposes make_latest only on
           # create/edit; the list endpoint uses the prerelease field instead.
