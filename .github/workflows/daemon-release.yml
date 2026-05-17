@@ -70,22 +70,16 @@ jobs:
         run: go test -race ./...
 
       - name: Resolve semver tag for GoReleaser
-        # GoReleaser v2 requires the GORELEASER_CURRENT_TAG value to exist as
-        # an actual git tag (it validates tag-to-commit alignment). Our mono-repo
-        # uses 'daemon/v*' tags for namespacing, which are not valid semver.
-        #
-        # Fix: strip the 'daemon/' prefix to get a plain semver string, then
-        # create a local-only git tag with that name pointing at the same commit.
-        # The local tag satisfies GoReleaser's validation without pushing a
-        # duplicate tag to the remote.
+        # Strip the 'daemon/' prefix to get a plain semver string used for:
+        #   - PLAIN_VERSION env var (passed to GoReleaser for binary version embedding)
+        #   - GORELEASER_CURRENT_TAG remains the full daemon/v* tag so the GitHub
+        #     Release is published at the correct namespaced tag, never squatting
+        #     the bare v* namespace that the application release owns.
         id: semver
         run: |
           RAW="${{ github.ref_name }}"
           SEMVER="${RAW#daemon/}"
           echo "tag=${SEMVER}" >> "$GITHUB_OUTPUT"
-          # Create a local alias tag so GoReleaser's tag-to-commit validation passes.
-          # Use -f to overwrite if the tag already exists locally (e.g. fetched from remote).
-          git tag -f "${SEMVER}"
 
       - name: Run GoReleaser
         uses: goreleaser/goreleaser-action@v6
@@ -98,9 +92,12 @@ jobs:
           GONOSUMDB: github.com/RdHamilton/MTGA-Companion
           GOPRIVATE: github.com/RdHamilton/MTGA-Companion
           GITHUB_WORKSPACE: ${{ github.workspace }}
-          # Override the version GoReleaser reads from git so it sees the plain
-          # semver (e.g. 'v0.3.1-rc1') instead of the prefixed tag ('daemon/v0.3.1-rc1').
-          GORELEASER_CURRENT_TAG: ${{ steps.semver.outputs.tag }}
+          # Use the full daemon/v* tag so GoReleaser publishes the GitHub Release
+          # at the correctly-namespaced tag, never squatting the bare v* namespace.
+          GORELEASER_CURRENT_TAG: ${{ github.ref_name }}
+          # Plain semver (e.g. 'v0.3.1') used by .goreleaser.yml ldflags to embed
+          # a clean version string in the binary ({{ .Env.PLAIN_VERSION }}).
+          PLAIN_VERSION: ${{ steps.semver.outputs.tag }}
 
       - name: Upload darwin universal binary for sign-macos
         # Share the unsigned darwin binary so sign-macos can sign and notarize it.
@@ -294,8 +291,9 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          RAW="${GITHUB_REF#refs/tags/}"
-          TAG="${RAW#daemon/}"
+          # Use the full daemon/v* tag so assets land on the correctly-namespaced
+          # release, not a bare v* tag that squats the application release namespace.
+          TAG="${GITHUB_REF#refs/tags/}"
           gh release upload "$TAG" \
             "${{ env.PKG }}" \
             "${{ env.DMG }}" \
@@ -317,10 +315,12 @@ jobs:
           # The default GITHUB_TOKEN cannot write environment variables.
           GH_TOKEN: ${{ secrets.GH_VARIABLES_PAT }}
         run: |
-          SEMVER="${GITHUB_REF_NAME#daemon/}"
+          # Use the full daemon/v* tag so the frontend builds correct download URLs.
+          # The GitHub Release now lives at the daemon/v* tag, so VITE_DAEMON_VERSION
+          # must match that tag for release asset URLs to resolve.
           gh variable set VITE_DAEMON_VERSION \
             --env staging \
-            --body "$SEMVER" \
+            --body "${{ github.ref_name }}" \
             --repo "${{ github.repository }}"
           gh workflow run deploy-spa-staging.yml \
             --ref main \

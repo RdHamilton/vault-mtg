@@ -137,7 +137,7 @@ builds:
       - goos: windows
         goarch: arm64
     ldflags:
-      - -s -w -X main.Version={{ .Version }}
+      - -s -w -X main.Version={{ .Env.PLAIN_VERSION }}
     mod_timestamp: "{{ .CommitTimestamp }}"
     # Windows NSIS installer -- compiled after the Windows amd64 binary is built.
     # makensis is available on ubuntu runners via apt; skipped in snapshot mode.
@@ -148,7 +148,7 @@ builds:
             [ "${TARGET_GOOS}" != "windows" ] && exit 0;
             command -v makensis >/dev/null 2>&1 || exit 0;
             makensis
-            -DVERSION={{ .Version }}
+            -DVERSION={{ .Env.PLAIN_VERSION }}
             "-DBINARY_PATH={{ .Path }}"
             services/daemon/install/windows/nsis/installer.nsi'
           env:
