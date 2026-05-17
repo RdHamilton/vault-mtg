@@ -428,18 +428,17 @@ jobs:
         fi
 
     # Downloads stage-binary.sh from S3 and runs it on EC2.
-    # DEPLOY_BUCKET and DEPLOY_SHA are passed as SSM environment variables so no
-    # values containing special characters are embedded in the JSON command string.
+    # DEPLOY_BUCKET and DEPLOY_SHA are exported inside the SSM commands string
+    # so stage-binary.sh can read them as environment variables.
     - name: Stage binary on EC2 via SSM
       run: |
         COMMAND_ID=$(aws ssm send-command \
           --instance-ids "${{ secrets.EC2_INSTANCE_ID }}" \
           --document-name "AWS-RunShellScript" \
-          --parameters 'commands=["aws s3 cp s3://${{ secrets.DEPLOY_BUCKET }}/scripts/stage-binary.sh /tmp/stage-binary.sh && chmod +x /tmp/stage-binary.sh && /tmp/stage-binary.sh"]' \
+          --parameters 'commands=["export DEPLOY_BUCKET=${{ secrets.DEPLOY_BUCKET }} && export DEPLOY_SHA=${{ github.sha }} && aws s3 cp s3://${{ secrets.DEPLOY_BUCKET }}/scripts/stage-binary.sh /tmp/stage-binary.sh && chmod +x /tmp/stage-binary.sh && /tmp/stage-binary.sh"]' \
           --region us-east-1 \
           --query "Command.CommandId" \
-          --output text \
-          --environment-variables "DEPLOY_BUCKET=${{ secrets.DEPLOY_BUCKET }},DEPLOY_SHA=${{ github.sha }}")
+          --output text)
 
         echo "Stage SSM Command ID: $COMMAND_ID"
 
