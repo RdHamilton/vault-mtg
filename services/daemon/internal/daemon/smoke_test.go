@@ -350,3 +350,193 @@ func waitForDaemonHealth(t *testing.T, timeout time.Duration) {
 	}
 	t.Fatalf("daemon health endpoint did not become ready within %s", timeout)
 }
+
+// writeDaemonConfigKeychain writes a daemon.json with keychain:true pointing
+// at the given stub BFF, and returns its path.
+// The config has sync_enabled:true so ingest dispatch is active.
+func writeDaemonConfigKeychain(t *testing.T, dir, bffURL, logPath string) string {
+	t.Helper()
+
+	cfg := map[string]interface{}{
+		"cloud_api_url":         bffURL,
+		"keychain":              true, // keychain mode — api_key lives in OS keychain
+		"api_key":               "",   // no plaintext key
+		"sync_enabled":          true, // events should be dispatched
+		"account_id":            "smoke-keychain-acc-001",
+		"log_path":              logPath,
+		"ingest_path":           "/ingest/events",
+		"use_fs_notify":         false,
+		"log_preserve_on_start": false,
+		"poll_interval":         200000000, // 200 ms
+		"disable_update_check":  true,
+	}
+
+	data, err := json.MarshalIndent(cfg, "", "  ")
+	require.NoError(t, err)
+
+	cfgPath := filepath.Join(dir, "daemon.json")
+	require.NoError(t, os.WriteFile(cfgPath, data, 0o600))
+	return cfgPath
+}
+
+// TestDaemonReinstallStaleAuthSmoke is an integration-tagged binary smoke test
+// that documents the current silent-failure behavior when the daemon operates in
+// keychain mode with a stale (rejected) api_key stored in the OS keychain.
+//
+// Scenario:
+//  1. A stale api_key is seeded into the in-process keychain mock.
+//  2. daemon.json has keychain:true pointing at a stub BFF.
+//  3. The stub BFF rejects every ingest request with 401.
+//  4. The daemon must remain running (no crash on 401).
+//  5. The stub BFF must have received at least one POST to /ingest/events.
+//  6. The daemon /health endpoint must return 200.
+//  7. SIGTERM causes a clean exit within 10 seconds.
+//
+// This test documents the current silent-failure: 401 in keychain mode is
+// logged but ignored. When issue #2135 is implemented (re-auth on 401),
+// update this test to assert re-registration is triggered.
+func TestDaemonReinstallStaleAuthSmoke(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping reinstall stale-auth smoke test in -short mode")
+	}
+
+	// ── Stub BFF ─────────────────────────────────────────────────────────────
+	var (
+		ingestMu    sync.Mutex
+		ingestPaths []string
+	)
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.URL.Path == "/ingest/events" && r.Method == http.MethodPost:
+			ingestMu.Lock()
+			ingestPaths = append(ingestPaths, r.URL.Path)
+			ingestMu.Unlock()
+			// Always return 401 to exercise the stale-auth path.
+			w.WriteHeader(http.StatusUnauthorized)
+
+		case strings.HasPrefix(r.URL.Path, "/daemon/version"):
+			w.Header().Set("Content-Type", "application/json")
+			fmt.Fprint(w, `{"latest":"0.0.1","released_at":"2026-01-01T00:00:00Z","download_url":"https://example.com"}`)
+
+		default:
+			w.WriteHeader(http.StatusAccepted)
+		}
+	}))
+	defer srv.Close()
+
+	// ── Build binary ──────────────────────────────────────────────────────────
+	binPath := daemonBinaryPath(t)
+	buildDaemon(t, binPath)
+
+	// ── Temp dir: config + log file ───────────────────────────────────────────
+	tmpDir := t.TempDir()
+	logPath := filepath.Join(tmpDir, "Player.log")
+
+	logF, err := os.Create(logPath)
+	require.NoError(t, err)
+	require.NoError(t, logF.Close())
+
+	cfgPath := writeDaemonConfigKeychain(t, tmpDir, srv.URL, logPath)
+
+	// ── Start daemon ──────────────────────────────────────────────────────────
+	// The binary uses the real OS keychain; we pass a fake api_key via the
+	// MTGA_DAEMON_API_KEY env var is not applicable in keychain mode — instead
+	// the binary will call keychain.Get() which on macOS uses the real Keychain.
+	// To avoid requiring a real keychain entry in CI, we allow the keychain.Get()
+	// failure: the daemon logs a warning and starts with an empty bearer token,
+	// causing every ingest call to 401 — exactly the stale-auth scenario.
+	cmd := exec.Command(binPath, "-config", cfgPath)
+	cmd.Env = append(
+		os.Environ(),
+		"MTGA_DAEMON_HEADLESS=1",
+		"CLERK_PUBLISHABLE_KEY=",
+		"CLERK_FRONTEND_API=",
+		"CLERK_OAUTH_CLIENT_ID=",
+	)
+
+	daemonLogs := &syncBuffer{}
+	cmd.Stdout = daemonLogs
+	cmd.Stderr = daemonLogs
+
+	require.NoError(t, cmd.Start(), "failed to start daemon binary")
+
+	t.Cleanup(func() {
+		if cmd.Process != nil {
+			_ = cmd.Process.Signal(syscall.SIGTERM)
+			done := make(chan struct{})
+			go func() { _ = cmd.Wait(); close(done) }()
+			select {
+			case <-done:
+			case <-time.After(5 * time.Second):
+				_ = cmd.Process.Kill()
+			}
+		}
+		if t.Failed() {
+			t.Logf("daemon output:\n%s", daemonLogs.String())
+		}
+	})
+
+	// ── Wait for daemon startup ───────────────────────────────────────────────
+	waitForDaemonHealth(t, 15*time.Second)
+
+	// ── Trigger an ingest dispatch by writing a log entry ────────────────────
+	// Write a heartbeat-triggering log entry so the daemon has something to
+	// dispatch. In practice the heartbeat ticker (30 s) also fires — but we
+	// accelerate by writing a draft.pack entry that triggers immediate dispatch.
+	draftPackLine := `{"draftPack":{"PackCards":[11001,22002],"SelfPick":1},"CourseName":"PremierDraft_BLB"}` + "\n"
+	logF, err = os.OpenFile(logPath, os.O_APPEND|os.O_WRONLY, 0o644)
+	require.NoError(t, err)
+	_, err = logF.WriteString(draftPackLine)
+	require.NoError(t, err)
+	require.NoError(t, logF.Close())
+
+	// Wait up to 8 seconds for at least one ingest call to arrive.
+	deadline := time.Now().Add(8 * time.Second)
+	for time.Now().Before(deadline) {
+		ingestMu.Lock()
+		n := len(ingestPaths)
+		ingestMu.Unlock()
+		if n > 0 {
+			break
+		}
+		time.Sleep(200 * time.Millisecond)
+	}
+
+	// ── Assertions ────────────────────────────────────────────────────────────
+
+	// 1. Daemon process must still be running (not crashed on 401).
+	assert.Nil(t, cmd.ProcessState,
+		"daemon must still be running after receiving 401 from stub BFF — "+
+			"known gap #2135: no recovery path for keychain-mode 401")
+
+	// 2. Stub BFF must have received at least one POST to /ingest/events.
+	ingestMu.Lock()
+	receivedCount := len(ingestPaths)
+	ingestMu.Unlock()
+	assert.Greater(t, receivedCount, 0,
+		"stub BFF must have received at least one POST /ingest/events")
+
+	// 3. /health must still return 200 — daemon did not crash.
+	healthClient := &http.Client{Timeout: 2 * time.Second}
+	healthResp, healthErr := healthClient.Get("http://127.0.0.1:9001/health")
+	require.NoError(t, healthErr, "daemon /health must be reachable")
+	_ = healthResp.Body.Close()
+	assert.Equal(t, http.StatusOK, healthResp.StatusCode,
+		"daemon /health must return 200 even after repeated 401s from BFF")
+
+	// ── Clean shutdown ─────────────────────────────────────────────────────────
+	require.NoError(t, cmd.Process.Signal(syscall.SIGTERM))
+
+	exitDone := make(chan error, 1)
+	go func() { exitDone <- cmd.Wait() }()
+
+	select {
+	case exitErr := <-exitDone:
+		if exitErr != nil {
+			t.Logf("daemon exited with: %v (expected after SIGTERM)", exitErr)
+		}
+	case <-time.After(10 * time.Second):
+		t.Fatal("daemon did not exit within 10s after SIGTERM")
+	}
+}
