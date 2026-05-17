@@ -132,6 +132,8 @@ cat > "${PLIST_PATH}" <<PLIST
         <string>${CLERK_PUBLISHABLE_KEY}</string>
         <key>CLERK_OAUTH_CLIENT_ID</key>
         <string>${CLERK_OAUTH_CLIENT_ID}</string>
+        <key>MTGA_DAEMON_CLOUD_API_URL</key>
+        <string>${CLOUD_API_URL}</string>
     </dict>
 
     <!-- Start automatically when the user logs in. -->
@@ -141,6 +143,10 @@ cat > "${PLIST_PATH}" <<PLIST
     <!-- Restart the daemon if it exits for any reason. -->
     <key>KeepAlive</key>
     <true/>
+
+    <!-- Minimum seconds between restarts to prevent launchd restart storms. -->
+    <key>ThrottleInterval</key>
+    <integer>10</integer>
 
     <key>StandardOutPath</key>
     <string>${LOG_FILE}</string>
