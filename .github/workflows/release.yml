@@ -227,7 +227,7 @@ jobs:
         GOPRIVATE: github.com/RdHamilton/MTGA-Companion
       run: |
         cd services/bff
-        GOOS=linux GOARCH=amd64 go build -o mtga-bff ./cmd/main.go
+        GOOS=linux GOARCH=amd64 go build -o mtga-bff ./cmd
 
     - name: Configure AWS credentials (OIDC)
       uses: aws-actions/configure-aws-credentials@v6

@@ -73,7 +73,7 @@ jobs:
         GOPRIVATE: github.com/RdHamilton/MTGA-Companion
       run: |
         cd services/bff
-        go build -o ../../bin/mtga-bff ./cmd/main.go
+        go build -o ../../bin/mtga-bff ./cmd
 
     # -----------------------------------------------------------------------
     # Frontend / Playwright setup (always required)
