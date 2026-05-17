@@ -145,7 +145,7 @@ func handleMissingConfig(cfgPath string) {
 	// The PKCE flow will fill in the real values.
 	cloudAPIURL := os.Getenv("MTGA_DAEMON_CLOUD_API_URL")
 	if cloudAPIURL == "" {
-		cloudAPIURL = "https://api.vaultmtg.app"
+		cloudAPIURL = "https://api.vaultmtg.app/api/v1"
 	}
 
 	stub := map[string]interface{}{
