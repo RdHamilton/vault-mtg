@@ -171,8 +171,26 @@ REAL_USER="${SUDO_USER:-$(stat -f '%Su' "${HOME}")}"
 REAL_UID=$(id -u "${REAL_USER}")
 
 echo "[postinstall] loading LaunchAgent into gui/${REAL_UID} (user: ${REAL_USER})"
-# Bootout any previous registration so bootstrap starts from a clean slate.
-launchctl asuser "${REAL_UID}" launchctl bootout "gui/${REAL_UID}" "${PLIST_PATH}" 2>/dev/null || true
+
+# ---------------------------------------------------------------------------
+# Stop any running daemon instance before installing the new one.
+# This prevents a reinstall from leaving the old process running alongside
+# the newly bootstrapped service (multi-instance bug).
+#
+# Try label-based bootout first (modern, macOS 10.11+), then fall back to the
+# file-path form for older systems. Use || true so the script never fails on a
+# fresh install where no prior service is registered.
+# ---------------------------------------------------------------------------
+echo "[postinstall] stopping any running daemon instance"
+launchctl asuser "${REAL_UID}" launchctl bootout "gui/${REAL_UID}/${PLIST_LABEL}" 2>/dev/null || \
+    launchctl asuser "${REAL_UID}" launchctl bootout "gui/${REAL_UID}" "${PLIST_PATH}" 2>/dev/null || true
+
+# Kill any stale processes that slipped past launchctl (e.g. orphaned after a
+# crash or a prior install that used a different label).
+pkill -x vaultmtg-daemon 2>/dev/null || true
+
+# Brief wait so the process has time to exit cleanly before bootstrap starts.
+sleep 1
 
 # Re-enable the label before bootstrapping. If a previous uninstall called
 # "launchctl bootout", launchd marks the label as disabled and a subsequent
