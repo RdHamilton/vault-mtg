@@ -177,7 +177,7 @@ universal_binaries:
           env:
             - IS_SNAPSHOT={{ .IsSnapshot }}
             - BINARY_PATH={{ .Path }}
-            - VERSION={{ .Version }}
+            - VERSION={{ .Env.PLAIN_VERSION }}
             - TEAM_ID={{ if index .Env "APPLE_TEAM_ID" }}{{ .Env.APPLE_TEAM_ID }}{{ end }}
 
 # ---------------------------------------------------------------------------
