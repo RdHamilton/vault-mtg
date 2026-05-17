@@ -258,3 +258,49 @@ setup() {
   run grep -c "staging-api.vaultmtg.app" "${CONFIG_FILE}"
   [ "${output}" = "0" ]
 }
+
+# ---------------------------------------------------------------------------
+# 8. Reinstall: bootout is attempted before bootstrap (stop before reload)
+# ---------------------------------------------------------------------------
+@test "reinstall: bootout is called before bootstrap on reinstall" {
+  # Run the script twice in sequence to simulate a reinstall.
+  # After both runs, launchctl should have been called at least twice:
+  # once for bootout and once for bootstrap. We verify the stub was invoked
+  # and that both "bootout" and "bootstrap" appear in its call log.
+
+  local call_log="${BATS_TEST_TMPDIR}/launchctl_calls"
+
+  # Override the launchctl stub to log every invocation with its arguments.
+  cat > "${STUB_DIR}/launchctl" <<'EOF'
+#!/usr/bin/env bash
+echo "$*" >> "${BATS_TEST_TMPDIR}/launchctl_calls"
+exit 0
+EOF
+  chmod +x "${STUB_DIR}/launchctl"
+
+  # First install
+  run env \
+    PATH="${STUB_DIR}:${PATH}" \
+    SUDO_USER="${REAL_USER}" \
+    BATS_TEST_TMPDIR="${BATS_TEST_TMPDIR}" \
+    bash "${TMP_SCRIPT}"
+  [ "${status}" -eq 0 ]
+
+  # Second install (reinstall)
+  run env \
+    PATH="${STUB_DIR}:${PATH}" \
+    SUDO_USER="${REAL_USER}" \
+    BATS_TEST_TMPDIR="${BATS_TEST_TMPDIR}" \
+    bash "${TMP_SCRIPT}"
+  [ "${status}" -eq 0 ]
+
+  # The call log must contain both "bootout" and "bootstrap" invocations.
+  grep -q "bootout" "${call_log}"
+  grep -q "bootstrap" "${call_log}"
+
+  # bootout must appear before the final bootstrap in the log.
+  local bootout_line bootstrap_line
+  bootout_line=$(grep -n "bootout" "${call_log}" | tail -1 | cut -d: -f1)
+  bootstrap_line=$(grep -n "bootstrap" "${call_log}" | tail -1 | cut -d: -f1)
+  [ "${bootout_line}" -lt "${bootstrap_line}" ]
+}
