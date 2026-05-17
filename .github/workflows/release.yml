@@ -1,14 +1,17 @@
 name: Release
 
 on:
-  release:
-    types: [published]
+  # Fires only for app/v* tags pushed directly (e.g. app/v0.3.1).
+  # daemon/v* tags are handled exclusively by daemon-release.yml.
+  push:
+    tags:
+      - 'app/v*'
 
   # Allow other workflows to call this as a reusable workflow
   workflow_call:
     inputs:
       tag:
-        description: 'Release tag (e.g. v1.0.0)'
+        description: 'Release tag (e.g. app/v1.0.0)'
         required: true
         type: string
       prerelease:
@@ -21,9 +24,15 @@ on:
         type: string
 
 env:
-  RELEASE_TAG: ${{ github.event_name == 'release' && github.event.release.tag_name || inputs.tag }}
-  IS_PRERELEASE: ${{ github.event_name == 'release' && github.event.release.prerelease || inputs.prerelease || 'false' }}
-  SKIP_E2E: ${{ github.event_name == 'release' && contains(github.event.release.name, '[noe2e]') || inputs.skip_e2e || 'false' }}
+  # For push: tags events, github.ref_name is the pushed tag (e.g. app/v0.3.1).
+  # For workflow_call, the tag comes from the explicit input.
+  RELEASE_TAG: ${{ github.event_name == 'push' && github.ref_name || inputs.tag }}
+  # Prerelease detection: treat tags containing "-rc", "-alpha", or "-beta" as pre-releases.
+  # For workflow_call the caller supplies this explicitly.
+  IS_PRERELEASE: ${{ github.event_name == 'push' && (contains(github.ref_name, '-rc') || contains(github.ref_name, '-alpha') || contains(github.ref_name, '-beta')) || inputs.prerelease || 'false' }}
+  # E2E skip is only meaningful for workflow_call (emergency hotfix flag).
+  # For push: tags events, E2E always runs.
+  SKIP_E2E: ${{ inputs.skip_e2e || 'false' }}
 
 permissions:
   contents: write
@@ -138,13 +147,13 @@ jobs:
   # Skippable via input for emergency hotfix releases only.
   # Note: env context is not available in job-level if conditions; skip
   # logic is expressed directly using github and inputs contexts.
+  # For push: tags events, E2E always runs (no [noe2e] mechanism; use workflow_call
+  # with skip_e2e=true for emergency hotfix bypasses instead).
   e2e-smoke-gate:
     name: E2E Smoke Gate
     needs: [staging-health-gate, secrets-inventory]
     uses: ./.github/workflows/e2e-smoke.yml
-    if: >-
-      !(github.event_name == 'release' && contains(github.event.release.name, '[noe2e]')) &&
-      inputs.skip_e2e != 'true'
+    if: inputs.skip_e2e != 'true'
 
   # Run BFF integration tests after E2E smoke passes.
   # Blocks the release if any integration test fails.
@@ -182,10 +191,10 @@ jobs:
     - name: Generate changelog
       run: |
         echo "## What's Changed" > changelog.md
-        PREV_TAG="$(git describe --tags --abbrev=0 --match 'v*' HEAD^ 2>/dev/null || git rev-list --max-parents=0 HEAD)"
+        PREV_TAG="$(git describe --tags --abbrev=0 --match 'app/v*' HEAD^ 2>/dev/null || git rev-list --max-parents=0 HEAD)"
         git log "${PREV_TAG}..HEAD" --pretty=format:"* %s (%h)" >> changelog.md || echo "* Initial release" >> changelog.md
         echo "" >> changelog.md
-        COMPARE_BASE="$(git describe --tags --abbrev=0 --match 'v*' HEAD^ 2>/dev/null || echo 'v0.0.0')"
+        COMPARE_BASE="$(git describe --tags --abbrev=0 --match 'app/v*' HEAD^ 2>/dev/null || echo 'v0.0.0')"
         echo "**Full Changelog**: https://github.com/${{ github.repository }}/compare/${COMPARE_BASE}...${{ env.RELEASE_TAG }}" >> changelog.md
 
     - name: Create Release
@@ -199,6 +208,11 @@ jobs:
         draft: false
         prerelease: ${{ env.IS_PRERELEASE == 'true' }}
         generate_release_notes: true
+        # Never let an app release become the repo's "latest" release.
+        # The production daemon download (frontend/src/components/DaemonDownload.tsx:11)
+        # resolves binaries via releases/latest/download/... — if an app release
+        # (which has no binary assets) claimed "latest", that URL would 404.
+        make_latest: false
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
