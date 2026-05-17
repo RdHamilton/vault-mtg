@@ -74,6 +74,6 @@ func (a *App) Quit() {
 	}
 }
 
-func (a *App) SetStatus(s Status)               { a.status = s }
-func (a *App) SetHelperInstalled(_ bool)         {}
-func (a *App) SetLastSync(t time.Time)           { a.lastSync = t }
+func (a *App) SetStatus(s Status)        { a.status = s }
+func (a *App) SetHelperInstalled(_ bool) {}
+func (a *App) SetLastSync(t time.Time)   { a.lastSync = t }
