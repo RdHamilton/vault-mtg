@@ -611,6 +611,34 @@ func TestAPIKeyOmittedFromJSONWhenKeychain(t *testing.T) {
 	assert.NotContains(t, string(data), `"api_key"`)
 }
 
+// ---------------------------------------------------------------------------
+// T3 — NeedsFirstRunAuth with keychain=true but no keychain entry
+// ---------------------------------------------------------------------------
+
+// TestNeedsFirstRunAuth_KeychainTrueNoEntry documents the current behavior of
+// NeedsFirstRunAuth when Keychain is true but no entry actually exists in the
+// OS keychain. Today the function returns false (trusts the sentinel without
+// verifying the keychain store).
+//
+// Known gap — tracked in issue #2136: a future fix will call keychain.Get()
+// inside NeedsFirstRunAuth and return true when ErrNotFound is returned, so
+// the PKCE re-auth flow fires for reinstalls with a stale daemon.json.
+func TestNeedsFirstRunAuth_KeychainTrueNoEntry(t *testing.T) {
+	// Construct a Config with Keychain:true but no API key or JWT — simulating
+	// a daemon.json written by a previous PKCE install where the OS keychain
+	// entry has since been deleted (e.g. after a full OS reinstall).
+	cfg := &config.Config{
+		Keychain:  true,
+		APIKey:    "",
+		DaemonJWT: "",
+	}
+	// Current behavior: returns false because Keychain sentinel is set.
+	// When issue #2136 is implemented this assertion must change to assert.True.
+	assert.False(t, cfg.NeedsFirstRunAuth(),
+		"current behavior: keychain sentinel short-circuits NeedsFirstRunAuth "+
+			"without verifying the actual keychain entry exists (gap #2136)")
+}
+
 func TestLoadMigratesOldIngestPath(t *testing.T) {
 	tmp := t.TempDir()
 	path := tmp + "/daemon.json"

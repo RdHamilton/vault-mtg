@@ -860,6 +860,73 @@ func TestHandleEntry_MatchCompleted_WithCachedMtgaUserID(t *testing.T) {
 	assert.Equal(t, 0, payload.OpponentWins)
 }
 
+// ---------------------------------------------------------------------------
+// T4 — 401 dispatch silently ignored in keychain mode
+// ---------------------------------------------------------------------------
+
+// TestDispatcher_401InKeychainModeIsNotRetried documents the current behavior
+// when the BFF returns 401 while the daemon is in keychain mode.
+//
+// In keychain mode WithRefresher is NOT wired (see service.New), so a 401
+// causes the dispatcher to exhaust all retries and return an error.  The run
+// loop logs the error and continues — there is no automatic re-registration
+// or re-PKCE path triggered.
+//
+// Known gap — tracked in issue #2135: keychain-mode 401 has no recovery
+// path today.  When that issue is implemented, this test must be updated to
+// assert that re-registration (PKCE or a refresh endpoint) is triggered.
+func TestDispatcher_401InKeychainModeIsNotRetried(t *testing.T) {
+	var registerCalls atomic.Int32
+	var ingestCalls atomic.Int32
+
+	// Stub BFF: ingest always returns 401; register must never be called.
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/ingest/events":
+			ingestCalls.Add(1)
+			w.WriteHeader(http.StatusUnauthorized)
+		case "/daemon/register", "/api/daemon/register":
+			// Any call to a re-registration endpoint is a failure — keychain
+			// mode must not attempt re-registration on 401 today.
+			registerCalls.Add(1)
+			w.WriteHeader(http.StatusOK)
+			_, _ = w.Write([]byte(`{"api_key":"sk_new","account_id":"acc_new"}`))
+		default:
+			w.WriteHeader(http.StatusAccepted)
+		}
+	}))
+	defer srv.Close()
+
+	cfg := &config.Config{
+		CloudAPIURL: srv.URL,
+		IngestPath:  "/ingest/events",
+		AccountID:   "acc-keychain",
+		Keychain:    true, // keychain mode — no refresher wired
+	}
+	svc := New(cfg)
+
+	// Dispatch a single event that will produce a 401 from the stub BFF.
+	entry := &logreader.LogEntry{
+		IsJSON: true,
+		JSON:   map[string]interface{}{"draftPack": []interface{}{"card1"}},
+	}
+
+	// handleEntry returns an error (all retries exhausted) — this is the
+	// "silent failure" the run loop logs and discards.  We assert it returns
+	// non-nil so any future change to swallow or escalate the error is caught.
+	err := svc.handleEntry(context.Background(), entry)
+	assert.Error(t, err,
+		"keychain-mode 401 must surface an error from handleEntry (logged + discarded by run loop)")
+
+	// No /daemon/register call must be made — the refresher is not wired.
+	assert.Equal(t, int32(0), registerCalls.Load(),
+		"re-registration endpoint must never be called in keychain mode on 401 (gap #2135)")
+
+	// The ingest endpoint must have been called (the dispatcher did attempt dispatch).
+	assert.Greater(t, ingestCalls.Load(), int32(0),
+		"ingest endpoint must have been called at least once")
+}
+
 // TestRunSkipsHeartbeatWhenAccountIDEmpty verifies that no heartbeat is sent
 // when the daemon has no AccountID (not yet authenticated).
 func TestRunSkipsHeartbeatWhenAccountIDEmpty(t *testing.T) {
