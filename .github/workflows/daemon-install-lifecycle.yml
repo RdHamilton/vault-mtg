@@ -194,8 +194,11 @@ jobs:
           echo "PASS: uninstall.sh completed without errors"
           # Assert plist was cleaned up (script removes it if present)
           plist_path="$FAKE_HOME/Library/LaunchAgents/com.mtga-companion.daemon.plist"
-          [ ! -f "$plist_path" ] && echo "PASS: plist removed by uninstall" || \
-            echo "INFO: plist already absent before uninstall (also valid)"
+          if [ -f "$plist_path" ]; then
+            echo "FAIL: plist still present after uninstall — uninstall.sh did not remove it"
+            exit 1
+          fi
+          echo "PASS: plist removed by uninstall"
 
       # -----------------------------------------------------------------------
       - name: "[MIGRATION TODO] Upgrade scenario — install OLD daemon then run NEW installer"
@@ -363,6 +366,14 @@ jobs:
             exit 1
           }
           Write-Host "PASS: task still registered after reinstall"
+
+          # AC1: config must not be overwritten on reinstall
+          $afterConfig = Get-Content $configFile -Raw
+          if ($originalConfig -ne $afterConfig) {
+            Write-Error "FAIL: config content changed on reinstall (AC1 violation)"
+            exit 1
+          }
+          Write-Host "PASS: config content unchanged after reinstall (AC1)"
 
       # -----------------------------------------------------------------------
       - name: "[LIFECYCLE] UNINSTALL — run uninstall.ps1 and assert task removed"

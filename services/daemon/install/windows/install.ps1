@@ -137,8 +137,7 @@ $action  = New-ScheduledTaskAction -Execute $BinaryPath -Argument "-config `"$Co
 $trigger = New-ScheduledTaskTrigger -AtLogOn -User $Env:USERNAME
 $settings = New-ScheduledTaskSettingsSet `
     -ExecutionTimeLimit ([TimeSpan]::Zero) `   # No timeout — the daemon is long-running.
-    -MultipleInstances IgnoreNew `              # Don't start a second copy if already running.
-    -StartWhenAvailable $true
+    -StartWhenAvailable $true                  # Idempotency handled by Unregister-ScheduledTask above.
 
 $principal = New-ScheduledTaskPrincipal `
     -UserId $Env:USERNAME `
