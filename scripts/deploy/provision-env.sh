@@ -1,7 +1,7 @@
 #!/bin/sh
 # provision-env.sh
 # Generic upsert helper: reads a value from SSM Parameter Store and writes a
-# KEY=VALUE line into /etc/mtga-companion/env.
+# KEY=VALUE line into the production env file.
 # Runs ON the EC2 instance via SSM RunShellScript.
 #
 # Usage: provision-env.sh <ENV_KEY> <SSM_PARAM_NAME> [--with-decryption]
@@ -13,6 +13,9 @@
 # Example:
 #   provision-env.sh ALLOWED_ORIGINS /mtga-companion/production/ALLOWED_ORIGINS
 #   provision-env.sh CLERK_SECRET_KEY /mtga-companion/production/CLERK_SECRET_KEY --with-decryption
+#
+# The env file path and region are sourced from infra/config/deploy-env.sh —
+# do NOT hardcode them here.
 
 set -e
 
@@ -20,8 +23,12 @@ ENV_KEY="${1:?Usage: provision-env.sh ENV_KEY SSM_PARAM_NAME [--with-decryption]
 SSM_PARAM_NAME="${2:?Usage: provision-env.sh ENV_KEY SSM_PARAM_NAME [--with-decryption]}"
 DECRYPT_FLAG="${3:-}"
 
-REGION=us-east-1
-ENV_FILE=/etc/mtga-companion/env
+# Source canonical deploy facts.  deploy-env.sh is downloaded alongside
+# this script from S3 into /tmp/ before execution.
+. /tmp/deploy-env.sh
+
+REGION="$DEPLOY_REGION"
+ENV_FILE="$BFF_ENV_FILE"
 
 # Build the get-parameter command, optionally with decryption for SecureString.
 if [ "$DECRYPT_FLAG" = "--with-decryption" ]; then
@@ -44,7 +51,7 @@ if [ -z "$ENV_VALUE" ]; then
   exit 1
 fi
 
-mkdir -p /etc/mtga-companion
+mkdir -p "$BFF_ENV_DIR"
 
 # Upsert: replace existing line or append if absent.
 if grep -q "^${ENV_KEY}=" "$ENV_FILE" 2>/dev/null; then

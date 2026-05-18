@@ -127,11 +127,16 @@ jobs:
     # Upload all deploy and infra scripts plus migrations so EC2 can pull them.
     # Both staging and production script sets are uploaded every run — this keeps
     # the on-instance scripts in sync with the repo even if only one set changes.
+    # infra/config/deploy-env.sh is the single source of truth for deploy facts;
+    # it is uploaded to /scripts/ so each EC2-side script can source it via
+    # `. /tmp/deploy-env.sh` after downloading alongside the calling script.
     - name: Upload deploy scripts and migrations to S3
       run: |
         aws s3 sync scripts/deploy/ \
           "s3://${RESOLVED_BUCKET}/scripts/" \
           --exclude "*" --include "*.sh"
+        aws s3 cp infra/config/deploy-env.sh \
+          "s3://${RESOLVED_BUCKET}/scripts/deploy-env.sh"
         aws s3 sync infra/scripts/ \
           "s3://${RESOLVED_BUCKET}/infra-scripts/" \
           --exclude "*" --include "*.sh"
@@ -148,14 +153,17 @@ jobs:
     # Production: provision-env.sh + provision-db-url.sh + CLERK_SECRET_KEY in one
     #   sequential shell command (preserves the original release.yml order).
     # Credentials are read ON the EC2 instance under its IAM role — never on the runner.
+    # deploy-env.sh (canonical SSM paths + service names) is downloaded first so
+    # all EC2-side scripts can source it via `. /tmp/deploy-env.sh`.
     - name: Provision env on EC2
       env:
         EC2_INSTANCE_ID: ${{ secrets.EC2_INSTANCE_ID }}
       run: |
+        FETCH_CONFIG="aws s3 cp s3://${RESOLVED_BUCKET}/scripts/deploy-env.sh /tmp/deploy-env.sh"
         if [ "${{ inputs.environment }}" = "staging" ]; then
-          PROVISION_CMD="aws s3 cp s3://${RESOLVED_BUCKET}/scripts/provision-staging-env.sh /tmp/provision-staging-env.sh && chmod +x /tmp/provision-staging-env.sh && /tmp/provision-staging-env.sh"
+          PROVISION_CMD="${FETCH_CONFIG} && aws s3 cp s3://${RESOLVED_BUCKET}/scripts/provision-staging-env.sh /tmp/provision-staging-env.sh && chmod +x /tmp/provision-staging-env.sh && /tmp/provision-staging-env.sh"
         else
-          PROVISION_CMD="aws s3 cp s3://${RESOLVED_BUCKET}/scripts/provision-env.sh /tmp/provision-env.sh && chmod +x /tmp/provision-env.sh && /tmp/provision-env.sh ALLOWED_ORIGINS /mtga-companion/production/ALLOWED_ORIGINS && aws s3 cp s3://${RESOLVED_BUCKET}/scripts/provision-db-url.sh /tmp/provision-db-url.sh && chmod +x /tmp/provision-db-url.sh && /tmp/provision-db-url.sh && /tmp/provision-env.sh CLERK_SECRET_KEY /mtga-companion/production/CLERK_SECRET_KEY --with-decryption"
+          PROVISION_CMD="${FETCH_CONFIG} && aws s3 cp s3://${RESOLVED_BUCKET}/scripts/provision-env.sh /tmp/provision-env.sh && chmod +x /tmp/provision-env.sh && aws s3 cp s3://${RESOLVED_BUCKET}/scripts/provision-db-url.sh /tmp/provision-db-url.sh && chmod +x /tmp/provision-db-url.sh && /tmp/provision-env.sh ALLOWED_ORIGINS /mtga-companion/production/ALLOWED_ORIGINS && /tmp/provision-db-url.sh && /tmp/provision-env.sh CLERK_SECRET_KEY /mtga-companion/production/CLERK_SECRET_KEY --with-decryption"
         fi
 
         COMMAND_ID=$(aws ssm send-command \
@@ -221,7 +229,7 @@ jobs:
         COMMAND_ID=$(aws ssm send-command \
           --instance-ids "${EC2_INSTANCE_ID}" \
           --document-name "AWS-RunShellScript" \
-          --parameters "commands=[\"export DEPLOY_BUCKET=${RESOLVED_BUCKET} && export DEPLOY_SHA=${DEPLOY_SHA} && aws s3 cp s3://${RESOLVED_BUCKET}/scripts/${STAGE_SCRIPT} /tmp/${STAGE_SCRIPT} && chmod +x /tmp/${STAGE_SCRIPT} && /tmp/${STAGE_SCRIPT}\"]" \
+          --parameters "commands=[\"export DEPLOY_BUCKET=${RESOLVED_BUCKET} && export DEPLOY_SHA=${DEPLOY_SHA} && aws s3 cp s3://${RESOLVED_BUCKET}/scripts/deploy-env.sh /tmp/deploy-env.sh && aws s3 cp s3://${RESOLVED_BUCKET}/scripts/${STAGE_SCRIPT} /tmp/${STAGE_SCRIPT} && chmod +x /tmp/${STAGE_SCRIPT} && /tmp/${STAGE_SCRIPT}\"]" \
           --region us-east-1 \
           --query "Command.CommandId" \
           --output text)
@@ -279,7 +287,7 @@ jobs:
         COMMAND_ID=$(aws ssm send-command \
           --instance-ids "${EC2_INSTANCE_ID}" \
           --document-name "AWS-RunShellScript" \
-          --parameters "commands=[\"export DEPLOY_BUCKET=${RESOLVED_BUCKET} && export AWS_REGION=us-east-1 && aws s3 cp s3://${RESOLVED_BUCKET}/infra-scripts/${MIGRATE_SCRIPT} /tmp/${MIGRATE_SCRIPT} && chmod +x /tmp/${MIGRATE_SCRIPT} && /tmp/${MIGRATE_SCRIPT}\"]" \
+          --parameters "commands=[\"export DEPLOY_BUCKET=${RESOLVED_BUCKET} && export AWS_REGION=us-east-1 && aws s3 cp s3://${RESOLVED_BUCKET}/scripts/deploy-env.sh /tmp/deploy-env.sh && aws s3 cp s3://${RESOLVED_BUCKET}/infra-scripts/${MIGRATE_SCRIPT} /tmp/${MIGRATE_SCRIPT} && chmod +x /tmp/${MIGRATE_SCRIPT} && /tmp/${MIGRATE_SCRIPT}\"]" \
           --region us-east-1 \
           --query "Command.CommandId" \
           --output text)
@@ -337,7 +345,7 @@ jobs:
         COMMAND_ID=$(aws ssm send-command \
           --instance-ids "${EC2_INSTANCE_ID}" \
           --document-name "AWS-RunShellScript" \
-          --parameters "commands=[\"aws s3 cp s3://${RESOLVED_BUCKET}/scripts/${RESTART_SCRIPT} /tmp/${RESTART_SCRIPT} && chmod +x /tmp/${RESTART_SCRIPT} && /tmp/${RESTART_SCRIPT}\"]" \
+          --parameters "commands=[\"aws s3 cp s3://${RESOLVED_BUCKET}/scripts/deploy-env.sh /tmp/deploy-env.sh && aws s3 cp s3://${RESOLVED_BUCKET}/scripts/${RESTART_SCRIPT} /tmp/${RESTART_SCRIPT} && chmod +x /tmp/${RESTART_SCRIPT} && /tmp/${RESTART_SCRIPT}\"]" \
           --region us-east-1 \
           --query "Command.CommandId" \
           --output text)

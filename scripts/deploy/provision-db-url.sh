@@ -1,43 +1,45 @@
 #!/bin/sh
 # provision-db-url.sh
-# Writes DB_SECRET_ARN and a credential-free DATABASE_URL into
-# /etc/mtga-companion/env.  Runs ON the EC2 instance via SSM RunShellScript.
+# Writes DB_SECRET_ARN and a credential-free DATABASE_URL into the
+# production env file.  Runs ON the EC2 instance via SSM RunShellScript.
 #
 # The BFF binary reads DB_SECRET_ARN at startup and fetches the current
 # credentials from Secrets Manager, so the env file never holds a password
 # that can go stale after an RDS rotation.
 #
-# Required SSM parameters (must exist before the deploy workflow runs):
-#   /mtga-companion/production/db-secret-arn  - ARN of the Secrets Manager secret
-#   /mtga-companion/production/db-endpoint    - RDS instance hostname
-#   /mtga-companion/production/db-name        - PostgreSQL database name
+# SSM parameter names and the env file path are sourced from
+# infra/config/deploy-env.sh — do NOT hardcode them here.
 
 set -e
 
-REGION=us-east-1
-ENV_FILE=/etc/mtga-companion/env
+# Source canonical deploy facts.  deploy-env.sh is downloaded alongside
+# this script from S3 into /tmp/ before execution.
+. /tmp/deploy-env.sh
+
+REGION="$DEPLOY_REGION"
+ENV_FILE="$BFF_ENV_FILE"
 
 DB_SECRET_ARN=$(aws ssm get-parameter \
-  --name /mtga-companion/production/db-secret-arn \
+  --name "$SSM_PROD_DB_SECRET_ARN" \
   --region "$REGION" \
   --query Parameter.Value \
   --output text)
 
 DB_ENDPOINT=$(aws ssm get-parameter \
-  --name /mtga-companion/production/db-endpoint \
+  --name "$SSM_PROD_DB_ENDPOINT" \
   --region "$REGION" \
   --query Parameter.Value \
   --output text)
 
 DB_NAME=$(aws ssm get-parameter \
-  --name /mtga-companion/production/db-name \
+  --name "$SSM_PROD_DB_NAME" \
   --region "$REGION" \
   --query Parameter.Value \
   --output text)
 
-DATABASE_URL="postgresql://${DB_ENDPOINT}:5432/${DB_NAME}?sslmode=require"
+DATABASE_URL="postgresql://${DB_ENDPOINT}:${DB_PORT}/${DB_NAME}?${DB_SSL_MODE}"
 
-mkdir -p /etc/mtga-companion
+mkdir -p "$BFF_ENV_DIR"
 
 # Upsert AWS_DEFAULT_REGION so the BFF's Secrets Manager client resolves the endpoint.
 if grep -q '^AWS_DEFAULT_REGION=' "$ENV_FILE" 2>/dev/null; then

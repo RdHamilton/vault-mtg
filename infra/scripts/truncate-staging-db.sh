@@ -20,6 +20,10 @@ PROFILE="${AWS_PROFILE:-personal}"
 REGION="${AWS_REGION:-us-east-1}"
 TRUNCATE_ALL=false
 
+# Source canonical deploy facts from the repo root.
+_SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+. "${_SCRIPT_DIR}/../../infra/config/deploy-env.sh"
+
 for arg in "$@"; do
     case "$arg" in
         --all) TRUNCATE_ALL=true ;;
@@ -32,14 +36,14 @@ echo "[truncate-staging-db] Fetching staging connection details from SSM..."
 DB_ENDPOINT=$(aws ssm get-parameter \
     --profile "$PROFILE" \
     --region  "$REGION" \
-    --name    "/mtga-companion/production/db-endpoint" \
+    --name    "$SSM_PROD_DB_ENDPOINT" \
     --query   "Parameter.Value" \
     --output  text)
 
 SECRET_ARN=$(aws ssm get-parameter \
     --profile "$PROFILE" \
     --region  "$REGION" \
-    --name    "/mtga-companion/production/db-secret-arn" \
+    --name    "$SSM_PROD_DB_SECRET_ARN" \
     --query   "Parameter.Value" \
     --output  text)
 
@@ -163,7 +167,7 @@ echo "[truncate-staging-db] Executing truncation..."
 PGPASSWORD="$MASTER_PASSWORD" psql \
     -h "$DB_ENDPOINT" \
     -U "$MASTER_USER" \
-    -d vaultmtg_staging \
+    -d "$DB_STAGING_NAME" \
     -v ON_ERROR_STOP=1 \
     -c "$TRUNCATE_SQL"
 

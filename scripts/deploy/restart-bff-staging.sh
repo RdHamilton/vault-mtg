@@ -1,11 +1,17 @@
 #!/bin/sh
 # restart-bff-staging.sh
-# Restarts the mtga-bff-staging systemd service.
+# Restarts the staging BFF systemd service.
 # Runs ON the EC2 instance via SSM RunShellScript (as root).
+#
+# Service name is sourced from infra/config/deploy-env.sh (BFF_STAGING_SERVICE).
 
 set -e
 
-SERVICE="mtga-bff-staging"
+# Source canonical deploy facts.  deploy-env.sh is downloaded alongside
+# this script from S3 into /tmp/ before execution.
+. /tmp/deploy-env.sh
+
+SERVICE="$BFF_STAGING_SERVICE"
 UNIT_FILE="/etc/systemd/system/${SERVICE}.service"
 
 # Guard: verify the systemd unit exists before attempting restart.

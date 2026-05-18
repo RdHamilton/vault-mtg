@@ -6,14 +6,21 @@
 # Required environment variables (passed by the GitHub Actions deploy step):
 #   DEPLOY_BUCKET - S3 bucket name
 #   DEPLOY_SHA    - Git SHA used as the S3 key prefix
+#
+# Web-root paths are sourced from infra/config/deploy-env.sh — do NOT
+# hardcode them here.
 
 set -e
 
 : "${DEPLOY_BUCKET:?DEPLOY_BUCKET must be set}"
 : "${DEPLOY_SHA:?DEPLOY_SHA must be set}"
 
-DEPLOY_DIR=/var/www/mtga-companion
-STAGING_DIR=/var/www/mtga-companion-staging
+# Source canonical deploy facts.  deploy-env.sh is downloaded alongside
+# this script from S3 into /tmp/ before execution.
+. /tmp/deploy-env.sh
+
+DEPLOY_DIR="$FRONTEND_DEPLOY_DIR"
+STAGING_DIR="$FRONTEND_STAGING_DIR"
 
 rm -rf "$STAGING_DIR"
 mkdir -p "$STAGING_DIR"

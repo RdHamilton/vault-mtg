@@ -12,10 +12,13 @@
 # Idempotent: golang-migrate tracks applied versions in the schema_migrations
 # table. Re-running this script when already at HEAD is a no-op.
 #
+# SSM parameter names are sourced from infra/config/deploy-env.sh —
+# do NOT hardcode them here.
+#
 # Prerequisites:
 #   - golang-migrate CLI installed (see https://github.com/golang-migrate/migrate/tree/master/cmd/migrate)
 #     Install: go install -tags 'postgres' github.com/golang-migrate/migrate/v4/cmd/migrate@latest
-#   - Access to AWS SSM (personal profile) to read /mtga-companion/staging/database-url
+#   - Access to AWS SSM (personal profile) to read SSM_STAGING_DATABASE_URL
 #   - Network access to RDS (run from the EC2 instance via SSM, or from a
 #     machine with VPC access)
 #
@@ -31,7 +34,17 @@
 
 set -euo pipefail
 
-REGION="${AWS_REGION:-us-east-1}"
+# Source canonical deploy facts.
+# On EC2 (SSM path): deploy-env.sh is downloaded alongside this script into /tmp/.
+# Locally: source from the repo root.
+if [[ -f /tmp/deploy-env.sh ]]; then
+    . /tmp/deploy-env.sh
+else
+    _SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+    . "${_SCRIPT_DIR}/../../infra/config/deploy-env.sh"
+fi
+
+REGION="${AWS_REGION:-$DEPLOY_REGION}"
 
 # DEPLOY_BUCKET is set by the staging deploy workflow (injected via SSM command
 # environment). When set, migrations are downloaded from S3 instead of read from
@@ -94,13 +107,13 @@ fi
 DATABASE_URL=$(aws ssm get-parameter \
     "${_PROFILE_ARG[@]}" \
     --region   "$REGION" \
-    --name     "/mtga-companion/staging/database-url" \
+    --name     "$SSM_STAGING_DATABASE_URL" \
     --with-decryption \
     --query    "Parameter.Value" \
     --output   text)
 
 if [[ -z "$DATABASE_URL" ]]; then
-    echo "[run-staging-migrations] ERROR: /mtga-companion/staging/database-url is empty."
+    echo "[run-staging-migrations] ERROR: ${SSM_STAGING_DATABASE_URL} is empty."
     echo "  Run infra/scripts/create-staging-db.sh first."
     exit 1
 fi
@@ -124,7 +137,7 @@ echo "[run-staging-migrations] Fetching master credentials for pre-migration own
 SECRET_ARN=$(aws ssm get-parameter \
     "${_PROFILE_ARG[@]}" \
     --region  "$REGION" \
-    --name    "/mtga-companion/staging/db-secret-arn" \
+    --name    "$SSM_STAGING_DB_SECRET_ARN" \
     --query   "Parameter.Value" \
     --output  text)
 
@@ -141,7 +154,7 @@ MASTER_USER=$(echo     "$SECRET_JSON" | python3 -c "import json,sys; print(json.
 DB_ENDPOINT=$(aws ssm get-parameter \
     "${_PROFILE_ARG[@]}" \
     --region  "$REGION" \
-    --name    "/mtga-companion/staging/db-endpoint" \
+    --name    "$SSM_STAGING_DB_ENDPOINT" \
     --query   "Parameter.Value" \
     --output  text)
 
@@ -153,7 +166,7 @@ echo "[run-staging-migrations] Transferring table ownership to ${MIGRATION_USER}
 PGPASSWORD="$MASTER_PASSWORD" psql \
     -h "$DB_ENDPOINT" \
     -U "$MASTER_USER" \
-    -d vaultmtg_staging \
+    -d "$DB_STAGING_NAME" \
     -v ON_ERROR_STOP=1 \
     -c "DO \$\$
 DECLARE
@@ -207,7 +220,7 @@ fi
 PGPASSWORD="$MASTER_PASSWORD" psql \
     -h "$DB_ENDPOINT" \
     -U "$MASTER_USER" \
-    -d vaultmtg_staging \
+    -d "$DB_STAGING_NAME" \
     -v ON_ERROR_STOP=1 \
     -f "$GRANT_SQL"
 

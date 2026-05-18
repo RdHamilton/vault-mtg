@@ -8,16 +8,23 @@
 # table. Re-running this script when already at HEAD is a no-op.
 #
 # Credentials are fetched from Secrets Manager (via the SSM parameter
-# /mtga-companion/production/db-secret-arn) rather than reading DATABASE_URL
-# from /etc/mtga-companion/env.  The env-file URL is credential-free by design
+# named in SSM_PROD_DB_SECRET_ARN) rather than reading DATABASE_URL
+# from the env file.  The env-file URL is credential-free by design
 # (the BFF resolves creds at startup); it must not be passed to migrate.
+#
+# SSM parameter names are sourced from infra/config/deploy-env.sh —
+# do NOT hardcode them here.
 #
 # Usage (via SSM from the deploy workflow — not run locally):
 #   SSM command with DEPLOY_BUCKET and AWS_REGION env vars injected.
 
 set -euo pipefail
 
-REGION="${AWS_REGION:-us-east-1}"
+# Source canonical deploy facts.  deploy-env.sh is downloaded alongside
+# this script from S3 into /tmp/ before execution.
+. /tmp/deploy-env.sh
+
+REGION="${AWS_REGION:-$DEPLOY_REGION}"
 DEPLOY_BUCKET="${DEPLOY_BUCKET:-}"
 
 # Download migrations from S3 (uploaded by release.yml).
@@ -55,7 +62,7 @@ fi
 # These are used for both the migrate step and the grant step below.
 SECRET_ARN=$(aws ssm get-parameter \
     --region  "$REGION" \
-    --name    "/mtga-companion/production/db-secret-arn" \
+    --name    "$SSM_PROD_DB_SECRET_ARN" \
     --query   "Parameter.Value" \
     --output  text)
 
@@ -70,13 +77,13 @@ MASTER_USER=$(echo     "$SECRET_JSON" | python3 -c "import json,sys; print(json.
 
 DB_ENDPOINT=$(aws ssm get-parameter \
     --region  "$REGION" \
-    --name    "/mtga-companion/production/db-endpoint" \
+    --name    "$SSM_PROD_DB_ENDPOINT" \
     --query   "Parameter.Value" \
     --output  text)
 
 DB_NAME=$(aws ssm get-parameter \
     --region  "$REGION" \
-    --name    "/mtga-companion/production/db-name" \
+    --name    "$SSM_PROD_DB_NAME" \
     --query   "Parameter.Value" \
     --output  text)
 
@@ -84,10 +91,10 @@ DB_NAME=$(aws ssm get-parameter \
 # RDS-managed secret do not break the connection string.
 ENC_PASS=$(python3 -c 'import urllib.parse,sys; print(urllib.parse.quote(sys.argv[1], safe=""))' "$MASTER_PASSWORD")
 
-MIGRATE_DB_URL="postgres://${MASTER_USER}:${ENC_PASS}@${DB_ENDPOINT}:5432/${DB_NAME}?sslmode=require"
+MIGRATE_DB_URL="postgres://${MASTER_USER}:${ENC_PASS}@${DB_ENDPOINT}:${DB_PORT}/${DB_NAME}?${DB_SSL_MODE}"
 
 echo "[run-migrations] Applying migrations ..."
-echo "[run-migrations] Target DB: postgres://${MASTER_USER}@${DB_ENDPOINT}:5432/${DB_NAME}?sslmode=require"
+echo "[run-migrations] Target DB: postgres://${MASTER_USER}@${DB_ENDPOINT}:${DB_PORT}/${DB_NAME}?${DB_SSL_MODE}"
 
 # If a previous migration run failed mid-flight, golang-migrate marks the
 # schema_migrations table as dirty and refuses to proceed. Detect that state

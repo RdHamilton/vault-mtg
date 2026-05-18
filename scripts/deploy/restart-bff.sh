@@ -1,12 +1,15 @@
 #!/bin/sh
 # restart-bff.sh
-# Restarts the BFF systemd service on the EC2 host.
+# Restarts the production BFF systemd service.
 # Runs ON the EC2 instance via SSM RunShellScript.
 #
-# Service name: mtga-companion  (unit file: mtga-companion-infra/systemd/mtga-companion.service)
-# Do NOT use "mtga-bff" — that unit does not exist on the host and will exit code 5.
+# Service name is sourced from infra/config/deploy-env.sh (BFF_SERVICE).
 
 set -e
 
-systemctl restart mtga-companion
-echo "mtga-companion service restarted."
+# Source canonical deploy facts.  deploy-env.sh is downloaded alongside
+# this script from S3 into /tmp/ before execution.
+. /tmp/deploy-env.sh
+
+systemctl restart "$BFF_SERVICE"
+echo "${BFF_SERVICE} service restarted."

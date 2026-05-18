@@ -4,6 +4,9 @@
 # Provisions the vaultmtg_staging database and vaultmtg_staging_app role on
 # the shared production RDS instance via SSM Run Command on the EC2 instance.
 #
+# SSM parameter names and role/database names are sourced from
+# infra/config/deploy-env.sh — do NOT hardcode them here.
+#
 # Prerequisites:
 #   - AWS CLI configured with the `personal` profile
 #   - EC2 instance has SSM agent installed and the instance role allows
@@ -23,26 +26,23 @@ set -euo pipefail
 PROFILE="${AWS_PROFILE:-personal}"
 REGION="${AWS_REGION:-us-east-1}"
 
+# Source canonical deploy facts from the repo root.
+_SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+. "${_SCRIPT_DIR}/../../infra/config/deploy-env.sh"
+
 echo "[create-staging-db] Fetching RDS connection details from SSM..."
 
 DB_ENDPOINT=$(aws ssm get-parameter \
     --profile "$PROFILE" \
     --region  "$REGION" \
-    --name    "/mtga-companion/production/db-endpoint" \
-    --query   "Parameter.Value" \
-    --output  text)
-
-DB_NAME=$(aws ssm get-parameter \
-    --profile "$PROFILE" \
-    --region  "$REGION" \
-    --name    "/mtga-companion/production/db-name" \
+    --name    "$SSM_PROD_DB_ENDPOINT" \
     --query   "Parameter.Value" \
     --output  text)
 
 SECRET_ARN=$(aws ssm get-parameter \
     --profile "$PROFILE" \
     --region  "$REGION" \
-    --name    "/mtga-companion/production/db-secret-arn" \
+    --name    "$SSM_PROD_DB_SECRET_ARN" \
     --query   "Parameter.Value" \
     --output  text)
 
@@ -67,27 +67,27 @@ MASTER_USER=$(echo     "$SECRET_JSON" | python3 -c "import json,sys; print(json.
 echo "[create-staging-db] Generating staging DB password..."
 STAGING_PASSWORD=$(openssl rand -base64 24 | tr -dc 'A-Za-z0-9' | head -c 32)
 
-echo "[create-staging-db] Storing staging password in SSM at /mtga-companion/staging/db-password ..."
+echo "[create-staging-db] Storing staging password in SSM at ${SSM_STAGING_DB_PASSWORD} ..."
 aws ssm put-parameter \
     --profile  "$PROFILE" \
     --region   "$REGION" \
-    --name     "/mtga-companion/staging/db-password" \
+    --name     "$SSM_STAGING_DB_PASSWORD" \
     --value    "$STAGING_PASSWORD" \
     --type     "SecureString" \
     --overwrite \
-    --description "vaultmtg_staging_app PostgreSQL role password" \
+    --description "${DB_STAGING_APP_ROLE} PostgreSQL role password" \
     > /dev/null
 
 # Also store a full DATABASE_URL for use by the BFF and migration tooling.
-STAGING_DB_URL="postgres://vaultmtg_staging_app:${STAGING_PASSWORD}@${DB_ENDPOINT}:5432/vaultmtg_staging?sslmode=require"
+STAGING_DB_URL="postgres://${DB_STAGING_APP_ROLE}:${STAGING_PASSWORD}@${DB_ENDPOINT}:${DB_PORT}/${DB_STAGING_NAME}?${DB_SSL_MODE}"
 aws ssm put-parameter \
     --profile  "$PROFILE" \
     --region   "$REGION" \
-    --name     "/mtga-companion/staging/database-url" \
+    --name     "$SSM_STAGING_DATABASE_URL" \
     --value    "$STAGING_DB_URL" \
     --type     "SecureString" \
     --overwrite \
-    --description "Full DATABASE_URL for vaultmtg_staging (used by bff-staging)" \
+    --description "Full DATABASE_URL for ${DB_STAGING_NAME} (used by bff-staging)" \
     > /dev/null
 
 echo "[create-staging-db] SSM parameters written."
@@ -98,12 +98,12 @@ echo "[create-staging-db] SSM parameters written."
 EC2_INSTANCE_ID=$(aws ec2 describe-instances \
     --profile "$PROFILE" \
     --region  "$REGION" \
-    --filters "Name=tag:Name,Values=mtga-companion-bff-production" "Name=instance-state-name,Values=running" \
+    --filters "Name=tag:Name,Values=${EC2_INSTANCE_TAG}" "Name=instance-state-name,Values=${EC2_INSTANCE_STATE}" \
     --query   "Reservations[0].Instances[0].InstanceId" \
     --output  text)
 
 if [[ -z "$EC2_INSTANCE_ID" || "$EC2_INSTANCE_ID" == "None" ]]; then
-    echo "[create-staging-db] ERROR: Could not find EC2 instance tagged 'mtga-companion' in running state."
+    echo "[create-staging-db] ERROR: Could not find EC2 instance tagged '${EC2_INSTANCE_TAG}' in running state."
     exit 1
 fi
 
@@ -116,7 +116,7 @@ echo "[create-staging-db] Using EC2 instance: $EC2_INSTANCE_ID"
 # ---------------------------------------------------------------------------
 SQL_COMMANDS=$(cat <<ENDSQL
 -- Step 1: Create database and role (connected to postgres DB as master user)
-CREATE DATABASE vaultmtg_staging
+CREATE DATABASE ${DB_STAGING_NAME}
     WITH OWNER     = postgres
          ENCODING  = 'UTF8'
          LC_COLLATE = 'en_US.UTF-8'
@@ -125,26 +125,26 @@ CREATE DATABASE vaultmtg_staging
 
 DO \$\$
 BEGIN
-    IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname = 'vaultmtg_staging_app') THEN
-        CREATE ROLE vaultmtg_staging_app
+    IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname = '${DB_STAGING_APP_ROLE}') THEN
+        CREATE ROLE ${DB_STAGING_APP_ROLE}
             WITH LOGIN
                  PASSWORD '${STAGING_PASSWORD}'
                  CONNECTION LIMIT 10;
     ELSE
-        ALTER ROLE vaultmtg_staging_app WITH PASSWORD '${STAGING_PASSWORD}';
+        ALTER ROLE ${DB_STAGING_APP_ROLE} WITH PASSWORD '${STAGING_PASSWORD}';
     END IF;
 END
 \$\$;
 
-GRANT ALL PRIVILEGES ON DATABASE vaultmtg_staging TO vaultmtg_staging_app;
+GRANT ALL PRIVILEGES ON DATABASE ${DB_STAGING_NAME} TO ${DB_STAGING_APP_ROLE};
 ENDSQL
 )
 
 SCHEMA_SQL=$(cat <<ENDSQL
--- Step 2: Schema-level grants (connected to vaultmtg_staging)
+-- Step 2: Schema-level grants (connected to ${DB_STAGING_NAME})
 REVOKE CREATE ON SCHEMA public FROM PUBLIC;
-GRANT  CREATE ON SCHEMA public TO vaultmtg_staging_app;
-GRANT  USAGE  ON SCHEMA public TO vaultmtg_staging_app;
+GRANT  CREATE ON SCHEMA public TO ${DB_STAGING_APP_ROLE};
+GRANT  USAGE  ON SCHEMA public TO ${DB_STAGING_APP_ROLE};
 ENDSQL
 )
 
@@ -164,7 +164,7 @@ psql -h "$DB_ENDPOINT" -U "$MASTER_USER" -d vaultmtg_staging -v ON_ERROR_STOP=1 
 __SCHEMA_SQL__
 SQL
 
-echo "[remote] Done. vaultmtg_staging and vaultmtg_staging_app are ready."
+echo "[remote] Done. ${DB_STAGING_NAME} and ${DB_STAGING_APP_ROLE} are ready."
 ENDBASH
 )
 
