@@ -2,7 +2,7 @@
 
 ## Overview
 
-MTGA-Companion has been upgraded to use a service-based architecture that separates data collection from display. This guide will help you understand the changes and migrate to the new system.
+VaultMTG has been upgraded to use a service-based architecture that separates data collection from display. This guide will help you understand the changes and migrate to the new system.
 
 ## What Changed
 
@@ -59,18 +59,18 @@ This is the recommended setup for regular users who want complete match tracking
 
 1. **Install the daemon service:**
    ```bash
-   cd /path/to/MTGA-Companion
-   ./mtga-companion service install
+   cd /path/to/VaultMTG
+   ./vaultmtg service install
    ```
 
 2. **Start the daemon:**
    ```bash
-   ./mtga-companion service start
+   ./vaultmtg service start
    ```
 
 3. **Verify it's running:**
    ```bash
-   ./mtga-companion service status
+   ./vaultmtg service status
    ```
 
    Expected output:
@@ -80,8 +80,8 @@ This is the recommended setup for regular users who want complete match tracking
    ```
 
 4. **Launch the GUI:**
-   - Double-click `MTGA-Companion.app` (macOS)
-   - Run `./MTGA-Companion` (Linux)
+   - Double-click `VaultMTG.app` (macOS)
+   - Run `./VaultMTG` (Linux)
 
    The GUI will automatically connect to the daemon.
 
@@ -92,22 +92,22 @@ This is the recommended setup for regular users who want complete match tracking
 
 2. **Install the daemon service:**
    ```powershell
-   cd C:\Path\To\MTGA-Companion
-   .\mtga-companion.exe service install
+   cd C:\Path\To\VaultMTG
+   .\vaultmtg.exe service install
    ```
 
 3. **Start the daemon:**
    ```powershell
-   .\mtga-companion.exe service start
+   .\vaultmtg.exe service start
    ```
 
 4. **Verify it's running:**
    ```powershell
-   .\mtga-companion.exe service status
+   .\vaultmtg.exe service status
    ```
 
 5. **Launch the GUI:**
-   - Double-click `MTGA-Companion.exe`
+   - Double-click `VaultMTG.exe`
 
    The GUI will automatically connect to the daemon.
 
@@ -142,7 +142,7 @@ After installing the daemon and launching the GUI:
 
 1. **Ensure daemon is running:**
    ```bash
-   ./mtga-companion service status
+   ./vaultmtg service status
    ```
 
 2. **Play an MTGA match**
@@ -163,27 +163,27 @@ After installing the daemon and launching the GUI:
 
 **Check status:**
 ```bash
-./mtga-companion service status
+./vaultmtg service status
 ```
 
 **Start daemon:**
 ```bash
-./mtga-companion service start
+./vaultmtg service start
 ```
 
 **Stop daemon:**
 ```bash
-./mtga-companion service stop
+./vaultmtg service stop
 ```
 
 **Restart daemon:**
 ```bash
-./mtga-companion service restart
+./vaultmtg service restart
 ```
 
 **Uninstall daemon:**
 ```bash
-./mtga-companion service uninstall
+./vaultmtg service uninstall
 ```
 
 ### View Daemon Logs
@@ -216,12 +216,12 @@ journalctl -u MTGACompanionDaemon -f
 
 1. **Check if daemon is running:**
    ```bash
-   ./mtga-companion service status
+   ./vaultmtg service status
    ```
 
 2. **If stopped, start it:**
    ```bash
-   ./mtga-companion service start
+   ./vaultmtg service start
    ```
 
 3. **Check daemon logs for errors:**
@@ -276,7 +276,7 @@ Solution: Run installation with administrator/sudo privileges.
 
 **Binary not found:**
 ```
-Error: exec: "mtga-companion": executable file not found
+Error: exec: "vaultmtg": executable file not found
 ```
 Solution: Ensure binary exists at installation path.
 
@@ -286,13 +286,13 @@ If you see "database is locked" errors:
 
 1. **Stop all instances:**
    ```bash
-   ./mtga-companion service stop
-   killall mtga-companion  # macOS/Linux
+   ./vaultmtg service stop
+   killall vaultmtg  # macOS/Linux
    ```
 
 2. **Restart daemon:**
    ```bash
-   ./mtga-companion service start
+   ./vaultmtg service start
    ```
 
 3. **Important**: Don't run both daemon and standalone mode simultaneously
@@ -334,8 +334,8 @@ If you prefer to remove the daemon and use standalone mode:
 
 1. **Stop and uninstall daemon:**
    ```bash
-   ./mtga-companion service stop
-   ./mtga-companion service uninstall
+   ./vaultmtg service stop
+   ./vaultmtg service uninstall
    ```
 
 2. **Launch GUI normally:**
@@ -350,7 +350,7 @@ If you prefer to remove the daemon and use standalone mode:
 
 ### Will my existing data be lost?
 
-**No.** Both modes use the same database (`~/.mtga-companion/data.db`). Your existing match history, statistics, and settings are preserved.
+**No.** Both modes use the same database (`~/.vaultmtg/data.db`). Your existing match history, statistics, and settings are preserved.
 
 ### Can I switch between modes?
 
@@ -378,7 +378,7 @@ The service manager (launchd/systemd/Windows Service) automatically restarts the
 
 **Option 1 - Change daemon port:**
 ```bash
-./mtga-companion daemon --port=8888
+./vaultmtg daemon --port=8888
 ```
 
 Then update GUI Settings → Daemon Connection → Port to match.
@@ -397,15 +397,15 @@ Edit the service configuration to include the port flag:
 
 ```bash
 # Stop and uninstall daemon
-./mtga-companion service stop
-./mtga-companion service uninstall
+./vaultmtg service stop
+./vaultmtg service uninstall
 
 # Remove binary
-rm ./mtga-companion  # macOS/Linux
-del mtga-companion.exe  # Windows
+rm ./vaultmtg  # macOS/Linux
+del vaultmtg.exe  # Windows
 
 # Optional: Remove database and config
-rm -rf ~/.mtga-companion
+rm -rf ~/.vaultmtg
 ```
 
 ## Getting Help
@@ -415,7 +415,7 @@ If you encounter issues not covered in this guide:
 1. Check [DAEMON_INSTALLATION.md](DAEMON_INSTALLATION.md) for detailed installation instructions
 2. Check [TROUBLESHOOTING.md](../README.md#troubleshooting) for common issues
 3. View daemon logs for error messages
-4. Open an issue on GitHub: https://github.com/RdHamilton/MTGA-Companion/issues
+4. Open an issue on GitHub: https://github.com/RdHamilton/vault-mtg/issues
 
 Include:
 - OS and version

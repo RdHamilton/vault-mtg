@@ -1,6 +1,6 @@
 # CLI Flag Migration Guide
 
-This document maps old flags to new standardized flags for MTGA-Companion.
+This document maps old flags to new standardized flags for VaultMTG.
 
 ## Migration Summary
 
@@ -35,17 +35,17 @@ Old flags will be removed in v2.0.0.
 
 ### Old Syntax (Still Works)
 ```bash
-mtga-companion -debug -gui -cache -poll-interval 5s
+vaultmtg -debug -gui -cache -poll-interval 5s
 ```
 
 ### New Syntax (Recommended)
 ```bash
-mtga-companion -debug-mode -gui-mode -cache-enabled -log-poll-interval 5s
+vaultmtg -debug-mode -gui-mode -cache-enabled -log-poll-interval 5s
 ```
 
 ### New Syntax with Shortcuts
 ```bash
-mtga-companion -d -g -cache-enabled -log-poll-interval 5s
+vaultmtg -d -g -cache-enabled -log-poll-interval 5s
 ```
 
 ## Export Command Flags

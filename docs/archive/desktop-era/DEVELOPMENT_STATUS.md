@@ -436,7 +436,7 @@
 - Real-time updates via WebSocket events
 
 ### Architecture (v1.2):
-- **Daemon** (`cmd/mtga-companion/daemon.go`): Background service, WebSocket server
+- **Daemon** (`cmd/vaultmtg/daemon.go`): Background service, WebSocket server
 - **API Server** (`cmd/apiserver/main.go`): REST API server, delegates to facades
 - **Facades** (`internal/gui/*_facade.go`): Domain-specific facades (Match, Draft, Deck, Card, Export, System)
 - **Patterns** (`internal/events/`, `internal/commands/`): Observer & Command patterns

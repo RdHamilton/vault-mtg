@@ -1,6 +1,6 @@
 # Usage Guide - MVP Features
 
-This guide covers how to use all MVP features of the MTGA-Companion Draft Overlay.
+This guide covers how to use all MVP features of the VaultMTG Draft Overlay.
 
 ## Table of Contents
 
@@ -17,7 +17,7 @@ This guide covers how to use all MVP features of the MTGA-Companion Draft Overla
 
 ```bash
 # Build from source
-go build -o bin/mtga-companion ./cmd/mtga-companion
+go build -o bin/vaultmtg ./cmd/vaultmtg
 
 # Or use the development script
 ./scripts/dev.sh build
@@ -30,7 +30,7 @@ go build -o bin/mtga-companion ./cmd/mtga-companion
 The most basic command to start the draft overlay:
 
 ```bash
-./mtga-companion draft-overlay --set MKM --format PremierDraft
+./vaultmtg draft-overlay --set MKM --format PremierDraft
 ```
 
 This will:
@@ -54,7 +54,7 @@ This will:
 ### Set Configuration
 
 ```bash
-# Using set code (auto-loads from ~/.mtga-companion/sets/)
+# Using set code (auto-loads from ~/.vaultmtg/sets/)
 --set MKM
 --format PremierDraft
 
@@ -101,7 +101,7 @@ Enable verbose debug logging for troubleshooting:
 --debug
 
 # Example with debug enabled
-./mtga-companion draft-overlay --set MKM --format PremierDraft --debug
+./vaultmtg draft-overlay --set MKM --format PremierDraft --debug
 ```
 
 **Debug Output Includes:**
@@ -151,17 +151,17 @@ Control the API response cache behavior:
 
 ```bash
 # Short draft session (minimal caching)
-./mtga-companion draft-overlay --set MKM --format PremierDraft \
+./vaultmtg draft-overlay --set MKM --format PremierDraft \
   --cache-ttl 1h \
   --cache-max-size 500
 
 # Full day of drafting (aggressive caching)
-./mtga-companion draft-overlay --set MKM --format PremierDraft \
+./vaultmtg draft-overlay --set MKM --format PremierDraft \
   --cache-ttl 24h \
   --cache-max-size 0
 
 # Development/testing (no caching)
-./mtga-companion draft-overlay --set MKM --format PremierDraft \
+./vaultmtg draft-overlay --set MKM --format PremierDraft \
   --cache=false
 ```
 
@@ -203,7 +203,7 @@ When resume is enabled (`--overlay-resume=true`), the overlay:
 # Draft in progress: Pack 2, Pick 5
 # Overlay crashes
 # Restart with resume enabled
-./mtga-companion draft-overlay --set MKM --format PremierDraft
+./vaultmtg draft-overlay --set MKM --format PremierDraft
 
 # Result: Overlay scans logs, finds draft state, resumes at Pack 2, Pick 5
 ```
@@ -213,7 +213,7 @@ When resume is enabled (`--overlay-resume=true`), the overlay:
 ```bash
 # Previous draft finished yesterday
 # Starting fresh draft today
-./mtga-companion draft-overlay --set MKM --format PremierDraft --overlay-resume=false
+./vaultmtg draft-overlay --set MKM --format PremierDraft --overlay-resume=false
 
 # Result: Overlay ignores previous draft, only processes new events
 ```
@@ -223,7 +223,7 @@ When resume is enabled (`--overlay-resume=true`), the overlay:
 ```bash
 # Draft started 36 hours ago
 # Need to resume with longer lookback
-./mtga-companion draft-overlay --set MKM --format PremierDraft --overlay-lookback 48
+./vaultmtg draft-overlay --set MKM --format PremierDraft --overlay-lookback 48
 
 # Result: Scans 48 hours back to find draft state
 ```
@@ -385,7 +385,7 @@ With `--debug`, you'll see rotation events:
 1. Enable debug mode to see error details
 2. Check for panic messages in terminal
 3. Verify set file exists and is valid JSON
-4. Report issue with debug output: https://github.com/RdHamilton/MTGA-Companion/issues
+4. Report issue with debug output: https://github.com/RdHamilton/vault-mtg/issues
 
 ### Performance Issues
 
@@ -403,14 +403,14 @@ With `--debug`, you'll see rotation events:
 
 ```bash
 # Start overlay for Murders at Karlov Manor Premier Draft
-./mtga-companion draft-overlay --set MKM --format PremierDraft
+./vaultmtg draft-overlay --set MKM --format PremierDraft
 ```
 
 ### Example 2: Debugging
 
 ```bash
 # Start with debug output and resume disabled
-./mtga-companion draft-overlay --set MKM --format PremierDraft \
+./vaultmtg draft-overlay --set MKM --format PremierDraft \
   --debug \
   --overlay-resume=false
 ```
@@ -419,7 +419,7 @@ With `--debug`, you'll see rotation events:
 
 ```bash
 # Optimized for all-day drafting
-./mtga-companion draft-overlay --set MKM --format PremierDraft \
+./vaultmtg draft-overlay --set MKM --format PremierDraft \
   --cache-ttl 24h \
   --cache-max-size 0 \
   --overlay-resume=true \
@@ -430,7 +430,7 @@ With `--debug`, you'll see rotation events:
 
 ```bash
 # Fresh state, no caching, debug output
-./mtga-companion draft-overlay --set MKM --format PremierDraft \
+./vaultmtg draft-overlay --set MKM --format PremierDraft \
   --debug \
   --cache=false \
   --overlay-resume=false
@@ -440,7 +440,7 @@ With `--debug`, you'll see rotation events:
 
 ```bash
 # macOS with custom log location
-./mtga-companion draft-overlay --set MKM --format PremierDraft \
+./vaultmtg draft-overlay --set MKM --format PremierDraft \
   --log-path "/Volumes/GameDrive/MTGA/Player.log"
 ```
 

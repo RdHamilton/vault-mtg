@@ -1,6 +1,6 @@
 # Collection Features User Guide
 
-This guide explains how to use the collection tracking features in MTGA-Companion to manage and analyze your Magic: The Gathering Arena card collection.
+This guide explains how to use the collection tracking features in VaultMTG to manage and analyze your Magic: The Gathering Arena card collection.
 
 ## Table of Contents
 
@@ -15,7 +15,7 @@ This guide explains how to use the collection tracking features in MTGA-Companio
 
 ## How Collection Tracking Works
 
-MTGA-Companion automatically tracks your card collection by monitoring your MTGA game logs. Here's what you need to know:
+VaultMTG automatically tracks your card collection by monitoring your MTGA game logs. Here's what you need to know:
 
 ### Automatic Log-Based Tracking
 
@@ -219,7 +219,7 @@ Change history is useful for:
 **Collection not updating?**
 - Ensure MTGA is running and you've played recently
 - Check that the app has access to your MTGA log file location
-- Try restarting both MTGA and MTGA-Companion
+- Try restarting both MTGA and VaultMTG
 
 **Missing older cards?**
 - Collection builds over time from log data
@@ -244,7 +244,7 @@ The app automatically detects the correct log location for your platform.
 
 ## Summary
 
-The Collection features in MTGA-Companion provide:
+The Collection features in VaultMTG provide:
 
 1. **Automatic tracking**: No manual data entry required
 2. **Visual browsing**: See your entire collection with card images

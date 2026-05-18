@@ -1,6 +1,6 @@
-# MTGA Companion Daemon Installation Guide
+# VaultMTG Daemon Installation Guide
 
-This guide covers installing and managing the MTGA Companion daemon service on macOS, Windows, and Linux.
+This guide covers installing and managing the VaultMTG daemon service on macOS, Windows, and Linux.
 
 ## Table of Contents
 
@@ -17,7 +17,7 @@ This guide covers installing and managing the MTGA Companion daemon service on m
 
 ## Overview
 
-The MTGA Companion daemon is a background service that:
+The VaultMTG daemon is a background service that:
 - Monitors your MTGA Player.log file for updates
 - Parses and stores match data, statistics, and deck information
 - Provides real-time updates to the GUI via WebSocket
@@ -32,11 +32,11 @@ The MTGA Companion daemon is a background service that:
 - ⚠️ **Windows**: Implementation complete but not yet verified
 - ⚠️ **Linux**: Implementation complete but not yet verified
 
-The service installation uses the cross-platform [kardianos/service](https://github.com/kardianos/service) library which has proven support for all three platforms. The implementation should work on Windows and Linux, but has not been tested on those platforms yet. If you encounter issues on Windows or Linux, please [report them](https://github.com/RdHamilton/MTGA-Companion/issues).
+The service installation uses the cross-platform [kardianos/service](https://github.com/kardianos/service) library which has proven support for all three platforms. The implementation should work on Windows and Linux, but has not been tested on those platforms yet. If you encounter issues on Windows or Linux, please [report them](https://github.com/RdHamilton/vault-mtg/issues).
 
 ## Prerequisites
 
-- MTGA Companion binary (`mtga-companion` or `mtga-companion.exe`)
+- VaultMTG binary (`vaultmtg` or `vaultmtg.exe`)
 - Administrator/root privileges for service installation
 - MTGA installed and configured
 
@@ -46,14 +46,14 @@ The service installation uses the cross-platform [kardianos/service](https://git
 
 **1. Open Terminal**
 
-**2. Navigate to the MTGA Companion directory:**
+**2. Navigate to the VaultMTG directory:**
 ```bash
-cd /path/to/MTGA-Companion
+cd /path/to/VaultMTG
 ```
 
 **3. Install the service:**
 ```bash
-./mtga-companion service install
+./vaultmtg service install
 ```
 
 Expected output:
@@ -61,20 +61,20 @@ Expected output:
 ✓ Service installed successfully
 
 Next steps:
-  1. Start the service: mtga-companion service start
-  2. Verify it's running: mtga-companion service status
+  1. Start the service: vaultmtg service start
+  2. Verify it's running: vaultmtg service status
   3. View logs:
      tail -f ~/Library/Logs/MTGACompanionDaemon.log
 ```
 
 **4. Start the service:**
 ```bash
-./mtga-companion service start
+./vaultmtg service start
 ```
 
 **5. Verify it's running:**
 ```bash
-./mtga-companion service status
+./vaultmtg service status
 ```
 
 Expected output:
@@ -84,7 +84,7 @@ Service Status:
 
 Service Details:
   Name: MTGACompanionDaemon
-  Display Name: MTGA Companion Daemon
+  Display Name: VaultMTG Daemon
   Description: Background service that monitors MTGA log files...
 ```
 
@@ -99,14 +99,14 @@ Service Details:
 
 Right-click PowerShell → "Run as Administrator"
 
-**2. Navigate to the MTGA Companion directory:**
+**2. Navigate to the VaultMTG directory:**
 ```powershell
-cd C:\Path\To\MTGA-Companion
+cd C:\Path\To\VaultMTG
 ```
 
 **3. Install the service:**
 ```powershell
-.\mtga-companion.exe service install
+.\vaultmtg.exe service install
 ```
 
 Expected output:
@@ -114,20 +114,20 @@ Expected output:
 ✓ Service installed successfully
 
 Next steps:
-  1. Start the service: mtga-companion service start
-  2. Verify it's running: mtga-companion service status
+  1. Start the service: vaultmtg service start
+  2. Verify it's running: vaultmtg service status
   3. View logs:
      Check Event Viewer or C:\ProgramData\MTGACompanionDaemon\logs
 ```
 
 **4. Start the service:**
 ```powershell
-.\mtga-companion.exe service start
+.\vaultmtg.exe service start
 ```
 
 **5. Verify it's running:**
 ```powershell
-.\mtga-companion.exe service status
+.\vaultmtg.exe service status
 ```
 
 **Service Location:**
@@ -138,31 +138,31 @@ Next steps:
 **Alternative using Windows Services Manager:**
 1. Press `Win + R`
 2. Type `services.msc`
-3. Look for "MTGA Companion Daemon"
+3. Look for "VaultMTG Daemon"
 4. Right-click → Properties to configure
 
 ### Linux
 
 **1. Open Terminal**
 
-**2. Navigate to the MTGA Companion directory:**
+**2. Navigate to the VaultMTG directory:**
 ```bash
-cd /path/to/MTGA-Companion
+cd /path/to/VaultMTG
 ```
 
 **3. Install the service (requires sudo):**
 ```bash
-sudo ./mtga-companion service install
+sudo ./vaultmtg service install
 ```
 
 **4. Start the service:**
 ```bash
-sudo ./mtga-companion service start
+sudo ./vaultmtg service start
 ```
 
 **5. Verify it's running:**
 ```bash
-./mtga-companion service status
+./vaultmtg service status
 ```
 
 **Service Location:**
@@ -191,37 +191,37 @@ sudo systemctl enable MTGACompanionDaemon
 
 ```bash
 # All platforms
-./mtga-companion service status
+./vaultmtg service status
 ```
 
 ### Start Service
 
 ```bash
 # macOS/Linux
-./mtga-companion service start
+./vaultmtg service start
 
 # Windows (as Administrator)
-.\mtga-companion.exe service start
+.\vaultmtg.exe service start
 ```
 
 ### Stop Service
 
 ```bash
 # macOS/Linux
-./mtga-companion service stop
+./vaultmtg service stop
 
 # Windows (as Administrator)
-.\mtga-companion.exe service stop
+.\vaultmtg.exe service stop
 ```
 
 ### Restart Service
 
 ```bash
 # macOS/Linux
-./mtga-companion service restart
+./vaultmtg service restart
 
 # Windows (as Administrator)
-.\mtga-companion.exe service restart
+.\vaultmtg.exe service restart
 ```
 
 ## Verification
@@ -229,7 +229,7 @@ sudo systemctl enable MTGACompanionDaemon
 ### 1. Check Service Status
 
 ```bash
-./mtga-companion service status
+./vaultmtg service status
 ```
 
 Should show "Status: ✓ Running"
@@ -244,7 +244,7 @@ curl http://localhost:9999/status
 ```
 
 **Using the GUI:**
-1. Launch MTGA Companion GUI
+1. Launch VaultMTG GUI
 2. Go to Settings → Daemon Connection
 3. Status should show "Connected to Daemon" (green)
 
@@ -297,7 +297,7 @@ journalctl -u MTGACompanionDaemon -n 50
 
 1. **Verify daemon is running:**
    ```bash
-   ./mtga-companion service status
+   ./vaultmtg service status
    ```
 
 2. **Check port:**
@@ -310,7 +310,7 @@ journalctl -u MTGACompanionDaemon -n 50
 
 4. **Restart daemon:**
    ```bash
-   ./mtga-companion service restart
+   ./vaultmtg service restart
    ```
 
 5. **Check firewall:**
@@ -321,10 +321,10 @@ journalctl -u MTGACompanionDaemon -n 50
 **macOS/Linux:**
 ```bash
 # Ensure binary is executable
-chmod +x ./mtga-companion
+chmod +x ./vaultmtg
 
 # Install with sudo (Linux)
-sudo ./mtga-companion service install
+sudo ./vaultmtg service install
 ```
 
 **Windows:**
@@ -368,13 +368,13 @@ If you see "database is locked" errors:
 
 1. **Stop all instances:**
    ```bash
-   ./mtga-companion service stop
-   killall mtga-companion  # macOS/Linux
+   ./vaultmtg service stop
+   killall vaultmtg  # macOS/Linux
    ```
 
 2. **Restart daemon:**
    ```bash
-   ./mtga-companion service start
+   ./vaultmtg service start
    ```
 
 3. **Avoid running both standalone and daemon:**
@@ -387,10 +387,10 @@ If you see "database is locked" errors:
 **All Platforms:**
 ```bash
 # Stop the service
-./mtga-companion service stop
+./vaultmtg service stop
 
 # Uninstall the service
-./mtga-companion service uninstall
+./vaultmtg service uninstall
 ```
 
 Expected output:
@@ -423,22 +423,22 @@ sudo journalctl --vacuum-time=1s -u MTGACompanionDaemon
 
 ### Remove Binary (Optional)
 
-If you want to completely remove MTGA Companion:
+If you want to completely remove VaultMTG:
 
 ```bash
 # macOS/Linux
-rm ./mtga-companion
+rm ./vaultmtg
 
 # Windows
-del mtga-companion.exe
+del vaultmtg.exe
 ```
 
 ## Automatic Version Checks
 
-The daemon checks for newer releases every 24 hours by querying the MTGA Companion BFF. If a newer version is available, it logs a single warning line:
+The daemon checks for newer releases every 24 hours by querying the VaultMTG BFF. If a newer version is available, it logs a single warning line:
 
 ```
-[mtga-daemon] WARN: new version available: 0.4.0 (current: 0.3.0) — https://github.com/RdHamilton/MTGA-Companion/releases/tag/daemon/v0.4.0
+[mtga-daemon] WARN: new version available: 0.4.0 (current: 0.3.0) — https://github.com/RdHamilton/vault-mtg/releases/tag/daemon/v0.4.0
 ```
 
 The check also runs once immediately after the daemon starts. It uses a 5-second HTTP timeout and never blocks event ingestion — any network failure is logged at INFO level and silently ignored.
@@ -472,7 +472,7 @@ To run daemon on a different port:
 
 **Option 1: Via command line**
 ```bash
-./mtga-companion daemon --port=8888
+./vaultmtg daemon --port=8888
 ```
 
 **Option 2: Configure in service**
@@ -489,7 +489,7 @@ Then update GUI Settings → Daemon Connection → Port to match.
 By default, daemon auto-detects your MTGA log location. To specify manually:
 
 ```bash
-./mtga-companion daemon --log-path="/path/to/Player.log"
+./vaultmtg daemon --log-path="/path/to/Player.log"
 ```
 
 ### Multiple MTGA Installations
@@ -498,10 +498,10 @@ If you have MTGA installed in multiple locations:
 
 ```bash
 # Instance 1 (default)
-./mtga-companion daemon --port=9999
+./vaultmtg daemon --port=9999
 
 # Instance 2 (custom port)
-./mtga-companion daemon --port=9998 --log-path="/path/to/other/Player.log"
+./vaultmtg daemon --port=9998 --log-path="/path/to/other/Player.log"
 ```
 
 ## Getting Help
@@ -510,7 +510,7 @@ If you encounter issues:
 
 1. Check logs (see [Verification](#verification) section)
 2. Review [Troubleshooting](#troubleshooting) section
-3. Open an issue on GitHub: https://github.com/RdHamilton/MTGA-Companion/issues
+3. Open an issue on GitHub: https://github.com/RdHamilton/vault-mtg/issues
 4. Include:
    - OS and version
    - Daemon logs
