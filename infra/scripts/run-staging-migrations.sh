@@ -145,7 +145,9 @@ DB_ENDPOINT=$(aws ssm get-parameter \
     --query   "Parameter.Value" \
     --output  text)
 
-MIGRATION_USER=$(echo "$DATABASE_URL" | sed 's|postgres://\([^:]*\):.*|\1|')
+# Extract the username from postgres://user:password@host/dbname
+_NO_SCHEME="${DATABASE_URL#postgres://}"
+MIGRATION_USER="${_NO_SCHEME%%:*}"
 
 echo "[run-staging-migrations] Transferring table ownership to ${MIGRATION_USER} ..."
 PGPASSWORD="$MASTER_PASSWORD" psql \

@@ -1,4 +1,4 @@
-#!/bin/sh
+#!/usr/bin/env bash
 # provision-staging-env.sh
 # Renders /etc/mtga-companion-staging/env from SSM parameter hierarchy.
 # Reads from /mtga-companion/staging/* and /vaultmtg/staging/* paths.
