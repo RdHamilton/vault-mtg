@@ -1,11 +1,11 @@
-# uninstall.ps1 — removes the MTGA Companion daemon from Windows.
+# uninstall.ps1 — removes the VaultMTG daemon from Windows.
 #
 # Usage (run in PowerShell as the current user):
 #   .\uninstall.ps1
 #
 # Steps:
-#   1. Stops the running daemon process (if any).
-#   2. Removes the Task Scheduler logon task.
+#   1. Stops and removes the VaultMTG-Daemon scheduled task.
+#   2. Stops and removes the legacy MTGA-Companion-Daemon task if still present.
 #   3. Removes the binary from the install directory.
 #
 # The config file and log files are NOT removed — delete them manually if
@@ -18,33 +18,42 @@ $ErrorActionPreference = 'Stop'
 # ---------------------------------------------------------------------------
 # Configuration — must match install.ps1.
 # ---------------------------------------------------------------------------
-$TaskName   = 'MTGA-Companion-Daemon'
-$BinaryName = 'mtga-companion-daemon.exe'
+$TaskName       = 'VaultMTG-Daemon'
+$LegacyTaskName = 'MTGA-Companion-Daemon'
+$BinaryName     = 'vaultmtg-daemon.exe'
 
-# Determine install directory: prefer %ProgramFiles%, fall back to
-# %LOCALAPPDATA% (mirrors install.ps1 fallback logic).
-$InstallDir = Join-Path $Env:ProgramFiles 'MTGA-Companion'
+# Determine install directory: prefer %ProgramFiles%\VaultMTG, fall back to
+# %LOCALAPPDATA%\VaultMTG (mirrors install.ps1 fallback logic).
+$InstallDir = Join-Path $Env:ProgramFiles 'VaultMTG'
 $BinaryPath = Join-Path $InstallDir $BinaryName
 
 if (-not (Test-Path $BinaryPath)) {
-    $InstallDir = Join-Path $Env:LOCALAPPDATA 'MTGA-Companion'
+    $InstallDir = Join-Path $Env:LOCALAPPDATA 'VaultMTG'
     $BinaryPath = Join-Path $InstallDir $BinaryName
 }
 
 # ---------------------------------------------------------------------------
-# Stop the scheduled task (stops the running daemon process).
+# Stop and remove the VaultMTG-Daemon scheduled task.
 # SilentlyContinue so this is idempotent — safe to run if the task was
 # never started or was already stopped.
 # ---------------------------------------------------------------------------
 Write-Host "Stopping task '$TaskName' (if running)..."
 Stop-ScheduledTask -TaskName $TaskName -ErrorAction SilentlyContinue
 
-# ---------------------------------------------------------------------------
-# Remove the scheduled task registration.
-# Confirm:$false suppresses the interactive confirmation prompt.
-# ---------------------------------------------------------------------------
 Write-Host "Removing task '$TaskName' from Task Scheduler..."
 Unregister-ScheduledTask -TaskName $TaskName -Confirm:$false -ErrorAction SilentlyContinue
+
+# ---------------------------------------------------------------------------
+# Also stop and remove the legacy MTGA-Companion-Daemon task if it is still
+# present (e.g. the user never ran install.ps1 after upgrading, or a partial
+# upgrade left the old task registered alongside the new binary).
+# ---------------------------------------------------------------------------
+$legacyTask = Get-ScheduledTask -TaskName $LegacyTaskName -ErrorAction SilentlyContinue
+if ($null -ne $legacyTask) {
+    Write-Host "Removing legacy task '$LegacyTaskName'..."
+    Stop-ScheduledTask -TaskName $LegacyTaskName -ErrorAction SilentlyContinue
+    Unregister-ScheduledTask -TaskName $LegacyTaskName -Confirm:$false -ErrorAction SilentlyContinue
+}
 
 # ---------------------------------------------------------------------------
 # Remove the binary.
@@ -70,6 +79,6 @@ if (Test-Path $BinaryPath) {
 }
 
 Write-Host ''
-Write-Host 'MTGA Companion daemon uninstalled.'
-Write-Host "Config file ($InstallDir\daemon.yaml) was NOT removed."
+Write-Host 'VaultMTG daemon uninstalled.'
+Write-Host "Config dir ($Env:APPDATA\vaultmtg) was NOT removed."
 Write-Host 'Remove it manually if desired.'

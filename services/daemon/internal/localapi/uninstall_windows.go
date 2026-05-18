@@ -10,19 +10,42 @@ import (
 	"strings"
 )
 
+// schtasksRun is the package-level hook used to run schtasks.exe commands.
+// It is a function variable so tests can inject a stub without touching the
+// host machine's Task Scheduler.  Production code never reassigns this.
+var schtasksRun = runSchtasksExec
+
 // runPlatformUninstall performs the Windows uninstall steps. Mirrors
 // services/daemon/install/windows/uninstall.ps1 for the user-scoped
 // pieces (stopping + unregistering the scheduled task) but reimplemented
 // in-process so we don't need PowerShell to be reachable through cmd
 // (it usually is, but we don't want to depend on PATH).
+//
+// It removes both VaultMTG-Daemon (the current name) AND the legacy
+// MTGA-Companion-Daemon task so that an upgrade scenario never leaves an
+// orphaned old task running alongside the new one.
 func runPlatformUninstall(purge bool) (string, error) {
-	const taskName = "MTGA-Companion-Daemon"
+	const (
+		taskName       = "VaultMTG-Daemon"
+		legacyTaskName = "MTGA-Companion-Daemon"
+	)
 
-	if err := runSchtasks([]string{"/End", "/TN", taskName}); err != nil {
+	// Stop and remove the current VaultMTG-Daemon task.
+	if err := schtasksRun([]string{"/End", "/TN", taskName}); err != nil {
 		return "", fmt.Errorf("schtasks /End %s: %w", taskName, err)
 	}
-	if err := runSchtasks([]string{"/Delete", "/TN", taskName, "/F"}); err != nil {
+	if err := schtasksRun([]string{"/Delete", "/TN", taskName, "/F"}); err != nil {
 		return "", fmt.Errorf("schtasks /Delete %s: %w", taskName, err)
+	}
+
+	// Also stop and remove the legacy MTGA-Companion-Daemon task if it is
+	// still registered (upgrade scenario: the old task was never cleaned up).
+	// Both operations are idempotent — runSchtasks swallows "task not found".
+	if err := schtasksRun([]string{"/End", "/TN", legacyTaskName}); err != nil {
+		return "", fmt.Errorf("schtasks /End %s: %w", legacyTaskName, err)
+	}
+	if err := schtasksRun([]string{"/Delete", "/TN", legacyTaskName, "/F"}); err != nil {
+		return "", fmt.Errorf("schtasks /Delete %s: %w", legacyTaskName, err)
 	}
 
 	if purge {
@@ -30,7 +53,7 @@ func runPlatformUninstall(purge bool) (string, error) {
 		if appData == "" {
 			return "", fmt.Errorf("APPDATA env var is empty; cannot purge config")
 		}
-		configDir := filepath.Join(appData, "MTGA-Companion")
+		configDir := filepath.Join(appData, "vaultmtg")
 		if err := os.RemoveAll(configDir); err != nil {
 			return "", fmt.Errorf("remove config dir %s: %w", configDir, err)
 		}
@@ -41,6 +64,12 @@ func runPlatformUninstall(purge bool) (string, error) {
 		msg = "Daemon stopped, removed from Task Scheduler, and config wiped. Use Add/Remove Programs (or delete the install directory) to remove the binary."
 	}
 	return msg, nil
+}
+
+// runSchtasksExec runs schtasks.exe with the given args.  It is the
+// production implementation of schtasksRun.
+func runSchtasksExec(args []string) error {
+	return runSchtasks(args)
 }
 
 // runSchtasks runs schtasks with the given args. Idempotent failure

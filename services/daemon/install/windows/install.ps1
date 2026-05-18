@@ -1,13 +1,16 @@
-# install.ps1 — Windows installer for the MTGA Companion daemon
+# install.ps1 — Windows installer for the VaultMTG daemon
 #
 # Usage (run as the current user — no admin required for Task Scheduler):
 #   irm https://raw.githubusercontent.com/RdHamilton/MTGA-Companion/main/services/daemon/install/windows/install.ps1 | iex
 #
 # Steps:
 #   1. Resolves the latest daemon GitHub Release (or uses $Env:RELEASE_TAG).
-#   2. Downloads the Windows amd64 binary to %ProgramFiles%\MTGA-Companion\.
-#   3. Writes cloud_api_url and api_key as JSON to %APPDATA%\mtga-companion\daemon.json.
-#   4. Registers a Task Scheduler startup task for the current user so the
+#   2. Migrates config from %APPDATA%\mtga-companion\ → %APPDATA%\vaultmtg\ (upgrade path).
+#   3. Removes any legacy MTGA-Companion-Daemon scheduled task so two daemons
+#      cannot run simultaneously after an upgrade.
+#   4. Downloads the Windows amd64 binary to %ProgramFiles%\VaultMTG\.
+#   5. Writes cloud_api_url and api_key as JSON to %APPDATA%\vaultmtg\daemon.json.
+#   6. Registers a Task Scheduler startup task for the current user so the
 #      daemon starts at logon without requiring UAC elevation.
 
 #Requires -Version 5.1
@@ -17,19 +20,23 @@ $ErrorActionPreference = 'Stop'
 # ---------------------------------------------------------------------------
 # Configuration
 # ---------------------------------------------------------------------------
-$GitHubRepo  = 'RdHamilton/MTGA-Companion'
-$AssetName   = 'mtga-companion-daemon-windows-amd64.exe'
-$BinaryName  = 'mtga-companion-daemon.exe'
+$GitHubRepo     = 'RdHamilton/MTGA-Companion'
+$AssetName      = 'vaultmtg-daemon-windows-amd64.exe'
+$BinaryName     = 'vaultmtg-daemon.exe'
 # Install to a subfolder of %ProgramFiles%; fall back to %LOCALAPPDATA% if
 # the user does not have write access to %ProgramFiles%.
-$InstallDir  = Join-Path $Env:ProgramFiles 'MTGA-Companion'
-$TaskName    = 'MTGA-Companion-Daemon'
-# Config is written to %APPDATA%\mtga-companion\daemon.json — this matches the
+$InstallDir     = Join-Path $Env:ProgramFiles 'VaultMTG'
+$TaskName       = 'VaultMTG-Daemon'
+# Legacy task name — removed during upgrade so two daemons cannot run at once.
+$LegacyTaskName = 'MTGA-Companion-Daemon'
+# Config is written to %APPDATA%\vaultmtg\daemon.json — this matches the
 # Windows default path used by defaultConfigPath() in cmd/daemon/main.go.
 # Note: Task Scheduler passes -config explicitly (see action below), so the
 # default path is only relevant when running the binary directly without that flag.
-$ConfigDir   = Join-Path $Env:APPDATA 'mtga-companion'
-$ConfigFile  = Join-Path $ConfigDir 'daemon.json'
+$ConfigDir      = Join-Path $Env:APPDATA 'vaultmtg'
+$ConfigFile     = Join-Path $ConfigDir 'daemon.json'
+# Legacy config dir — migrated on upgrade (copy-not-move for downgrade safety).
+$LegacyConfigDir = Join-Path $Env:APPDATA 'mtga-companion'
 
 # Optional overrides via environment variables.
 $ReleaseTag  = $Env:RELEASE_TAG   # e.g. "daemon/v0.2.0"
@@ -41,7 +48,7 @@ $AuthToken   = $Env:DAEMON_AUTH_TOKEN
 # ---------------------------------------------------------------------------
 function Get-LatestDaemonTag {
     $apiUrl   = "https://api.github.com/repos/$GitHubRepo/releases"
-    $headers  = @{ 'User-Agent' = 'mtga-companion-installer' }
+    $headers  = @{ 'User-Agent' = 'vaultmtg-installer' }
     $releases = Invoke-RestMethod -Uri $apiUrl -Headers $headers -Method Get
 
     foreach ($r in $releases) {
@@ -60,12 +67,67 @@ if (-not $ReleaseTag) {
     $ReleaseTag = Get-LatestDaemonTag
 }
 
-Write-Host "Installing MTGA Companion daemon $ReleaseTag (windows-amd64)..."
+Write-Host "Installing VaultMTG daemon $ReleaseTag (windows-amd64)..."
+
+# ---------------------------------------------------------------------------
+# Config-dir migration (ADR-022 Phase 2, upgrade path).
+#
+# Copy %APPDATA%\mtga-companion\ → %APPDATA%\vaultmtg\ so existing users
+# retain their configuration after upgrading.
+#
+# Rules (mirror Go migrate.MigrateConfigDir):
+#   - No-op when %APPDATA%\mtga-companion does not exist (fresh install).
+#   - No-op when %APPDATA%\vaultmtg already exists and is non-empty
+#     (migration already ran, e.g. the daemon binary ran first).
+#   - Copy-not-move: %APPDATA%\mtga-companion is retained for downgrade safety.
+#
+# Note: the daemon binary itself also runs this migration at startup
+# (runConfigDirMigration in cmd/daemon/main.go). The installer-side copy
+# here ensures config is in place before the new task ever runs for the
+# first time. The two are consistent — the Go helper is idempotent.
+# ---------------------------------------------------------------------------
+if (Test-Path $LegacyConfigDir) {
+    $newDirPopulated = (Test-Path $ConfigDir) -and `
+        ((Get-ChildItem -Path $ConfigDir -Force -ErrorAction SilentlyContinue | Measure-Object).Count -gt 0)
+    if (-not $newDirPopulated) {
+        Write-Host "Migrating config: $LegacyConfigDir → $ConfigDir"
+        New-Item -ItemType Directory -Path $ConfigDir -Force | Out-Null
+        Get-ChildItem -Path $LegacyConfigDir -Recurse -Force | ForEach-Object {
+            $rel     = $_.FullName.Substring($LegacyConfigDir.Length).TrimStart('\')
+            $dstPath = Join-Path $ConfigDir $rel
+            if ($_.PSIsContainer) {
+                New-Item -ItemType Directory -Path $dstPath -Force | Out-Null
+            } elseif (-not (Test-Path $dstPath)) {
+                $dstParent = Split-Path $dstPath -Parent
+                New-Item -ItemType Directory -Path $dstParent -Force | Out-Null
+                Copy-Item -Path $_.FullName -Destination $dstPath -Force
+            }
+        }
+        Write-Host "Config migration complete (legacy dir retained for downgrade safety)."
+    } else {
+        Write-Host "Config dir $ConfigDir already populated — skipping migration."
+    }
+}
+
+# ---------------------------------------------------------------------------
+# Remove legacy scheduled task (ADR-022 Phase 2, upgrade safety).
+#
+# If MTGA-Companion-Daemon is still registered, unregister it NOW — before
+# registering VaultMTG-Daemon — so two daemons cannot run simultaneously.
+# This is a silent no-op on fresh installs where the old task never existed.
+# ---------------------------------------------------------------------------
+$legacyTask = Get-ScheduledTask -TaskName $LegacyTaskName -ErrorAction SilentlyContinue
+if ($null -ne $legacyTask) {
+    Write-Host "Removing legacy scheduled task '$LegacyTaskName'..."
+    Stop-ScheduledTask -TaskName $LegacyTaskName -ErrorAction SilentlyContinue
+    Unregister-ScheduledTask -TaskName $LegacyTaskName -Confirm:$false -ErrorAction SilentlyContinue
+    Write-Host "Legacy task removed."
+}
 
 # ---------------------------------------------------------------------------
 # Ensure install directory exists.
 # If %ProgramFiles% is not writable by the current user, fall back to
-# %LOCALAPPDATA%\MTGA-Companion so no UAC prompt is needed.
+# %LOCALAPPDATA%\VaultMTG so no UAC prompt is needed.
 # ---------------------------------------------------------------------------
 try {
     if (-not (Test-Path $InstallDir)) {
@@ -76,8 +138,8 @@ try {
     [System.IO.File]::WriteAllText($testFile, '')
     Remove-Item $testFile -Force
 } catch {
-    Write-Warning "%ProgramFiles% not writable — falling back to %LOCALAPPDATA%\MTGA-Companion"
-    $InstallDir = Join-Path $Env:LOCALAPPDATA 'MTGA-Companion'
+    Write-Warning "%ProgramFiles% not writable — falling back to %LOCALAPPDATA%\VaultMTG"
+    $InstallDir = Join-Path $Env:LOCALAPPDATA 'VaultMTG'
     New-Item -ItemType Directory -Path $InstallDir -Force | Out-Null
 }
 
@@ -135,15 +197,17 @@ Unregister-ScheduledTask -TaskName $TaskName -Confirm:$false -ErrorAction Silent
 
 $action  = New-ScheduledTaskAction -Execute $BinaryPath -Argument "-config `"$ConfigFile`""
 $trigger = New-ScheduledTaskTrigger -AtLogOn -User $Env:USERNAME
+# No timeout — the daemon is long-running. Don't start a second copy if already running.
 $settings = New-ScheduledTaskSettingsSet `
-    -ExecutionTimeLimit ([TimeSpan]::Zero) `   # No timeout — the daemon is long-running.
-    -MultipleInstances IgnoreNew `              # Don't start a second copy if already running.
-    -StartWhenAvailable $true
+    -ExecutionTimeLimit ([TimeSpan]::Zero) `
+    -MultipleInstances IgnoreNew `
+    -StartWhenAvailable
 
+# Highest privilege within the user's token — still no UAC elevation.
 $principal = New-ScheduledTaskPrincipal `
     -UserId $Env:USERNAME `
     -LogonType Interactive `
-    -RunLevel Highest   # Highest privilege within the user's token — still no UAC.
+    -RunLevel Highest
 
 Register-ScheduledTask `
     -TaskName $TaskName `
@@ -160,7 +224,7 @@ Write-Host "Starting daemon..."
 Start-ScheduledTask -TaskName $TaskName
 
 Write-Host ''
-Write-Host 'MTGA Companion daemon installed and running.'
+Write-Host 'VaultMTG daemon installed and running.'
 Write-Host "  Binary : $BinaryPath"
 Write-Host "  Config : $ConfigFile"
 Write-Host "  Task   : $TaskName (Task Scheduler)"
