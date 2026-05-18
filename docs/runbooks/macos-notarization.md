@@ -206,3 +206,6 @@ so it never runs on `workflow_dispatch` without a tag (prevents quota waste).
 - GoReleaser config signing docs: services/daemon/.goreleaser.yml (header comments)
 - Apple notarytool docs: https://developer.apple.com/documentation/security/notarizing_macos_software_before_distribution
 - Apple Developer Program: https://developer.apple.com/programs/
+
+<!-- Post-rename CI smoke verification: repo renamed RdHamilton/MTGA-Companion -> RdHamilton/vault-mtg (ADR-022 Phase 4, #1739). -->
+
