@@ -16,10 +16,10 @@
 # Usage (production):
 #   SPA_HOST=https://app.vaultmtg.app \
 #   BFF_HOST=https://api.vaultmtg.app \
-#   SSM_CLERK_PK_PARAM=/mtga-companion/prod/CLERK_PUBLISHABLE_KEY \
-#   SSM_CLERK_FRONTEND_PARAM=/mtga-companion/prod/CLERK_FRONTEND_API \
+#   SSM_CLERK_PK_PARAM=/vaultmtg/production/CLERK_PUBLISHABLE_KEY \
+#   SSM_CLERK_FRONTEND_PARAM=/vaultmtg/production/CLERK_FRONTEND_API \
 #   EC2_INSTANCE_ID=i-<prod-instance-id> \
-#   BFF_ENV_FILE=/etc/mtga-companion/env \
+#   BFF_ENV_FILE=/etc/vaultmtg/env \
 #   BFF_SYSTEMD_UNIT=mtga-bff \
 #   ./scripts/test/staging-auth-smoke.sh
 #
@@ -37,8 +37,8 @@ AWS_PROFILE_NAME="${AWS_PROFILE_NAME:-personal}"
 SSM_REGION="${SSM_REGION:-us-east-1}"
 
 # SSM parameter names for Clerk keys.
-SSM_CLERK_PK_PARAM="${SSM_CLERK_PK_PARAM:-/mtga-companion/staging/CLERK_PUBLISHABLE_KEY}"
-SSM_CLERK_FRONTEND_PARAM="${SSM_CLERK_FRONTEND_PARAM:-/mtga-companion/staging/CLERK_FRONTEND_API}"
+SSM_CLERK_PK_PARAM="${SSM_CLERK_PK_PARAM:-/vaultmtg/staging/CLERK_PUBLISHABLE_KEY}"
+SSM_CLERK_FRONTEND_PARAM="${SSM_CLERK_FRONTEND_PARAM:-/vaultmtg/staging/CLERK_FRONTEND_API}"
 
 # EC2 instance and BFF runtime paths.
 EC2_INSTANCE_ID="${EC2_INSTANCE_ID:-i-065351fbb99da2d22}"

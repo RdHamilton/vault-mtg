@@ -11,8 +11,8 @@
 #   --with-decryption (optional) - Pass for SecureString parameters
 #
 # Example:
-#   provision-env.sh ALLOWED_ORIGINS /mtga-companion/production/ALLOWED_ORIGINS
-#   provision-env.sh CLERK_SECRET_KEY /mtga-companion/production/CLERK_SECRET_KEY --with-decryption
+#   provision-env.sh ALLOWED_ORIGINS /vaultmtg/production/ALLOWED_ORIGINS
+#   provision-env.sh CLERK_SECRET_KEY /vaultmtg/production/CLERK_SECRET_KEY --with-decryption
 #
 # The env file path and region are sourced from infra/config/deploy-env.sh —
 # do NOT hardcode them here.

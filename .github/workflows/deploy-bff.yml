@@ -149,7 +149,7 @@ jobs:
 
     # Provision env on EC2.
     # Staging: provision-staging-env.sh renders /etc/mtga-companion-staging/env from
-    #   the full /mtga-companion/staging/* + /vaultmtg/staging/* SSM hierarchy.
+    #   the full /vaultmtg/staging/* SSM hierarchy.
     # Production: provision-env.sh + provision-db-url.sh + CLERK_SECRET_KEY in one
     #   sequential shell command (preserves the original release.yml order).
     # Credentials are read ON the EC2 instance under its IAM role — never on the runner.
@@ -163,7 +163,7 @@ jobs:
         if [ "${{ inputs.environment }}" = "staging" ]; then
           PROVISION_CMD="${FETCH_CONFIG} && aws s3 cp s3://${RESOLVED_BUCKET}/scripts/provision-staging-env.sh /tmp/provision-staging-env.sh && chmod +x /tmp/provision-staging-env.sh && /tmp/provision-staging-env.sh"
         else
-          PROVISION_CMD="${FETCH_CONFIG} && aws s3 cp s3://${RESOLVED_BUCKET}/scripts/provision-env.sh /tmp/provision-env.sh && chmod +x /tmp/provision-env.sh && aws s3 cp s3://${RESOLVED_BUCKET}/scripts/provision-db-url.sh /tmp/provision-db-url.sh && chmod +x /tmp/provision-db-url.sh && /tmp/provision-env.sh ALLOWED_ORIGINS /mtga-companion/production/ALLOWED_ORIGINS && /tmp/provision-db-url.sh && /tmp/provision-env.sh CLERK_SECRET_KEY /mtga-companion/production/CLERK_SECRET_KEY --with-decryption"
+          PROVISION_CMD="${FETCH_CONFIG} && aws s3 cp s3://${RESOLVED_BUCKET}/scripts/provision-env.sh /tmp/provision-env.sh && chmod +x /tmp/provision-env.sh && aws s3 cp s3://${RESOLVED_BUCKET}/scripts/provision-db-url.sh /tmp/provision-db-url.sh && chmod +x /tmp/provision-db-url.sh && /tmp/provision-env.sh ALLOWED_ORIGINS /vaultmtg/production/ALLOWED_ORIGINS && /tmp/provision-db-url.sh && /tmp/provision-env.sh CLERK_SECRET_KEY /vaultmtg/production/CLERK_SECRET_KEY --with-decryption"
         fi
 
         COMMAND_ID=$(aws ssm send-command \
