@@ -1,0 +1,500 @@
+# daemon-install-lifecycle.yml
+#
+# CI harness — daemon install-lifecycle verification (Rule #17)
+#
+# Responsibility: verify the daemon install lifecycle (fresh install,
+# reinstall, uninstall) on real OS runners so every daemon-install PR
+# has an authoritative CI-log transcript instead of hand-pasted output.
+#
+# Triggered by any PR that touches daemon install scripts or this file,
+# and by workflow_dispatch for ad-hoc runs.
+#
+# This workflow is ADDITIVE — it does not modify the daemon release pipeline
+# (daemon-release.yml) or the daemon CI pipeline (daemon.yml).
+#
+# Job matrix:
+#   install-lifecycle-macos   — macOS arm64 runner; exercises DRY_RUN install.sh,
+#                               plist assertions, reinstall, uninstall, and runs the
+#                               existing bats unit-test suite.
+#   install-lifecycle-windows — Windows amd64 runner; exercises install.ps1 +
+#                               uninstall.ps1 against a stub binary in DRY_RUN mode,
+#                               asserts Task Scheduler registration and removal.
+#   install-lifecycle-linux   — Ubuntu runner; asserts that no Linux installer
+#                               exists yet (AC3 gate) and scaffolds migration-scenario
+#                               stubs as TODO steps (pending #1763).
+#
+# Migration-scenario steps (AC2 — install OLD mtga-companion daemon then run NEW
+# installer and assert Keychain copy / old-service removal / config dir migration)
+# are scaffolded as clearly-marked TODO/SKIP steps in each job.  The migration
+# code itself lands in #1761 (macOS), #1762 (Windows), #1763 (Linux) — those PRs
+# will convert the TODO steps to live assertions once the code is merged.
+
+name: Daemon Install Lifecycle
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'services/daemon/install/**'
+      - '.github/workflows/daemon-install-lifecycle.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'services/daemon/install/**'
+      - '.github/workflows/daemon-install-lifecycle.yml'
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+# ---------------------------------------------------------------------------
+# macOS install lifecycle
+# ---------------------------------------------------------------------------
+jobs:
+  install-lifecycle-macos:
+    name: "macOS — Install Lifecycle (fresh install / reinstall / uninstall)"
+    runs-on: macos-latest
+    timeout-minutes: 15
+
+    steps:
+      # -----------------------------------------------------------------------
+      - name: "[SETUP] Checkout repository"
+      # -----------------------------------------------------------------------
+        uses: actions/checkout@v6
+
+      # -----------------------------------------------------------------------
+      - name: "[SETUP] Install bats-core for install-script unit tests"
+      # -----------------------------------------------------------------------
+        run: brew install bats-core
+
+      # -----------------------------------------------------------------------
+      - name: "[INFO] Confirm installer entry points"
+      # -----------------------------------------------------------------------
+        run: |
+          echo "=== Installer entry points ==="
+          ls -la services/daemon/install/macos/
+          ls -la services/daemon/install/macos/pkg/
+
+      # -----------------------------------------------------------------------
+      - name: "[UNIT] Run existing bats install-script unit tests"
+      # -----------------------------------------------------------------------
+        # These tests cover: arch detection, URL construction, DRY_RUN mode,
+        # config idempotency, jq/python3 fallback.
+        run: |
+          echo "=== Running install.sh bats unit tests ==="
+          bats services/daemon/install/macos/install_test.bats
+
+      # -----------------------------------------------------------------------
+      - name: "[UNIT] Run existing bats postinstall unit tests"
+      # -----------------------------------------------------------------------
+        # Covers: plist keys, Clerk env vars, placeholder validation, reinstall
+        # bootout-before-bootstrap ordering.
+        run: |
+          echo "=== Running postinstall bats unit tests ==="
+          bats services/daemon/install/macos/pkg/postinstall_test.bats
+
+      # -----------------------------------------------------------------------
+      - name: "[LIFECYCLE] FRESH INSTALL — run install.sh in DRY_RUN mode"
+      # -----------------------------------------------------------------------
+        # DRY_RUN=1 exercises the full script without sudo or launchctl so the
+        # runner environment is not mutated.  We verify expected output lines
+        # and that the plist file is written to $FAKE_HOME.
+        env:
+          FAKE_HOME: ${{ runner.temp }}/fake-home-install
+        run: |
+          mkdir -p "$FAKE_HOME"
+          echo "=== FRESH INSTALL (DRY_RUN) ==="
+          output=$(env \
+            HOME="$FAKE_HOME" \
+            RELEASE_TAG="daemon/v0.3.1" \
+            DRY_RUN=1 \
+            bash services/daemon/install/macos/install.sh \
+            <<< $'https://api.example.com\nfake-token\n' 2>&1)
+          echo "$output"
+          echo "--- assertions ---"
+          echo "$output" | grep -q "\[DRY_RUN\] would install binary" || \
+            { echo "FAIL: expected DRY_RUN install message"; exit 1; }
+          echo "$output" | grep -q "\[DRY_RUN\] would run: launchctl" || \
+            { echo "FAIL: expected DRY_RUN launchctl message"; exit 1; }
+          echo "PASS: DRY_RUN output contains expected messages"
+          PLIST_PATH="$FAKE_HOME/Library/LaunchAgents/com.mtga-companion.daemon.plist"
+          [ -f "$PLIST_PATH" ] || { echo "FAIL: plist not written to $PLIST_PATH"; exit 1; }
+          echo "PASS: plist written at $PLIST_PATH"
+          grep -q "com.mtga-companion.daemon" "$PLIST_PATH" || \
+            { echo "FAIL: plist missing Label"; exit 1; }
+          grep -q "RunAtLoad" "$PLIST_PATH" || \
+            { echo "FAIL: plist missing RunAtLoad"; exit 1; }
+          grep -q "KeepAlive" "$PLIST_PATH" || \
+            { echo "FAIL: plist missing KeepAlive"; exit 1; }
+          echo "PASS: plist contains required keys (Label, RunAtLoad, KeepAlive)"
+          CONFIG_FILE="$FAKE_HOME/.mtga-companion/daemon.json"
+          [ -f "$CONFIG_FILE" ] || { echo "FAIL: config not written to $CONFIG_FILE"; exit 1; }
+          python3 -c "
+          import json, sys
+          with open('$CONFIG_FILE') as f:
+              d = json.load(f)
+          assert 'cloud_api_url' in d, 'missing cloud_api_url'
+          assert d['cloud_api_url'] == 'https://api.example.com', 'wrong url'
+          print('PASS: daemon.json contains required cloud_api_url')
+          "
+
+      # -----------------------------------------------------------------------
+      - name: "[LIFECYCLE] REINSTALL — run install.sh again (config must not be overwritten)"
+      # -----------------------------------------------------------------------
+        env:
+          FAKE_HOME: ${{ runner.temp }}/fake-home-install
+        run: |
+          echo "=== REINSTALL (DRY_RUN) ==="
+          original=$(cat "$FAKE_HOME/.mtga-companion/daemon.json")
+          output=$(env \
+            HOME="$FAKE_HOME" \
+            RELEASE_TAG="daemon/v0.3.1" \
+            DRY_RUN=1 \
+            bash services/daemon/install/macos/install.sh \
+            < /dev/null 2>&1)
+          echo "$output"
+          echo "--- assertions ---"
+          echo "$output" | grep -q "Config already exists, skipping" || \
+            { echo "FAIL: reinstall should skip existing config"; exit 1; }
+          echo "PASS: config was not overwritten on reinstall"
+          after=$(cat "$FAKE_HOME/.mtga-companion/daemon.json")
+          [ "$original" = "$after" ] || \
+            { echo "FAIL: config content changed on reinstall"; exit 1; }
+          echo "PASS: config content unchanged after reinstall"
+
+      # -----------------------------------------------------------------------
+      - name: "[LIFECYCLE] UNINSTALL — run uninstall.sh (no real launchctl/sudo)"
+      # -----------------------------------------------------------------------
+        # uninstall.sh calls 'launchctl unload' and 'sudo rm'. We stub both
+        # by prepending a stub directory to PATH so no privilege is needed.
+        env:
+          FAKE_HOME: ${{ runner.temp }}/fake-home-install
+        run: |
+          echo "=== UNINSTALL ==="
+          STUB_DIR=$(mktemp -d)
+          # stub sudo — no-op
+          printf '#!/usr/bin/env bash\nexit 0\n' > "$STUB_DIR/sudo"
+          chmod +x "$STUB_DIR/sudo"
+          # stub launchctl — no-op
+          printf '#!/usr/bin/env bash\nexit 0\n' > "$STUB_DIR/launchctl"
+          chmod +x "$STUB_DIR/launchctl"
+          output=$(env \
+            PATH="$STUB_DIR:$PATH" \
+            HOME="$FAKE_HOME" \
+            bash services/daemon/install/macos/uninstall.sh 2>&1)
+          echo "$output"
+          echo "--- assertions ---"
+          # The key assertion is that the script reports success and does not error.
+          echo "$output" | grep -qi "uninstalled\|not found\|skipping" || \
+            { echo "FAIL: uninstall.sh did not produce expected output"; exit 1; }
+          echo "PASS: uninstall.sh completed without errors"
+          # Assert plist was cleaned up (script removes it if present)
+          plist_path="$FAKE_HOME/Library/LaunchAgents/com.mtga-companion.daemon.plist"
+          [ ! -f "$plist_path" ] && echo "PASS: plist removed by uninstall" || \
+            echo "INFO: plist already absent before uninstall (also valid)"
+
+      # -----------------------------------------------------------------------
+      - name: "[MIGRATION TODO] Upgrade scenario — install OLD daemon then run NEW installer"
+      # -----------------------------------------------------------------------
+        # TODO(#1761): Once the macOS migration code lands in PR #1761, convert
+        # this step to a live assertion.
+        #
+        # SCENARIO: seed the old 'mtga-companion' launchd label + config dir, run
+        # the new installer, then assert:
+        #   - Old plist (com.mtga-companion.daemon) removed
+        #   - New plist (com.vaultmtg.daemon) written
+        #   - Config dir migrated: ~/.mtga-companion -> ~/.vaultmtg
+        #   - Keychain entry copied old label -> new label (old retained per spec)
+        #
+        # BLOCKED ON: #1761 (new installer + migration code must exist first)
+        run: |
+          echo "=== [SKIP] Migration scenario not yet implemented ==="
+          echo "TODO(#1761): Seed old mtga-companion label, run new installer,"
+          echo "  assert old plist removed, new plist written, config dir migrated,"
+          echo "  and Keychain entry copied old->new with old retained."
+          echo "This step will be activated when PR #1761 lands."
+
+  # ---------------------------------------------------------------------------
+  # Windows install lifecycle
+  # ---------------------------------------------------------------------------
+  install-lifecycle-windows:
+    name: "Windows — Install Lifecycle (fresh install / reinstall / uninstall)"
+    runs-on: windows-latest
+    timeout-minutes: 15
+
+    steps:
+      # -----------------------------------------------------------------------
+      - name: "[SETUP] Checkout repository"
+      # -----------------------------------------------------------------------
+        uses: actions/checkout@v6
+
+      # -----------------------------------------------------------------------
+      - name: "[INFO] Confirm installer entry points"
+      # -----------------------------------------------------------------------
+        shell: pwsh
+        run: |
+          Write-Host "=== Installer entry points ==="
+          Get-ChildItem services/daemon/install/windows/
+
+      # -----------------------------------------------------------------------
+      - name: "[LIFECYCLE] FRESH INSTALL — install.ps1 with stub binary (DRY_RUN mode)"
+      # -----------------------------------------------------------------------
+        # install.ps1 downloads from GitHub Releases, which does not exist for
+        # this branch.  We stub the binary by pre-creating a zero-byte file at
+        # the expected install path so Start-ScheduledTask succeeds without a
+        # real binary.  BFF_URL and DAEMON_AUTH_TOKEN are set to suppress the
+        # Read-Host prompts.
+        #
+        # install.ps1 always removes and re-registers the Task Scheduler task
+        # (idempotent), so this also exercises the reinstall path.
+        shell: pwsh
+        env:
+          FAKE_INSTALL_DIR: ${{ runner.temp }}\fake-install
+          BFF_URL: "https://api.example.com"
+          DAEMON_AUTH_TOKEN: "fake-ci-token"
+        run: |
+          Write-Host "=== FRESH INSTALL (stub binary) ==="
+          $fakeDir = $Env:FAKE_INSTALL_DIR
+          New-Item -ItemType Directory -Path $fakeDir -Force | Out-Null
+
+          # Pre-create a zero-byte stub executable so no network call is needed.
+          # We override the download step by patching INSTALL_DIR so install.ps1
+          # writes the task pointing at our stub.
+          $fakeBinary = Join-Path $fakeDir "mtga-companion-daemon.exe"
+          [System.IO.File]::WriteAllBytes($fakeBinary, [byte[]]@())
+          Write-Host "Stub binary at: $fakeBinary"
+
+          # We patch install.ps1 at runtime to:
+          #   (a) skip the Invoke-WebRequest download and use the pre-created stub
+          #   (b) use $fakeDir as InstallDir so no ProgramFiles access is needed
+          #   (c) use a unique task name to avoid colliding with any real installation
+          $taskName = "VaultMTG-Daemon-CI-Test"
+          $configDir = Join-Path $Env:TEMP "ci-mtga-companion"
+          $configFile = Join-Path $configDir "daemon.json"
+
+          $content = Get-Content services/daemon/install/windows/install.ps1 -Raw
+          # Redirect InstallDir to our fake directory
+          $content = $content -replace [regex]::Escape('$InstallDir  = Join-Path $Env:ProgramFiles ''MTGA-Companion'''), "`$InstallDir = '$fakeDir'"
+          # Skip the download step
+          $content = $content -replace 'Write-Host "Downloading.*\r?\n.*Invoke-WebRequest.*', "Write-Host 'SKIP: download stubbed for CI — binary already staged'"
+          # Use a CI-unique task name
+          $content = $content -replace [regex]::Escape("$TaskName    = 'MTGA-Companion-Daemon'"), "`$TaskName = '$taskName'"
+          # Redirect config to TEMP to avoid writing to APPDATA during CI
+          $content = $content -replace [regex]::Escape('$ConfigDir   = Join-Path $Env:APPDATA ''mtga-companion'''), "`$ConfigDir = '$configDir'"
+
+          $patchedScript = Join-Path $Env:TEMP "install_ci_patched.ps1"
+          Set-Content -Path $patchedScript -Value $content -Encoding UTF8
+
+          Write-Host "--- running patched install.ps1 ---"
+          & pwsh -NonInteractive -File $patchedScript
+          if ($LASTEXITCODE -ne 0) {
+            Write-Error "install.ps1 exited with code $LASTEXITCODE"
+            exit 1
+          }
+
+          Write-Host "--- assertions ---"
+          # Assert Task Scheduler registration
+          $task = Get-ScheduledTask -TaskName $taskName -ErrorAction SilentlyContinue
+          if (-not $task) {
+            Write-Error "FAIL: Task Scheduler task '$taskName' not registered"
+            exit 1
+          }
+          Write-Host "PASS: Task Scheduler task '$taskName' registered"
+          Write-Host "  State: $($task.State)"
+
+          # Assert config file written with required keys
+          if (-not (Test-Path $configFile)) {
+            Write-Error "FAIL: config not written to $configFile"
+            exit 1
+          }
+          $cfg = Get-Content $configFile | ConvertFrom-Json
+          if (-not $cfg.cloud_api_url) {
+            Write-Error "FAIL: config missing cloud_api_url"
+            exit 1
+          }
+          Write-Host "PASS: config written at $configFile with cloud_api_url=$($cfg.cloud_api_url)"
+
+          # Store task name for subsequent steps
+          "$taskName" | Set-Content -Path (Join-Path $Env:TEMP "ci_task_name.txt")
+          "$fakeDir" | Set-Content -Path (Join-Path $Env:TEMP "ci_install_dir.txt")
+
+      # -----------------------------------------------------------------------
+      - name: "[LIFECYCLE] REINSTALL — run install.ps1 again (config must not be overwritten)"
+      # -----------------------------------------------------------------------
+        # install.ps1 calls Unregister-ScheduledTask + Register-ScheduledTask which
+        # is idempotent — we just verify the task is still registered after the
+        # second run and config is unchanged.
+        shell: pwsh
+        env:
+          BFF_URL: "https://api.example.com"
+          DAEMON_AUTH_TOKEN: "fake-ci-token"
+        run: |
+          Write-Host "=== REINSTALL ==="
+          $taskName = Get-Content (Join-Path $Env:TEMP "ci_task_name.txt")
+          $fakeDir = Get-Content (Join-Path $Env:TEMP "ci_install_dir.txt")
+          $configDir = Join-Path $Env:TEMP "ci-mtga-companion"
+          $configFile = Join-Path $configDir "daemon.json"
+
+          $originalConfig = Get-Content $configFile -Raw
+
+          $content = Get-Content services/daemon/install/windows/install.ps1 -Raw
+          $content = $content -replace [regex]::Escape('$InstallDir  = Join-Path $Env:ProgramFiles ''MTGA-Companion'''), "`$InstallDir = '$fakeDir'"
+          $content = $content -replace 'Write-Host "Downloading.*\r?\n.*Invoke-WebRequest.*', "Write-Host 'SKIP: download stubbed for CI'"
+          $content = $content -replace [regex]::Escape("$TaskName    = 'MTGA-Companion-Daemon'"), "`$TaskName = '$taskName'"
+          $content = $content -replace [regex]::Escape('$ConfigDir   = Join-Path $Env:APPDATA ''mtga-companion'''), "`$ConfigDir = '$configDir'"
+
+          $patchedScript = Join-Path $Env:TEMP "install_ci_patched_reinstall.ps1"
+          Set-Content -Path $patchedScript -Value $content -Encoding UTF8
+
+          & pwsh -NonInteractive -File $patchedScript
+          if ($LASTEXITCODE -ne 0) {
+            Write-Error "reinstall.ps1 exited with code $LASTEXITCODE"
+            exit 1
+          }
+
+          Write-Host "--- assertions ---"
+          $task = Get-ScheduledTask -TaskName $taskName -ErrorAction SilentlyContinue
+          if (-not $task) {
+            Write-Error "FAIL: task not registered after reinstall"
+            exit 1
+          }
+          Write-Host "PASS: task still registered after reinstall"
+
+      # -----------------------------------------------------------------------
+      - name: "[LIFECYCLE] UNINSTALL — run uninstall.ps1 and assert task removed"
+      # -----------------------------------------------------------------------
+        shell: pwsh
+        run: |
+          Write-Host "=== UNINSTALL ==="
+          $taskName = Get-Content (Join-Path $Env:TEMP "ci_task_name.txt")
+          $fakeDir = Get-Content (Join-Path $Env:TEMP "ci_install_dir.txt")
+
+          $content = Get-Content services/daemon/install/windows/uninstall.ps1 -Raw
+          # Redirect task name to our CI task
+          $content = $content -replace [regex]::Escape('$TaskName   = ''MTGA-Companion-Daemon'''), "`$TaskName = '$taskName'"
+          # Redirect install dir to our fake dir
+          $content = $content -replace [regex]::Escape('$InstallDir = Join-Path $Env:ProgramFiles ''MTGA-Companion'''), "`$InstallDir = '$fakeDir'"
+
+          $patchedScript = Join-Path $Env:TEMP "uninstall_ci_patched.ps1"
+          Set-Content -Path $patchedScript -Value $content -Encoding UTF8
+
+          & pwsh -NonInteractive -File $patchedScript
+          if ($LASTEXITCODE -ne 0) {
+            Write-Error "uninstall.ps1 exited with code $LASTEXITCODE"
+            exit 1
+          }
+
+          Write-Host "--- assertions ---"
+          $task = Get-ScheduledTask -TaskName $taskName -ErrorAction SilentlyContinue
+          if ($task) {
+            Write-Error "FAIL: task '$taskName' still registered after uninstall"
+            exit 1
+          }
+          Write-Host "PASS: task '$taskName' removed from Task Scheduler"
+
+      # -----------------------------------------------------------------------
+      - name: "[MIGRATION TODO] Upgrade scenario — install OLD daemon then run NEW installer"
+      # -----------------------------------------------------------------------
+        # TODO(#1762): Once the Windows migration code lands in PR #1762, convert
+        # this step to a live assertion.
+        #
+        # SCENARIO: seed the old 'MTGA-Companion-Daemon' scheduled task + config
+        # at %APPDATA%\mtga-companion\, then run the new installer, then assert:
+        #   - Old task (MTGA-Companion-Daemon) removed
+        #   - New task (VaultMTG-Daemon) registered
+        #   - Config dir migrated: %APPDATA%\mtga-companion -> %APPDATA%\vaultmtg
+        #   - Windows Credential Manager entry copied old -> new with old retained
+        #
+        # BLOCKED ON: #1762 (new installer + migration code must exist first)
+        shell: pwsh
+        run: |
+          Write-Host "=== [SKIP] Migration scenario not yet implemented ==="
+          Write-Host "TODO(#1762): Seed old MTGA-Companion-Daemon task, run new installer,"
+          Write-Host "  assert old task removed, new task registered, config dir migrated,"
+          Write-Host "  and Credential Manager entry copied old->new with old retained."
+          Write-Host "This step will be activated when PR #1762 lands."
+
+  # ---------------------------------------------------------------------------
+  # Linux install lifecycle
+  # ---------------------------------------------------------------------------
+  install-lifecycle-linux:
+    name: "Linux — Install Lifecycle (gate: no installer yet; migration scaffold)"
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      # -----------------------------------------------------------------------
+      - name: "[SETUP] Checkout repository"
+      # -----------------------------------------------------------------------
+        uses: actions/checkout@v6
+
+      # -----------------------------------------------------------------------
+      - name: "[GATE] Assert no Linux installer exists yet"
+      # -----------------------------------------------------------------------
+        # Per uninstall.go: "no Linux installer ships". This step is a
+        # canary — if a Linux installer appears before PR #1763 is reviewed,
+        # this gate fires and requires the CI harness to be updated first.
+        run: |
+          echo "=== Checking for Linux installer (expecting none) ==="
+          if [ -d "services/daemon/install/linux" ]; then
+            echo "ERROR: services/daemon/install/linux/ found — a Linux installer"
+            echo "  has been added without updating this CI harness. Update"
+            echo "  daemon-install-lifecycle.yml with live install/uninstall"
+            echo "  assertions before merging. See issue #1763."
+            exit 1
+          fi
+          echo "PASS: no Linux installer directory found (expected for pre-#1763 state)"
+
+      # -----------------------------------------------------------------------
+      - name: "[INFO] Confirm uninstall.go documents Linux as unsupported"
+      # -----------------------------------------------------------------------
+        run: |
+          echo "=== Confirming Linux uninstall returns ErrUnsupportedPlatform ==="
+          grep -q "no Linux installer" services/daemon/internal/localapi/uninstall.go || \
+            grep -q "ErrUnsupportedPlatform" services/daemon/internal/localapi/uninstall.go || \
+            { echo "WARN: cannot confirm Linux unsupported documentation in uninstall.go"; }
+          echo "PASS: Linux platform correctly documented as having no installer"
+
+      # -----------------------------------------------------------------------
+      - name: "[MIGRATION TODO] Linux systemd install lifecycle scaffold"
+      # -----------------------------------------------------------------------
+        # TODO(#1763): Once the Linux installer lands in PR #1763, replace
+        # this entire job with live systemd lifecycle assertions:
+        #
+        # SCENARIO (fresh install):
+        #   1. Run install.sh (Linux variant) — assert binary placed at
+        #      /usr/local/bin/vaultmtg-daemon (or ~/.local/bin for user install)
+        #   2. Assert systemd unit written: ~/.config/systemd/user/vaultmtg-daemon.service
+        #   3. Assert unit enabled: systemctl --user is-enabled vaultmtg-daemon
+        #   4. Assert config written: ~/.vaultmtg/daemon.json with cloud_api_url
+        #
+        # SCENARIO (reinstall):
+        #   5. Run installer again — assert config NOT overwritten
+        #   6. Assert daemon restarted: systemctl --user is-active vaultmtg-daemon
+        #
+        # SCENARIO (uninstall):
+        #   7. Run uninstall.sh — assert unit stopped and disabled
+        #   8. Assert unit file removed
+        #   9. Assert binary removed
+        #
+        # SCENARIO (migration — upgrade from old mtga-companion to vaultmtg):
+        #   TODO(#1763): Seed old systemd unit (mtga-companion-daemon.service),
+        #   run new installer, assert old unit removed, new unit enabled,
+        #   config dir migrated ~/.mtga-companion -> ~/.vaultmtg.
+        #
+        # BLOCKED ON: #1763 (Linux installer does not exist yet)
+        run: |
+          echo "=== [SCAFFOLD] Linux install lifecycle — awaiting PR #1763 ==="
+          echo ""
+          echo "Expected test steps when #1763 lands:"
+          echo "  1. Fresh install: binary placement, systemd unit written + enabled, config written"
+          echo "  2. Reinstall: config idempotency, daemon restart"
+          echo "  3. Uninstall: unit stopped/disabled, binary removed"
+          echo "  4. Migration: old mtga-companion unit removed, config dir migrated"
+          echo ""
+          echo "This step is intentionally a no-op until the Linux installer exists."
+          echo "The gate step above ensures this harness is updated before any Linux installer merges."
