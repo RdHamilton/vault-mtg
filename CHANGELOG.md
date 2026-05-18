@@ -1,6 +1,6 @@
 # Changelog
 
-All notable changes to MTGA-Companion will be documented in this file.
+All notable changes to VaultMTG will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
@@ -601,11 +601,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Links
 
-- [Documentation Wiki](https://github.com/RdHamilton/MTGA-Companion/wiki)
-- [GitHub Repository](https://github.com/RdHamilton/MTGA-Companion)
-- [Issue Tracker](https://github.com/RdHamilton/MTGA-Companion/issues)
-- [Discussions](https://github.com/RdHamilton/MTGA-Companion/discussions)
+- [Documentation Wiki](https://github.com/RdHamilton/vault-mtg/wiki)
+- [GitHub Repository](https://github.com/RdHamilton/vault-mtg)
+- [Issue Tracker](https://github.com/RdHamilton/vault-mtg/issues)
+- [Discussions](https://github.com/RdHamilton/vault-mtg/discussions)
 
 ---
 
-**Note**: MTGA-Companion is not affiliated with, endorsed by, or sponsored by Wizards of the Coast. Magic: The Gathering Arena and its associated trademarks are property of Wizards of the Coast LLC.
+**Note**: VaultMTG is not affiliated with, endorsed by, or sponsored by Wizards of the Coast. Magic: The Gathering Arena and its associated trademarks are property of Wizards of the Coast LLC.

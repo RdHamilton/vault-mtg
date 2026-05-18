@@ -17,7 +17,7 @@ If you discover a security vulnerability, please **do not** open a public issue.
 
 ### Preferred Method: GitHub Security Advisory
 
-1. Go to the [Security tab](https://github.com/ramonehamilton/MTGA-Companion/security) in this repository
+1. Go to the [Security tab](https://github.com/RdHamilton/vault-mtg/security) in this repository
 2. Click on "Report a vulnerability"
 3. Fill out the security advisory form with details about the vulnerability
 
@@ -53,7 +53,7 @@ When reporting a vulnerability, please include:
 
 ### For Users
 
-- **Keep updated**: Always use the latest version of MTGA-Companion
+- **Keep updated**: Always use the latest version of VaultMTG
 - **Review permissions**: Be aware of what file system access the application requires
 - **Log files**: The application only reads MTGA log files; it does not modify them
 - **No network access**: The application does not connect to external servers (unless explicitly configured)
@@ -77,10 +77,10 @@ When reporting a vulnerability, please include:
 
 ### Security Vulnerabilities
 
-We track known security vulnerabilities in our dependencies and the Go standard library. See our [GitHub Security Advisories](https://github.com/ramonehamilton/MTGA-Companion/security/advisories) for current issues.
+We track known security vulnerabilities in our dependencies and the Go standard library. See our [GitHub Security Advisories](https://github.com/RdHamilton/vault-mtg/security/advisories) for current issues.
 
 **Current Known Issues:**
-- GO-2025-4010 (net/url): Fixed in Go 1.24.8, but we're using Go 1.23.12 (latest stable). See [Issue #31](https://github.com/ramonehamilton/MTGA-Companion/issues/31) for tracking.
+- GO-2025-4010 (net/url): Fixed in Go 1.24.8, but we're using Go 1.23.12 (latest stable). See [Issue #31](https://github.com/RdHamilton/vault-mtg/issues/31) for tracking.
 
 ## Security Updates
 
@@ -91,6 +91,6 @@ Security updates will be released as:
 
 ## Thank You
 
-Thank you for helping keep MTGA-Companion secure! Your responsible disclosure helps protect all users of the application.
+Thank you for helping keep VaultMTG secure! Your responsible disclosure helps protect all users of the application.
 
 
