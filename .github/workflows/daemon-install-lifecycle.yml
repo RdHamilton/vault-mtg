@@ -267,7 +267,7 @@ jobs:
           # Pre-create a zero-byte stub executable so no network call is needed.
           # We override the download step by patching INSTALL_DIR so install.ps1
           # writes the task pointing at our stub.
-          $fakeBinary = Join-Path $fakeDir "mtga-companion-daemon.exe"
+          $fakeBinary = Join-Path $fakeDir "vaultmtg-daemon.exe"
           [System.IO.File]::WriteAllBytes($fakeBinary, [byte[]]@())
           Write-Host "Stub binary at: $fakeBinary"
 
@@ -276,18 +276,18 @@ jobs:
           #   (b) use $fakeDir as InstallDir so no ProgramFiles access is needed
           #   (c) use a unique task name to avoid colliding with any real installation
           $taskName = "VaultMTG-Daemon-CI-Test"
-          $configDir = Join-Path $Env:TEMP "ci-mtga-companion"
+          $configDir = Join-Path $Env:TEMP "ci-vaultmtg"
           $configFile = Join-Path $configDir "daemon.json"
 
           $content = Get-Content services/daemon/install/windows/install.ps1 -Raw
           # Redirect InstallDir to our fake directory
-          $content = $content -replace [regex]::Escape('$InstallDir  = Join-Path $Env:ProgramFiles ''MTGA-Companion'''), "`$InstallDir = '$fakeDir'"
+          $content = $content -replace [regex]::Escape('$InstallDir     = Join-Path $Env:ProgramFiles ''VaultMTG'''), "`$InstallDir = '$fakeDir'"
           # Skip the download step
           $content = $content -replace 'Write-Host "Downloading.*\r?\n.*Invoke-WebRequest.*', "Write-Host 'SKIP: download stubbed for CI — binary already staged'"
           # Use a CI-unique task name
-          $content = $content -replace [regex]::Escape("$TaskName    = 'MTGA-Companion-Daemon'"), "`$TaskName = '$taskName'"
+          $content = $content -replace [regex]::Escape('$TaskName       = ''VaultMTG-Daemon'''), "`$TaskName = '$taskName'"
           # Redirect config to TEMP to avoid writing to APPDATA during CI
-          $content = $content -replace [regex]::Escape('$ConfigDir   = Join-Path $Env:APPDATA ''mtga-companion'''), "`$ConfigDir = '$configDir'"
+          $content = $content -replace [regex]::Escape('$ConfigDir      = Join-Path $Env:APPDATA ''vaultmtg'''), "`$ConfigDir = '$configDir'"
 
           $patchedScript = Join-Path $Env:TEMP "install_ci_patched.ps1"
           [System.IO.File]::WriteAllText($patchedScript, $content, [System.Text.Encoding]::UTF8)
@@ -339,16 +339,16 @@ jobs:
           Write-Host "=== REINSTALL ==="
           $taskName = Get-Content (Join-Path $Env:TEMP "ci_task_name.txt")
           $fakeDir = Get-Content (Join-Path $Env:TEMP "ci_install_dir.txt")
-          $configDir = Join-Path $Env:TEMP "ci-mtga-companion"
+          $configDir = Join-Path $Env:TEMP "ci-vaultmtg"
           $configFile = Join-Path $configDir "daemon.json"
 
           $originalConfig = Get-Content $configFile -Raw
 
           $content = Get-Content services/daemon/install/windows/install.ps1 -Raw
-          $content = $content -replace [regex]::Escape('$InstallDir  = Join-Path $Env:ProgramFiles ''MTGA-Companion'''), "`$InstallDir = '$fakeDir'"
+          $content = $content -replace [regex]::Escape('$InstallDir     = Join-Path $Env:ProgramFiles ''VaultMTG'''), "`$InstallDir = '$fakeDir'"
           $content = $content -replace 'Write-Host "Downloading.*\r?\n.*Invoke-WebRequest.*', "Write-Host 'SKIP: download stubbed for CI'"
-          $content = $content -replace [regex]::Escape("$TaskName    = 'MTGA-Companion-Daemon'"), "`$TaskName = '$taskName'"
-          $content = $content -replace [regex]::Escape('$ConfigDir   = Join-Path $Env:APPDATA ''mtga-companion'''), "`$ConfigDir = '$configDir'"
+          $content = $content -replace [regex]::Escape('$TaskName       = ''VaultMTG-Daemon'''), "`$TaskName = '$taskName'"
+          $content = $content -replace [regex]::Escape('$ConfigDir      = Join-Path $Env:APPDATA ''vaultmtg'''), "`$ConfigDir = '$configDir'"
 
           $patchedScript = Join-Path $Env:TEMP "install_ci_patched_reinstall.ps1"
           [System.IO.File]::WriteAllText($patchedScript, $content, [System.Text.Encoding]::UTF8)
@@ -386,9 +386,9 @@ jobs:
 
           $content = Get-Content services/daemon/install/windows/uninstall.ps1 -Raw
           # Redirect task name to our CI task
-          $content = $content -replace [regex]::Escape('$TaskName   = ''MTGA-Companion-Daemon'''), "`$TaskName = '$taskName'"
+          $content = $content -replace [regex]::Escape('$TaskName       = ''VaultMTG-Daemon'''), "`$TaskName = '$taskName'"
           # Redirect install dir to our fake dir
-          $content = $content -replace [regex]::Escape('$InstallDir = Join-Path $Env:ProgramFiles ''MTGA-Companion'''), "`$InstallDir = '$fakeDir'"
+          $content = $content -replace [regex]::Escape('$InstallDir = Join-Path $Env:ProgramFiles ''VaultMTG'''), "`$InstallDir = '$fakeDir'"
 
           $patchedScript = Join-Path $Env:TEMP "uninstall_ci_patched.ps1"
           [System.IO.File]::WriteAllText($patchedScript, $content, [System.Text.Encoding]::UTF8)
