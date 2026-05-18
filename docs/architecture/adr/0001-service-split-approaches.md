@@ -8,7 +8,7 @@
 
 ## Context
 
-MTGA Companion currently ships as a monorepo Go binary (`cmd/mtga-companion`) that co-locates:
+VaultMTG currently ships as a monorepo Go binary (`cmd/vaultmtg`) that co-locates:
 
 - **Log reader / daemon** (`internal/daemon`, `internal/mtga/logreader`) — polls `Player.log` on the user's machine via fsnotify or a 2 s ticker, parses JSON events, and broadcasts domain events over a local WebSocket (port 9999)
 - **REST API + WebSocket BFF** (`internal/api`, `internal/gui` facade layer) — HTTP handlers (matches, drafts, cards, decks, collection, ML suggestions, etc.) and bridges daemon events to the browser via `DaemonEventForwarder → Hub`
@@ -31,7 +31,7 @@ The goal is to split this into 4 independently deployable services for a cloud S
 - Daemon **must** stay local — `Player.log` is only accessible on the user's machine
 - BFF **must** expose a real-time push endpoint for draft pick updates — protocol TBD (see BFF section below)
 - All services **must** be deployable via the existing GitHub Actions CI pipeline
-- Module path: `github.com/ramonehamilton/MTGA-Companion`
+- Module path: `github.com/RdHamilton/vault-mtg`
 
 ### Known Risks
 
@@ -69,7 +69,7 @@ internal/
   commands/            → BFF     (startup_command, replay_command)
 
 cmd/
-  mtga-companion/      → split into Daemon binary + BFF binary
+  vaultmtg/            → split into Daemon binary + BFF binary
   apiserver/           → absorbed into BFF
   log-analyzer/        → Daemon dev tool (keep as-is)
 
@@ -154,14 +154,14 @@ The feature flag / fallback design is tracked in GitHub issue: `arch: design Set
 
 ### Overview
 
-All code stays in the **single `github.com/ramonehamilton/MTGA-Companion` monorepo**. Each service gets a new `cmd/` entrypoint. Go `depguard` linter rules (enforced in CI) prevent cross-service package imports.
+All code stays in the **single `github.com/RdHamilton/vault-mtg` monorepo**. Each service gets a new `cmd/` entrypoint. Go `depguard` linter rules (enforced in CI) prevent cross-service package imports.
 
 ### What Moves Where
 
 ```
 cmd/
   daemon/        ← NEW entrypoint: imports internal/daemon + internal/mtga/logreader only
-  bff/           ← RENAME from cmd/mtga-companion: imports internal/api + internal/gui + internal/storage + internal/ml
+  bff/           ← RENAME from cmd/vaultmtg: imports internal/api + internal/gui + internal/storage + internal/ml
   sync/          ← NEW entrypoint: imports internal/mtga/cards/refresh + external fetchers
   log-analyzer/  ← unchanged (dev tool)
 frontend/        ← unchanged; nginx-served in production
@@ -192,7 +192,7 @@ Sync    ──writes card/ratings data─▶  shared Postgres (different table n
 ### Repo Structure
 
 ```
-MTGA-Companion/
+vault-mtg/
   cmd/daemon/   cmd/bff/   cmd/sync/
   internal/
     daemon/  api/  gui/  storage/  ml/  mtga/  shared/
@@ -236,19 +236,19 @@ The monorepo is restructured as a **Go workspace** (`go.work`) containing four G
 ### What Moves Where
 
 ```
-MTGA-Companion/
+vault-mtg/
   go.work
   services/
-    contract/            ← module: github.com/ramonehamilton/mtga-contract
+    contract/            ← module: github.com/RdHamilton/vault-mtg/services/contract
       go.mod
       events.go          ← DaemonEvent, SyncEvent, shared DTOs
-    daemon/              ← module: github.com/ramonehamilton/mtga-daemon
+    daemon/              ← module: github.com/RdHamilton/vault-mtg/services/daemon
       go.mod
       cmd/main.go
       internal/
         daemon/          ← from internal/daemon/
         logreader/       ← from internal/mtga/logreader/
-    bff/                 ← module: github.com/ramonehamilton/mtga-bff
+    bff/                 ← module: github.com/RdHamilton/vault-mtg/services/bff
       go.mod
       cmd/main.go
       internal/
@@ -257,7 +257,7 @@ MTGA-Companion/
         storage/         ← from internal/storage/ (migrations stay here)
         ml/              ← from internal/ml/
         mtga/            ← analysis, recommendations, deckexport, deckimport
-    sync/                ← module: github.com/ramonehamilton/mtga-sync
+    sync/                ← module: github.com/RdHamilton/vault-mtg/services/sync
       go.mod
       cmd/main.go
       internal/
@@ -328,7 +328,7 @@ Daemon workflow cross-compiles for `GOOS=windows GOARCH=amd64` and `GOOS=darwin 
 1. `go work init` + create four `go.mod` files
 2. `git mv` packages into service subdirectories; update import paths (`sed` + `goimports`)
 3. Extract `DaemonEvent` into `services/contract/`
-4. Refactor `cmd/mtga-companion/main.go` — daemon startup → `services/daemon/cmd/main.go`, BFF startup → `services/bff/cmd/main.go`
+4. Refactor `cmd/vaultmtg/main.go` — daemon startup → `services/daemon/cmd/main.go`, BFF startup → `services/bff/cmd/main.go`
 5. Existing tests stay in place; `go test ./...` from root via `go.work` runs all of them
 
 ### Tradeoffs

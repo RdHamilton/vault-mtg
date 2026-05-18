@@ -9,7 +9,7 @@
 
 ## Context
 
-Phase 3 of MTGA Companion (milestone #61) introduces user accounts,
+Phase 3 of VaultMTG (milestone #61) introduces user accounts,
 monetization, and per-user API keys for the desktop daemon. Until now the
 product has run as a single-tenant local app with the BFF accepting
 HMAC-signed JWTs minted by the daemon (`DAEMON_JWT_SECRET`). That model does
@@ -36,7 +36,7 @@ three.
 
 ## Decision
 
-**Clerk is the canonical user-auth provider for MTGA Companion.**
+**Clerk is the canonical user-auth provider for VaultMTG.**
 
 ### Specifics
 
@@ -232,7 +232,7 @@ use case. Reconsider only if Clerk pricing shifts unfavorably.
 
 ### D. Roll our own (Postgres + `golang-jwt` + custom UI)
 
-**Rejected.** Auth is not a differentiator for MTGA Companion. Building
+**Rejected.** Auth is not a differentiator for VaultMTG. Building
 sign-in, OAuth, MFA, password reset, email verification, and an API-key
 UX is months of work that does not move the product forward. Buy.
 

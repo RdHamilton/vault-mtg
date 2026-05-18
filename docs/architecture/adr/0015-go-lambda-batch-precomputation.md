@@ -101,7 +101,7 @@ own ADR.**
 - Establishes the Lambda batch pattern as the **default** for
   personalized pre-computation across the v0.4.0 roadmap and beyond.
 - Adds a new `infrastructure/cloudformation/` directory in the
-  primary repo (today CF templates live in `mtga-companion-infra` —
+  primary repo (today CF templates live in `vault-mtg-infra` —
   see Consequences for the split rationale).
 - Adds `services/craft/` as the second batch service in the monorepo,
   alongside `services/sync/`.
@@ -149,7 +149,7 @@ own ADR.**
   hundred milliseconds. Acceptable for a nightly cron; would not be
   for a request-time path.
 - **CloudFormation templates currently live in a sibling repo.**
-  `mtga-companion-infra` owns the existing CF stacks. The Smart Craft
+  `vault-mtg-infra` owns the existing CF stacks. The Smart Craft
   Next stack lands there too, **not** in the primary monorepo, to
   preserve the single-source-of-truth boundary. The
   `infrastructure/cloudformation/` reference in earlier drafts of
@@ -184,7 +184,7 @@ sequencing; this ADR is the source of truth.
 | **TBD-A** | Add `services/craft/cmd/lambda/main.go` skeleton: handler signature, RDS IAM auth, account pagination loop, structured logging | backend-engineer |
 | **TBD-B** | Implement Smart Craft Next scoring algorithm inside the handler; idempotent upsert into `craft_recommendations` keyed on `(account_id, format, computed_at::date)` | backend-engineer |
 | **TBD-C** | Schema migration: create `craft_recommendations` table with the idempotency key as a unique constraint | dba |
-| **TBD-D** | CloudFormation: add Smart Craft Next batch stack to `mtga-companion-infra` (Lambda, EventBridge rule, IAM role with RDS IAM auth, log group, alarms) | infrastructure |
+| **TBD-D** | CloudFormation: add Smart Craft Next batch stack to `vault-mtg-infra` (Lambda, EventBridge rule, IAM role with RDS IAM auth, log group, alarms) | infrastructure |
 | **TBD-E** | After TBD-A merges, lift shared batch boilerplate (RDS IAM token gen, account pagination, log helpers) to `pkg/batch/` and refactor both Lambdas to use it | backend-engineer |
 | **TBD-F** | Observability: CloudWatch metrics + alarm on `BatchAccountsErrored > 5%` for two consecutive runs | infrastructure |
 | **TBD-G** | Docs: pattern reference doc at `docs/patterns/batch-lambda.md` summarizing this ADR for future feature authors | architect |
