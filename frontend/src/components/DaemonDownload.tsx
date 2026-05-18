@@ -1,14 +1,8 @@
 import { useMemo } from 'react';
 import { trackEvent } from '@/services/analytics';
 import { useFeatureFlag } from '@/hooks/useFeatureFlag';
+import { useDaemonRelease } from '@/hooks/useDaemonRelease';
 import './DaemonDownload.css';
-
-// Staging injects VITE_DAEMON_VERSION to pin downloads to a specific pre-release
-// build (e.g. v0.3.1-rc11). Production leaves this unset so the URL always
-// resolves to the latest stable release via GitHub's /releases/latest/download/.
-const RELEASES_BASE = import.meta.env.VITE_DAEMON_VERSION
-  ? `https://github.com/RdHamilton/MTGA-Companion/releases/download/${import.meta.env.VITE_DAEMON_VERSION}`
-  : 'https://github.com/RdHamilton/MTGA-Companion/releases/latest/download';
 
 const WAITLIST_URL = 'https://vaultmtg.app/#waitlist';
 
@@ -78,8 +72,8 @@ function detectPlatform(): 'windows' | 'macos' {
   return 'macos';
 }
 
-function buildDownloadUrl(option: DownloadOption): string {
-  return `${RELEASES_BASE}/${option.artifact}.${option.ext}`;
+function buildDownloadUrl(option: DownloadOption, downloadBase: string): string {
+  return `${downloadBase}/${option.artifact}.${option.ext}`;
 }
 
 /** Skeleton placeholder shown while the PostHog feature flag loads. */
@@ -124,6 +118,7 @@ function DownloadComingSoon() {
 const DaemonDownload = () => {
   const detectedPlatform = useMemo(() => detectPlatform(), []);
   const { enabled: downloadEnabled } = useFeatureFlag('daemon_download_enabled');
+  const { downloadBase } = useDaemonRelease();
 
   return (
     <section className="daemon-download" data-testid="daemon-download-section">
@@ -143,7 +138,7 @@ const DaemonDownload = () => {
         <div className="daemon-download-buttons" data-testid="daemon-download-buttons">
           {DOWNLOAD_OPTIONS.map((option) => {
             const isDetected = option.platform === detectedPlatform;
-            const href = buildDownloadUrl(option);
+            const href = buildDownloadUrl(option, downloadBase);
             return (
               <a
                 key={option.artifact}

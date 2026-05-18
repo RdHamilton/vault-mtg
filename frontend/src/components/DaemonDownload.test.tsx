@@ -1,18 +1,34 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import DaemonDownload from './DaemonDownload';
+import { useFeatureFlag } from '@/hooks/useFeatureFlag';
+import { useDaemonRelease } from '@/hooks/useDaemonRelease';
+import type { DaemonReleaseState } from '@/hooks/useDaemonRelease';
 
-const RELEASES_BASE =
+const FALLBACK_RELEASES_BASE =
   'https://github.com/RdHamilton/MTGA-Companion/releases/latest/download';
+const RUNTIME_RELEASES_BASE =
+  'https://github.com/RdHamilton/MTGA-Companion/releases/download/daemon/v0.3.2';
 
 // Mock useFeatureFlag so we can control the flag state per test suite.
 vi.mock('@/hooks/useFeatureFlag', () => ({
   useFeatureFlag: vi.fn(),
 }));
 
-import { useFeatureFlag } from '@/hooks/useFeatureFlag';
-
+// useDaemonRelease is mocked globally in setup.ts (returns fallback URL by default).
+// vi.mock is hoisted — the module is already mocked by the time this runs.
 const mockUseFeatureFlag = vi.mocked(useFeatureFlag);
+const mockUseDaemonRelease = vi.mocked(useDaemonRelease);
+
+/** Helper to set a specific download base for the current test. */
+function setDownloadBase(overrides: Partial<DaemonReleaseState> = {}) {
+  mockUseDaemonRelease.mockReturnValue({
+    downloadBase: FALLBACK_RELEASES_BASE,
+    loading: false,
+    error: null,
+    ...overrides,
+  });
+}
 
 describe('DaemonDownload', () => {
   describe('Feature flag — enabled (download buttons visible)', () => {
@@ -61,7 +77,7 @@ describe('DaemonDownload', () => {
         expect(link).toBeInTheDocument();
         expect(link).toHaveAttribute(
           'href',
-          `${RELEASES_BASE}/vaultmtg-daemon-windows-amd64.exe`
+          `${FALLBACK_RELEASES_BASE}/vaultmtg-daemon-windows-amd64.exe`
         );
       });
 
@@ -71,7 +87,7 @@ describe('DaemonDownload', () => {
         expect(link).toBeInTheDocument();
         expect(link).toHaveAttribute(
           'href',
-          `${RELEASES_BASE}/vaultmtg-daemon-darwin-universal.dmg`
+          `${FALLBACK_RELEASES_BASE}/vaultmtg-daemon-darwin-universal.dmg`
         );
       });
 
@@ -326,6 +342,89 @@ describe('DaemonDownload', () => {
       render(<DaemonDownload />);
       const h3s = screen.getAllByRole('heading', { level: 3 });
       expect(h3s.length).toBe(4);
+    });
+  });
+
+  /**
+   * Runtime URL Resolution — post-mortem A7
+   *
+   * These tests verify that DaemonDownload uses the downloadBase supplied by
+   * useDaemonRelease at runtime rather than a build-time baked constant.
+   * useDaemonRelease is mocked globally in setup.ts (fallback URL) and
+   * overridden per-test here to simulate both the happy path and the fallback.
+   */
+  describe('Runtime URL Resolution (post-mortem A7)', () => {
+    beforeEach(() => {
+      mockUseFeatureFlag.mockReturnValue({ enabled: true });
+    });
+
+    it('should use the runtime-resolved download base for Windows link', () => {
+      setDownloadBase({ downloadBase: RUNTIME_RELEASES_BASE });
+      render(<DaemonDownload />);
+      const link = screen.getByTestId('download-link-vaultmtg-daemon-windows-amd64');
+      expect(link).toHaveAttribute(
+        'href',
+        `${RUNTIME_RELEASES_BASE}/vaultmtg-daemon-windows-amd64.exe`
+      );
+    });
+
+    it('should use the runtime-resolved download base for macOS link', () => {
+      setDownloadBase({ downloadBase: RUNTIME_RELEASES_BASE });
+      render(<DaemonDownload />);
+      const link = screen.getByTestId('download-link-vaultmtg-daemon-darwin-universal');
+      expect(link).toHaveAttribute(
+        'href',
+        `${RUNTIME_RELEASES_BASE}/vaultmtg-daemon-darwin-universal.dmg`
+      );
+    });
+
+    it('should fall back to the latest/download URL when release fetch fails', () => {
+      setDownloadBase({
+        downloadBase: FALLBACK_RELEASES_BASE,
+        error: 'Could not resolve latest daemon release — using latest stable redirect',
+      });
+      render(<DaemonDownload />);
+      const windowsLink = screen.getByTestId('download-link-vaultmtg-daemon-windows-amd64');
+      const macLink = screen.getByTestId('download-link-vaultmtg-daemon-darwin-universal');
+      expect(windowsLink).toHaveAttribute(
+        'href',
+        `${FALLBACK_RELEASES_BASE}/vaultmtg-daemon-windows-amd64.exe`
+      );
+      expect(macLink).toHaveAttribute(
+        'href',
+        `${FALLBACK_RELEASES_BASE}/vaultmtg-daemon-darwin-universal.dmg`
+      );
+    });
+
+    it('should still render buttons while the release fetch is in flight (loading state)', () => {
+      // When loading=true the hook still provides the fallback downloadBase so
+      // buttons remain functional during the async resolution.
+      setDownloadBase({ downloadBase: FALLBACK_RELEASES_BASE, loading: true });
+      render(<DaemonDownload />);
+      expect(screen.getByTestId('daemon-download-buttons')).toBeInTheDocument();
+      expect(screen.getByTestId('download-link-vaultmtg-daemon-windows-amd64')).toBeInTheDocument();
+      expect(screen.getByTestId('download-link-vaultmtg-daemon-darwin-universal')).toBeInTheDocument();
+    });
+
+    it('should not use VITE_DAEMON_VERSION — download URL must come from useDaemonRelease', () => {
+      // Verify the component does NOT read import.meta.env.VITE_DAEMON_VERSION.
+      // Setting a test env var and ensuring the rendered href does NOT match it
+      // confirms the component relies on useDaemonRelease exclusively.
+      const buildTimeValue = 'daemon/v0.0.0-stale';
+      (import.meta.env as Record<string, string>)['VITE_DAEMON_VERSION'] = buildTimeValue;
+
+      setDownloadBase({ downloadBase: RUNTIME_RELEASES_BASE });
+      render(<DaemonDownload />);
+      const windowsLink = screen.getByTestId('download-link-vaultmtg-daemon-windows-amd64');
+
+      // The link should point at the runtime value, not the stale build-time value.
+      expect(windowsLink.getAttribute('href')).not.toContain('v0.0.0-stale');
+      expect(windowsLink).toHaveAttribute(
+        'href',
+        `${RUNTIME_RELEASES_BASE}/vaultmtg-daemon-windows-amd64.exe`
+      );
+
+      delete (import.meta.env as Record<string, string>)['VITE_DAEMON_VERSION'];
     });
   });
 });

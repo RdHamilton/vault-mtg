@@ -1,7 +1,12 @@
 import { test, expect } from '@playwright/test';
 
-const RELEASES_BASE =
-  'https://github.com/RdHamilton/MTGA-Companion/releases/latest/download';
+const GITHUB_REPO = 'RdHamilton/MTGA-Companion';
+const FALLBACK_RELEASES_BASE =
+  `https://github.com/${GITHUB_REPO}/releases/latest/download`;
+const RUNTIME_RELEASES_BASE =
+  `https://github.com/${GITHUB_REPO}/releases/download/daemon/v0.3.2`;
+const GITHUB_RELEASES_API =
+  `https://api.github.com/repos/${GITHUB_REPO}/releases**`;
 
 /**
  * Intercept the PostHog /decide endpoint to set feature flag values.
@@ -23,6 +28,33 @@ async function mockPostHogFlag(
         featureFlagPayloads: {},
       }),
     });
+  });
+}
+
+/**
+ * Intercept the GitHub Releases API to return a controlled daemon/v* release.
+ * This simulates the runtime resolution path (post-mortem A7).
+ */
+async function mockGitHubReleasesApi(
+  page: import('@playwright/test').Page,
+  releases: Array<{ tag_name: string; draft?: boolean; prerelease?: boolean }>
+) {
+  await page.route(GITHUB_RELEASES_API, async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify(releases),
+    });
+  });
+}
+
+/**
+ * Simulate the GitHub Releases API being unavailable (network error / 500).
+ * DaemonDownload should fall back to /releases/latest/download.
+ */
+async function mockGitHubReleasesApiUnavailable(page: import('@playwright/test').Page) {
+  await page.route(GITHUB_RELEASES_API, async (route) => {
+    await route.fulfill({ status: 500 });
   });
 }
 
@@ -66,7 +98,7 @@ test.describe('Download Page', () => {
       await expect(link).toBeVisible();
       await expect(link).toHaveAttribute(
         'href',
-        `${RELEASES_BASE}/vaultmtg-daemon-windows-amd64.exe`
+        `${FALLBACK_RELEASES_BASE}/vaultmtg-daemon-windows-amd64.exe`
       );
     });
 
@@ -75,7 +107,7 @@ test.describe('Download Page', () => {
       await expect(link).toBeVisible();
       await expect(link).toHaveAttribute(
         'href',
-        `${RELEASES_BASE}/vaultmtg-daemon-darwin-universal.dmg`
+        `${FALLBACK_RELEASES_BASE}/vaultmtg-daemon-darwin-universal.dmg`
       );
     });
 
@@ -172,5 +204,86 @@ test.describe('Download Page — feature flag OFF (coming soon)', () => {
   test('should still show the download section header and getting-started steps', async ({ page }) => {
     await expect(page.locator('[data-testid="daemon-download-title"]')).toBeVisible();
     await expect(page.locator('[data-testid="daemon-getting-started"]')).toBeVisible();
+  });
+});
+
+/**
+ * Runtime URL Resolution — post-mortem A7
+ *
+ * Verifies that the download button hrefs are built from the runtime-resolved
+ * GitHub release tag rather than a build-time baked constant.  The GitHub
+ * Releases API is intercepted via page.route() so no real network call is made.
+ */
+test.describe('Download Page — runtime URL resolution (post-mortem A7)', () => {
+  test.beforeEach(async ({ page }) => {
+    await mockPostHogFlag(page, 'daemon_download_enabled', true);
+  });
+
+  test('@smoke download links reflect the runtime-resolved release tag', async ({ page }) => {
+    // Intercept the GitHub API before navigation so the route is registered in time.
+    await mockGitHubReleasesApi(page, [
+      { tag_name: 'daemon/v0.3.2', draft: false, prerelease: false },
+      { tag_name: 'daemon/v0.3.1', draft: false, prerelease: false },
+      { tag_name: 'app/v1.0.0', draft: false, prerelease: false },
+    ]);
+
+    await page.goto('/download');
+    await expect(page.locator('[data-testid="app-container"]')).toBeVisible();
+
+    // Wait for the async release fetch to settle — the buttons change after load.
+    const windowsLink = page.locator('[data-testid="download-link-vaultmtg-daemon-windows-amd64"]');
+    const macLink = page.locator('[data-testid="download-link-vaultmtg-daemon-darwin-universal"]');
+
+    await expect(windowsLink).toHaveAttribute(
+      'href',
+      `${RUNTIME_RELEASES_BASE}/vaultmtg-daemon-windows-amd64.exe`
+    );
+    await expect(macLink).toHaveAttribute(
+      'href',
+      `${RUNTIME_RELEASES_BASE}/vaultmtg-daemon-darwin-universal.dmg`
+    );
+  });
+
+  test('falls back to latest/download URL when GitHub API is unavailable', async ({ page }) => {
+    await mockGitHubReleasesApiUnavailable(page);
+
+    await page.goto('/download');
+    await expect(page.locator('[data-testid="app-container"]')).toBeVisible();
+
+    const windowsLink = page.locator('[data-testid="download-link-vaultmtg-daemon-windows-amd64"]');
+    const macLink = page.locator('[data-testid="download-link-vaultmtg-daemon-darwin-universal"]');
+
+    // After the API fails the hook settles on the fallback URL.
+    await expect(windowsLink).toHaveAttribute(
+      'href',
+      `${FALLBACK_RELEASES_BASE}/vaultmtg-daemon-windows-amd64.exe`
+    );
+    await expect(macLink).toHaveAttribute(
+      'href',
+      `${FALLBACK_RELEASES_BASE}/vaultmtg-daemon-darwin-universal.dmg`
+    );
+  });
+
+  test('buttons are present while the release fetch is still in flight', async ({ page }) => {
+    // Delay the API response to simulate slow network — buttons should still
+    // render immediately with the fallback URL, not be hidden behind a spinner.
+    await page.route(GITHUB_RELEASES_API, async (route) => {
+      // Add a deliberate delay then respond — the component renders before this.
+      await new Promise((resolve) => setTimeout(resolve, 500));
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify([{ tag_name: 'daemon/v0.3.2', draft: false, prerelease: false }]),
+      });
+    });
+
+    await page.goto('/download');
+    await expect(page.locator('[data-testid="app-container"]')).toBeVisible();
+
+    // Immediately after load the buttons should be present (fallback URL).
+    await expect(page.locator('[data-testid="daemon-download-buttons"]')).toBeVisible();
+    await expect(
+      page.locator('[data-testid="download-link-vaultmtg-daemon-windows-amd64"]')
+    ).toBeVisible();
   });
 });

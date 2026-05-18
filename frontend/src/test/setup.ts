@@ -44,6 +44,18 @@ vi.mock('@/hooks/useDaemonStatus', () => ({
   useDaemonStatus: vi.fn(() => ({ daemonConnected: true, daemonChecked: true })),
 }));
 
+// Mock useDaemonRelease globally — returns the fallback/latest download base by
+// default so component tests that predate A7 do not need to mock this hook.
+// Tests that need runtime-resolved URLs can override per-test:
+//   vi.mocked(useDaemonRelease).mockReturnValue({ downloadBase: '...', loading: false, error: null })
+vi.mock('@/hooks/useDaemonRelease', () => ({
+  useDaemonRelease: vi.fn(() => ({
+    downloadBase: 'https://github.com/RdHamilton/MTGA-Companion/releases/latest/download',
+    loading: false,
+    error: null,
+  })),
+}));
+
 // Mock individual API modules that are imported directly
 vi.mock('@/services/api/standard', () => ({
   validateDeckStandard: vi.fn(() => Promise.resolve({ isLegal: true, errors: [], warnings: [], setBreakdown: [] })),
