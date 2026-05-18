@@ -1,6 +1,6 @@
 // Command mtga-daemon watches MTGA Player.log and forwards events to the BFF.
-// Configuration is loaded from a JSON file (default: %APPDATA%\mtga-companion\daemon.json
-// on Windows; ~/.mtga-companion/daemon.json on macOS/Linux) and can be overridden with
+// Configuration is loaded from a JSON file (default: %APPDATA%\vaultmtg\daemon.json
+// on Windows; ~/.vaultmtg/daemon.json on macOS/Linux) and can be overridden with
 // environment variables. The cloud API URL is never hardcoded.
 //
 // Environment variables:
@@ -40,6 +40,7 @@ import (
 	"github.com/ramonehamilton/mtga-daemon/internal/config"
 	"github.com/ramonehamilton/mtga-daemon/internal/daemon"
 	"github.com/ramonehamilton/mtga-daemon/internal/keychain"
+	"github.com/ramonehamilton/mtga-daemon/internal/migrate"
 	"github.com/ramonehamilton/mtga-daemon/internal/pkce"
 	"github.com/ramonehamilton/mtga-daemon/internal/tray"
 )
@@ -52,6 +53,13 @@ func main() {
 	defaultCfgPath := defaultConfigPath()
 	cfgPath := flag.String("config", defaultCfgPath, "path to JSON config file")
 	flag.Parse()
+
+	// ── Step 0: config-dir migration (ADR-022 Phase 2) ─────────────────────────
+	// Copy old brand directories to the new VaultMTG-namespaced paths so users
+	// retain their configuration after upgrading the daemon binary.
+	// This is a copy-not-move: the old directories are retained for downgrade safety.
+	// The migration is idempotent and a no-op on fresh installs.
+	runConfigDirMigration()
 
 	// ── Step 1: first-run config detection ─────────────────────────────────────
 	// If daemon.json is missing, write a stub with cloud_api_url (if supplied via
@@ -373,8 +381,8 @@ func fileExists(path string) bool {
 }
 
 // defaultConfigPath returns the platform-appropriate default config path:
-//   - Windows: %APPDATA%\mtga-companion\daemon.json
-//   - macOS/Linux: ~/.mtga-companion/daemon.json
+//   - Windows: %APPDATA%\vaultmtg\daemon.json
+//   - macOS/Linux: ~/.vaultmtg/daemon.json
 //
 // The -config flag overrides this; Task Scheduler on Windows always passes
 // -config explicitly, so the default is only used when running the binary
@@ -382,12 +390,58 @@ func fileExists(path string) bool {
 func defaultConfigPath() string {
 	if runtime.GOOS == "windows" {
 		if appdata := os.Getenv("APPDATA"); appdata != "" {
-			return filepath.Join(appdata, "mtga-companion", "daemon.json")
+			return filepath.Join(appdata, "vaultmtg", "daemon.json")
 		}
 	}
 	home, err := os.UserHomeDir()
 	if err != nil {
 		return "daemon.json"
 	}
-	return filepath.Join(home, ".mtga-companion", "daemon.json")
+	return filepath.Join(home, ".vaultmtg", "daemon.json")
+}
+
+// runConfigDirMigration copies old brand-namespaced config directories to the
+// new VaultMTG-namespaced paths on daemon startup (ADR-022 Phase 2).
+//
+// Old directories migrated:
+//   - ~/.mtga-companion  (or %APPDATA%\mtga-companion on Windows) → new config root
+//   - ~/.mtga-daemon     (or %APPDATA%\mtga-daemon on Windows)    → new config root
+//
+// Each migration is a copy-not-move: the old directories are retained so that
+// users who downgrade the daemon binary still work. Deletion of the old
+// directories is deferred to Phase 6, gated on uptake telemetry.
+func runConfigDirMigration() {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		log.Printf("[mtga-daemon] warn: config-dir migration skipped: could not resolve home dir: %v", err)
+		return
+	}
+
+	var oldDirs []string
+	var newDir string
+
+	if runtime.GOOS == "windows" {
+		appdata := os.Getenv("APPDATA")
+		if appdata == "" {
+			log.Printf("[mtga-daemon] warn: config-dir migration skipped: APPDATA not set")
+			return
+		}
+		oldDirs = []string{
+			filepath.Join(appdata, "mtga-companion"),
+			filepath.Join(appdata, "mtga-daemon"),
+		}
+		newDir = filepath.Join(appdata, "vaultmtg")
+	} else {
+		oldDirs = []string{
+			filepath.Join(home, ".mtga-companion"),
+			filepath.Join(home, ".mtga-daemon"),
+		}
+		newDir = filepath.Join(home, ".vaultmtg")
+	}
+
+	for _, oldDir := range oldDirs {
+		if err := migrate.MigrateConfigDir(oldDir, newDir); err != nil {
+			log.Printf("[mtga-daemon] warn: config-dir migration %q → %q failed: %v", oldDir, newDir, err)
+		}
+	}
 }

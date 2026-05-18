@@ -2,7 +2,7 @@
 // The cloud API URL is never hardcoded — it must be supplied via config file or environment.
 //
 // Keychain sentinel: when Keychain is true the daemon API key lives in the OS keychain
-// (go-keyring, service "com.mtga-companion.daemon", account "api-key") rather than in
+// (go-keyring, service "com.vaultmtg.daemon", account "api-key") rather than in
 // this file.  The APIKey field must be absent/empty when Keychain is true.
 // See ADR-020 §daemon.json Canonical Schema for the full field specification.
 package config
@@ -77,7 +77,7 @@ type Config struct {
 	IngestPath string `json:"ingest_path"`
 
 	// LogArchiveDir is the directory where log snapshots are stored.
-	// Default: ~/.mtga-daemon/archives
+	// Default: ~/.vaultmtg/archives
 	LogArchiveDir string `json:"log_archive_dir"`
 
 	// LogArchiveMaxAge is how long to retain log snapshots before pruning.
@@ -242,9 +242,9 @@ func defaults() *Config {
 func defaultArchiveDir() string {
 	home, err := os.UserHomeDir()
 	if err != nil {
-		return os.TempDir() + "/mtga-daemon/archives"
+		return os.TempDir() + "/vaultmtg/archives"
 	}
-	return home + "/.mtga-daemon/archives"
+	return home + "/.vaultmtg/archives"
 }
 
 func loadFile(cfg *Config, path string) error {
