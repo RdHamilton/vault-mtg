@@ -1,0 +1,40 @@
+# Composite action — single source of truth for the BFF build command.
+#
+# Every workflow that builds the BFF (ci.yml, e2e-smoke.yml, deploy-bff.yml)
+# delegates here so the build target, env vars, and output path are defined
+# in exactly one place and cannot drift between workflows.
+#
+# Post-mortem action A6 — DRY the BFF build (#2175).
+
+name: Build BFF binary
+description: >
+  Builds the VaultMTG BFF service for a given OS/arch and writes the binary to
+  the path specified by the `output-path` input. Requires Go to be installed in
+  the caller (setup-go must run before this action).
+
+inputs:
+  goos:
+    description: 'Target OS (GOOS). Defaults to the runner OS (empty string).'
+    required: false
+    default: ''
+  goarch:
+    description: 'Target CPU architecture (GOARCH). Defaults to the runner arch (empty string).'
+    required: false
+    default: ''
+  output-path:
+    description: 'Path (relative to repo root) where the compiled binary is written, e.g. bin/mtga-bff.'
+    required: true
+
+runs:
+  using: composite
+  steps:
+    - name: Build BFF binary
+      shell: bash
+      env:
+        GONOSUMDB: github.com/RdHamilton/MTGA-Companion
+        GOPRIVATE: github.com/RdHamilton/MTGA-Companion
+        GOOS: ${{ inputs.goos }}
+        GOARCH: ${{ inputs.goarch }}
+      run: |
+        cd services/bff
+        go build -o "../../${{ inputs.output-path }}" ./cmd
