@@ -577,6 +577,226 @@ func TestNeedsFirstRunAuth_DaemonJWT(t *testing.T) {
 	assert.False(t, cfg.NeedsFirstRunAuth(func() (string, error) { return "", nil }))
 }
 
+// ── ADR-022 Phase 2 dual-read shim tests ────────────────────────────────────
+//
+// For every daemon env var the shim must satisfy three invariants:
+//  1. old-name-only set  → value is read
+//  2. new-name-only set  → value is read
+//  3. both set           → new name (VAULTMTG_DAEMON_*) wins
+
+// TestEnvWithFallback_Unit tests the EnvWithFallback helper directly.
+func TestEnvWithFallback_Unit(t *testing.T) {
+	t.Run("old-name-only", func(t *testing.T) {
+		t.Setenv("VAULTMTG_DAEMON_TEST_VAR", "")
+		t.Setenv("MTGA_DAEMON_TEST_VAR", "old-value")
+		assert.Equal(t, "old-value", config.EnvWithFallback("VAULTMTG_DAEMON_TEST_VAR", "MTGA_DAEMON_TEST_VAR"))
+	})
+	t.Run("new-name-only", func(t *testing.T) {
+		t.Setenv("VAULTMTG_DAEMON_TEST_VAR", "new-value")
+		t.Setenv("MTGA_DAEMON_TEST_VAR", "")
+		assert.Equal(t, "new-value", config.EnvWithFallback("VAULTMTG_DAEMON_TEST_VAR", "MTGA_DAEMON_TEST_VAR"))
+	})
+	t.Run("both-set-new-wins", func(t *testing.T) {
+		t.Setenv("VAULTMTG_DAEMON_TEST_VAR", "new-value")
+		t.Setenv("MTGA_DAEMON_TEST_VAR", "old-value")
+		assert.Equal(t, "new-value", config.EnvWithFallback("VAULTMTG_DAEMON_TEST_VAR", "MTGA_DAEMON_TEST_VAR"))
+	})
+	t.Run("neither-set-empty", func(t *testing.T) {
+		t.Setenv("VAULTMTG_DAEMON_TEST_VAR", "")
+		t.Setenv("MTGA_DAEMON_TEST_VAR", "")
+		assert.Equal(t, "", config.EnvWithFallback("VAULTMTG_DAEMON_TEST_VAR", "MTGA_DAEMON_TEST_VAR"))
+	})
+}
+
+// TestDualReadShim_CloudAPIURL covers old-name-only, new-name-only, and both-set
+// scenarios for CLOUD_API_URL — the most critical env var (drives validate()).
+func TestDualReadShim_CloudAPIURL(t *testing.T) {
+	t.Run("old-name-only", func(t *testing.T) {
+		t.Setenv("MTGA_DAEMON_CLOUD_API_URL", "http://old.example.com")
+		t.Setenv("VAULTMTG_DAEMON_CLOUD_API_URL", "")
+		cfg, err := config.Load("")
+		require.NoError(t, err)
+		assert.Equal(t, "http://old.example.com", cfg.CloudAPIURL)
+	})
+	t.Run("new-name-only", func(t *testing.T) {
+		t.Setenv("VAULTMTG_DAEMON_CLOUD_API_URL", "http://new.example.com")
+		t.Setenv("MTGA_DAEMON_CLOUD_API_URL", "")
+		cfg, err := config.Load("")
+		require.NoError(t, err)
+		assert.Equal(t, "http://new.example.com", cfg.CloudAPIURL)
+	})
+	t.Run("both-set-new-wins", func(t *testing.T) {
+		t.Setenv("VAULTMTG_DAEMON_CLOUD_API_URL", "http://new.example.com")
+		t.Setenv("MTGA_DAEMON_CLOUD_API_URL", "http://old.example.com")
+		cfg, err := config.Load("")
+		require.NoError(t, err)
+		assert.Equal(t, "http://new.example.com", cfg.CloudAPIURL,
+			"VAULTMTG_DAEMON_CLOUD_API_URL must win when both are set")
+	})
+}
+
+// TestDualReadShim_APIKey covers old-name-only, new-name-only, and both-set.
+func TestDualReadShim_APIKey(t *testing.T) {
+	t.Run("old-name-only", func(t *testing.T) {
+		t.Setenv("MTGA_DAEMON_CLOUD_API_URL", "http://localhost:9000")
+		t.Setenv("MTGA_DAEMON_API_KEY", "old-key")
+		t.Setenv("VAULTMTG_DAEMON_API_KEY", "")
+		cfg, err := config.Load("")
+		require.NoError(t, err)
+		assert.Equal(t, "old-key", cfg.APIKey)
+	})
+	t.Run("new-name-only", func(t *testing.T) {
+		t.Setenv("MTGA_DAEMON_CLOUD_API_URL", "http://localhost:9000")
+		t.Setenv("VAULTMTG_DAEMON_API_KEY", "new-key")
+		t.Setenv("MTGA_DAEMON_API_KEY", "")
+		cfg, err := config.Load("")
+		require.NoError(t, err)
+		assert.Equal(t, "new-key", cfg.APIKey)
+	})
+	t.Run("both-set-new-wins", func(t *testing.T) {
+		t.Setenv("MTGA_DAEMON_CLOUD_API_URL", "http://localhost:9000")
+		t.Setenv("VAULTMTG_DAEMON_API_KEY", "new-key")
+		t.Setenv("MTGA_DAEMON_API_KEY", "old-key")
+		cfg, err := config.Load("")
+		require.NoError(t, err)
+		assert.Equal(t, "new-key", cfg.APIKey,
+			"VAULTMTG_DAEMON_API_KEY must win when both are set")
+	})
+}
+
+// TestDualReadShim_LogPath covers old-name-only, new-name-only, and both-set.
+func TestDualReadShim_LogPath(t *testing.T) {
+	t.Run("old-name-only", func(t *testing.T) {
+		t.Setenv("MTGA_DAEMON_CLOUD_API_URL", "http://localhost:9000")
+		t.Setenv("MTGA_DAEMON_LOG_PATH", "/old/log/path")
+		t.Setenv("VAULTMTG_DAEMON_LOG_PATH", "")
+		cfg, err := config.Load("")
+		require.NoError(t, err)
+		assert.Equal(t, "/old/log/path", cfg.LogPath)
+	})
+	t.Run("new-name-only", func(t *testing.T) {
+		t.Setenv("MTGA_DAEMON_CLOUD_API_URL", "http://localhost:9000")
+		t.Setenv("VAULTMTG_DAEMON_LOG_PATH", "/new/log/path")
+		t.Setenv("MTGA_DAEMON_LOG_PATH", "")
+		cfg, err := config.Load("")
+		require.NoError(t, err)
+		assert.Equal(t, "/new/log/path", cfg.LogPath)
+	})
+	t.Run("both-set-new-wins", func(t *testing.T) {
+		t.Setenv("MTGA_DAEMON_CLOUD_API_URL", "http://localhost:9000")
+		t.Setenv("VAULTMTG_DAEMON_LOG_PATH", "/new/log/path")
+		t.Setenv("MTGA_DAEMON_LOG_PATH", "/old/log/path")
+		cfg, err := config.Load("")
+		require.NoError(t, err)
+		assert.Equal(t, "/new/log/path", cfg.LogPath,
+			"VAULTMTG_DAEMON_LOG_PATH must win when both are set")
+	})
+}
+
+// TestDualReadShim_AccountID covers old-name-only, new-name-only, and both-set.
+func TestDualReadShim_AccountID(t *testing.T) {
+	t.Run("old-name-only", func(t *testing.T) {
+		t.Setenv("MTGA_DAEMON_CLOUD_API_URL", "http://localhost:9000")
+		t.Setenv("MTGA_DAEMON_ACCOUNT_ID", "old-account")
+		t.Setenv("VAULTMTG_DAEMON_ACCOUNT_ID", "")
+		cfg, err := config.Load("")
+		require.NoError(t, err)
+		assert.Equal(t, "old-account", cfg.AccountID)
+	})
+	t.Run("new-name-only", func(t *testing.T) {
+		t.Setenv("MTGA_DAEMON_CLOUD_API_URL", "http://localhost:9000")
+		t.Setenv("VAULTMTG_DAEMON_ACCOUNT_ID", "new-account")
+		t.Setenv("MTGA_DAEMON_ACCOUNT_ID", "")
+		cfg, err := config.Load("")
+		require.NoError(t, err)
+		assert.Equal(t, "new-account", cfg.AccountID)
+	})
+	t.Run("both-set-new-wins", func(t *testing.T) {
+		t.Setenv("MTGA_DAEMON_CLOUD_API_URL", "http://localhost:9000")
+		t.Setenv("VAULTMTG_DAEMON_ACCOUNT_ID", "new-account")
+		t.Setenv("MTGA_DAEMON_ACCOUNT_ID", "old-account")
+		cfg, err := config.Load("")
+		require.NoError(t, err)
+		assert.Equal(t, "new-account", cfg.AccountID,
+			"VAULTMTG_DAEMON_ACCOUNT_ID must win when both are set")
+	})
+}
+
+// TestDualReadShim_LogArchiveDir covers old-name-only, new-name-only, and both-set.
+func TestDualReadShim_LogArchiveDir(t *testing.T) {
+	t.Run("old-name-only", func(t *testing.T) {
+		t.Setenv("MTGA_DAEMON_CLOUD_API_URL", "http://localhost:9000")
+		t.Setenv("MTGA_DAEMON_LOG_ARCHIVE_DIR", "/old/archive")
+		t.Setenv("VAULTMTG_DAEMON_LOG_ARCHIVE_DIR", "")
+		cfg, err := config.Load("")
+		require.NoError(t, err)
+		assert.Equal(t, "/old/archive", cfg.LogArchiveDir)
+	})
+	t.Run("new-name-only", func(t *testing.T) {
+		t.Setenv("MTGA_DAEMON_CLOUD_API_URL", "http://localhost:9000")
+		t.Setenv("VAULTMTG_DAEMON_LOG_ARCHIVE_DIR", "/new/archive")
+		t.Setenv("MTGA_DAEMON_LOG_ARCHIVE_DIR", "")
+		cfg, err := config.Load("")
+		require.NoError(t, err)
+		assert.Equal(t, "/new/archive", cfg.LogArchiveDir)
+	})
+	t.Run("both-set-new-wins", func(t *testing.T) {
+		t.Setenv("MTGA_DAEMON_CLOUD_API_URL", "http://localhost:9000")
+		t.Setenv("VAULTMTG_DAEMON_LOG_ARCHIVE_DIR", "/new/archive")
+		t.Setenv("MTGA_DAEMON_LOG_ARCHIVE_DIR", "/old/archive")
+		cfg, err := config.Load("")
+		require.NoError(t, err)
+		assert.Equal(t, "/new/archive", cfg.LogArchiveDir,
+			"VAULTMTG_DAEMON_LOG_ARCHIVE_DIR must win when both are set")
+	})
+}
+
+// TestDualReadShim_DisableUpdateCheck covers old-name-only, new-name-only, and both-set.
+func TestDualReadShim_DisableUpdateCheck(t *testing.T) {
+	t.Run("old-name-only", func(t *testing.T) {
+		t.Setenv("MTGA_DAEMON_CLOUD_API_URL", "http://localhost:9000")
+		t.Setenv("MTGA_DAEMON_DISABLE_UPDATE_CHECK", "1")
+		t.Setenv("VAULTMTG_DAEMON_DISABLE_UPDATE_CHECK", "")
+		cfg, err := config.Load("")
+		require.NoError(t, err)
+		assert.True(t, cfg.DisableUpdateCheck,
+			"MTGA_DAEMON_DISABLE_UPDATE_CHECK=1 must disable update check")
+	})
+	t.Run("new-name-only", func(t *testing.T) {
+		t.Setenv("MTGA_DAEMON_CLOUD_API_URL", "http://localhost:9000")
+		t.Setenv("VAULTMTG_DAEMON_DISABLE_UPDATE_CHECK", "1")
+		t.Setenv("MTGA_DAEMON_DISABLE_UPDATE_CHECK", "")
+		cfg, err := config.Load("")
+		require.NoError(t, err)
+		assert.True(t, cfg.DisableUpdateCheck,
+			"VAULTMTG_DAEMON_DISABLE_UPDATE_CHECK=1 must disable update check")
+	})
+	t.Run("both-set-new-wins", func(t *testing.T) {
+		t.Setenv("MTGA_DAEMON_CLOUD_API_URL", "http://localhost:9000")
+		// new name says "1", old says "0" → new must win → check disabled
+		t.Setenv("VAULTMTG_DAEMON_DISABLE_UPDATE_CHECK", "1")
+		t.Setenv("MTGA_DAEMON_DISABLE_UPDATE_CHECK", "0")
+		cfg, err := config.Load("")
+		require.NoError(t, err)
+		assert.True(t, cfg.DisableUpdateCheck,
+			"VAULTMTG_DAEMON_DISABLE_UPDATE_CHECK must win when both are set")
+	})
+	t.Run("new-overrides-old-false", func(t *testing.T) {
+		t.Setenv("MTGA_DAEMON_CLOUD_API_URL", "http://localhost:9000")
+		// new name says "0", old says "1" → new wins → check NOT disabled
+		// (Note: "0" is an empty string that still resolves via fallback path
+		// because EnvWithFallback returns "" when newName is "0"? No — "0" is
+		// non-empty so newName wins and the "== 1" check is false.)
+		t.Setenv("VAULTMTG_DAEMON_DISABLE_UPDATE_CHECK", "0")
+		t.Setenv("MTGA_DAEMON_DISABLE_UPDATE_CHECK", "1")
+		cfg, err := config.Load("")
+		require.NoError(t, err)
+		// "0" is returned by EnvWithFallback (non-empty new name), so "== 1" is false
+		assert.False(t, cfg.DisableUpdateCheck,
+			"VAULTMTG_DAEMON_DISABLE_UPDATE_CHECK=0 (non-empty) wins over MTGA=1; check should NOT be disabled")
+	})
+}
+
 // ── Keychain field serialisation ─────────────────────────────────────────────
 
 // TestKeychainFieldRoundTrip verifies that keychain:true is written and read back.

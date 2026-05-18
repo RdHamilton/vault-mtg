@@ -25,12 +25,14 @@ type Config struct {
 	filePath string
 
 	// CloudAPIURL is the base URL of the Backend for Frontend service.
-	// Required. Never hardcoded. Read from config file or MTGA_DAEMON_CLOUD_API_URL env var.
+	// Required. Never hardcoded. Read from config file or VAULTMTG_DAEMON_CLOUD_API_URL
+	// env var (falls back to MTGA_DAEMON_CLOUD_API_URL for legacy service installs).
 	CloudAPIURL string `json:"cloud_api_url"`
 
 	// APIKey is the user API key used only for daemon registration.
 	// After a successful registration the returned DaemonJWT is used for all ingest calls.
-	// Read from config file or MTGA_DAEMON_API_KEY env var.
+	// Read from config file or VAULTMTG_DAEMON_API_KEY env var (falls back to
+	// MTGA_DAEMON_API_KEY for legacy service installs).
 	// When Keychain is true this field should be empty — the key lives in the OS keychain.
 	APIKey string `json:"api_key,omitempty"`
 
@@ -90,7 +92,8 @@ type Config struct {
 	LogPreserveOnStart bool `json:"log_preserve_on_start"`
 
 	// DisableUpdateCheck disables the periodic daemon version check when true.
-	// Controlled by the MTGA_DAEMON_DISABLE_UPDATE_CHECK=1 environment variable.
+	// Controlled by the VAULTMTG_DAEMON_DISABLE_UPDATE_CHECK=1 environment variable
+	// (falls back to MTGA_DAEMON_DISABLE_UPDATE_CHECK=1 for legacy service installs).
 	// Default: false (version checks are enabled).
 	DisableUpdateCheck bool `json:"disable_update_check,omitempty"`
 
@@ -174,8 +177,8 @@ func (c *Config) FilePath() string {
 //   - Keychain is true but the keychain entry is missing or empty (reinstall
 //     where the OS keychain was wiped, e.g. after an OS reinstall).
 //
-// When the MTGA_DAEMON_API_KEY env var is set the caller already has a key —
-// first-run auth is not needed.
+// When the VAULTMTG_DAEMON_API_KEY (or legacy MTGA_DAEMON_API_KEY) env var is
+// set the caller already has a key — first-run auth is not needed.
 //
 // keychainGetter is called only when c.Keychain is true. In production, pass
 // keychain.Get. In tests, pass a func that returns the desired stub value.
@@ -323,23 +326,34 @@ func jwtExpiry(token string) (time.Time, error) {
 	return time.Unix(claims.Exp, 0), nil
 }
 
+// EnvWithFallback returns the value of newName when set and non-empty; otherwise
+// returns the value of oldName.  This implements the ADR-022 Phase 2 dual-read
+// shim: VAULTMTG_DAEMON_* wins over MTGA_DAEMON_* when both are set.  The
+// legacy MTGA_DAEMON_* read branch stays until Phase 6 (uptake-telemetry gate).
+func EnvWithFallback(newName, oldName string) string {
+	if v := os.Getenv(newName); v != "" {
+		return v
+	}
+	return os.Getenv(oldName)
+}
+
 func applyEnv(cfg *Config) {
-	if v := os.Getenv("MTGA_DAEMON_CLOUD_API_URL"); v != "" {
+	if v := EnvWithFallback("VAULTMTG_DAEMON_CLOUD_API_URL", "MTGA_DAEMON_CLOUD_API_URL"); v != "" {
 		cfg.CloudAPIURL = v
 	}
-	if v := os.Getenv("MTGA_DAEMON_API_KEY"); v != "" {
+	if v := EnvWithFallback("VAULTMTG_DAEMON_API_KEY", "MTGA_DAEMON_API_KEY"); v != "" {
 		cfg.APIKey = v
 	}
-	if v := os.Getenv("MTGA_DAEMON_LOG_PATH"); v != "" {
+	if v := EnvWithFallback("VAULTMTG_DAEMON_LOG_PATH", "MTGA_DAEMON_LOG_PATH"); v != "" {
 		cfg.LogPath = v
 	}
-	if v := os.Getenv("MTGA_DAEMON_ACCOUNT_ID"); v != "" {
+	if v := EnvWithFallback("VAULTMTG_DAEMON_ACCOUNT_ID", "MTGA_DAEMON_ACCOUNT_ID"); v != "" {
 		cfg.AccountID = v
 	}
-	if v := os.Getenv("MTGA_DAEMON_LOG_ARCHIVE_DIR"); v != "" {
+	if v := EnvWithFallback("VAULTMTG_DAEMON_LOG_ARCHIVE_DIR", "MTGA_DAEMON_LOG_ARCHIVE_DIR"); v != "" {
 		cfg.LogArchiveDir = v
 	}
-	if os.Getenv("MTGA_DAEMON_DISABLE_UPDATE_CHECK") == "1" {
+	if EnvWithFallback("VAULTMTG_DAEMON_DISABLE_UPDATE_CHECK", "MTGA_DAEMON_DISABLE_UPDATE_CHECK") == "1" {
 		cfg.DisableUpdateCheck = true
 	}
 	if v := os.Getenv("GRE_SESSION_FLUSH_THRESHOLD"); v != "" {
@@ -356,7 +370,7 @@ func applyEnv(cfg *Config) {
 
 func (c *Config) validate() error {
 	if c.CloudAPIURL == "" {
-		return fmt.Errorf("cloud_api_url is required (set MTGA_DAEMON_CLOUD_API_URL or provide config file)")
+		return fmt.Errorf("cloud_api_url is required (set VAULTMTG_DAEMON_CLOUD_API_URL or MTGA_DAEMON_CLOUD_API_URL, or provide config file)")
 	}
 	if c.SyncEnabled && c.APIKey == "" && c.DaemonJWT == "" {
 		log.Printf("[config] warning: sync_enabled is true but neither api_key nor daemon_jwt is set; events will be sent without authentication")

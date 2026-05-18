@@ -3,16 +3,22 @@
 // on Windows; ~/.vaultmtg/daemon.json on macOS/Linux) and can be overridden with
 // environment variables. The cloud API URL is never hardcoded.
 //
-// Environment variables:
+// Environment variables (ADR-022 Phase 2 dual-read shim: VAULTMTG_DAEMON_* wins
+// when both are set; MTGA_DAEMON_* is the legacy fallback for existing service installs):
 //
-//	MTGA_DAEMON_CLOUD_API_URL     Base URL of the cloud API / BFF (required if not in config file)
-//	MTGA_DAEMON_API_KEY           Bearer token for BFF authentication (legacy plaintext — migrated to keychain)
-//	MTGA_DAEMON_LOG_PATH          Override MTGA log file path (auto-detected by default)
-//	MTGA_DAEMON_ACCOUNT_ID        MTGA account ID to tag events
-//	MTGA_DAEMON_HEADLESS          Set to "1" to skip browser open and print the auth URL instead
-//	MTGA_COLLECTION_HELPER_DIR    Directory containing collection-helper binary and install/ subdir (dev override)
-//	CLERK_PUBLISHABLE_KEY         Clerk publishable key (pk_live_* / pk_test_*) used for PKCE OAuth
-//	CLERK_FRONTEND_API            Clerk frontend API base URL (e.g. https://accounts.clerk.dev)
+//	VAULTMTG_DAEMON_CLOUD_API_URL  Base URL of the cloud API / BFF (required if not in config file)
+//	MTGA_DAEMON_CLOUD_API_URL      Legacy alias (fallback)
+//	VAULTMTG_DAEMON_API_KEY        Bearer token for BFF authentication (legacy plaintext — migrated to keychain)
+//	MTGA_DAEMON_API_KEY            Legacy alias (fallback)
+//	VAULTMTG_DAEMON_LOG_PATH       Override MTGA log file path (auto-detected by default)
+//	MTGA_DAEMON_LOG_PATH           Legacy alias (fallback)
+//	VAULTMTG_DAEMON_ACCOUNT_ID     MTGA account ID to tag events
+//	MTGA_DAEMON_ACCOUNT_ID         Legacy alias (fallback)
+//	VAULTMTG_DAEMON_HEADLESS       Set to "1" to skip browser open and print the auth URL instead
+//	MTGA_DAEMON_HEADLESS           Legacy alias (fallback)
+//	MTGA_COLLECTION_HELPER_DIR     Directory containing collection-helper binary and install/ subdir (dev override)
+//	CLERK_PUBLISHABLE_KEY          Clerk publishable key (pk_live_* / pk_test_*) used for PKCE OAuth
+//	CLERK_FRONTEND_API             Clerk frontend API base URL (e.g. https://accounts.clerk.dev)
 //
 // Flags:
 //
@@ -152,7 +158,7 @@ func main() {
 // A stub config is NOT written here — the full config is written after PKCE completes.
 func handleMissingConfig(cfgPath string) {
 	setupURL := "https://vaultmtg.app/setup"
-	headless := os.Getenv("MTGA_DAEMON_HEADLESS") == "1"
+	headless := config.EnvWithFallback("VAULTMTG_DAEMON_HEADLESS", "MTGA_DAEMON_HEADLESS") == "1"
 
 	if headless {
 		fmt.Printf("[mtga-daemon] First run: open %s to complete setup.\n", setupURL)
@@ -166,7 +172,7 @@ func handleMissingConfig(cfgPath string) {
 
 	// Write a minimal stub so config.Load succeeds even without env vars.
 	// The PKCE flow will fill in the real values.
-	cloudAPIURL := os.Getenv("MTGA_DAEMON_CLOUD_API_URL")
+	cloudAPIURL := config.EnvWithFallback("VAULTMTG_DAEMON_CLOUD_API_URL", "MTGA_DAEMON_CLOUD_API_URL")
 	if cloudAPIURL == "" {
 		cloudAPIURL = "https://api.vaultmtg.app/api/v1"
 	}
@@ -226,7 +232,7 @@ func runPKCEAuth(cfg *config.Config, cfgPath string) error {
 		return fmt.Errorf("CLERK_FRONTEND_API and CLERK_OAUTH_CLIENT_ID must be set for PKCE auth")
 	}
 
-	headless := os.Getenv("MTGA_DAEMON_HEADLESS") == "1"
+	headless := config.EnvWithFallback("VAULTMTG_DAEMON_HEADLESS", "MTGA_DAEMON_HEADLESS") == "1"
 
 	tokenEndpoint := strings.TrimRight(clerkFrontendAPI, "/") + "/oauth/token"
 

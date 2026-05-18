@@ -36,10 +36,12 @@ func TestHandleMissingConfig_DefaultCloudAPIURL(t *testing.T) {
 	dir := t.TempDir()
 	cfgPath := filepath.Join(dir, "daemon.json")
 
-	// Ensure the env var is unset so we exercise the hardcoded default.
+	// Ensure both old and new env vars are unset so we exercise the hardcoded default.
 	t.Setenv("MTGA_DAEMON_CLOUD_API_URL", "")
+	t.Setenv("VAULTMTG_DAEMON_CLOUD_API_URL", "")
 	// Run in headless mode so no browser is opened during the test.
 	t.Setenv("MTGA_DAEMON_HEADLESS", "1")
+	t.Setenv("VAULTMTG_DAEMON_HEADLESS", "")
 
 	handleMissingConfig(cfgPath)
 
@@ -63,7 +65,9 @@ func TestHandleMissingConfig_EnvOverride(t *testing.T) {
 
 	customURL := "https://staging.api.vaultmtg.app/api/v1"
 	t.Setenv("MTGA_DAEMON_CLOUD_API_URL", customURL)
+	t.Setenv("VAULTMTG_DAEMON_CLOUD_API_URL", "")
 	t.Setenv("MTGA_DAEMON_HEADLESS", "1")
+	t.Setenv("VAULTMTG_DAEMON_HEADLESS", "")
 
 	handleMissingConfig(cfgPath)
 
@@ -77,6 +81,82 @@ func TestHandleMissingConfig_EnvOverride(t *testing.T) {
 	require.True(t, ok, "stub config must contain cloud_api_url key")
 	assert.Equal(t, customURL, got,
 		"MTGA_DAEMON_CLOUD_API_URL env var must override the hardcoded default")
+}
+
+// ---------------------------------------------------------------------------
+// ADR-022 Phase 2 dual-read shim — handleMissingConfig
+// ---------------------------------------------------------------------------
+
+// TestHandleMissingConfig_NewNameCloudAPIURL verifies that VAULTMTG_DAEMON_CLOUD_API_URL
+// (new name) is picked up when only the new name is set.
+func TestHandleMissingConfig_NewNameCloudAPIURL(t *testing.T) {
+	dir := t.TempDir()
+	cfgPath := filepath.Join(dir, "daemon.json")
+
+	newURL := "https://staging.api.vaultmtg.app/api/v1"
+	t.Setenv("VAULTMTG_DAEMON_CLOUD_API_URL", newURL)
+	t.Setenv("MTGA_DAEMON_CLOUD_API_URL", "")
+	t.Setenv("VAULTMTG_DAEMON_HEADLESS", "1")
+	t.Setenv("MTGA_DAEMON_HEADLESS", "")
+
+	handleMissingConfig(cfgPath)
+
+	data, err := os.ReadFile(cfgPath)
+	require.NoError(t, err)
+
+	var stub map[string]interface{}
+	require.NoError(t, json.Unmarshal(data, &stub))
+
+	got, ok := stub["cloud_api_url"]
+	require.True(t, ok)
+	assert.Equal(t, newURL, got,
+		"VAULTMTG_DAEMON_CLOUD_API_URL must be used when only the new name is set")
+}
+
+// TestHandleMissingConfig_NewNameWinsCloudAPIURL verifies that when both names
+// are set, VAULTMTG_DAEMON_CLOUD_API_URL (new name) wins.
+func TestHandleMissingConfig_NewNameWinsCloudAPIURL(t *testing.T) {
+	dir := t.TempDir()
+	cfgPath := filepath.Join(dir, "daemon.json")
+
+	newURL := "https://new.api.vaultmtg.app/api/v1"
+	oldURL := "https://old.api.vaultmtg.app/api/v1"
+	t.Setenv("VAULTMTG_DAEMON_CLOUD_API_URL", newURL)
+	t.Setenv("MTGA_DAEMON_CLOUD_API_URL", oldURL)
+	t.Setenv("VAULTMTG_DAEMON_HEADLESS", "1")
+	t.Setenv("MTGA_DAEMON_HEADLESS", "")
+
+	handleMissingConfig(cfgPath)
+
+	data, err := os.ReadFile(cfgPath)
+	require.NoError(t, err)
+
+	var stub map[string]interface{}
+	require.NoError(t, json.Unmarshal(data, &stub))
+
+	got, ok := stub["cloud_api_url"]
+	require.True(t, ok)
+	assert.Equal(t, newURL, got,
+		"VAULTMTG_DAEMON_CLOUD_API_URL must win over MTGA_DAEMON_CLOUD_API_URL when both are set")
+}
+
+// TestHandleMissingConfig_NewNameHeadless verifies that VAULTMTG_DAEMON_HEADLESS=1
+// (new name) runs in headless mode.
+func TestHandleMissingConfig_NewNameHeadless(t *testing.T) {
+	dir := t.TempDir()
+	cfgPath := filepath.Join(dir, "daemon.json")
+
+	// Set new name only; old name empty.
+	t.Setenv("VAULTMTG_DAEMON_HEADLESS", "1")
+	t.Setenv("MTGA_DAEMON_HEADLESS", "")
+	t.Setenv("VAULTMTG_DAEMON_CLOUD_API_URL", "")
+	t.Setenv("MTGA_DAEMON_CLOUD_API_URL", "")
+
+	// handleMissingConfig writes a stub config — no panic or browser open expected.
+	handleMissingConfig(cfgPath)
+
+	_, err := os.ReadFile(cfgPath)
+	require.NoError(t, err, "stub config must be written even with new-name headless env var")
 }
 
 // ---------------------------------------------------------------------------
