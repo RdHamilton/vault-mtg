@@ -1,3 +1,7 @@
+github.com/RdHamilton/vault-mtg/pkg/draftalgo v0.1.1 h1:t4tyy+6wT+03/VcONZiGoHbDot3iXkSUiMYXLAoG5cE=
+github.com/RdHamilton/vault-mtg/pkg/draftalgo v0.1.1/go.mod h1:1KKzNDTZDEOk2+KWsOpnQBMa66XMR+CF4KxvBGhk/GA=
+github.com/RdHamilton/vault-mtg/services/contract v0.1.2 h1:+xXkljRerBFHLgMHSIHi/IlwpeHOm0L2e/63inkoDzw=
+github.com/RdHamilton/vault-mtg/services/contract v0.1.2/go.mod h1:f84Hk7ST8G9WDHzVzP7E/gjiyvadgfyao/uB9m2Wb/w=
 github.com/creack/pty v1.1.9/go.mod h1:oKZEueFk5CKHvIhNR5MUki03XCEU+Q6VDXinZuGJ33E=
 github.com/danieljoos/wincred v1.2.3 h1:v7dZC2x32Ut3nEfRH+vhoZGvN72+dQ/snVXo/vMFLdQ=
 github.com/danieljoos/wincred v1.2.3/go.mod h1:6qqX0WNrS4RzPZ1tnroDzq9kY3fu1KwE7MRLQK4X0bs=

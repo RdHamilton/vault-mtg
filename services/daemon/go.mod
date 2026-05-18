@@ -5,8 +5,8 @@ go 1.25.0
 toolchain go1.25.10
 
 require (
-	github.com/RdHamilton/vault-mtg/pkg/draftalgo v0.0.0-00010101000000-000000000000
-	github.com/RdHamilton/vault-mtg/services/contract v0.1.0
+	github.com/RdHamilton/vault-mtg/pkg/draftalgo v0.1.1
+	github.com/RdHamilton/vault-mtg/services/contract v0.1.2
 	github.com/fsnotify/fsnotify v1.10.1
 	github.com/getlantern/systray v1.2.2
 	github.com/google/uuid v1.6.0
@@ -34,12 +34,4 @@ require (
 	golang.org/x/sys v0.44.0 // indirect
 	gopkg.in/check.v1 v1.0.0-20201130134442-10cb98267c6c // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
-)
-
-// Phase-3 interim: github.com/RdHamilton/vault-mtg does not exist as a remote
-// repo until Phase 4 (repo rename). Remove after Phase 4 + module tagging.
-// Tracked: #2262
-replace (
-	github.com/RdHamilton/vault-mtg/pkg/draftalgo => ../../pkg/draftalgo
-	github.com/RdHamilton/vault-mtg/services/contract => ../contract
 )
