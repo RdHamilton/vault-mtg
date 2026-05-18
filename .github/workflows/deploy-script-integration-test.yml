@@ -12,6 +12,7 @@ on:
     paths:
       - 'scripts/deploy/**'
       - 'infra/scripts/**'
+      - 'infra/config/**'
       - 'infra/db/**'
       - 'services/bff/internal/storage/migrations/**'
       - 'tests/deploy-chain/**'
@@ -21,6 +22,7 @@ on:
     paths:
       - 'scripts/deploy/**'
       - 'infra/scripts/**'
+      - 'infra/config/**'
       - 'infra/db/**'
       - 'services/bff/internal/storage/migrations/**'
       - 'tests/deploy-chain/**'
