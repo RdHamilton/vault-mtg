@@ -201,7 +201,7 @@ $trigger = New-ScheduledTaskTrigger -AtLogOn -User $Env:USERNAME
 $settings = New-ScheduledTaskSettingsSet `
     -ExecutionTimeLimit ([TimeSpan]::Zero) `
     -MultipleInstances IgnoreNew `
-    -StartWhenAvailable $true
+    -StartWhenAvailable
 
 # Highest privilege within the user's token — still no UAC elevation.
 $principal = New-ScheduledTaskPrincipal `
