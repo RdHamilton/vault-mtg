@@ -290,7 +290,7 @@ jobs:
           $content = $content -replace [regex]::Escape('$ConfigDir   = Join-Path $Env:APPDATA ''mtga-companion'''), "`$ConfigDir = '$configDir'"
 
           $patchedScript = Join-Path $Env:TEMP "install_ci_patched.ps1"
-          Set-Content -Path $patchedScript -Value $content -Encoding UTF8
+          [System.IO.File]::WriteAllText($patchedScript, $content, [System.Text.Encoding]::UTF8)
 
           Write-Host "--- running patched install.ps1 ---"
           & pwsh -NonInteractive -File $patchedScript
@@ -351,7 +351,7 @@ jobs:
           $content = $content -replace [regex]::Escape('$ConfigDir   = Join-Path $Env:APPDATA ''mtga-companion'''), "`$ConfigDir = '$configDir'"
 
           $patchedScript = Join-Path $Env:TEMP "install_ci_patched_reinstall.ps1"
-          Set-Content -Path $patchedScript -Value $content -Encoding UTF8
+          [System.IO.File]::WriteAllText($patchedScript, $content, [System.Text.Encoding]::UTF8)
 
           & pwsh -NonInteractive -File $patchedScript
           if ($LASTEXITCODE -ne 0) {
@@ -391,7 +391,7 @@ jobs:
           $content = $content -replace [regex]::Escape('$InstallDir = Join-Path $Env:ProgramFiles ''MTGA-Companion'''), "`$InstallDir = '$fakeDir'"
 
           $patchedScript = Join-Path $Env:TEMP "uninstall_ci_patched.ps1"
-          Set-Content -Path $patchedScript -Value $content -Encoding UTF8
+          [System.IO.File]::WriteAllText($patchedScript, $content, [System.Text.Encoding]::UTF8)
 
           & pwsh -NonInteractive -File $patchedScript
           if ($LASTEXITCODE -ne 0) {
