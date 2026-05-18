@@ -2,7 +2,7 @@
 
 **Date:** 2026-05-06  
 **Source audit:** `~/.claude/plans/cicd-audit.md`  
-**Repos in scope:** MTGA-Companion, vault-mtg-web, mtga-companion-web
+**Repos in scope:** VaultMTG, vault-mtg-web, vaultmtg-web
 
 ---
 
@@ -53,15 +53,15 @@ These changes are staged/modified in the current branch (`fix/clerk-provider-inv
 1. Create SSM SecureString for Clerk secret key:
    ```bash
    aws ssm put-parameter \
-     --name /mtga-companion/production/CLERK_SECRET_KEY \
+     --name /vaultmtg/production/CLERK_SECRET_KEY \
      --value "sk_live_..." \
      --type SecureString \
      --region us-east-1 \
      --profile personal
    ```
-2. Verify EC2 instance role has `ssm:GetParameter` + `kms:Decrypt` on that parameter path (should already be covered by the existing `ssm:GetParameter /mtga-companion/production/*` policy).
+2. Verify EC2 instance role has `ssm:GetParameter` + `kms:Decrypt` on that parameter path (should already be covered by the existing `ssm:GetParameter /vaultmtg/production/*` policy).
 
-### 0-B: Decide mtga-companion-web repo fate
+### 0-B: Decide vaultmtg-web repo fate
 
 **Files:** GitHub repo settings (no workflow files)  
 **Owner:** Ray (product decision)  
@@ -69,7 +69,7 @@ These changes are staged/modified in the current branch (`fix/clerk-provider-inv
 **AWS IAM required:** No  
 **Depends on:** Nothing
 
-The Vercel project for `mtga-companion-web` was deleted 2026-05-06. Any push to main is a silent no-op. Options:
+The Vercel project for `vaultmtg-web` was deleted 2026-05-06. Any push to main is a silent no-op. Options:
 - **Archive** the repo on GitHub (recommended if rhamiltoneng.com content has moved to vault-mtg-web).
 - **Rewire** to a new Vercel project or S3+CloudFront if it still serves content.
 
@@ -359,12 +359,12 @@ inputs:
 
 ### 3-D: Audit set-vercel-env.yml for deleted Vercel project
 
-**Files:** `mtga-companion-infra/.github/workflows/set-vercel-env.yml`  
+**Files:** `vaultmtg-infra/.github/workflows/set-vercel-env.yml`  
 **Owner:** infrastructure  
 **Scope:** S  
 **Depends on:** Wave 0-B (repo fate decided)
 
-The deleted `mtga-companion` Vercel project's ID may be referenced. Remove stale project references.
+The deleted `vaultmtg` Vercel project's ID may be referenced. Remove stale project references.
 
 ### 3-E: Enable Dependabot for vault-mtg-web
 
@@ -462,7 +462,7 @@ Make `deploy-spa.yml` callable via `on: workflow_call:` in addition to `workflow
 
 ### AWS IAM note
 
-No new IAM changes required for the trigger migration itself. The OIDC role trust policy already allows `repo:RdHamilton/MTGA-Companion:*` — the `release` event fires from the same repo context.
+No new IAM changes required for the trigger migration itself. The OIDC role trust policy already allows `repo:RdHamilton/vault-mtg:*` — the `release` event fires from the same repo context.
 
 ---
 
@@ -510,8 +510,8 @@ Release trigger migration ──────> Phase 1 after Wave 0-A; Phase 2 af
 
 | Item | IAM change | Notes |
 |------|-----------|-------|
-| CLERK_SECRET_KEY SSM param | **No new policy needed** — existing `ssm:GetParameter /mtga-companion/production/*` covers it | Must create the SSM parameter manually before Wave 0-A merge |
-| Release trigger migration | **None** | OIDC trust already covers `repo:RdHamilton/MTGA-Companion:*` |
+| CLERK_SECRET_KEY SSM param | **No new policy needed** — existing `ssm:GetParameter /vaultmtg/production/*` covers it | Must create the SSM parameter manually before Wave 0-A merge |
+| Release trigger migration | **None** | OIDC trust already covers `repo:RdHamilton/vault-mtg:*` |
 | Shell scripts in S3 | **May need** `s3:GetObject` on `$DEPLOY_BUCKET/scripts/*` for the EC2 instance role | Verify EC2 instance role policy; current policy likely covers the whole bucket |
 
 ---
@@ -519,7 +519,7 @@ Release trigger migration ──────> Phase 1 after Wave 0-A; Phase 2 af
 ## Implementation Checklist
 
 - [x] **Wave 0-A** — #1365 merged. E2E fix, Clerk wiring, -race, lint, split deploy, healthz, rollback.
-- [x] **Wave 0-B** — mtga-companion-web Vercel project deleted; repo fate decided.
+- [x] **Wave 0-B** — vaultmtg-web Vercel project deleted; repo fate decided.
 - [x] **Wave 1-A** — #1367 merged. deploy-sync-lambda removed from release.yml.
 - [x] **Wave 1-B** — #1368 merged. integration-gate wired into release.yml.
 - [x] **Wave 1-C/D** — vault-mtg-web PR #3 merged. CI workflow + Dependabot. Playwright deferred (not installed in repo).
@@ -529,7 +529,7 @@ Release trigger migration ──────> Phase 1 after Wave 0-A; Phase 2 af
 - [x] **Wave 3-A** — #1371 merged. `--match 'v*'` added to changelog git describe.
 - [x] **Wave 3-B** — #1371 merged. Daemon Linux exclusion documented in daemon-release.yml.
 - [x] **Wave 3-C** — #1371 merged. skip_e2e tightened to boolean emergency override.
-- [x] **Wave 3-D** — mtga-companion-infra #24 merged. set-vercel-env.yml deleted; stale VERCEL_* secrets to be removed from Actions environment.
+- [x] **Wave 3-D** — vaultmtg-infra #24 merged. set-vercel-env.yml deleted; stale VERCEL_* secrets to be removed from Actions environment.
 - [x] **Wave 3-E** — vault-mtg-web PR #3 merged. dependabot.yml created.
 - [x] **Release trigger migration Phase 1** — #1372 merged. Dual trigger + env normalization + SPA workflow_call fix.
 - [ ] **Release trigger migration Phase 2** — #1373 (open). Remove workflow_dispatch after 2 validated releases via release event.

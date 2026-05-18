@@ -1,7 +1,7 @@
 # Collection and Deck Parsing Analysis
 
 ## Problem
-Collection and deck data is not showing up in the MTGA Companion application.
+Collection and deck data is not showing up in the VaultMTG application.
 
 ## Root Causes
 

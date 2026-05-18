@@ -14,7 +14,7 @@ This document describes the technical architecture and design decisions for the 
 
 ## System Overview
 
-The MTGA-Companion Draft Overlay is a real-time monitoring and analysis system that:
+The VaultMTG Draft Overlay is a real-time monitoring and analysis system that:
 
 1. **Monitors** MTGA's Player.log file for draft events
 2. **Parses** JSON log entries into structured data

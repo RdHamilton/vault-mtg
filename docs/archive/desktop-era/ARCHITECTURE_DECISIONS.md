@@ -1,6 +1,6 @@
 # Architecture Decision Records (ADR)
 
-This document records significant architectural decisions made during the development of MTGA-Companion, including the rationale and consequences of each decision.
+This document records significant architectural decisions made during the development of VaultMTG, including the rationale and consequences of each decision.
 
 ---
 

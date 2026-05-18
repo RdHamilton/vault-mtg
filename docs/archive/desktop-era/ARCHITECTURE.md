@@ -1,8 +1,8 @@
-# MTGA-Companion Architecture
+# VaultMTG Architecture
 
 ## Overview
 
-MTGA-Companion uses a **REST API + Browser SPA** architecture (v1.4+) that decouples the backend from the frontend, enabling flexible deployment and easy testing. The system consists of three main components:
+VaultMTG uses a **REST API + Browser SPA** architecture (v1.4+) that decouples the backend from the frontend, enabling flexible deployment and easy testing. The system consists of three main components:
 
 1. **API Server** - Go REST API with WebSocket support
 2. **Frontend SPA** - React TypeScript application running in the browser
@@ -26,7 +26,7 @@ MTGA-Companion uses a **REST API + Browser SPA** architecture (v1.4+) that decou
                        │ monitors (fsnotify or polling)
                        ↓
 ┌──────────────────────────────────────────────────────────────┐
-│              CLI Daemon (cmd/mtga-companion)                 │
+│              CLI Daemon (cmd/vaultmtg)                 │
 │  ┌────────────────────────────────────────────────────────┐ │
 │  │                    Log Monitoring                      │ │
 │  │  ┌─────────────┐                ┌─────────────┐       │ │
@@ -80,7 +80,7 @@ MTGA-Companion uses a **REST API + Browser SPA** architecture (v1.4+) that decou
 │  │                          │                             │ │
 │  │              ┌────────────────────────┐               │ │
 │  │              │  SQLite Database       │               │ │
-│  │              │  ~/.mtga-companion/    │               │ │
+│  │              │  ~/.vaultmtg/    │               │ │
 │  │              │  mtga.db               │               │ │
 │  │              └────────────────────────┘               │ │
 │  └────────────────────────────────────────────────────────┘ │
@@ -138,7 +138,7 @@ MTGA-Companion uses a **REST API + Browser SPA** architecture (v1.4+) that decou
 
 ### 1. CLI Daemon (Backend Service)
 
-**Location**: `cmd/mtga-companion/daemon.go`
+**Location**: `cmd/vaultmtg/daemon.go`
 
 **Responsibilities**:
 - Monitor MTGA `Player.log` file for changes
@@ -304,7 +304,7 @@ MTGA-Companion uses a **REST API + Browser SPA** architecture (v1.4+) that decou
 ### Application Startup Flow (v1.4+)
 
 ```
-1. User launches MTGA Companion app
+1. User launches VaultMTG app
    │
    ↓
 2. API server starts (cmd/apiserver)
@@ -512,13 +512,13 @@ Database migrations are managed with `golang-migrate/migrate`.
 **Running migrations**:
 ```bash
 # Apply all pending migrations
-./mtga-companion migrate up
+./vaultmtg migrate up
 
 # Rollback last migration
-./mtga-companion migrate down
+./vaultmtg migrate down
 
 # Check migration status
-./mtga-companion migrate status
+./vaultmtg migrate status
 ```
 
 ## Security Considerations
@@ -539,7 +539,7 @@ Database migrations are managed with `golang-migrate/migrate`.
 ### Database Access
 
 **Protection**: SQLite database is local file with file system permissions
-- Located at `~/.mtga-companion/data.db`
+- Located at `~/.vaultmtg/data.db`
 - Only accessible by user who owns the file
 - No network exposure
 
@@ -697,7 +697,7 @@ The daemon can support multiple frontend types:
 
 Enable debug logging:
 ```bash
-./mtga-companion daemon --debug-mode
+./vaultmtg daemon --debug-mode
 ```
 
 Outputs:

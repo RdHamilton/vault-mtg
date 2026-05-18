@@ -14,7 +14,7 @@ This document describes the testing approach, coverage, and best practices for t
 
 ## Testing Philosophy
 
-The MTGA-Companion project follows these testing principles:
+The VaultMTG project follows these testing principles:
 
 ### 1. Test-Driven Development (TDD)
 

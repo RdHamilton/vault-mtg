@@ -11,7 +11,7 @@ This document covers the three draft-specific MVP features: draft end detection,
 
 ## Draft End Detection
 
-**Issue:** [#261](https://github.com/RdHamilton/MTGA-Companion/issues/261) | **PR:** [#277](https://github.com/RdHamilton/MTGA-Companion/pull/277)
+**Issue:** [#261](https://github.com/RdHamilton/vault-mtg/issues/261) | **PR:** [#277](https://github.com/RdHamilton/vault-mtg/pull/277)
 
 ### Overview
 
@@ -133,7 +133,7 @@ func TestDraftEndDetection(t *testing.T) {
 
 ## Resume Functionality
 
-**Issue:** [#260](https://github.com/RdHamilton/MTGA-Companion/issues/260) | **PR:** [#279](https://github.com/RdHamilton/MTGA-Companion/pull/279)
+**Issue:** [#260](https://github.com/RdHamilton/vault-mtg/issues/260) | **PR:** [#279](https://github.com/RdHamilton/vault-mtg/pull/279)
 
 ### Overview
 
@@ -342,7 +342,7 @@ func TestScanForActiveDraft_FiltersSealedEvents(t *testing.T) {
 
 ## Log Rotation Handling
 
-**Issue:** [#264](https://github.com/RdHamilton/MTGA-Companion/issues/264) | **PR:** [#278](https://github.com/RdHamilton/MTGA-Companion/pull/278)
+**Issue:** [#264](https://github.com/RdHamilton/vault-mtg/issues/264) | **PR:** [#278](https://github.com/RdHamilton/vault-mtg/pull/278)
 
 ### Overview
 

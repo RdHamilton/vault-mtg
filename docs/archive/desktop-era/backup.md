@@ -1,6 +1,6 @@
 # Database Backup and Restore
 
-The MTGA Companion application includes comprehensive backup and restore functionality for the SQLite database.
+The VaultMTG application includes comprehensive backup and restore functionality for the SQLite database.
 
 ## Features
 
@@ -17,27 +17,27 @@ The MTGA Companion application includes comprehensive backup and restore functio
 
 Create a backup:
 ```bash
-mtga-companion backup create
+vaultmtg backup create
 ```
 
 Create a backup with a custom name:
 ```bash
-mtga-companion backup create my-backup
+vaultmtg backup create my-backup
 ```
 
 List all backups:
 ```bash
-mtga-companion backup list
+vaultmtg backup list
 ```
 
 Verify a backup:
 ```bash
-mtga-companion backup verify /path/to/backup.db
+vaultmtg backup verify /path/to/backup.db
 ```
 
 Restore from a backup:
 ```bash
-mtga-companion backup restore /path/to/backup.db
+vaultmtg backup restore /path/to/backup.db
 ```
 
 ### Interactive Console
@@ -65,12 +65,12 @@ crontab -e
 
 Add a line to create a daily backup at 2 AM:
 ```cron
-0 2 * * * /path/to/mtga-companion backup create >> /path/to/backup.log 2>&1
+0 2 * * * /path/to/vaultmtg backup create >> /path/to/backup.log 2>&1
 ```
 
 Or create a weekly backup every Sunday at 3 AM:
 ```cron
-0 3 * * 0 /path/to/mtga-companion backup create >> /path/to/backup.log 2>&1
+0 3 * * 0 /path/to/vaultmtg backup create >> /path/to/backup.log 2>&1
 ```
 
 ### Windows (Task Scheduler)
@@ -78,29 +78,29 @@ Or create a weekly backup every Sunday at 3 AM:
 1. Open Task Scheduler
 2. Create a new task
 3. Set trigger (e.g., daily at 2 AM)
-4. Set action to run: `mtga-companion backup create`
+4. Set action to run: `vaultmtg backup create`
 5. Save the task
 
 ## Configuration
 
 ### Environment Variables
 
-- `MTGA_DB_PATH`: Path to the database file (default: `~/.mtga-companion/data.db`)
-- `MTGA_BACKUP_DIR`: Directory for backups (default: `~/.mtga-companion/backups`)
+- `MTGA_DB_PATH`: Path to the database file (default: `~/.vaultmtg/data.db`)
+- `MTGA_BACKUP_DIR`: Directory for backups (default: `~/.vaultmtg/backups`)
 
 ### Example
 
 ```bash
 export MTGA_DB_PATH=/custom/path/data.db
 export MTGA_BACKUP_DIR=/custom/backup/path
-mtga-companion backup create
+vaultmtg backup create
 ```
 
 ## Backup Location
 
 By default, backups are stored in:
-- Linux/macOS: `~/.mtga-companion/backups/`
-- Windows: `%USERPROFILE%\.mtga-companion\backups\`
+- Linux/macOS: `~/.vaultmtg/backups/`
+- Windows: `%USERPROFILE%\.vaultmtg\backups\`
 
 Backup files are named with timestamps: `backup_YYYYMMDD_HHMMSS.db`
 
@@ -140,7 +140,7 @@ You can manually delete old backups from the backup directory. The application d
 
 ```bash
 # Keep only the last 30 days of backups
-find ~/.mtga-companion/backups -name "backup_*.db" -mtime +30 -delete
+find ~/.vaultmtg/backups -name "backup_*.db" -mtime +30 -delete
 ```
 
 ## Best Practices

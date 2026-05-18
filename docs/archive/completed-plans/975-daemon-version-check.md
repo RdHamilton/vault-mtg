@@ -20,7 +20,7 @@
 
 | Option | Why rejected |
 |---|---|
-| **A. GitHub Releases API** | Repo is private (`RdHamilton/MTGA-Companion`). The Releases API requires a `Bearer` token for private repos. Baking a PAT into a public binary is unsafe; rotating it requires re-shipping every daemon. Public Release assets are downloadable without auth, but the *listing* endpoint is gated. |
+| **A. GitHub Releases API** | Repo is private (`RdHamilton/vault-mtg`). The Releases API requires a `Bearer` token for private repos. Baking a PAT into a public binary is unsafe; rotating it requires re-shipping every daemon. Public Release assets are downloadable without auth, but the *listing* endpoint is gated. |
 | **C. Signed manifest in S3** | Adds a new piece of infrastructure (S3 bucket + signing key + publish step in `daemon-release.yml`) for a problem the BFF already solves. We have no other use case for S3 manifests; not worth the cost. |
 | **D. Embedded in JWT/auth response** | Couples daemon update notifications to the JWT refresh cadence (currently every ~hour but only fires when the JWT is near-expiry). Also pollutes the auth contract with an unrelated concern. Easy to add later as an optimisation if `/daemon/version` traffic becomes a concern. |
 
@@ -55,7 +55,7 @@
        json.NewEncoder(w).Encode(VersionResponse{
            Latest:      cfg.DaemonLatestVersion, // e.g. "0.3.0"
            ReleasedAt:  cfg.DaemonReleasedAt,    // RFC3339
-           DownloadURL: "https://github.com/RdHamilton/MTGA-Companion/releases/tag/daemon/v" + cfg.DaemonLatestVersion,
+           DownloadURL: "https://github.com/RdHamilton/vault-mtg/releases/tag/daemon/v" + cfg.DaemonLatestVersion,
            Changelog:   "", // optional
        })
    }
@@ -76,7 +76,7 @@ GET /api/v1/daemon/version
 {
   "latest": "0.3.0",
   "released_at": "2026-05-01T12:00:00Z",
-  "download_url": "https://github.com/RdHamilton/MTGA-Companion/releases/tag/daemon/v0.3.0",
+  "download_url": "https://github.com/RdHamilton/vault-mtg/releases/tag/daemon/v0.3.0",
   "changelog": ""
 }
 ```

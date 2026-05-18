@@ -1,6 +1,6 @@
 # Deck Builder Documentation
 
-The MTGA Companion deck builder is a comprehensive system for creating, managing, and analyzing Magic: The Gathering Arena decks. It supports both constructed and draft-based deck building with AI-powered card recommendations, detailed statistics, and multiple import/export formats.
+The VaultMTG deck builder is a comprehensive system for creating, managing, and analyzing Magic: The Gathering Arena decks. It supports both constructed and draft-based deck building with AI-powered card recommendations, detailed statistics, and multiple import/export formats.
 
 ## Table of Contents
 
@@ -1112,10 +1112,10 @@ A: Draft recommendations are filtered to your draft pool only. If you have a sma
 
 ## Additional Resources
 
-- **[Main Documentation](../README.md)**: Overview of MTGA Companion
+- **[Main Documentation](../README.md)**: Overview of VaultMTG
 - **[Architecture Guide](ARCHITECTURE.md)**: System design and technical architecture
 - **[Development Guide](DEVELOPMENT.md)**: Contributing and development setup
-- **[Database Schema](https://github.com/RdHamilton/MTGA-Companion/wiki/Database-Schema)**: Database structure
+- **[Database Schema](https://github.com/RdHamilton/vault-mtg/wiki/Database-Schema)**: Database structure
 
 ---
 

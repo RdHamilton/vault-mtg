@@ -11,7 +11,7 @@ This document covers the two developer-focused MVP features: debug/verbose loggi
 
 ## Debug Mode
 
-**Issue:** [#262](https://github.com/RdHamilton/MTGA-Companion/issues/262) | **PR:** [#280](https://github.com/RdHamilton/MTGA-Companion/pull/280)
+**Issue:** [#262](https://github.com/RdHamilton/vault-mtg/issues/262) | **PR:** [#280](https://github.com/RdHamilton/vault-mtg/pull/280)
 
 ### Overview
 
@@ -51,7 +51,7 @@ type Logger struct {
 func NewLogger(debugEnabled bool) *Logger {
     return &Logger{
         debugEnabled: debugEnabled,
-        prefix:       "[MTGA-Companion]",
+        prefix:       "[VaultMTG]",
     }
 }
 
@@ -146,7 +146,7 @@ o.logger.Error("Cache initialization failed: %v", err)
 
 ### CLI Integration
 
-Located in `cmd/mtga-companion/main.go:45`:
+Located in `cmd/vaultmtg/main.go:45`:
 
 ```go
 var debug = flag.Bool("debug", false, "Enable verbose debug logging")
@@ -155,10 +155,10 @@ var debug = flag.Bool("debug", false, "Enable verbose debug logging")
 Usage:
 ```bash
 # Enable debug mode
-./mtga-companion draft-overlay --set MKM --format PremierDraft --debug
+./vaultmtg draft-overlay --set MKM --format PremierDraft --debug
 
 # Disable debug mode (default)
-./mtga-companion draft-overlay --set MKM --format PremierDraft
+./vaultmtg draft-overlay --set MKM --format PremierDraft
 ```
 
 ### Log Output Formatting
@@ -166,21 +166,21 @@ Usage:
 All log messages follow this format:
 
 ```
-[HH:MM:SS] [MTGA-Companion] LEVEL: message
+[HH:MM:SS] [VaultMTG] LEVEL: message
 ```
 
 **Examples:**
 
 ```
-[14:32:15] [MTGA-Companion] INFO: Overlay initialized
-[14:32:15] [MTGA-Companion] DEBUG: Debug mode enabled
-[14:32:16] [MTGA-Companion] DEBUG: Scanning for active draft (lookback: 24 hours)
-[14:32:16] [MTGA-Companion] DEBUG: Found 150 entries in lookback window
-[14:32:16] [MTGA-Companion] INFO: Draft resumed: Pack 2, Pick 3
-[14:32:45] [MTGA-Companion] DEBUG: Cache hit: card=12345, filter=BR (hit rate: 75.0%)
-[14:35:20] [MTGA-Companion] INFO: Log file rotation detected
-[14:35:20] [MTGA-Companion] INFO: Position tracking reset
-[14:40:12] [MTGA-Companion] INFO: Draft completed, cleaning up overlay
+[14:32:15] [VaultMTG] INFO: Overlay initialized
+[14:32:15] [VaultMTG] DEBUG: Debug mode enabled
+[14:32:16] [VaultMTG] DEBUG: Scanning for active draft (lookback: 24 hours)
+[14:32:16] [VaultMTG] DEBUG: Found 150 entries in lookback window
+[14:32:16] [VaultMTG] INFO: Draft resumed: Pack 2, Pick 3
+[14:32:45] [VaultMTG] DEBUG: Cache hit: card=12345, filter=BR (hit rate: 75.0%)
+[14:35:20] [VaultMTG] INFO: Log file rotation detected
+[14:35:20] [VaultMTG] INFO: Position tracking reset
+[14:40:12] [VaultMTG] INFO: Draft completed, cleaning up overlay
 ```
 
 ### Debug Categories
@@ -285,7 +285,7 @@ func TestLogger_InfoError(t *testing.T) {
 
 ## API Response Caching
 
-**Issue:** [#263](https://github.com/RdHamilton/MTGA-Companion/issues/263) | **PR:** [#281](https://github.com/RdHamilton/MTGA-Companion/pull/281)
+**Issue:** [#263](https://github.com/RdHamilton/vault-mtg/issues/263) | **PR:** [#281](https://github.com/RdHamilton/vault-mtg/pull/281)
 
 ### Overview
 
@@ -639,7 +639,7 @@ Hit Rate: 150 / (150 + 50) * 100 = 75.0%
 
 ### CLI Configuration
 
-Located in `cmd/mtga-companion/main.go:48-50`:
+Located in `cmd/vaultmtg/main.go:48-50`:
 
 ```go
 var (
@@ -653,15 +653,15 @@ var (
 
 ```bash
 # Enable cache with defaults (24h TTL, unlimited size)
-./mtga-companion draft-overlay --set MKM --format PremierDraft
+./vaultmtg draft-overlay --set MKM --format PremierDraft
 
 # Short TTL, limited size
-./mtga-companion draft-overlay --set MKM --format PremierDraft \
+./vaultmtg draft-overlay --set MKM --format PremierDraft \
   --cache-ttl 1h \
   --cache-max-size 500
 
 # Disable cache
-./mtga-companion draft-overlay --set MKM --format PremierDraft \
+./vaultmtg draft-overlay --set MKM --format PremierDraft \
   --cache=false
 ```
 
@@ -863,7 +863,7 @@ type cacheEntry struct {
 
 ```bash
 # Disable cache to see fresh behavior
-./mtga-companion draft-overlay --set MKM --format PremierDraft \
+./vaultmtg draft-overlay --set MKM --format PremierDraft \
   --debug \
   --cache=false \
   --overlay-resume=false
@@ -878,7 +878,7 @@ type cacheEntry struct {
 
 ```bash
 # Enable cache with metrics
-./mtga-companion draft-overlay --set MKM --format PremierDraft \
+./vaultmtg draft-overlay --set MKM --format PremierDraft \
   --debug \
   --cache-ttl 1h \
   --cache-max-size 1000
@@ -893,7 +893,7 @@ type cacheEntry struct {
 
 ```bash
 # Enable all debugging, fresh state
-./mtga-companion draft-overlay --set MKM --format PremierDraft \
+./vaultmtg draft-overlay --set MKM --format PremierDraft \
   --debug \
   --cache=false \
   --overlay-resume=false
@@ -906,7 +906,7 @@ type cacheEntry struct {
 
 ```bash
 # Optimal performance, minimal logging
-./mtga-companion draft-overlay --set MKM --format PremierDraft \
+./vaultmtg draft-overlay --set MKM --format PremierDraft \
   --cache-ttl 24h \
   --cache-max-size 0
 
