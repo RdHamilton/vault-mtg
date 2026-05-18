@@ -1,6 +1,6 @@
-# Contributing to MTGA-Companion
+# Contributing to VaultMTG
 
-Thank you for your interest in contributing to MTGA-Companion! This document provides guidelines and instructions for contributing to the project.
+Thank you for your interest in contributing to VaultMTG! This document provides guidelines and instructions for contributing to the project.
 
 ## Getting Started
 
@@ -16,13 +16,13 @@ Thank you for your interest in contributing to MTGA-Companion! This document pro
 
 2. **Clone your fork**:
    ```bash
-   git clone https://github.com/YOUR_USERNAME/MTGA-Companion.git
-   cd MTGA-Companion
+   git clone https://github.com/YOUR_USERNAME/vault-mtg.git
+   cd vault-mtg
    ```
 
 3. **Add the upstream repository**:
    ```bash
-   git remote add upstream https://github.com/ramonehamilton/MTGA-Companion.git
+   git remote add upstream https://github.com/RdHamilton/vault-mtg.git
    ```
 
 4. **Install dependencies**:
@@ -120,9 +120,9 @@ The project includes scripts to help with this:
 ### Project Structure
 
 ```
-MTGA-Companion/
+vault-mtg/
 ├── cmd/
-│   └── mtga-companion/      # Application entry point
+│   └── vaultmtg/            # Application entry point
 ├── internal/
 │   ├── mtga/
 │   │   └── logreader/       # Log reading and parsing
@@ -249,6 +249,6 @@ By contributing, you agree that your contributions will be licensed under the sa
 
 ## Thank You!
 
-Contributions of all kinds are welcome - code, documentation, bug reports, feature suggestions, and more. Thank you for helping make MTGA-Companion better!
+Contributions of all kinds are welcome - code, documentation, bug reports, feature suggestions, and more. Thank you for helping make VaultMTG better!
 
 

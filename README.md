@@ -1,4 +1,4 @@
-# MTGA-Companion
+# VaultMTG
 
 A modern companion application for Magic: The Gathering Arena (MTGA). Track your matches, analyze your performance, and enhance your MTGA experience with real-time statistics, ML-powered recommendations, and metagame insights.
 
@@ -159,13 +159,13 @@ A modern companion application for Magic: The Gathering Arena (MTGA). Track your
 
 ## Documentation
 
-📚 **[Complete Documentation Wiki →](https://github.com/RdHamilton/MTGA-Companion/wiki)**
+📚 **[Complete Documentation Wiki →](https://github.com/RdHamilton/vault-mtg/wiki)**
 
-- **[Installation Guide](https://github.com/RdHamilton/MTGA-Companion/wiki/Installation)** - Setup instructions for macOS and Windows
-- **[Usage Guide](https://github.com/RdHamilton/MTGA-Companion/wiki/Usage-Guide)** - How to use all features
-- **[CLI Commands](https://github.com/RdHamilton/MTGA-Companion/wiki/CLI-Commands)** - Complete command reference
-- **[Configuration](https://github.com/RdHamilton/MTGA-Companion/wiki/Configuration)** - Configuration options
-- **[Troubleshooting](https://github.com/RdHamilton/MTGA-Companion/wiki/Troubleshooting)** - Common issues and solutions
+- **[Installation Guide](https://github.com/RdHamilton/vault-mtg/wiki/Installation)** - Setup instructions for macOS and Windows
+- **[Usage Guide](https://github.com/RdHamilton/vault-mtg/wiki/Usage-Guide)** - How to use all features
+- **[CLI Commands](https://github.com/RdHamilton/vault-mtg/wiki/CLI-Commands)** - Complete command reference
+- **[Configuration](https://github.com/RdHamilton/vault-mtg/wiki/Configuration)** - Configuration options
+- **[Troubleshooting](https://github.com/RdHamilton/vault-mtg/wiki/Troubleshooting)** - Common issues and solutions
 
 ### Technical Documentation
 
@@ -175,7 +175,7 @@ A modern companion application for Magic: The Gathering Arena (MTGA). Track your
 - **[Development Guide](docs/DEVELOPMENT.md)** - Development setup and contributing guidelines
 - **[Migration Guide](docs/MIGRATION_TO_SERVICE_ARCHITECTURE.md)** - Upgrading to service-based architecture
 - **[Daemon Installation](docs/DAEMON_INSTALLATION.md)** - Complete daemon service installation guide
-- **[Database Schema](https://github.com/RdHamilton/MTGA-Companion/wiki/Database-Schema)** - Database structure
+- **[Database Schema](https://github.com/RdHamilton/vault-mtg/wiki/Database-Schema)** - Database structure
 
 ## Prerequisites
 
@@ -185,7 +185,7 @@ A modern companion application for Magic: The Gathering Arena (MTGA). Track your
 
 ## Ollama Setup (Optional)
 
-MTGA Companion can use [Ollama](https://ollama.ai/) to provide natural language explanations for card recommendations. This feature is completely optional - the app works fully without it.
+VaultMTG can use [Ollama](https://ollama.ai/) to provide natural language explanations for card recommendations. This feature is completely optional - the app works fully without it.
 
 ### Installing Ollama
 
@@ -210,9 +210,9 @@ curl -fsSL https://ollama.ai/install.sh | sh
 ollama serve
 ```
 
-### Configuring in MTGA Companion
+### Configuring in VaultMTG
 
-1. Open MTGA Companion
+1. Open VaultMTG
 2. Go to **Settings** → **ML/AI Settings**
 3. Enable **Ollama Integration**
 4. Configure:
@@ -229,7 +229,7 @@ Any Ollama model works, but these are recommended:
 - `llama3.2:3b` - Faster, smaller, good for older hardware
 - `mistral:7b` - Alternative with different response style
 
-**Note**: Without Ollama, MTGA Companion uses template-based explanations which work well for most use cases.
+**Note**: Without Ollama, VaultMTG uses template-based explanations which work well for most use cases.
 
 ## Enabling Detailed Logging in MTG Arena
 
@@ -245,7 +245,7 @@ Any Ollama model works, but these are recommended:
 
 ### Why Enable Detailed Logging?
 
-Detailed logging allows MTG Arena to output game events and data in JSON format to the Player.log file. This enables companion applications like MTGA-Companion to:
+Detailed logging allows MTG Arena to output game events and data in JSON format to the Player.log file. This enables companion applications like VaultMTG to:
 - Track your game statistics
 - Analyze your collection
 - Display deck information
@@ -257,18 +257,18 @@ Detailed logging allows MTG Arena to output game events and data in JSON format 
 
 ### Quick Start (Recommended)
 
-Download the latest release from the [Releases page](https://github.com/RdHamilton/MTGA-Companion/releases):
+Download the latest release from the [Releases page](https://github.com/RdHamilton/vault-mtg/releases):
 
 #### macOS (Currently Supported)
 
-1. Download `MTGA-Companion-vX.X.X-macOS.dmg`
-2. Open the DMG and drag `MTGA Companion.app` to your Applications folder
+1. Download `VaultMTG-vX.X.X-macOS.dmg`
+2. Open the DMG and drag `VaultMTG.app` to your Applications folder
 3. **First launch**: Right-click the app → "Open" (to bypass Gatekeeper)
 4. The app will start the API server and open your default browser
 
 **What happens on launch:**
 - The app starts a local REST API server (port 8080)
-- Your default browser opens to the MTGA Companion UI
+- Your default browser opens to the VaultMTG UI
 - The app monitors MTGA logs in the background via the daemon service
 
 #### Windows / Linux
@@ -279,7 +279,7 @@ Windows and Linux builds are planned for future releases. Currently, you can bui
 
 **What is Daemon Mode?**
 
-MTGA Companion can run as a background service (daemon) that continuously monitors your MTGA log file and provides data to the GUI. This is the **recommended setup** because:
+VaultMTG can run as a background service (daemon) that continuously monitors your MTGA log file and provides data to the GUI. This is the **recommended setup** because:
 
 ✅ **Always Running** - Data collection continues even when GUI is closed
 ✅ **Auto-Start** - Daemon starts automatically on system boot
@@ -296,27 +296,27 @@ MTGA Companion can run as a background service (daemon) that continuously monito
 
 **Installation**:
 
-1. Download and extract MTGA Companion for your platform (see Quick Start above)
+1. Download and extract VaultMTG for your platform (see Quick Start above)
 
 2. Install the daemon service:
 
    **macOS/Linux**:
    ```bash
-   cd /path/to/MTGA-Companion
-   ./mtga-companion service install
-   ./mtga-companion service start
+   cd /path/to/vaultmtg
+   ./vaultmtg service install
+   ./vaultmtg service start
    ```
 
    **Windows (as Administrator)**:
    ```powershell
-   cd C:\Path\To\MTGA-Companion
-   .\mtga-companion.exe service install
-   .\mtga-companion.exe service start
+   cd C:\Path\To\VaultMTG
+   .\vaultmtg.exe service install
+   .\vaultmtg.exe service start
    ```
 
 3. Verify daemon is running:
    ```bash
-   ./mtga-companion service status
+   ./vaultmtg service status
    ```
 
    Expected output:
@@ -331,17 +331,17 @@ MTGA Companion can run as a background service (daemon) that continuously monito
 
 ```bash
 # Check status
-./mtga-companion service status
+./vaultmtg service status
 
 # Start/Stop
-./mtga-companion service start
-./mtga-companion service stop
+./vaultmtg service start
+./vaultmtg service stop
 
 # Restart
-./mtga-companion service restart
+./vaultmtg service restart
 
 # Uninstall
-./mtga-companion service uninstall
+./vaultmtg service uninstall
 ```
 
 📚 **For detailed daemon installation and troubleshooting, see [docs/DAEMON_INSTALLATION.md](docs/DAEMON_INSTALLATION.md)**
@@ -359,8 +359,8 @@ If you prefer not to use daemon mode, the GUI includes an embedded log poller th
 **Clone and Build**:
 ```bash
 # Clone repository
-git clone https://github.com/RdHamilton/MTGA-Companion.git
-cd MTGA-Companion
+git clone https://github.com/RdHamilton/vault-mtg.git
+cd vault-mtg
 
 # Build the Go services (BFF + daemon + sync)
 (cd services/bff && go build ./...)
@@ -413,7 +413,7 @@ MTGA also saves the previous session's log as `Player-prev.log` in the same dire
 
 ### Log File Rotation
 
-MTGA may rotate log files during long gaming sessions when the log becomes large. MTGA-Companion automatically handles log rotation:
+MTGA may rotate log files during long gaming sessions when the log becomes large. VaultMTG automatically handles log rotation:
 
 - **Detection**: Monitors for file size decreases, file removal/rename events (via fsnotify)
 - **Recovery**: Automatically reopens the new log file and continues monitoring
@@ -431,15 +431,15 @@ The overlay and tracking features continue working seamlessly during and after l
 
 ### GUI Application
 
-Launch the MTGA Companion desktop app:
+Launch the VaultMTG desktop app:
 
-**Windows**: Double-click `MTGA-Companion.exe`
-**macOS**: Double-click `MTGA-Companion.app` from Applications
-**Linux**: Run `./MTGA-Companion-linux-amd64`
+**Windows**: Double-click `VaultMTG.exe`
+**macOS**: Double-click `VaultMTG.app` from Applications
+**Linux**: Run `./VaultMTG-linux-amd64`
 
 The application will:
 1. Automatically locate your MTGA Player.log file
-2. Initialize the database (first run creates `~/.mtga-companion/data.db`)
+2. Initialize the database (first run creates `~/.vaultmtg/data.db`)
 3. Start monitoring the log file for new matches
 4. Display your statistics and match history in real-time
 
@@ -472,26 +472,26 @@ The CLI is still available for automation and advanced users:
 
 ```bash
 # Read log and display basic info
-./mtga-companion read
+./vaultmtg read
 
 # Export statistics
-./mtga-companion export stats -json
+./vaultmtg export stats -json
 
 # Run draft overlay
-./mtga-companion -draft-overlay-mode
+./vaultmtg -draft-overlay-mode
 ```
 
-See the [CLI Commands Wiki](https://github.com/RdHamilton/MTGA-Companion/wiki/CLI-Commands) for complete reference.
+See the [CLI Commands Wiki](https://github.com/RdHamilton/vault-mtg/wiki/CLI-Commands) for complete reference.
 
 ## Development
 
 ### Project Structure
 
 ```
-MTGA-Companion/
+vault-mtg/
 ├── cmd/                     # Application entry points
 │   ├── apiserver/          # REST API server (v1.4+)
-│   └── mtga-companion/     # CLI daemon for log monitoring
+│   └── vaultmtg/           # CLI daemon for log monitoring
 ├── frontend/                # React + TypeScript SPA
 │   ├── src/
 │   │   ├── components/     # Reusable UI components
@@ -522,7 +522,7 @@ MTGA-Companion/
 │       └── repository/    # Data access layer
 ├── docs/                    # Documentation
 ├── scripts/                 # Development scripts
-└── CLAUDE.md               # AI assistant guidance
+└── CLAUDE.md                # AI assistant guidance
 ```
 
 ### Development Workflow
@@ -622,7 +622,7 @@ Ensure you have read permissions for the MTGA log directory. Try running as admi
 
 ## Technology Stack
 
-MTGA-Companion is built with modern technologies for performance and cross-platform compatibility:
+VaultMTG is built with modern technologies for performance and cross-platform compatibility:
 
 ### Architecture (v1.4+)
 
@@ -693,7 +693,7 @@ Contributions are welcome! Please ensure:
 - All tests pass (`./scripts/test.sh`)
 - Code is formatted (`./scripts/dev.sh fmt`)
 
-See the [Development Guide](https://github.com/RdHamilton/MTGA-Companion/wiki/Development) for detailed contribution guidelines.
+See the [Development Guide](https://github.com/RdHamilton/vault-mtg/wiki/Development) for detailed contribution guidelines.
 
 ## License
 
@@ -701,7 +701,7 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 ## Disclaimer
 
-MTGA-Companion is not affiliated with, endorsed by, or sponsored by Wizards of the Coast. Magic: The Gathering Arena and its associated trademarks are property of Wizards of the Coast LLC.
+VaultMTG is not affiliated with, endorsed by, or sponsored by Wizards of the Coast. Magic: The Gathering Arena and its associated trademarks are property of Wizards of the Coast LLC.
 
 ## Acknowledgments
 
@@ -733,12 +733,12 @@ As of v0.2.0, CLI flags have been standardized for consistency. Old flags are st
 
 ```bash
 # Old syntax (still works, shows warning)
-./bin/mtga-companion -debug -gui
+./bin/vaultmtg -debug -gui
 
 # New syntax (recommended)
-./bin/mtga-companion -debug-mode -gui-mode
+./bin/vaultmtg -debug-mode -gui-mode
 
 # New syntax with shortcuts
-./bin/mtga-companion -d -g
+./bin/vaultmtg -d -g
 ```
 
