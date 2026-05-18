@@ -150,7 +150,8 @@ After=network.target
 ExecStart=/usr/local/bin/vaultmtg-daemon
 Restart=on-failure
 RestartSec=5s
-Environment=MTGA_DAEMON_CLOUD_API_URL=https://api.vaultmtg.app/api/v1
+Environment=VAULTMTG_DAEMON_CLOUD_API_URL=https://api.vaultmtg.app/api/v1
+# Legacy name also works: MTGA_DAEMON_CLOUD_API_URL (dual-read shim — see Upgrading section)
 
 [Install]
 WantedBy=default.target
@@ -204,14 +205,17 @@ names. Update them to the new forms:
 | Old value | New value |
 |---|---|
 | `ExecStart=.../mtga-companion-daemon` | `ExecStart=.../vaultmtg-daemon` |
-| `Environment=MTGA_COMPANION_*=...` | Use `MTGA_DAEMON_*=...` (unchanged) |
+| `Environment=MTGA_DAEMON_*=...` (legacy) | Preferred: `Environment=VAULTMTG_DAEMON_*=...` (see note below) |
 | Any path referencing `~/.mtga-companion` | `~/.vaultmtg` |
 
-> **Note on env vars:** The `MTGA_DAEMON_*` environment variable names are
-> unchanged across the rename. If your unit set `MTGA_DAEMON_CLOUD_API_URL`,
-> `MTGA_DAEMON_API_KEY`, or any other `MTGA_DAEMON_*` variable, those values
-> continue to work with the new binary without modification. A compatibility
-> shim for any `MTGA_COMPANION_*` variants is tracked in issue #2211.
+> **Note on env vars:** The daemon now reads both the legacy `MTGA_DAEMON_*`
+> names and the new preferred `VAULTMTG_DAEMON_*` names. Legacy names continue
+> to work via a compatibility shim — if your existing unit sets
+> `MTGA_DAEMON_CLOUD_API_URL`, `MTGA_DAEMON_API_KEY`, or any other
+> `MTGA_DAEMON_*` variable, those values are still picked up by the new binary
+> without modification. The new `VAULTMTG_DAEMON_*` names are preferred; when
+> both are set, the `VAULTMTG_DAEMON_*` value takes precedence. New installs
+> should use `VAULTMTG_DAEMON_*` as shown in the systemd template above.
 
 After updating your unit file, reload and restart the service:
 
