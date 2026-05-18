@@ -23,7 +23,7 @@ CREATE DATABASE vaultmtg_staging
 -- 2. Create the staging application role
 -- ---------------------------------------------------------------------------
 -- Password placeholder: replaced at execution time by create-staging-db.sh,
--- which reads the actual value from SSM /mtga-companion/staging/db-password.
+-- which reads the actual value from SSM /vaultmtg/staging/db-password.
 -- REPLACE_WITH_STAGING_PASSWORD is never committed with a real value.
 CREATE ROLE vaultmtg_staging_app
     WITH LOGIN

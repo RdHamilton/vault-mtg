@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # provision-staging-env.sh
 # Renders the staging env file from SSM parameter hierarchy.
-# Reads from /mtga-companion/staging/* and /vaultmtg/staging/* paths.
+# Reads from /vaultmtg/staging/* paths.
 # Runs ON the EC2 instance via SSM RunShellScript.
 #
 # Secrets are read on the EC2 instance using the instance IAM role --

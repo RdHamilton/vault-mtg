@@ -34,7 +34,7 @@ jobs:
     uses: ./.github/workflows/deploy-bff.yml
     with:
       environment: staging
-      deploy-bucket: mtga-companion-deploy-artifacts-staging
+      deploy-bucket: vaultmtg-deploy-artifacts-staging
       s3-binary-key-suffix: staging/${{ github.sha }}/mtga-bff-staging
       binary-name: mtga-bff-staging
       deploy-sha: ${{ github.sha }}

@@ -127,10 +127,10 @@ jobs:
             /vaultmtg/prod/sentry-auth-token \
             /vaultmtg/prod/sentry-bff-dsn \
             /vaultmtg/prod/sentry-spa-dsn \
-            /mtga-companion/production/CLERK_SECRET_KEY \
-            /mtga-companion/production/db-secret-arn \
-            /mtga-companion/production/db-endpoint \
-            /mtga-companion/production/db-name \
+            /vaultmtg/production/CLERK_SECRET_KEY \
+            /vaultmtg/production/db-secret-arn \
+            /vaultmtg/production/db-endpoint \
+            /vaultmtg/production/db-name \
             /vaultmtg/production/spa-bucket-name \
             /vaultmtg/production/spa-distribution-id; do
             aws ssm get-parameter --name "$param" --region us-east-1 \

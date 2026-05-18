@@ -100,28 +100,28 @@ DB_STAGING_NAME="vaultmtg_staging"
 #   Mismatch impact: get-parameter returns NoSuchParameter; provisioning
 #   step fails and the deploy aborts (or silently skips the env write).
 # ───────────────────────────────────────────────────────────────────────────
-SSM_PROD_DB_SECRET_ARN="/mtga-companion/production/db-secret-arn"
-SSM_PROD_DB_ENDPOINT="/mtga-companion/production/db-endpoint"
-SSM_PROD_DB_NAME="/mtga-companion/production/db-name"
-SSM_PROD_ALLOWED_ORIGINS="/mtga-companion/production/ALLOWED_ORIGINS"
-SSM_PROD_CLERK_SECRET_KEY="/mtga-companion/production/CLERK_SECRET_KEY"
-SSM_PROD_CLERK_PUBLISHABLE_KEY="/mtga-companion/production/CLERK_PUBLISHABLE_KEY"
-SSM_PROD_CLERK_FRONTEND_API="/mtga-companion/production/CLERK_FRONTEND_API"
-SSM_PROD_PORT="/mtga-companion/production/PORT"
+SSM_PROD_DB_SECRET_ARN="/vaultmtg/production/db-secret-arn"
+SSM_PROD_DB_ENDPOINT="/vaultmtg/production/db-endpoint"
+SSM_PROD_DB_NAME="/vaultmtg/production/db-name"
+SSM_PROD_ALLOWED_ORIGINS="/vaultmtg/production/ALLOWED_ORIGINS"
+SSM_PROD_CLERK_SECRET_KEY="/vaultmtg/production/CLERK_SECRET_KEY"
+SSM_PROD_CLERK_PUBLISHABLE_KEY="/vaultmtg/production/CLERK_PUBLISHABLE_KEY"
+SSM_PROD_CLERK_FRONTEND_API="/vaultmtg/production/CLERK_FRONTEND_API"
+SSM_PROD_PORT="/vaultmtg/production/PORT"
 
 # ───────────────────────────────────────────────────────────────────────────
 # SSM PARAMETER PATHS — STAGING
 # ───────────────────────────────────────────────────────────────────────────
-SSM_STAGING_DB_SECRET_ARN="/mtga-companion/staging/db-secret-arn"
-SSM_STAGING_DB_ENDPOINT="/mtga-companion/staging/db-endpoint"
-SSM_STAGING_DB_NAME="/mtga-companion/staging/db-name"
-SSM_STAGING_DB_PASSWORD="/mtga-companion/staging/db-password"
-SSM_STAGING_DATABASE_URL="/mtga-companion/staging/database-url"
-SSM_STAGING_ALLOWED_ORIGINS="/mtga-companion/staging/ALLOWED_ORIGINS"
-SSM_STAGING_CLERK_SECRET_KEY="/mtga-companion/staging/CLERK_SECRET_KEY"
-SSM_STAGING_CLERK_PUBLISHABLE_KEY="/mtga-companion/staging/CLERK_PUBLISHABLE_KEY"
-SSM_STAGING_CLERK_FRONTEND_API="/mtga-companion/staging/CLERK_FRONTEND_API"
-SSM_STAGING_PORT="/mtga-companion/staging/PORT"
+SSM_STAGING_DB_SECRET_ARN="/vaultmtg/staging/db-secret-arn"
+SSM_STAGING_DB_ENDPOINT="/vaultmtg/staging/db-endpoint"
+SSM_STAGING_DB_NAME="/vaultmtg/staging/db-name"
+SSM_STAGING_DB_PASSWORD="/vaultmtg/staging/db-password"
+SSM_STAGING_DATABASE_URL="/vaultmtg/staging/database-url"
+SSM_STAGING_ALLOWED_ORIGINS="/vaultmtg/staging/ALLOWED_ORIGINS"
+SSM_STAGING_CLERK_SECRET_KEY="/vaultmtg/staging/CLERK_SECRET_KEY"
+SSM_STAGING_CLERK_PUBLISHABLE_KEY="/vaultmtg/staging/CLERK_PUBLISHABLE_KEY"
+SSM_STAGING_CLERK_FRONTEND_API="/vaultmtg/staging/CLERK_FRONTEND_API"
+SSM_STAGING_PORT="/vaultmtg/staging/PORT"
 
 # ───────────────────────────────────────────────────────────────────────────
 # SSM PARAMETER PATHS — VAULTMTG SHARED SERVICES
