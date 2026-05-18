@@ -64,7 +64,7 @@ The `dataset_version` column is unused and can serve as the payload hash. No new
 The issue also asks whether match and draft data should be ingested from 17Lands public datasets (bulk CSV/JSON files, not the API). Assessment:
 
 - 17Lands public datasets contain aggregate draft pick data and game win rates — community-level statistics, not per-user match or draft records. They cannot be mapped to individual MTGA player accounts.
-- The MTGA Companion already collects match and draft data directly from `Player.log` via the daemon. This is the correct authoritative source for per-user data.
+- VaultMTG already collects match and draft data directly from `Player.log` via the daemon. This is the correct authoritative source for per-user data.
 - Ingesting 17Lands bulk dataset files would only be useful to supplement community-level aggregate statistics (e.g., color win rates, archetype win rates), which is a separate feature with its own scope. That is out of scope for the sync service's current role.
 
 **Conclusion**: The sync service should not ingest 17Lands bulk dataset files as a substitute for or supplement to daemon-collected match/draft data. If community aggregate ingestion is desired in the future, it warrants its own ADR and service boundary decision.

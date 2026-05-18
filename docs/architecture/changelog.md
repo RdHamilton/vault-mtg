@@ -30,7 +30,7 @@ The deployment gap was flagged in issue #1050 (comment by RdHamilton, 2026-05-04
 
 ### Plan Sync Status
 
-The active plan at `~/.claude/plans/mtga-companion-aws-launch.md` was updated to reflect:
+The active plan at `~/.claude/plans/vaultmtg-aws-launch.md` was updated to reflect:
 
 - Phase 1 Track C: `services/sync` scaffold is complete (PR #1043 merged), but deployment is **blocked** pending Lambda refactor.
 - EC2 deploy step for sync (PR #1048) is merged but must be **replaced** — it is not the correct deployment model per ADR-001.

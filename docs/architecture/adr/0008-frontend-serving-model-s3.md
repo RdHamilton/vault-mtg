@@ -14,9 +14,9 @@ production domains:
 
 - **`vaultmtg.app`** — public marketing site for the rebranded product.
 - **`app.vaultmtg.app`** — the React SPA (formerly served at
-  `mtgacompanion.com`).
+  `vaultmtg.app`).
 - **`rhamiltoneng.com`** — the Ray Hamilton Engineering portfolio / engineering
-  brand site (separate Next.js project, repo `mtga-companion-web`).
+  brand site (separate Next.js project, repo `vault-mtg-web`).
 
 ADR-007 declared **Vercel** the canonical production host for the React SPA.
 That decision was correct given the constraints at the time (no AWS budget,
@@ -42,7 +42,7 @@ S3+CloudFront with ACM-managed TLS gives us:
 
 - A single canonical serving layer that we own end-to-end.
 - Full routing control (CloudFront distributions + Origin Request policies +
-  Function code) defined in CloudFormation in `mtga-companion-infra`.
+  Function code) defined in CloudFormation in `vault-mtg-infra`.
 - Custom-domain TLS via ACM at no additional cost.
 - A predictable, credit-funded cost (~$4/month for three distributions at
   current traffic).
@@ -72,7 +72,7 @@ frontends.**
      Engineering site bucket + CloudFront distribution.
 2. **TLS:** ACM certificates (us-east-1, required for CloudFront) cover all
    three apex + `www` hostnames. Certificates are managed in CloudFormation
-   in `mtga-companion-infra`.
+   in `vault-mtg-infra`.
 3. **Vercel:** demoted to **PR preview-only**. Its `ignoreCommand` is already
    tag-based per PR #1238 — production tags do not deploy to Vercel.
    Preview deploys on every PR continue to work and are valuable for review.
@@ -85,7 +85,7 @@ frontends.**
    the appropriate bucket and issues a CloudFront invalidation
    (`/index.html` plus any non-fingerprinted asset paths). One workflow per
    property, scoped by path filter (`frontend/**` for the SPA;
-   `vault-mtg-web/**` for the marketing site; the `mtga-companion-web` repo
+   `vault-mtg-web/**` for the marketing site; the `vault-mtg-web` repo
    for `rhamiltoneng.com`).
 6. **Rollback:** the previous build remains in S3 under a versioned prefix
    (or via S3 versioning); rollback is `aws s3 sync` from the prior version
@@ -96,7 +96,7 @@ frontends.**
 
 - ADR-007 §Decision "Vercel is the canonical production frontend host" — now
   reversed. Vercel is preview-only.
-- ADR-007 §Specifics #1 (DNS for `mtgacompanion.com` points at Vercel) — moot;
+- ADR-007 §Specifics #1 (DNS for `vaultmtg.app` points at Vercel) — moot;
   the new DNS targets are `app.vaultmtg.app`, `vaultmtg.app`, and
   `rhamiltoneng.com`, all pointing at CloudFront.
 - ADR-007 §Specifics #6 (nginx static-serve block kept for DR) — superseded.
@@ -113,7 +113,7 @@ frontends.**
 
 - **Single authoritative production serving layer.** All three properties
   share one model (S3+CloudFront+ACM), defined as code in
-  `mtga-companion-infra`.
+  `vault-mtg-infra`.
 - **Full routing control.** SPA fallback, redirects, security headers,
   caching policies, and Origin Request behavior are all CloudFormation —
   versioned, reviewable, and reproducible.
@@ -131,7 +131,7 @@ frontends.**
 
 - **More CloudFormation to maintain.** Three CloudFront distributions,
   three S3 buckets, three ACM certs, and Route53 records for two new domains.
-  This work lands in `mtga-companion-infra` via tickets #1246 and #1253.
+  This work lands in `vault-mtg-infra` via tickets #1246 and #1253.
 - **Deploy pipeline complexity.** `aws s3 sync` + CloudFront invalidation is
   more steps than `vercel --prod`. Mitigated by codifying the deploy steps
   in a reusable GitHub Actions workflow (ticket #1249).

@@ -43,8 +43,8 @@ development requires no env file change.
 
 ```
 # Vercel dashboard → project → Settings → Environment Variables
-VITE_BFF_URL = https://api.mtga-companion.com/api/v1   # Production
-VITE_BFF_URL = https://api.mtga-companion.com/api/v1   # Preview (same BFF for now)
+VITE_BFF_URL = https://api.vaultmtg.app/api/v1   # Production
+VITE_BFF_URL = https://api.vaultmtg.app/api/v1   # Preview (same BFF for now)
 # Development: unset — falls back to http://localhost:8080/api/v1
 ```
 
@@ -66,7 +66,7 @@ When the var is absent the allowed-origins list defaults to `["http://localhost:
 Production EC2 must set:
 
 ```
-ALLOWED_ORIGINS=https://mtga-companion.vercel.app,https://*.vercel.app
+ALLOWED_ORIGINS=https://vaultmtg.vercel.app,https://*.vercel.app
 ```
 
 The wildcard `https://*.vercel.app` covers every Vercel preview deploy URL without

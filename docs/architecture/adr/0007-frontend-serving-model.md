@@ -16,14 +16,14 @@ introduced independently and now conflict:
 1. **Vercel** (canonical, established by ADR-006). The React SPA is built and
    deployed to Vercel on every push to `main` from the `frontend/**` path. Vercel
    provides global CDN, atomic preview deploys per-PR, and zero-config TLS.
-   Production traffic on `https://mtgacompanion.com` is currently served by
+   Production traffic on `https://vaultmtg.app` is currently served by
    Vercel.
 
 2. **EC2 nginx + S3 + SSM** (introduced by PR #1184, closes #1068). A second
    workflow `.github/workflows/frontend.yml` builds the same SPA with
-   `VITE_BFF_URL=/api/v1` and deploys it to `/var/www/mtga-companion/` on the
+   `VITE_BFF_URL=/api/v1` and deploys it to `/var/www/vaultmtg/` on the
    EC2 host via S3 upload + SSM `AWS-RunShellScript`. The nginx config in the
-   infra repo is already set up to serve `/var/www/mtga-companion/` and to
+   infra repo is already set up to serve `/var/www/vaultmtg/` and to
    proxy `/api/v1/` to the BFF on port 8080.
 
 ADR-006 implicitly assumed Vercel would be the only frontend host. PR #1184 was
@@ -43,7 +43,7 @@ This is the root cause of the blocked state on tickets #1211 and #1066:
 
 | Concern | Vercel | EC2 nginx |
 |---|---|---|
-| `VITE_BFF_URL` | `https://api.mtga-companion.com/api/v1` (cross-origin) | `/api/v1` (same-origin) |
+| `VITE_BFF_URL` | `https://api.vaultmtg.app/api/v1` (cross-origin) | `/api/v1` (same-origin) |
 | CORS | Required (`ALLOWED_ORIGINS=https://*.vercel.app,...`) | Not required |
 | TLS | Vercel-managed | nginx + Let's Encrypt on EC2 |
 | Preview deploys | One per PR (Vercel automatic) | None |
@@ -53,9 +53,9 @@ This is the root cause of the blocked state on tickets #1211 and #1066:
 
 ### What "Vercel canonical" implies operationally
 
-- Public DNS (`mtgacompanion.com`, `www.mtgacompanion.com`) points at Vercel.
+- Public DNS (`vaultmtg.app`, `www.vaultmtg.app`) points at Vercel.
 - The BFF on EC2 is reachable at a separate API host
-  (`api.mtga-companion.com`) and applies CORS for the Vercel origin.
+  (`api.vaultmtg.app`) and applies CORS for the Vercel origin.
 - nginx on EC2 is a *BFF reverse proxy only* — it does not serve static frontend
   assets in production.
 
@@ -89,9 +89,9 @@ dispatch only) for two specific use cases:
 
 ### Specifics
 
-1. **Production DNS** (`mtgacompanion.com`, `www.mtgacompanion.com`,
-   `app.mtga-companion.com` if used) **MUST** resolve to Vercel.
-2. **`api.mtga-companion.com`** (or whatever subdomain the BFF uses) **MUST**
+1. **Production DNS** (`vaultmtg.app`, `www.vaultmtg.app`,
+   `app.vaultmtg.app` if used) **MUST** resolve to Vercel.
+2. **`api.vaultmtg.app`** (or whatever subdomain the BFF uses) **MUST**
    resolve to the EC2 instance and serve the BFF only. nginx on EC2 does not
    serve `/` or any static asset paths in production.
 3. **`.github/workflows/frontend.yml`** (the EC2 deploy workflow added in PR
@@ -108,7 +108,7 @@ dispatch only) for two specific use cases:
 5. **The infra-repo `deploy-frontend.yml`** referenced by issue #1211 is
    redundant and **MUST** be deleted, as #1211 proposes — this ADR confirms
    that direction.
-6. **nginx config in `mtga-companion-infra`** keeps the `/var/www/mtga-companion/`
+6. **nginx config in `vault-mtg-infra`** keeps the `/var/www/vaultmtg/`
    `try_files` block for the DR/preview use case but a comment is added marking
    the static-serve location block as "DR/preview only — production is on
    Vercel; see ADR-007".
@@ -178,14 +178,14 @@ by the Project Manager. The tracking spec is in
 
 1. Edit `.github/workflows/frontend.yml`: remove `push:` trigger, keep
    `workflow_dispatch`, add ADR-007 comment header.
-2. Delete `mtga-companion-infra/.github/workflows/deploy-frontend.yml` (this
+2. Delete `vault-mtg-infra/.github/workflows/deploy-frontend.yml` (this
    work is already represented by #1211; expand its scope to include step 1).
 3. Add a `# DR/preview only — see ADR-007` comment to the nginx static-serve
-   `location /` block in `mtga-companion-infra`'s nginx config files.
+   `location /` block in `vault-mtg-infra`'s nginx config files.
 4. Update any developer-facing docs (`README.md`, `docs/DEPLOYMENT.md` if
    present) to state that production frontend is served from Vercel and that
    nginx static-serve is DR-only.
-5. Verify production DNS for `mtgacompanion.com` resolves to Vercel; if it
+5. Verify production DNS for `vaultmtg.app` resolves to Vercel; if it
    currently resolves to EC2, schedule a DNS cutover ticket.
 
 Each step is a separate Sonnet-ready ticket; see the tickets spec for full

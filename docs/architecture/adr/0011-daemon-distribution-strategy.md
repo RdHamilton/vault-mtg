@@ -14,9 +14,9 @@ tails MTG Arena's `Player.log` via `fsnotify` and POSTs draft and match
 events to the BFF. As of v0.3.x the daemon ships as **raw, unpackaged
 binaries** uploaded to GitHub Releases by `.github/workflows/daemon-release.yml`:
 
-- `mtga-companion-daemon-windows-amd64.exe`
-- `mtga-companion-daemon-darwin-arm64`
-- `mtga-companion-daemon-darwin-amd64`
+- `vaultmtg-daemon-windows-amd64.exe`
+- `vaultmtg-daemon-darwin-arm64`
+- `vaultmtg-daemon-darwin-amd64`
 
 The runtime install logic — copy binary into place, write a launchd plist
 on macOS or register a Task Scheduler task on Windows, prompt the user for
@@ -97,8 +97,8 @@ headless — status surfaces only through the SPA `/setup` page.**
      installers.
    - The NSIS script ports the existing logic from
      `services/daemon/install/windows/install.ps1`: copy the binary into
-     `%LOCALAPPDATA%\MTGA-Companion\`, write `daemon.json` to
-     `%APPDATA%\mtga-companion\`, register a **Scheduled Task at logon**
+     `%LOCALAPPDATA%\VaultMTG\`, write `daemon.json` to
+     `%APPDATA%\vaultmtg\`, register a **Scheduled Task at logon**
      under the current user with `RunLevel: LeastPrivilege` so no UAC
      prompt fires.
    - The artifact is **NOT** a Windows Service. Services require admin
