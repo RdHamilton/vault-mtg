@@ -35,16 +35,16 @@ The `knownFormats` map is duplicated in `history.go` and `stats.go`. If a new fo
 
 ### T3 — Remove Projection Worker Contract Struct Redeclarations
 
-**Title**: `refactor(projection): import mtga-contract directly; remove redeclared structs`  
+**Title**: `refactor(projection): import vault-mtg/services/contract directly; remove redeclared structs`  
 **Assign**: backend-engineer  
 **Effort**: S  
 **Labels**: `architecture`, `v0.4.0`
 
 **Description**:  
-The projection worker redeclares `GamePlayPayload`, `questCompletedPayload`, `inventoryUpdatedPayload`, `collectionUpdatedPayload`, and `deckUpdatedPayload` locally instead of importing them from `mtga-contract`. Any new field added to the contract is silently lost on projection.
+The projection worker redeclares `GamePlayPayload`, `questCompletedPayload`, `inventoryUpdatedPayload`, `collectionUpdatedPayload`, and `deckUpdatedPayload` locally instead of importing them from `vault-mtg/services/contract`. Any new field added to the contract is silently lost on projection.
 
 **Acceptance Criteria**:
-- [ ] Projection worker `worker.go` imports `github.com/RdHamilton/MTGA-Companion/services/contract`
+- [ ] Projection worker `worker.go` imports `github.com/RdHamilton/vault-mtg/services/contract`
 - [ ] Zero local struct redeclarations for `GamePlayPayload`, `questCompletedPayload`, `inventoryUpdatedPayload`, `collectionUpdatedPayload`, `deckUpdatedPayload`
 - [ ] Compiler validates field names at build time
 - [ ] Existing tests pass; unit + integration tests present per CLAUDE.md

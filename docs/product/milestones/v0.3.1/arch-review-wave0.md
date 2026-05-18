@@ -117,7 +117,7 @@ CREATE TABLE daemon_api_keys (
 | ADR-011 TBD-G supersession | ADR-020 | Accepted | ADR-020 explicitly supersedes TBD-G. Ticket #1645 correctly references this. Compliant. |
 | **MISSING ADR** | — | Gap | No ADR exists for the `daemon_api_keys` storage model — how keys are stored on the BFF, their lifecycle, and revocation policy. ADR-020 describes the acquisition flow but stops at "BFF mints and returns the key." The storage, revocation, and key rotation behavior needs a short ADR addendum or a new ADR-021. This is needed before #1652 starts. |
 | Rate limiting on `/v1/daemon/register` | ADR-020 | Noted | ADR-020 specifies 5 req/min per user. No BFF rate-limiting infrastructure is currently in place (no middleware exists for this). Ticket #1652 must either implement rate-limiting middleware or scope this to a TODO with an explicit tracking ticket. |
-| GONOSUMDB/GOPRIVATE in CI | architect.md rule 12 | Required | Any new CI workflow added in Wave 2 (#1642) must include `GONOSUMDB: github.com/RdHamilton/MTGA-Companion` and `GOPRIVATE: github.com/RdHamilton/MTGA-Companion` on every Go step. Backend engineer and infra must not miss this. |
+| GONOSUMDB/GOPRIVATE in CI | architect.md rule 12 | Required | Any new CI workflow added in Wave 2 (#1642) must include `GONOSUMDB: github.com/RdHamilton/vault-mtg` and `GOPRIVATE: github.com/RdHamilton/vault-mtg` on every Go step. Backend engineer and infra must not miss this. |
 
 ---
 
@@ -129,7 +129,7 @@ Clerk's OAuth implementation may not permit wildcard localhost redirect URIs (`h
 
 **Architect position**: Use a **fixed port** (recommend `51423`) for the PKCE callback. This is OQ-5. The UX tradeoff (user sees a fixed port URL, firewall instructions are simpler) is worth the implementation simplicity. If port 51423 is in use, the daemon should retry once with a fallback (e.g., `51424`), not random-walk. Fixed ports are also easier to document in firewall bypass instructions for enterprise users.
 
-If Clerk does not support exact `http://localhost:51423/callback` as a redirect URI (some Clerk plan tiers restrict OAuth app redirect URIs), the fallback is a custom URL scheme (`mtgacompanion://callback`) registered as a platform URI handler — this is architecturally more complex and must be scoped to a separate ticket if needed.
+If Clerk does not support exact `http://localhost:51423/callback` as a redirect URI (some Clerk plan tiers restrict OAuth app redirect URIs), the fallback is a custom URL scheme (`vaultmtg://callback`) registered as a platform URI handler — this is architecturally more complex and must be scoped to a separate ticket if needed.
 
 ### R-B: `go-keyring` macOS Keychain Entitlement Requirement
 

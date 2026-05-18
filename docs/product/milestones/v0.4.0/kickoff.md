@@ -107,7 +107,7 @@ v0.4.0 runs in three sequential waves. Wave 1 does not start until Wave 0 is Don
 |--------|-------|-------|--------|---------|
 | TBD | Extract `knownFormats` to `handlers/formats.go` | backend-engineer | XS | T1 |
 | #1041 | Align daemon `models.go` structs with MTGA JSON keys | backend-engineer | M | T2 |
-| TBD | Remove projection worker contract struct redeclarations; import `mtga-contract` directly | backend-engineer | S | T3 |
+| TBD | Remove projection worker contract struct redeclarations; import `vault-mtg/services/contract` directly | backend-engineer | S | T3 |
 | TBD | Add `projection_errors` dead-letter table; separate transient from permanent projection failures | backend-engineer + dba | M | T4 |
 | TBD | Filter partial GRE events from aggregate queries (`WHERE partial = false`); add TODO comment on nil guard | backend-engineer | S | T5 |
 
@@ -117,7 +117,7 @@ v0.4.0 runs in three sequential waves. Wave 1 does not start until Wave 0 is Don
 
 - **T1 (knownFormats)**: `knownFormats` declared exactly once in `handlers/formats.go`; both `history.go` and `stats.go` reference the package-level var; no duplicate declarations; existing tests pass.
 - **T2 (#1041)**: Every field in daemon `models.go` has a unit test asserting correct JSON key round-trip against a sample MTGA log payload; zero fields produce empty/default output on a valid log line.
-- **T3 (contract import)**: Projection worker `worker.go` imports `github.com/RdHamilton/MTGA-Companion/services/contract`; zero local struct redeclarations for `GamePlayPayload`, `questCompletedPayload`, `inventoryUpdatedPayload`, `collectionUpdatedPayload`, `deckUpdatedPayload`; compiler validates field names at build time.
+- **T3 (contract import)**: Projection worker `worker.go` imports `github.com/RdHamilton/vault-mtg/services/contract`; zero local struct redeclarations for `GamePlayPayload`, `questCompletedPayload`, `inventoryUpdatedPayload`, `collectionUpdatedPayload`, `deckUpdatedPayload`; compiler validates field names at build time.
 - **T4 (dead-letter)**: New `projection_errors` table with migration + rollback script; projection worker writes a row on permanent failure (malformed JSON) and retries on transient failure (DB error); integration test covers both paths.
 - **T5 (partial events)**: All `game_plays` aggregate queries include `WHERE partial = false`; integration test with a partial=true row verifies it is excluded from stats endpoints; nil guards on `draftAnalytics` and `resultBreakdown` setters have `// TODO: remove nil guard after #NNNN wires this` comments.
 
