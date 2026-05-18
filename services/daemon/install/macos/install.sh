@@ -88,7 +88,7 @@ if [[ -z "${DRY_RUN}" ]]; then
   curl -fsSL --progress-bar -o "${TMP_BIN}" "${DOWNLOAD_URL}"
 else
   echo "[DRY_RUN] would download ${DOWNLOAD_URL}"
-  touch "${TMP_BIN}"  # create placeholder so subsequent chmod/install steps find a file
+  # mktemp (line above) already created the file; no placeholder needed.
 fi
 
 # ---------------------------------------------------------------------------
