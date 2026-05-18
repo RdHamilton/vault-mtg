@@ -1,6 +1,6 @@
-# MTGA-Companion Documentation
+# VaultMTG Documentation
 
-This directory contains all technical documentation for the MTGA-Companion project.
+This directory contains all technical documentation for the VaultMTG project.
 
 ## 📚 Documentation Index
 

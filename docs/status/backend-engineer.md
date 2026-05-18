@@ -28,7 +28,7 @@
 - `gofumpt -l .` prints nothing in both services
 
 ### Step 4: PR — DONE
-- PR #1603: https://github.com/RdHamilton/MTGA-Companion/pull/1603
+- PR #1603: https://github.com/RdHamilton/vault-mtg/pull/1603
 
 ### Step 5: LE Review + Fixes — DONE
 Two issues identified and fixed:
