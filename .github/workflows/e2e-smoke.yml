@@ -66,14 +66,11 @@ jobs:
         go-version: '1.25'
         cache-dependency-path: services/bff/go.sum
 
-    - name: Build API server (source build only)
+    - name: Build BFF binary (source build only)
       if: inputs.bff_artifact_name == ''
-      env:
-        GONOSUMDB: github.com/RdHamilton/MTGA-Companion
-        GOPRIVATE: github.com/RdHamilton/MTGA-Companion
-      run: |
-        cd services/bff
-        go build -o ../../bin/mtga-bff ./cmd
+      uses: ./.github/actions/build-bff
+      with:
+        output-path: bin/mtga-bff
 
     # -----------------------------------------------------------------------
     # Frontend / Playwright setup (always required)

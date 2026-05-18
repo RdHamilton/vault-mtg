@@ -105,6 +105,7 @@ jobs:
             - 'services/bff/**'
             - 'services/contract/**'
             - '.github/workflows/ci.yml'
+            - '.github/actions/build-bff/**'
           frontend:
             - 'frontend/**'
             - '.github/workflows/ci.yml'
@@ -114,6 +115,46 @@ jobs:
           logparse:
             - 'pkg/logparse/**'
             - '.github/workflows/ci.yml'
+
+  # -------------------------------------------------------------------------
+  # Continuous release-build validation (post-mortem A6 / #2175, AC2).
+  #
+  # Runs the exact release-build invocation (GOOS=linux GOARCH=amd64) on
+  # every push/PR to main via the shared build-bff composite action — not
+  # just at release time.  This makes a broken release build visible the
+  # same day it is introduced rather than at the next release tag.
+  #
+  # Not path-filtered: the release build must be green regardless of which
+  # file changed; the BFF could be broken by a go.work change, a contract
+  # bump, or a dependency upgrade that only manifests on linux/amd64.
+  # -------------------------------------------------------------------------
+  bff-release-build:
+    name: BFF Release Build (linux/amd64)
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v6
+
+    - name: Set up Go
+      uses: actions/setup-go@v6
+      with:
+        go-version: '1.25'
+        cache-dependency-path: services/bff/go.sum
+
+    - name: Configure private module access
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      run: |
+        git config --global url."https://${GITHUB_TOKEN}@github.com/".insteadOf "https://github.com/"
+
+    - name: Build BFF for linux/amd64 (release target)
+      uses: ./.github/actions/build-bff
+      with:
+        goos: linux
+        goarch: amd64
+        output-path: bin/mtga-bff
 
   bff-unit-tests:
     name: BFF Unit Tests
@@ -367,12 +408,9 @@ jobs:
         git config --global url."https://${GITHUB_TOKEN}@github.com/".insteadOf "https://github.com/"
 
     - name: Build BFF binary
-      env:
-        GONOSUMDB: github.com/RdHamilton/MTGA-Companion
-        GOPRIVATE: github.com/RdHamilton/MTGA-Companion
-      run: |
-        cd services/bff
-        go build -o ../../bin/mtga-bff ./cmd/
+      uses: ./.github/actions/build-bff
+      with:
+        output-path: bin/mtga-bff
 
     - name: Upload BFF binary artifact
       uses: actions/upload-artifact@v4
