@@ -1,10 +1,10 @@
 import { test, expect } from '@playwright/test';
 
-const GITHUB_REPO = 'RdHamilton/MTGA-Companion';
+const GITHUB_REPO = 'RdHamilton/vault-mtg';
 const FALLBACK_RELEASES_BASE =
   `https://github.com/${GITHUB_REPO}/releases/latest/download`;
 const RUNTIME_RELEASES_BASE =
-  `https://github.com/${GITHUB_REPO}/releases/download/daemon/v0.3.2`;
+  `https://github.com/${GITHUB_REPO}/releases/download/daemon/v0.3.1`;
 const GITHUB_RELEASES_API =
   `https://api.github.com/repos/${GITHUB_REPO}/releases**`;
 
@@ -222,7 +222,7 @@ test.describe('Download Page — runtime URL resolution (post-mortem A7)', () =>
   test('@smoke download links reflect the runtime-resolved release tag', async ({ page }) => {
     // Intercept the GitHub API before navigation so the route is registered in time.
     await mockGitHubReleasesApi(page, [
-      { tag_name: 'daemon/v0.3.2', draft: false, prerelease: false },
+      { tag_name: 'daemon/v0.3.1', draft: false, prerelease: false },
       { tag_name: 'daemon/v0.3.1', draft: false, prerelease: false },
       { tag_name: 'app/v1.0.0', draft: false, prerelease: false },
     ]);

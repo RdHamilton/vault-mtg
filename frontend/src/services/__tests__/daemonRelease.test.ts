@@ -14,7 +14,7 @@ import {
   FALLBACK_DOWNLOAD_BASE,
 } from '../daemonRelease';
 
-const GITHUB_REPO = 'RdHamilton/MTGA-Companion';
+const GITHUB_REPO = 'RdHamilton/vault-mtg';
 const RELEASES_API = `https://api.github.com/repos/${GITHUB_REPO}/releases`;
 
 const mockFetch = vi.fn();
@@ -54,7 +54,7 @@ describe('fetchLatestDaemonRelease', () => {
   it('returns the first daemon/v* release in the list', async () => {
     mockFetch.mockResolvedValueOnce(
       githubResponse([
-        makeRelease('daemon/v0.3.2'),
+        makeRelease('daemon/v0.3.1'),
         makeRelease('daemon/v0.3.1'),
         makeRelease('app/v1.0.0'),
       ])
@@ -63,9 +63,9 @@ describe('fetchLatestDaemonRelease', () => {
     const result = await fetchLatestDaemonRelease();
 
     expect(result).not.toBeNull();
-    expect(result!.tag).toBe('daemon/v0.3.2');
+    expect(result!.tag).toBe('daemon/v0.3.1');
     expect(result!.downloadBase).toBe(
-      `https://github.com/${GITHUB_REPO}/releases/download/daemon/v0.3.2`
+      `https://github.com/${GITHUB_REPO}/releases/download/daemon/v0.3.1`
     );
   });
 
@@ -74,18 +74,18 @@ describe('fetchLatestDaemonRelease', () => {
       githubResponse([
         makeRelease('app/v2.0.0'),
         makeRelease('sync/v1.5.0'),
-        makeRelease('daemon/v0.3.2'),
+        makeRelease('daemon/v0.3.1'),
       ])
     );
 
     const result = await fetchLatestDaemonRelease();
 
     expect(result).not.toBeNull();
-    expect(result!.tag).toBe('daemon/v0.3.2');
+    expect(result!.tag).toBe('daemon/v0.3.1');
   });
 
   it('sends the correct GitHub API version header', async () => {
-    mockFetch.mockResolvedValueOnce(githubResponse([makeRelease('daemon/v0.3.2')]));
+    mockFetch.mockResolvedValueOnce(githubResponse([makeRelease('daemon/v0.3.1')]));
 
     await fetchLatestDaemonRelease();
 
@@ -98,7 +98,7 @@ describe('fetchLatestDaemonRelease', () => {
   });
 
   it('queries with per_page=20', async () => {
-    mockFetch.mockResolvedValueOnce(githubResponse([makeRelease('daemon/v0.3.2')]));
+    mockFetch.mockResolvedValueOnce(githubResponse([makeRelease('daemon/v0.3.1')]));
 
     await fetchLatestDaemonRelease();
 
@@ -114,13 +114,13 @@ describe('fetchLatestDaemonRelease', () => {
     mockFetch.mockResolvedValueOnce(
       githubResponse([
         makeRelease('daemon/v0.3.3', { draft: true }),
-        makeRelease('daemon/v0.3.2'),
+        makeRelease('daemon/v0.3.1'),
       ])
     );
 
     const result = await fetchLatestDaemonRelease();
 
-    expect(result!.tag).toBe('daemon/v0.3.2');
+    expect(result!.tag).toBe('daemon/v0.3.1');
   });
 
   it('does NOT skip prerelease releases (prereleases are valid download targets)', async () => {

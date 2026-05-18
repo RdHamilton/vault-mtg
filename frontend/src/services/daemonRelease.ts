@@ -10,7 +10,7 @@
  * Playwright E2E tests.
  */
 
-const GITHUB_REPO = 'RdHamilton/MTGA-Companion';
+const GITHUB_REPO = 'RdHamilton/vault-mtg';
 const RELEASES_BASE = `https://github.com/${GITHUB_REPO}/releases/download`;
 const LATEST_RELEASE_URL = `https://api.github.com/repos/${GITHUB_REPO}/releases`;
 
