@@ -66,8 +66,8 @@ jobs:
       - name: Install golang-migrate CLI
         if: steps.cache-migrate.outputs.cache-hit != 'true'
         env:
-          GONOSUMDB: github.com/RdHamilton/MTGA-Companion
-          GOPRIVATE: github.com/RdHamilton/MTGA-Companion
+          GONOSUMDB: github.com/RdHamilton/vault-mtg
+          GOPRIVATE: github.com/RdHamilton/vault-mtg
         run: go install -tags 'postgres' github.com/golang-migrate/migrate/v4/cmd/migrate@v4.18.3
 
       - name: Install psql client

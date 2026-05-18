@@ -42,8 +42,8 @@ jobs:
     - name: Download dependencies
       working-directory: services/bff
       env:
-        GONOSUMDB: github.com/RdHamilton/MTGA-Companion
-        GOPRIVATE: github.com/RdHamilton/MTGA-Companion
+        GONOSUMDB: github.com/RdHamilton/vault-mtg
+        GOPRIVATE: github.com/RdHamilton/vault-mtg
       run: go mod download
 
     - name: Run BFF integration tests
@@ -51,8 +51,8 @@ jobs:
       env:
         DATABASE_URL: postgres://mtga:mtga@localhost:5432/mtga_test?sslmode=disable
         INTEGRATION_TEST: "true"
-        GONOSUMDB: github.com/RdHamilton/MTGA-Companion
-        GOPRIVATE: github.com/RdHamilton/MTGA-Companion
+        GONOSUMDB: github.com/RdHamilton/vault-mtg
+        GOPRIVATE: github.com/RdHamilton/vault-mtg
       run: go test -v -run Integration -coverprofile=coverage-integration.out -covermode=atomic ./...
 
     - name: Upload integration coverage to Codecov

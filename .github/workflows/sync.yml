@@ -33,15 +33,15 @@ jobs:
 
       - name: Download dependencies
         env:
-          GONOSUMDB: github.com/RdHamilton/MTGA-Companion
-          GOPRIVATE: github.com/RdHamilton/MTGA-Companion
+          GONOSUMDB: github.com/RdHamilton/vault-mtg
+          GOPRIVATE: github.com/RdHamilton/vault-mtg
           GOFLAGS: -mod=mod
         run: go mod download
 
       - name: Build
         env:
-          GONOSUMDB: github.com/RdHamilton/MTGA-Companion
-          GOPRIVATE: github.com/RdHamilton/MTGA-Companion
+          GONOSUMDB: github.com/RdHamilton/vault-mtg
+          GOPRIVATE: github.com/RdHamilton/vault-mtg
         run: go build ./...
 
       - name: Build Lambda binary (smoke check, arm64 — no deploy)
@@ -49,22 +49,22 @@ jobs:
           GOOS: linux
           GOARCH: arm64
           CGO_ENABLED: "0"
-          GONOSUMDB: github.com/RdHamilton/MTGA-Companion
-          GOPRIVATE: github.com/RdHamilton/MTGA-Companion
+          GONOSUMDB: github.com/RdHamilton/vault-mtg
+          GOPRIVATE: github.com/RdHamilton/vault-mtg
         run: |
           go build -tags lambda.norpc -trimpath -o /tmp/bootstrap ./cmd/lambda
           echo "Smoke-built Lambda bootstrap: $(ls -lh /tmp/bootstrap)"
 
       - name: Test
         env:
-          GONOSUMDB: github.com/RdHamilton/MTGA-Companion
-          GOPRIVATE: github.com/RdHamilton/MTGA-Companion
+          GONOSUMDB: github.com/RdHamilton/vault-mtg
+          GOPRIVATE: github.com/RdHamilton/vault-mtg
         run: go test -race ./...
 
       - name: Vet
         env:
-          GONOSUMDB: github.com/RdHamilton/MTGA-Companion
-          GOPRIVATE: github.com/RdHamilton/MTGA-Companion
+          GONOSUMDB: github.com/RdHamilton/vault-mtg
+          GOPRIVATE: github.com/RdHamilton/vault-mtg
         run: go vet ./...
 
   integration-test:
@@ -96,8 +96,8 @@ jobs:
 
       - name: Download dependencies
         env:
-          GONOSUMDB: github.com/RdHamilton/MTGA-Companion
-          GOPRIVATE: github.com/RdHamilton/MTGA-Companion
+          GONOSUMDB: github.com/RdHamilton/vault-mtg
+          GOPRIVATE: github.com/RdHamilton/vault-mtg
           GOFLAGS: -mod=mod
         run: go mod download
 
@@ -109,7 +109,7 @@ jobs:
 
       - name: Run integration tests
         env:
-          GONOSUMDB: github.com/RdHamilton/MTGA-Companion
-          GOPRIVATE: github.com/RdHamilton/MTGA-Companion
+          GONOSUMDB: github.com/RdHamilton/vault-mtg
+          GOPRIVATE: github.com/RdHamilton/vault-mtg
           TEST_DATABASE_URL: postgres://sync_test:sync_test@localhost:5432/sync_test
         run: go test -race -tags integration ./...

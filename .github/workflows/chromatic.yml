@@ -94,7 +94,7 @@ jobs:
             echo "has_token=false" >> "$GITHUB_OUTPUT"
             echo "::warning::CHROMATIC_PROJECT_TOKEN secret is not set. Skipping Chromatic upload."
             echo "To provision: go to https://www.chromatic.com, create a project, then add the token"
-            echo "as a GitHub Actions secret at https://github.com/RdHamilton/MTGA-Companion/settings/secrets/actions"
+            echo "as a GitHub Actions secret at https://github.com/RdHamilton/vault-mtg/settings/secrets/actions"
           else
             echo "has_token=true" >> "$GITHUB_OUTPUT"
           fi
@@ -117,7 +117,7 @@ jobs:
         #      (see docs/engineering/reference/storybook-spike.md)
         #   2. Copy the project token from Project Settings > Manage > Token
         #   3. Add it as a GitHub Actions secret named CHROMATIC_PROJECT_TOKEN
-        #      at https://github.com/RdHamilton/MTGA-Companion/settings/secrets/actions
+        #      at https://github.com/RdHamilton/vault-mtg/settings/secrets/actions
         if: >
           steps.changes.outputs.frontend_changed == 'true' &&
           steps.token_check.outputs.has_token == 'true'

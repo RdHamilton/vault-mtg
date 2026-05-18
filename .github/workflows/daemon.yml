@@ -64,16 +64,16 @@ jobs:
       - name: Download dependencies
         working-directory: services/daemon
         env:
-          GONOSUMDB: github.com/RdHamilton/MTGA-Companion
-          GOPRIVATE: github.com/RdHamilton/MTGA-Companion
+          GONOSUMDB: github.com/RdHamilton/vault-mtg
+          GOPRIVATE: github.com/RdHamilton/vault-mtg
           GOFLAGS: -mod=mod
         run: go mod download
 
       - name: Run tests
         working-directory: services/daemon
         env:
-          GONOSUMDB: github.com/RdHamilton/MTGA-Companion
-          GOPRIVATE: github.com/RdHamilton/MTGA-Companion
+          GONOSUMDB: github.com/RdHamilton/vault-mtg
+          GOPRIVATE: github.com/RdHamilton/vault-mtg
         run: go test -v -race -coverprofile=coverage.out -covermode=atomic ./...
 
       - name: Upload coverage
@@ -88,8 +88,8 @@ jobs:
       - name: Run contract tests
         working-directory: services/contract
         env:
-          GONOSUMDB: github.com/RdHamilton/MTGA-Companion
-          GOPRIVATE: github.com/RdHamilton/MTGA-Companion
+          GONOSUMDB: github.com/RdHamilton/vault-mtg
+          GOPRIVATE: github.com/RdHamilton/vault-mtg
         run: go test -v -race -coverprofile=coverage.out -covermode=atomic ./...
 
       - name: Upload contract coverage
@@ -104,16 +104,16 @@ jobs:
       - name: Download pkg/logparse dependencies
         working-directory: pkg/logparse
         env:
-          GONOSUMDB: github.com/RdHamilton/MTGA-Companion
-          GOPRIVATE: github.com/RdHamilton/MTGA-Companion
+          GONOSUMDB: github.com/RdHamilton/vault-mtg
+          GOPRIVATE: github.com/RdHamilton/vault-mtg
           GOFLAGS: -mod=mod
         run: go mod download
 
       - name: Run pkg/logparse tests
         working-directory: pkg/logparse
         env:
-          GONOSUMDB: github.com/RdHamilton/MTGA-Companion
-          GOPRIVATE: github.com/RdHamilton/MTGA-Companion
+          GONOSUMDB: github.com/RdHamilton/vault-mtg
+          GOPRIVATE: github.com/RdHamilton/vault-mtg
         run: go test -v -race -coverprofile=coverage.out -covermode=atomic ./...
 
       - name: Upload pkg/logparse coverage
@@ -151,23 +151,23 @@ jobs:
       - name: Download dependencies
         working-directory: services/daemon
         env:
-          GONOSUMDB: github.com/RdHamilton/MTGA-Companion
-          GOPRIVATE: github.com/RdHamilton/MTGA-Companion
+          GONOSUMDB: github.com/RdHamilton/vault-mtg
+          GOPRIVATE: github.com/RdHamilton/vault-mtg
           GOFLAGS: -mod=mod
         run: go mod download
 
       - name: Build daemon binary (smoke pre-check)
         working-directory: services/daemon
         env:
-          GONOSUMDB: github.com/RdHamilton/MTGA-Companion
-          GOPRIVATE: github.com/RdHamilton/MTGA-Companion
+          GONOSUMDB: github.com/RdHamilton/vault-mtg
+          GOPRIVATE: github.com/RdHamilton/vault-mtg
         run: go build ./cmd/daemon
 
       - name: Run integration smoke test
         working-directory: services/daemon
         env:
-          GONOSUMDB: github.com/RdHamilton/MTGA-Companion
-          GOPRIVATE: github.com/RdHamilton/MTGA-Companion
+          GONOSUMDB: github.com/RdHamilton/vault-mtg
+          GOPRIVATE: github.com/RdHamilton/vault-mtg
           MTGA_DAEMON_HEADLESS: "1"
         run: go test -v -race -tags integration -run TestDaemonBinarySmoke -timeout 5m ./internal/daemon/...
 

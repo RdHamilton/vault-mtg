@@ -182,16 +182,16 @@ jobs:
     - name: Download dependencies
       working-directory: services/bff
       env:
-        GONOSUMDB: github.com/RdHamilton/MTGA-Companion
-        GOPRIVATE: github.com/RdHamilton/MTGA-Companion
+        GONOSUMDB: github.com/RdHamilton/vault-mtg
+        GOPRIVATE: github.com/RdHamilton/vault-mtg
         GOFLAGS: -mod=mod
       run: go mod download
 
     - name: Run BFF unit tests
       working-directory: services/bff
       env:
-        GONOSUMDB: github.com/RdHamilton/MTGA-Companion
-        GOPRIVATE: github.com/RdHamilton/MTGA-Companion
+        GONOSUMDB: github.com/RdHamilton/vault-mtg
+        GOPRIVATE: github.com/RdHamilton/vault-mtg
       run: go test -race -v -short -coverprofile=coverage.out -covermode=atomic ./...
 
     - name: Upload coverage to Codecov
@@ -267,8 +267,8 @@ jobs:
 
     - name: go vet — all modules
       env:
-        GONOSUMDB: github.com/RdHamilton/MTGA-Companion
-        GOPRIVATE: github.com/RdHamilton/MTGA-Companion
+        GONOSUMDB: github.com/RdHamilton/vault-mtg
+        GOPRIVATE: github.com/RdHamilton/vault-mtg
       run: |
         for mod in services/bff services/sync services/contract pkg/logparse; do
           echo "=== go vet $mod ==="
@@ -322,16 +322,16 @@ jobs:
     - name: Download dependencies
       working-directory: services/sync
       env:
-        GONOSUMDB: github.com/RdHamilton/MTGA-Companion
-        GOPRIVATE: github.com/RdHamilton/MTGA-Companion
+        GONOSUMDB: github.com/RdHamilton/vault-mtg
+        GOPRIVATE: github.com/RdHamilton/vault-mtg
         GOFLAGS: -mod=mod
       run: go mod download
 
     - name: Run Sync unit tests
       working-directory: services/sync
       env:
-        GONOSUMDB: github.com/RdHamilton/MTGA-Companion
-        GOPRIVATE: github.com/RdHamilton/MTGA-Companion
+        GONOSUMDB: github.com/RdHamilton/vault-mtg
+        GOPRIVATE: github.com/RdHamilton/vault-mtg
       run: go test -race -v -short -coverprofile=coverage.out -covermode=atomic ./...
 
     - name: Upload coverage to Codecov
@@ -361,16 +361,16 @@ jobs:
     - name: Download dependencies
       working-directory: pkg/logparse
       env:
-        GONOSUMDB: github.com/RdHamilton/MTGA-Companion
-        GOPRIVATE: github.com/RdHamilton/MTGA-Companion
+        GONOSUMDB: github.com/RdHamilton/vault-mtg
+        GOPRIVATE: github.com/RdHamilton/vault-mtg
         GOFLAGS: -mod=mod
       run: go mod download
 
     - name: Run logparse unit tests
       working-directory: pkg/logparse
       env:
-        GONOSUMDB: github.com/RdHamilton/MTGA-Companion
-        GOPRIVATE: github.com/RdHamilton/MTGA-Companion
+        GONOSUMDB: github.com/RdHamilton/vault-mtg
+        GOPRIVATE: github.com/RdHamilton/vault-mtg
       run: go test -race -v -short -coverprofile=coverage.out -covermode=atomic ./...
 
     - name: Upload coverage to Codecov

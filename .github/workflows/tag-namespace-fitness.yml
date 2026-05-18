@@ -133,7 +133,7 @@ jobs:
           # Use the GitHub API's dedicated latest-release endpoint to get the
           # release currently flagged as "latest".  This is the canonical source
           # of truth for what releases/latest/download/ resolves to.
-          LATEST_RELEASE=$(gh api repos/RdHamilton/MTGA-Companion/releases/latest \
+          LATEST_RELEASE=$(gh api repos/RdHamilton/vault-mtg/releases/latest \
             --jq '{tagName: .tag_name, createdAt: .created_at}' 2>/dev/null || echo "")
 
           if [ -z "$LATEST_RELEASE" ]; then

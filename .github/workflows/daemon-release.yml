@@ -57,16 +57,16 @@ jobs:
       - name: Download Go dependencies
         working-directory: services/daemon
         env:
-          GONOSUMDB: github.com/RdHamilton/MTGA-Companion
-          GOPRIVATE: github.com/RdHamilton/MTGA-Companion
+          GONOSUMDB: github.com/RdHamilton/vault-mtg
+          GOPRIVATE: github.com/RdHamilton/vault-mtg
           GOFLAGS: -mod=mod
         run: go mod download
 
       - name: Run tests (pre-release gate)
         working-directory: services/daemon
         env:
-          GONOSUMDB: github.com/RdHamilton/MTGA-Companion
-          GOPRIVATE: github.com/RdHamilton/MTGA-Companion
+          GONOSUMDB: github.com/RdHamilton/vault-mtg
+          GOPRIVATE: github.com/RdHamilton/vault-mtg
         run: go test -race ./...
 
       - name: Resolve semver tag for GoReleaser
@@ -89,8 +89,8 @@ jobs:
           args: release --config services/daemon/.goreleaser.yml --clean
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          GONOSUMDB: github.com/RdHamilton/MTGA-Companion
-          GOPRIVATE: github.com/RdHamilton/MTGA-Companion
+          GONOSUMDB: github.com/RdHamilton/vault-mtg
+          GOPRIVATE: github.com/RdHamilton/vault-mtg
           GITHUB_WORKSPACE: ${{ github.workspace }}
           # Use the full daemon/v* tag so GoReleaser publishes the GitHub Release
           # at the correctly-namespaced tag, never squatting the bare v* namespace.
@@ -267,7 +267,7 @@ jobs:
           mkdir -p dmg-staging
           cp ${{ env.PKG }} dmg-staging/
           hdiutil create \
-            -volname "MTGA Companion Daemon" \
+            -volname "VaultMTG Daemon" \
             -srcfolder dmg-staging \
             -ov \
             -format UDZO \
