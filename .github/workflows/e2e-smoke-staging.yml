@@ -1,0 +1,113 @@
+name: E2E Smoke — Staging Rebuild Gate (R-17)
+
+# Reusable workflow: callable by the staging-rebuild-smoke-gate.yml (SMOKE-4)
+# in mtga-companion-infra. Runs the R-17 Playwright assertions against the live
+# staging environment — no local BFF, no Postgres service container.
+#
+# Issue: RdHamilton/vault-mtg#2343
+#
+# Inputs:
+#   base_url — SPA URL (https://stg-app.vaultmtg.app)
+#   bff_url  — BFF URL (https://staging-api.vaultmtg.app)
+#
+# Assertions (see frontend/tests/e2e/staging/r17-smoke.spec.ts):
+#   1. SPA loads at root — no blank page, no JS console error
+#   2. /sign-in renders the Clerk sign-in form
+#   3. fetch('<bff_url>/healthz') from inside the page returns 200 (CORS check)
+#   4. fetch('/api/v1/health/daemon') with no auth returns 401 (Clerk middleware check)
+#
+# Runtime target: < 5 minutes on ubuntu-latest.
+#
+# Artifact: playwright-report/ is uploaded on failure for debugging.
+
+on:
+  workflow_dispatch:
+    inputs:
+      base_url:
+        description: 'SPA URL to test (e.g. https://stg-app.vaultmtg.app)'
+        required: false
+        type: string
+        default: 'https://stg-app.vaultmtg.app'
+      bff_url:
+        description: 'BFF URL to test (e.g. https://staging-api.vaultmtg.app)'
+        required: false
+        type: string
+        default: 'https://staging-api.vaultmtg.app'
+
+  workflow_call:
+    inputs:
+      base_url:
+        description: 'SPA URL to test'
+        required: false
+        type: string
+        default: 'https://stg-app.vaultmtg.app'
+      bff_url:
+        description: 'BFF URL to test'
+        required: false
+        type: string
+        default: 'https://staging-api.vaultmtg.app'
+
+permissions:
+  contents: read
+
+jobs:
+  r17-playwright-smoke:
+    name: R-17 Playwright Smoke Gate (SMOKE-4)
+    runs-on: ubuntu-latest
+    # Hard cap: < 5 min per ## TIM SPEC contract.
+    timeout-minutes: 5
+
+    steps:
+      - name: Checkout vault-mtg
+        uses: actions/checkout@v6
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: '24'
+          cache: 'npm'
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install frontend dependencies
+        run: |
+          cd frontend
+          npm ci
+
+      - name: Cache Playwright browsers
+        id: playwright-cache
+        uses: actions/cache@v5
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-r17-${{ runner.os }}-${{ hashFiles('frontend/package-lock.json') }}
+          restore-keys: |
+            playwright-r17-${{ runner.os }}-
+            playwright-${{ runner.os }}-
+
+      - name: Install Playwright browsers (Chromium only)
+        if: steps.playwright-cache.outputs.cache-hit != 'true'
+        run: |
+          cd frontend
+          npx playwright install chromium --with-deps
+
+      - name: Install Playwright system dependencies (cached browser run)
+        if: steps.playwright-cache.outputs.cache-hit == 'true'
+        run: |
+          cd frontend
+          npx playwright install-deps chromium
+
+      - name: Run R-17 staging smoke suite
+        run: |
+          cd frontend
+          npx playwright test --config=playwright.r17-smoke.config.ts
+        env:
+          CI: true
+          R17_BASE_URL: ${{ inputs.base_url }}
+          R17_BFF_URL: ${{ inputs.bff_url }}
+
+      - name: Upload Playwright report (on failure)
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report-r17-smoke
+          path: frontend/playwright-report/
+          retention-days: 7
