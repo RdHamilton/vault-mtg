@@ -22,6 +22,7 @@
     "screenshots": "playwright test --project=screenshots",
     "test:staging": "playwright test --config=playwright.staging.config.ts",
     "test:e2e:staging-spa": "playwright test --config=playwright.staging-spa.config.ts",
+    "test:e2e:r17-smoke": "playwright test --config=playwright.r17-smoke.config.ts",
     "storybook": "storybook dev -p 6006",
     "build-storybook": "storybook build"
   },
