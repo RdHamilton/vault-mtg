@@ -56,9 +56,13 @@ jobs:
           sleep 10
         done
 
-    - name: Restart BFF service
+    # Restart the BFF service via restart-bff.sh, which sources deploy-env.sh
+    # to resolve BFF_SERVICE (currently "mtga-companion").  Both scripts are
+    # downloaded from S3 onto the EC2 instance before execution so the service
+    # name is never hardcoded in this workflow.
+    - name: Restart BFF service via restart-bff.sh
       run: |
-        SHELL_CMD="systemctl restart mtga-bff"
+        SHELL_CMD="aws s3 cp s3://${{ secrets.DEPLOY_BUCKET }}/scripts/deploy-env.sh /tmp/deploy-env.sh && aws s3 cp s3://${{ secrets.DEPLOY_BUCKET }}/scripts/restart-bff.sh /tmp/restart-bff.sh && chmod +x /tmp/restart-bff.sh && /tmp/restart-bff.sh"
         PARAMS=$(SHELL_CMD="$SHELL_CMD" python3 -c "import json, os; print('commands=' + json.dumps([os.environ['SHELL_CMD']]))")
         COMMAND_ID=$(aws ssm send-command \
           --instance-ids "${{ secrets.EC2_INSTANCE_ID }}" \
