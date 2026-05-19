@@ -153,6 +153,8 @@ jobs:
               "WebIdentityToken"
               "SecurityGroupIngress"
               "SecurityGroupEgress"
+              "ssm:"
+              "kms:"
             )
 
             for KEYWORD in "${CATCH_ALL_STRINGS[@]}"; do
