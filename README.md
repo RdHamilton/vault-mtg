@@ -6,7 +6,7 @@ A modern companion application for Magic: The Gathering Arena (MTGA). Track your
 
 ### Modern Web UI (v1.4)
 - **Browser-Based Interface**: React SPA with REST API backend - opens in your default browser
-- **Real-Time Updates**: Live statistics via WebSocket while you play MTGA
+- **Real-Time Updates**: Live statistics via SSE while you play MTGA
 - **Dark Theme**: Easy on the eyes during long gaming sessions
 - **Responsive Design**: Works on any screen size
 
