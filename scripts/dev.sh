@@ -3,6 +3,14 @@
 
 set -e
 
+# Required for local Go builds: the public proxy (proxy.golang.org) holds stale
+# pre-rename cached module versions, so `go build`/`go mod tidy`/`go test` will
+# fail with a 404 unless GOPRIVATE forces direct-from-git resolution. Exported
+# defensively here so this script works even if the developer hasn't run
+# `go env -w GOPRIVATE=github.com/RdHamilton/vault-mtg` once on their machine.
+# See ADR-023 Addendum II ("Immutability Principle") for the root cause.
+export GOPRIVATE=github.com/RdHamilton/vault-mtg
+
 # Colors for output
 GREEN='\033[0;32m'
 BLUE='\033[0;34m'

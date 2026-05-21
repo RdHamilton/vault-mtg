@@ -180,7 +180,7 @@ A modern companion application for Magic: The Gathering Arena (MTGA). Track your
 ## Prerequisites
 
 - **MTG Arena** must be installed and configured to enable detailed logging
-- **Go 1.25+** (for building from source)
+- **Go 1.25+** (for building from source) — also run `go env -w GOPRIVATE=github.com/RdHamilton/vault-mtg` once before your first build (see [Build From Source](#build-from-source) for why)
 - **Ollama** (optional) - For AI-powered natural language explanations
 
 ## Ollama Setup (Optional)
@@ -355,6 +355,16 @@ If you prefer not to use daemon mode, the GUI includes an embedded log poller th
 **Prerequisites**:
 - [Go 1.25+](https://go.dev/dl/)
 - [Node.js 20+](https://nodejs.org/) (for frontend)
+
+**One-time Go environment setup** (required for local Go builds):
+```bash
+# The public Go module proxy (proxy.golang.org) holds stale pre-rename cached
+# versions of this module. Without GOPRIVATE set, `go build`/`go mod tidy`
+# will fail with a cryptic 404 from proxy.golang.org. Setting GOPRIVATE
+# forces direct-from-git resolution and bypasses the checksum DB.
+go env -w GOPRIVATE=github.com/RdHamilton/vault-mtg
+```
+If you see `module github.com/RdHamilton/vault-mtg/...: reading https://proxy.golang.org/...: 404 Not Found`, run the command above and retry. See ADR-023 Addendum II ("Immutability Principle") for the root cause.
 
 **Clone and Build**:
 ```bash
