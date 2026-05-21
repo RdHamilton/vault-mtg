@@ -106,6 +106,70 @@ sed \
 info "Installed patched deploy-env.sh at $DEPLOY_ENV_STUB (env paths, port, sslmode redirected for local test)"
 
 # ===========================================================================
+# Critical value assertions — infra/config/deploy-env.sh (single source of truth)
+#
+# The v0.3.1 deploy incident (post-mortem Defect 1) was caused by an undetected
+# wrong systemd unit name; it was only caught because an engineer noticed a
+# prose mismatch in the PR description.  These assertions convert that class
+# of silent misconfiguration into a hard CI failure.
+#
+# Each assertion validates a critical fact in infra/config/deploy-env.sh.  If
+# any of these values is renamed or accidentally blanked, the deploy-chain
+# integration test must fail loudly with a descriptive message.
+#
+# The original deploy-env.sh (NOT the patched /tmp copy) is sourced here so
+# we validate the source-of-truth values that ship to production, not the
+# test-local overrides.
+# ===========================================================================
+info "Asserting critical deploy-env.sh values (source of truth)..."
+
+# Source the original deploy-env.sh in a subshell so its variables do not
+# pollute the rest of the harness (which uses the patched /tmp copy via the
+# scripts under test).  We capture each value via a one-shot subshell echo.
+# shellcheck source=infra/config/deploy-env.sh
+ASSERT_BFF_SERVICE=$(. "${REPO_ROOT}/infra/config/deploy-env.sh" && printf '%s' "${BFF_SERVICE:-}")
+# shellcheck source=infra/config/deploy-env.sh
+ASSERT_BFF_STAGING_SERVICE=$(. "${REPO_ROOT}/infra/config/deploy-env.sh" && printf '%s' "${BFF_STAGING_SERVICE:-}")
+# shellcheck source=infra/config/deploy-env.sh
+ASSERT_BFF_BINARY=$(. "${REPO_ROOT}/infra/config/deploy-env.sh" && printf '%s' "${BFF_BINARY:-}")
+# shellcheck source=infra/config/deploy-env.sh
+ASSERT_BFF_STAGING_BINARY=$(. "${REPO_ROOT}/infra/config/deploy-env.sh" && printf '%s' "${BFF_STAGING_BINARY:-}")
+# shellcheck source=infra/config/deploy-env.sh
+ASSERT_DB_APP_ROLE=$(. "${REPO_ROOT}/infra/config/deploy-env.sh" && printf '%s' "${DB_APP_ROLE:-}")
+# shellcheck source=infra/config/deploy-env.sh
+ASSERT_DB_STAGING_APP_ROLE=$(. "${REPO_ROOT}/infra/config/deploy-env.sh" && printf '%s' "${DB_STAGING_APP_ROLE:-}")
+# shellcheck source=infra/config/deploy-env.sh
+ASSERT_DB_STAGING_NAME=$(. "${REPO_ROOT}/infra/config/deploy-env.sh" && printf '%s' "${DB_STAGING_NAME:-}")
+
+assert_eq() {
+    # assert_eq <var-name> <actual> <expected>
+    local name="$1"; local actual="$2"; local expected="$3"
+    if [[ -z "$actual" ]]; then
+        fail "ASSERT FAILED: ${name} is empty/unset in infra/config/deploy-env.sh"
+    fi
+    if [[ "$actual" != "$expected" ]]; then
+        fail "ASSERT FAILED: ${name} expected '${expected}', got '${actual}' (infra/config/deploy-env.sh)"
+    fi
+}
+
+# infra/config/deploy-env.sh → BFF_SERVICE (systemd unit name for production BFF)
+assert_eq "BFF_SERVICE" "$ASSERT_BFF_SERVICE" "mtga-companion"
+# infra/config/deploy-env.sh → BFF_STAGING_SERVICE (systemd unit name for staging BFF)
+assert_eq "BFF_STAGING_SERVICE" "$ASSERT_BFF_STAGING_SERVICE" "mtga-bff-staging"
+# infra/config/deploy-env.sh → BFF_BINARY (production binary basename in /usr/local/bin)
+assert_eq "BFF_BINARY" "$ASSERT_BFF_BINARY" "mtga-bff"
+# infra/config/deploy-env.sh → BFF_STAGING_BINARY (staging binary basename in /usr/local/bin)
+assert_eq "BFF_STAGING_BINARY" "$ASSERT_BFF_STAGING_BINARY" "mtga-bff-staging"
+# infra/config/deploy-env.sh → DB_APP_ROLE (production Postgres role)
+assert_eq "DB_APP_ROLE" "$ASSERT_DB_APP_ROLE" "vaultmtg_app"
+# infra/config/deploy-env.sh → DB_STAGING_APP_ROLE (staging Postgres role)
+assert_eq "DB_STAGING_APP_ROLE" "$ASSERT_DB_STAGING_APP_ROLE" "vaultmtg_staging_app"
+# infra/config/deploy-env.sh → DB_STAGING_NAME (staging Postgres database name)
+assert_eq "DB_STAGING_NAME" "$ASSERT_DB_STAGING_NAME" "vaultmtg_staging"
+
+pass "Critical deploy-env.sh values match expected constants (BFF_SERVICE, BFF_STAGING_SERVICE, BFF_BINARY, BFF_STAGING_BINARY, DB_APP_ROLE, DB_STAGING_APP_ROLE, DB_STAGING_NAME)"
+
+# ===========================================================================
 # Dependency check
 # ===========================================================================
 for dep in docker psql migrate curl nc; do
