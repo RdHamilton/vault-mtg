@@ -201,7 +201,7 @@ docker run -d \
 
 # Wait for Postgres to be ready (up to 30 s).
 READY=0
-for i in $(seq 1 30); do
+for _i in $(seq 1 30); do
     if PGPASSWORD="$PG_PASSWORD" psql -h 127.0.0.1 -p "$PG_PORT" -U "$PG_USER" -d "$PG_DB" -c "SELECT 1" >/dev/null 2>&1; then
         READY=1
         break
