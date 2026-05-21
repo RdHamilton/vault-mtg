@@ -1,7 +1,6 @@
 #!/usr/bin/env bash
 # provision-staging-env.sh
 # Renders the staging env file from SSM parameter hierarchy.
-# Reads from /vaultmtg/staging/* paths.
 # Runs ON the EC2 instance via SSM RunShellScript.
 #
 # Secrets are read on the EC2 instance using the instance IAM role --
@@ -9,6 +8,25 @@
 #
 # SSM parameter names and file paths are sourced from
 # infra/config/deploy-env.sh — do NOT hardcode them here.
+#
+# SSM parameters read (all from /vaultmtg/staging/* — matches ec2.yml IAM Statement 3):
+#   /vaultmtg/staging/PORT
+#   /vaultmtg/staging/ALLOWED_ORIGINS
+#   /vaultmtg/staging/CLERK_PUBLISHABLE_KEY
+#   /vaultmtg/staging/CLERK_SECRET_KEY        (SecureString, --with-decryption)
+#   /vaultmtg/staging/CLERK_FRONTEND_API
+#   /vaultmtg/staging/db-secret-arn
+#   /vaultmtg/staging/db-endpoint
+#   /vaultmtg/staging/db-name
+#   /vaultmtg/staging/resend-api-key          (SecureString, --with-decryption)
+#   /vaultmtg/staging/sentry-bff-dsn
+#   /vaultmtg/staging/discord-bot-token       (SecureString, --with-decryption)
+#   /vaultmtg/staging/discord-guild-id
+#   /vaultmtg/staging/mailchimp-api-key       (SecureString, --with-decryption)
+#   /vaultmtg/staging/mailchimp-list-id
+#   /vaultmtg/staging/crisp-website-id
+#
+# Any new parameter added here MUST also be granted in ec2.yml IAM Statement 3.
 
 set -e
 
