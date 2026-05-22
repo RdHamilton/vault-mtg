@@ -1,5 +1,12 @@
 //go:build windows
 
+// NOTE: This file intentionally references the legacy "MTGA-Companion-Daemon"
+// string. That is the actual Windows Task Scheduler task name created by
+// pre-rename installs; the uninstall path must delete it verbatim to clean up
+// orphaned legacy tasks during an upgrade. It is NOT a stale repo reference and
+// must not be renamed. This file is excluded from the stale-repo-grep gate in
+// .github/workflows/process-gates.yml.
+
 package localapi
 
 import (

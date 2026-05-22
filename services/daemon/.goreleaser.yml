@@ -123,8 +123,8 @@ builds:
     binary: vaultmtg-daemon
     env:
       - CGO_ENABLED=0
-      - GONOSUMDB=github.com/RdHamilton/MTGA-Companion
-      - GOPRIVATE=github.com/RdHamilton/MTGA-Companion
+      - GONOSUMDB=github.com/RdHamilton/vault-mtg
+      - GOPRIVATE=github.com/RdHamilton/vault-mtg
     goos:
       - darwin
       - windows
@@ -242,7 +242,7 @@ checksum:
 release:
   github:
     owner: RdHamilton
-    name: MTGA-Companion
+    name: vault-mtg
   # Tag format: daemon/v0.3.1 -- strip the "daemon/" prefix for the release name.
   name_template: "Daemon {{ .Tag }}"
   draft: false

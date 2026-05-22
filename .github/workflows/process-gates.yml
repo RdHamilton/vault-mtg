@@ -149,19 +149,18 @@ jobs:
   #
   # Excludes:
   #   - scripts/corpus-lint.sh (checks agents corpus, mentions old names for context)
-  #   - .claude/settings.json (legacy hook prompt with old path — tracked separately)
-  #   - services/daemon/ files that reference the legacy scheduled task name
-  #     (MTGA-Companion-Daemon) — these are intentional legacy-migration code
+  #   - .claude/ (legacy hook prompts with old paths — tracked separately)
   #   - docs/ (historical documents tracking the rename project)
+  #   - services/daemon/internal/localapi/uninstall_windows.go and
+  #     uninstall_windows_test.go — reference the legacy "MTGA-Companion-Daemon"
+  #     scheduled task name verbatim; this is intentional legacy-migration
+  #     cleanup code and must not be renamed.
   #   - .github/workflows/daemon-install-lifecycle.yml (intentional TODO comment
-  #     for migration scenario test)
-  #   - .github/actions/build-bff/action.yml (GONOSUMDB stale ref — tracked in #2342)
-  #   - services/daemon/.goreleaser.yml (stale ref — tracked in #2342)
+  #     for the migration scenario test).
   #
-  # RULE-INFRA-01: continue-on-error: true because of pre-existing violations in
-  # frontend/src/components/AboutDialog.tsx and associated test — these are
-  # GitHub URLs that need to be updated in a separate rename PR (#2342 carry-forward).
-  # Set to false once all violations are resolved.
+  # RULE-INFRA-01: continue-on-error: true until #2478 AC6 flips it to hard-fail.
+  # As of #2478 AC3-AC5 all source/CI/daemon-config violations are resolved; the
+  # only remaining matches are the intentionally-excluded legacy-task files above.
   # ---------------------------------------------------------------------------
   stale-repo-grep:
     name: Stale repo references (MTGA-Companion / mtga-companion-web)
@@ -189,6 +188,9 @@ jobs:
             --exclude-dir=docs \
             --exclude="corpus-lint.sh" \
             --exclude="process-gates.yml" \
+            --exclude="uninstall_windows.go" \
+            --exclude="uninstall_windows_test.go" \
+            --exclude="daemon-install-lifecycle.yml" \
             --exclude-dir=".claude" \
             2>/dev/null || true)
 
