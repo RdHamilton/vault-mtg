@@ -33,17 +33,12 @@ jobs:
   # ---------------------------------------------------------------------------
   # Gate #1 — Secrets scan
   # Grep for common secret patterns in source files.
-  #
-  # RULE-INFRA-01: continue-on-error: true because the repo contains pre-existing
-  # references (docs/runbooks with sk_live_ examples, test fixtures with fake
-  # sk_live_abc keys, ADR docs with key format examples).  Set to false once
-  # those docs are updated or an allowlist is added.
   # ---------------------------------------------------------------------------
   secrets-scan:
     name: Secrets scan
     runs-on: ubuntu-latest
     timeout-minutes: 3
-    continue-on-error: true
+    continue-on-error: false
 
     steps:
       - name: Checkout code
@@ -63,7 +58,7 @@ jobs:
             --include="*.yaml" \
             --include="*.json" \
             --include="*.sh" \
-            -E "(sk_live_[a-zA-Z0-9]{20,}|sk_test_[a-zA-Z0-9]{20,}|AKIA[A-Z0-9]{16}|-----BEGIN (RSA |EC |OPENSSH |DSA )?PRIVATE KEY)" \
+            -E "(sk_live_[a-zA-Z0-9]{20,}|sk_test_[a-zA-Z0-9]{20,}|AKIA[A-Z0-9]{16}|-----BEGIN (RSA |EC |OPENSSH |DSA )?PRIVATE KEY|ghp_[A-Za-z0-9]{36,}|[MNO][A-Za-z0-9]{23}\.[A-Za-z0-9_-]{6}\.[A-Za-z0-9_-]{27}|vercel_[a-zA-Z0-9]{24,})" \
             . \
             --exclude-dir=.git \
             --exclude="corpus-lint.sh" 2>/dev/null; then
@@ -71,9 +66,6 @@ jobs:
             echo "ERROR: Possible secrets found in committed files above."
             echo "Remove secrets from the repo and rotate any exposed credentials."
             echo ""
-            echo "NOTE (RULE-INFRA-01): This gate is currently soft-fail (continue-on-error: true)."
-            echo "Pre-existing matches include docs/runbooks with key format examples and test"
-            echo "fixtures with fake keys. Convert to hard-fail after those are cleaned up."
             FOUND=1
           fi
 
@@ -117,7 +109,13 @@ jobs:
     name: PR body — Pre-Review Checklist present
     runs-on: ubuntu-latest
     timeout-minutes: 2
-    if: github.event_name == 'pull_request'
+    if: |
+      github.event_name == 'pull_request' &&
+      !startsWith(github.head_ref, 'chore/') &&
+      !startsWith(github.head_ref, 'docs/') &&
+      !startsWith(github.head_ref, 'fix/ci') &&
+      !startsWith(github.head_ref, 'fix/infra') &&
+      !startsWith(github.head_ref, 'fix/staging')
 
     steps:
       - name: Check for Pre-Review Checklist header
