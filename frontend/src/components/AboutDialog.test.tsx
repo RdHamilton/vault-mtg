@@ -220,7 +220,7 @@ describe('AboutDialog', () => {
       render(<AboutDialog isOpen={true} onClose={vi.fn()} />);
 
       const link = screen.getByText('GitHub Repository').closest('a');
-      expect(link).toHaveAttribute('href', 'https://github.com/RdHamilton/MTGA-Companion');
+      expect(link).toHaveAttribute('href', 'https://github.com/RdHamilton/vault-mtg');
       expect(link).toHaveAttribute('target', '_blank');
       expect(link).toHaveAttribute('rel', 'noopener noreferrer');
     });
@@ -229,7 +229,7 @@ describe('AboutDialog', () => {
       render(<AboutDialog isOpen={true} onClose={vi.fn()} />);
 
       const link = screen.getByText('Report an Issue').closest('a');
-      expect(link).toHaveAttribute('href', 'https://github.com/RdHamilton/MTGA-Companion/issues');
+      expect(link).toHaveAttribute('href', 'https://github.com/RdHamilton/vault-mtg/issues');
       expect(link).toHaveAttribute('target', '_blank');
       expect(link).toHaveAttribute('rel', 'noopener noreferrer');
     });
@@ -238,7 +238,7 @@ describe('AboutDialog', () => {
       render(<AboutDialog isOpen={true} onClose={vi.fn()} />);
 
       const link = screen.getByText('Documentation').closest('a');
-      expect(link).toHaveAttribute('href', 'https://github.com/RdHamilton/MTGA-Companion/wiki');
+      expect(link).toHaveAttribute('href', 'https://github.com/RdHamilton/vault-mtg/wiki');
       expect(link).toHaveAttribute('target', '_blank');
       expect(link).toHaveAttribute('rel', 'noopener noreferrer');
     });

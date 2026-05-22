@@ -83,7 +83,7 @@ const AboutDialog = ({ isOpen, onClose }: AboutDialogProps) => {
             <h4>Links</h4>
             <div className="link-buttons">
               <a
-                href="https://github.com/RdHamilton/MTGA-Companion"
+                href="https://github.com/RdHamilton/vault-mtg"
                 target="_blank"
                 rel="noopener noreferrer"
                 className="link-button"
@@ -91,7 +91,7 @@ const AboutDialog = ({ isOpen, onClose }: AboutDialogProps) => {
                 GitHub Repository
               </a>
               <a
-                href="https://github.com/RdHamilton/MTGA-Companion/issues"
+                href="https://github.com/RdHamilton/vault-mtg/issues"
                 target="_blank"
                 rel="noopener noreferrer"
                 className="link-button"
@@ -99,7 +99,7 @@ const AboutDialog = ({ isOpen, onClose }: AboutDialogProps) => {
                 Report an Issue
               </a>
               <a
-                href="https://github.com/RdHamilton/MTGA-Companion/wiki"
+                href="https://github.com/RdHamilton/vault-mtg/wiki"
                 target="_blank"
                 rel="noopener noreferrer"
                 className="link-button"
