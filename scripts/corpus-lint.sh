@@ -8,7 +8,7 @@
 #
 # Invariants enforced here (from .claude/agents/INVARIANTS.md):
 #   I-01  Stale branch-creation pattern (git checkout main && git pull)
-#   I-07  Stale repo references (MTGA-Companion / mtga-companion-web)
+#   I-13  Stale repo references (MTGA-Companion / mtga-companion-web)
 #   SIZE  Persona file over 13 KB (prep for P-07 slim-down)
 #   DUP   Re-duplicated rule family: Local Verification defined outside _shared.md
 #   DUP   Re-duplicated rule family: standalone "GitHub shows you as RdHamilton" outside _shared.md
@@ -72,7 +72,7 @@ pass() {
 }
 
 # ---------------------------------------------------------------------------
-# Check I-07a: Stale repo references — RdHamilton/MTGA-Companion
+# Check I-13: Stale repo references — RdHamilton/MTGA-Companion
 # Exclude: _team.md (carries the "formerly MTGA-Companion" note for context),
 #          pam.md (carries the same historical note),
 #          orchestration.md (documents legacy worktree paths for context)
