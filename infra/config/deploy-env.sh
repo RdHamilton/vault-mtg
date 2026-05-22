@@ -100,39 +100,39 @@ DB_STAGING_NAME="vaultmtg_staging"
 #   Mismatch impact: get-parameter returns NoSuchParameter; provisioning
 #   step fails and the deploy aborts (or silently skips the env write).
 # ───────────────────────────────────────────────────────────────────────────
-SSM_PROD_DB_SECRET_ARN="/vaultmtg/production/db-secret-arn"
-SSM_PROD_DB_ENDPOINT="/vaultmtg/production/db-endpoint"
-SSM_PROD_DB_NAME="/vaultmtg/production/db-name"
-SSM_PROD_ALLOWED_ORIGINS="/vaultmtg/production/ALLOWED_ORIGINS"
-SSM_PROD_CLERK_SECRET_KEY="/vaultmtg/production/CLERK_SECRET_KEY"
-SSM_PROD_CLERK_PUBLISHABLE_KEY="/vaultmtg/production/CLERK_PUBLISHABLE_KEY"
-SSM_PROD_CLERK_FRONTEND_API="/vaultmtg/production/CLERK_FRONTEND_API"
-SSM_PROD_PORT="/vaultmtg/production/PORT"
+SSM_PROD_DB_SECRET_ARN="/vaultmtg/app/production/db-secret-arn"
+SSM_PROD_DB_ENDPOINT="/vaultmtg/app/production/db-endpoint"
+SSM_PROD_DB_NAME="/vaultmtg/app/production/db-name"
+SSM_PROD_ALLOWED_ORIGINS="/vaultmtg/app/production/ALLOWED_ORIGINS"
+SSM_PROD_CLERK_SECRET_KEY="/vaultmtg/app/production/CLERK_SECRET_KEY"
+SSM_PROD_CLERK_PUBLISHABLE_KEY="/vaultmtg/app/production/CLERK_PUBLISHABLE_KEY"
+SSM_PROD_CLERK_FRONTEND_API="/vaultmtg/app/production/CLERK_FRONTEND_API"
+SSM_PROD_PORT="/vaultmtg/app/production/PORT"
 
 # ───────────────────────────────────────────────────────────────────────────
 # SSM PARAMETER PATHS — STAGING
 # ───────────────────────────────────────────────────────────────────────────
-SSM_STAGING_DB_SECRET_ARN="/vaultmtg/staging/db-secret-arn"
-SSM_STAGING_DB_ENDPOINT="/vaultmtg/staging/db-endpoint"
-SSM_STAGING_DB_NAME="/vaultmtg/staging/db-name"
-SSM_STAGING_DB_PASSWORD="/vaultmtg/staging/db-password"
-SSM_STAGING_DATABASE_URL="/vaultmtg/staging/database-url"
-SSM_STAGING_ALLOWED_ORIGINS="/vaultmtg/staging/ALLOWED_ORIGINS"
-SSM_STAGING_CLERK_SECRET_KEY="/vaultmtg/staging/CLERK_SECRET_KEY"
-SSM_STAGING_CLERK_PUBLISHABLE_KEY="/vaultmtg/staging/CLERK_PUBLISHABLE_KEY"
-SSM_STAGING_CLERK_FRONTEND_API="/vaultmtg/staging/CLERK_FRONTEND_API"
-SSM_STAGING_PORT="/vaultmtg/staging/PORT"
+SSM_STAGING_DB_SECRET_ARN="/vaultmtg/app/staging/db-secret-arn"
+SSM_STAGING_DB_ENDPOINT="/vaultmtg/app/staging/db-endpoint"
+SSM_STAGING_DB_NAME="/vaultmtg/app/staging/db-name"
+SSM_STAGING_DB_PASSWORD="/vaultmtg/app/staging/db-password"
+SSM_STAGING_DATABASE_URL="/vaultmtg/app/staging/database-url"
+SSM_STAGING_ALLOWED_ORIGINS="/vaultmtg/app/staging/ALLOWED_ORIGINS"
+SSM_STAGING_CLERK_SECRET_KEY="/vaultmtg/app/staging/CLERK_SECRET_KEY"
+SSM_STAGING_CLERK_PUBLISHABLE_KEY="/vaultmtg/app/staging/CLERK_PUBLISHABLE_KEY"
+SSM_STAGING_CLERK_FRONTEND_API="/vaultmtg/app/staging/CLERK_FRONTEND_API"
+SSM_STAGING_PORT="/vaultmtg/app/staging/PORT"
 
 # ───────────────────────────────────────────────────────────────────────────
 # SSM PARAMETER PATHS — VAULTMTG SHARED SERVICES
 # ───────────────────────────────────────────────────────────────────────────
-SSM_VAULTMTG_STAGING_RESEND_API_KEY="/vaultmtg/staging/resend-api-key"
-SSM_VAULTMTG_STAGING_SENTRY_DSN="/vaultmtg/staging/sentry-bff-dsn"
-SSM_VAULTMTG_STAGING_DISCORD_BOT_TOKEN="/vaultmtg/staging/discord-bot-token"
-SSM_VAULTMTG_STAGING_DISCORD_GUILD_ID="/vaultmtg/staging/discord-guild-id"
-SSM_VAULTMTG_STAGING_MAILCHIMP_API_KEY="/vaultmtg/staging/mailchimp-api-key"
-SSM_VAULTMTG_STAGING_MAILCHIMP_LIST_ID="/vaultmtg/staging/mailchimp-list-id"
-SSM_VAULTMTG_STAGING_CRISP_WEBSITE_ID="/vaultmtg/staging/crisp-website-id"
+SSM_VAULTMTG_STAGING_RESEND_API_KEY="/vaultmtg/app/staging/resend-api-key"
+SSM_VAULTMTG_STAGING_SENTRY_DSN="/vaultmtg/app/staging/sentry-bff-dsn"
+SSM_VAULTMTG_STAGING_DISCORD_BOT_TOKEN="/vaultmtg/app/staging/discord-bot-token"
+SSM_VAULTMTG_STAGING_DISCORD_GUILD_ID="/vaultmtg/app/staging/discord-guild-id"
+SSM_VAULTMTG_STAGING_MAILCHIMP_API_KEY="/vaultmtg/app/staging/mailchimp-api-key"
+SSM_VAULTMTG_STAGING_MAILCHIMP_LIST_ID="/vaultmtg/app/staging/mailchimp-list-id"
+SSM_VAULTMTG_STAGING_CRISP_WEBSITE_ID="/vaultmtg/app/staging/crisp-website-id"
 
 # ───────────────────────────────────────────────────────────────────────────
 # EC2 / INFRASTRUCTURE FACTS
