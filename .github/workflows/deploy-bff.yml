@@ -163,7 +163,7 @@ jobs:
         if [ "${{ inputs.environment }}" = "staging" ]; then
           PROVISION_CMD="${FETCH_CONFIG} && aws s3 cp s3://${RESOLVED_BUCKET}/scripts/provision-staging-env.sh /tmp/provision-staging-env.sh && chmod +x /tmp/provision-staging-env.sh && /tmp/provision-staging-env.sh"
         else
-          PROVISION_CMD="${FETCH_CONFIG} && aws s3 cp s3://${RESOLVED_BUCKET}/scripts/provision-env.sh /tmp/provision-env.sh && chmod +x /tmp/provision-env.sh && aws s3 cp s3://${RESOLVED_BUCKET}/scripts/provision-db-url.sh /tmp/provision-db-url.sh && chmod +x /tmp/provision-db-url.sh && /tmp/provision-env.sh ALLOWED_ORIGINS /vaultmtg/production/ALLOWED_ORIGINS && /tmp/provision-db-url.sh && /tmp/provision-env.sh CLERK_SECRET_KEY /vaultmtg/production/CLERK_SECRET_KEY --with-decryption"
+          PROVISION_CMD="${FETCH_CONFIG} && aws s3 cp s3://${RESOLVED_BUCKET}/scripts/provision-env.sh /tmp/provision-env.sh && chmod +x /tmp/provision-env.sh && aws s3 cp s3://${RESOLVED_BUCKET}/scripts/provision-db-url.sh /tmp/provision-db-url.sh && chmod +x /tmp/provision-db-url.sh && /tmp/provision-env.sh ALLOWED_ORIGINS /vaultmtg/app/production/ALLOWED_ORIGINS && /tmp/provision-db-url.sh && /tmp/provision-env.sh CLERK_SECRET_KEY /vaultmtg/app/production/CLERK_SECRET_KEY --with-decryption"
         fi
 
         COMMAND_ID=$(aws ssm send-command \
