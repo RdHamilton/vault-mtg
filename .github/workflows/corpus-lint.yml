@@ -1,0 +1,43 @@
+name: Corpus Lint
+
+# Runs corpus-lint.sh on every PR that touches agent definitions,
+# the lint script itself, or vault-mtg-docs (if doc checks are added later).
+#
+# The agent corpus lives outside the git repo (at ~/.claude/agents/ on the
+# developer machine). On CI the corpus is absent, so the job runs with
+# --skip-if-missing and exits 0. This validates script syntax + CI wiring
+# on every PR. Full corpus validation runs locally before opening a PR.
+#
+# S-07 note: this workflow file itself is in .github/workflows/ — Sarah
+# security review is required for any PR that modifies this file.
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - '.claude/agents/**'
+      - 'scripts/corpus-lint.sh'
+      - 'vault_mtg_docs/**'
+
+concurrency:
+  group: corpus-lint-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  corpus-lint:
+    name: Corpus Lint
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Run corpus-lint
+        # AGENTS_DIR is not present on CI runners — script exits 0 via --skip-if-missing.
+        # To run the full lint locally: bash scripts/corpus-lint.sh
+        run: bash scripts/corpus-lint.sh --skip-if-missing
+        env:
+          AGENTS_DIR: ${{ github.workspace }}/.claude/agents
