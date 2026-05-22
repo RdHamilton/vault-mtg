@@ -224,6 +224,10 @@ Architectural Notes: [Constraints, patterns, context]
 
 ---
 
+## Ticket Filing (Infra / Security / Daemon)
+
+Before moving any infra, security, or daemon ticket to `Todo`: run the recon steps in `vault-mtg-docs/engineering/runbooks/ticket-enrichment.md` and add a `## Dispatch Readiness` section to the ticket body. An unenriched ticket is `Blocked`, not `Todo`.
+
 ## Task Completion Protocol
 
 After any task: (1) append changelog entry to `.claude/agents/changelogs/.pending/`; (2) update project plan at `~/.claude/plans/` if one exists; (3) comment + move ticket to Done per `_shared.md`; (4) brief Pam to file follow-on tickets for all findings. Not done until all four are complete.
