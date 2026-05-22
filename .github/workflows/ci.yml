@@ -413,7 +413,7 @@ jobs:
         output-path: bin/mtga-bff
 
     - name: Upload BFF binary artifact
-      uses: actions/upload-artifact@v4
+      uses: actions/upload-artifact@v7
       with:
         name: mtga-bff-binary
         path: bin/mtga-bff
@@ -491,7 +491,7 @@ jobs:
 
     - name: Upload blob report shard
       if: always()
-      uses: actions/upload-artifact@v4
+      uses: actions/upload-artifact@v7
       with:
         name: blob-report-${{ matrix.shard }}
         path: frontend/blob-report
@@ -534,7 +534,7 @@ jobs:
       run: cd frontend && npx playwright merge-reports --reporter=html ./all-blob-reports
 
     - name: Upload merged HTML report
-      uses: actions/upload-artifact@v4
+      uses: actions/upload-artifact@v7
       with:
         name: playwright-e2e-report
         path: frontend/playwright-report
