@@ -534,3 +534,37 @@ func TestLoad_PostHogAPIKey_FromEnv(t *testing.T) {
 		t.Errorf("expected trimmed PostHogAPIKey 'phc_testkey123', got %q", cfg.PostHogAPIKey)
 	}
 }
+
+// TestLoad_GitCommit_EmptyWhenUnset verifies that when GIT_COMMIT is not set
+// Config.GitCommit is an empty string (Sentry Release omitted).
+func TestLoad_GitCommit_EmptyWhenUnset(t *testing.T) {
+	t.Setenv("MTGA_ENV", "development")
+	t.Setenv("DATABASE_URL", "")
+	t.Setenv("GIT_COMMIT", "")
+
+	cfg, err := config.Load()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if cfg.GitCommit != "" {
+		t.Errorf("expected empty GitCommit when GIT_COMMIT unset, got %q", cfg.GitCommit)
+	}
+}
+
+// TestLoad_GitCommit_FromEnv verifies that GIT_COMMIT is surfaced as
+// Config.GitCommit with leading/trailing whitespace trimmed.
+func TestLoad_GitCommit_FromEnv(t *testing.T) {
+	t.Setenv("MTGA_ENV", "development")
+	t.Setenv("DATABASE_URL", "")
+	t.Setenv("GIT_COMMIT", "  abc123def456  ")
+
+	cfg, err := config.Load()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if cfg.GitCommit != "abc123def456" {
+		t.Errorf("expected trimmed GitCommit 'abc123def456', got %q", cfg.GitCommit)
+	}
+}

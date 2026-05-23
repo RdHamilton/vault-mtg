@@ -94,11 +94,19 @@ func main() {
 	// When empty, Sentry is disabled — all SDK calls become no-ops.
 	// The DSN is never logged.
 	if cfg.SentryDSN != "" {
-		if err := sentry.Init(sentry.ClientOptions{
+		sentryOpts := sentry.ClientOptions{
 			Dsn:              cfg.SentryDSN,
 			Environment:      cfg.Env,
 			TracesSampleRate: 0.1,
-		}); err != nil {
+		}
+		// Release correlates Sentry events to a specific deployed revision.
+		// The GIT_COMMIT env var is written to the env file by the deploy
+		// pipeline; when absent (local dev or pre-#2363 deploys) Sentry
+		// initialises without a release tag, which is safe.
+		if cfg.GitCommit != "" {
+			sentryOpts.Release = cfg.GitCommit
+		}
+		if err := sentry.Init(sentryOpts); err != nil {
 			log.Fatalf("sentry.Init: %v", err)
 		}
 		// Flush buffered events before the process exits.

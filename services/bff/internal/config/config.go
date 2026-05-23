@@ -107,6 +107,16 @@ type Config struct {
 	// client is used.  This value must NEVER be logged or included in any
 	// error response body.
 	PostHogAPIKey string
+
+	// GitCommit is the Git SHA of the deployed revision.  Sourced from the
+	// GIT_COMMIT environment variable, which the deploy pipeline writes into
+	// the BFF env file alongside the other provisioned secrets.
+	//
+	// When non-empty it is passed to the Sentry SDK as the Release field so
+	// that error events are correlated to a specific build in the Sentry UI.
+	// When empty (e.g. local development or a pre-#2363 deploy) Sentry
+	// initialises without a Release tag — this is safe and expected.
+	GitCommit string
 }
 
 // Load reads configuration from environment variables, applies defaults, and
@@ -166,6 +176,7 @@ func Load() (*Config, error) {
 		ClerkFrontendAPI:                    strings.TrimSpace(os.Getenv("CLERK_FRONTEND_API")),
 		SentryDSN:                           strings.TrimSpace(os.Getenv("SENTRY_DSN")),
 		PostHogAPIKey:                       strings.TrimSpace(os.Getenv("POSTHOG_API_KEY")),
+		GitCommit:                           strings.TrimSpace(os.Getenv("GIT_COMMIT")),
 	}
 
 	if raw := os.Getenv("DRAFT_RATINGS_STALENESS_THRESHOLD_HOURS"); raw != "" {
