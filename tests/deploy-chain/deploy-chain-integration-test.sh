@@ -155,7 +155,7 @@ assert_eq() {
 # infra/config/deploy-env.sh → BFF_SERVICE (systemd unit name for production BFF)
 assert_eq "BFF_SERVICE" "$ASSERT_BFF_SERVICE" "mtga-companion"
 # infra/config/deploy-env.sh → BFF_STAGING_SERVICE (systemd unit name for staging BFF)
-assert_eq "BFF_STAGING_SERVICE" "$ASSERT_BFF_STAGING_SERVICE" "mtga-bff-staging"
+assert_eq "BFF_STAGING_SERVICE" "$ASSERT_BFF_STAGING_SERVICE" "vault-mtg-bff-staging"
 # infra/config/deploy-env.sh → BFF_BINARY (production binary basename in /usr/local/bin)
 assert_eq "BFF_BINARY" "$ASSERT_BFF_BINARY" "mtga-bff"
 # infra/config/deploy-env.sh → BFF_STAGING_BINARY (staging binary basename in /usr/local/bin)

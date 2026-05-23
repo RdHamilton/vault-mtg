@@ -43,7 +43,7 @@ SSM_CLERK_FRONTEND_PARAM="${SSM_CLERK_FRONTEND_PARAM:-/vaultmtg/staging/CLERK_FR
 # EC2 instance and BFF runtime paths.
 EC2_INSTANCE_ID="${EC2_INSTANCE_ID:-i-065351fbb99da2d22}"
 BFF_ENV_FILE="${BFF_ENV_FILE:-/etc/mtga-companion-staging/env}"
-BFF_SYSTEMD_UNIT="${BFF_SYSTEMD_UNIT:-mtga-bff-staging}"
+BFF_SYSTEMD_UNIT="${BFF_SYSTEMD_UNIT:-vault-mtg-bff-staging}"
 
 # ── coloring ──────────────────────────────────────────────────────────────────
 if [[ -t 1 ]]; then

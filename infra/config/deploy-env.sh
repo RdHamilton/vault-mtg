@@ -30,7 +30,7 @@ DEPLOY_REGION="us-east-1"
 #   Mismatch impact: systemctl restart fails; deploy silently does nothing
 # ───────────────────────────────────────────────────────────────────────────
 BFF_SERVICE="mtga-companion"
-BFF_STAGING_SERVICE="mtga-bff-staging"
+BFF_STAGING_SERVICE="vault-mtg-bff-staging"
 
 # ───────────────────────────────────────────────────────────────────────────
 # BINARY NAMES (installed under /usr/local/bin/)
