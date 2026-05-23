@@ -55,17 +55,6 @@ export default defineConfig({
     // Chromium headless — fastest option for CI; mirrors staging user traffic.
     ...devices['Desktop Chrome'],
 
-    // Allow self-signed / hostname-mismatched TLS certs on staging.
-    // The staging BFF (staging-api.vaultmtg.app) currently presents the
-    // production cert (api.vaultmtg.app). Without this, in-browser fetch()
-    // calls and Playwright navigations reject the cert entirely, preventing
-    // the CORS and auth-rejection smoke checks from receiving any HTTP status.
-    // This flag is safe here because:
-    //   (a) this config only targets the staging environment, never production,
-    //   (b) the BFF CORS assertion still validates allowed-origin behaviour,
-    //   (c) the 401 assertion still validates Clerk middleware behaviour.
-    ignoreHTTPSErrors: true,
-
     // Collect trace on failure for debugging.
     trace: 'on-first-retry',
 

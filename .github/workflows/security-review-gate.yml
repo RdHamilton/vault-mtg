@@ -192,37 +192,86 @@ jobs:
           echo "S-07 gate IS REQUIRED for PR #${PR_NUMBER}"
           echo "Reason: ${{ steps.gate_required.outputs.reason }}"
           echo ""
+
+          # ------------------------------------------------------------------
+          # 1. Resolve last-push timestamp for the PR head commit.
+          #    Using the commit committer date (UTC ISO8601) rather than PR
+          #    updated_at, which changes on label/assignee mutations unrelated
+          #    to a code push.
+          # ------------------------------------------------------------------
+          HEAD_SHA=$(gh api "repos/${REPO}/pulls/${PR_NUMBER}" \
+            --jq '.head.sha' 2>/dev/null || echo "")
+          LAST_PUSH_TIMESTAMP=$(gh api "repos/${REPO}/commits/${HEAD_SHA}" \
+            --jq '.commit.committer.date' 2>/dev/null || echo "")
+
+          echo "Head SHA:             ${HEAD_SHA}"
+          echo "Last push timestamp:  ${LAST_PUSH_TIMESTAMP}"
+          echo ""
           echo "Scanning PR comments for Sarah's security review verdict..."
 
-          # jq selects comments that:
-          #   1. Contain the S-07 SOP header string
-          #   2. Have a line that is exactly "VERDICT: APPROVED" (stripped of CR/spaces)
-          # Output format: "<comment_id> <author_login>"
-          # Newlines in bodies are safe -- jq handles JSON string escaping internally.
+          # ------------------------------------------------------------------
+          # 2. Find the most-recent matching APPROVED comment.
+          #    jq selects comments that:
+          #      a. Contain the S-07 SOP header string
+          #      b. Have a line that is exactly "VERDICT: APPROVED" (stripped of
+          #         CR/spaces) OR the bolded variant "**VERDICT: APPROVED**"
+          #    Output format: "<comment_id> <author_login> <created_at>"
+          #    Newlines in bodies are safe -- jq handles JSON string escaping.
+          # ------------------------------------------------------------------
           MATCH=$(gh api "repos/${REPO}/issues/${PR_NUMBER}/comments" \
             --paginate \
             --jq '.[] |
               select(
                 (.body | contains("## S-07 Security Review")) and
                 (.body | split("\n") |
-                  map(ltrimstr("\r") | ltrimstr(" ") | rtrimstr(" ")) |
+                  map(ltrimstr("\r") | ltrimstr(" ") | rtrimstr(" ") |
+                      ltrimstr("**") | rtrimstr("**")) |
                   any(. == "VERDICT: APPROVED"))
               ) |
-              "\(.id) \(.user.login)"' \
-            2>/dev/null | head -1 || echo "")
+              "\(.id) \(.user.login) \(.created_at)"' \
+            2>/dev/null | tail -1 || echo "")
 
           echo "Match result: ${MATCH}"
 
-          if [ -n "${MATCH}" ]; then
+          if [ -z "${MATCH}" ]; then
+            echo "No matching APPROVED comment found."
+            echo "approved=false" >> "$GITHUB_OUTPUT"
+          else
             COMMENT_ID=$(echo "${MATCH}" | cut -d' ' -f1)
             APPROVER=$(echo "${MATCH}" | cut -d' ' -f2)
-            {
-              echo "approved=true"
-              echo "approver=${APPROVER}"
-              echo "comment_id=${COMMENT_ID}"
-            } >> "$GITHUB_OUTPUT"
-          else
-            echo "approved=false" >> "$GITHUB_OUTPUT"
+            COMMENT_TIMESTAMP=$(echo "${MATCH}" | cut -d' ' -f3)
+
+            echo "Comment ID:        ${COMMENT_ID}"
+            echo "Approver:          ${APPROVER}"
+            echo "Comment timestamp: ${COMMENT_TIMESTAMP}"
+
+            # ------------------------------------------------------------------
+            # 3. Staleness check: APPROVED comment must post-date last push.
+            #    Both timestamps are UTC ISO8601; compare as UTC epoch via python3
+            #    for cross-platform safety (no GNU date dependency).
+            #    "true"  => comment is stale (predates or equals the last push)
+            #    "false" => comment is fresh (post-dates the last push)
+            # ------------------------------------------------------------------
+            STALE=$(python3 -c "import sys; from datetime import datetime, timezone; p=lambda t: datetime.fromisoformat((t.strip()[:-1]+'+00:00') if t.strip().endswith('Z') else t.strip()).astimezone(timezone.utc); print('true' if p(\"${COMMENT_TIMESTAMP}\") <= p(\"${LAST_PUSH_TIMESTAMP}\") else 'false')")
+
+            echo "Stale approval: ${STALE}"
+
+            if [ "${STALE}" = "true" ]; then
+              echo ""
+              echo "APPROVED comment (ID: ${COMMENT_ID}) was posted BEFORE or AT the"
+              echo "most recent push (${LAST_PUSH_TIMESTAMP}). It is stale and does"
+              echo "not satisfy the gate. Sarah must re-review and re-post the verdict"
+              echo "against the current diff."
+              echo "approved=false" >> "$GITHUB_OUTPUT"
+            else
+              {
+                echo "approved=true"
+                echo "approver=${APPROVER}"
+                echo "comment_id=${COMMENT_ID}"
+                echo "comment_timestamp=${COMMENT_TIMESTAMP}"
+                echo "last_push_timestamp=${LAST_PUSH_TIMESTAMP}"
+              } >> "$GITHUB_OUTPUT"
+            fi
           fi
 
       - name: Gate PASSED
@@ -230,8 +279,10 @@ jobs:
         run: |
           echo "Security review gate: PASSED"
           echo "S-07 effect-enumeration review complete."
-          echo "Reviewer: @${{ steps.verdict_check.outputs.approver }}"
-          echo "Comment ID: ${{ steps.verdict_check.outputs.comment_id }}"
+          echo "Reviewer:            @${{ steps.verdict_check.outputs.approver }}"
+          echo "Comment ID:          ${{ steps.verdict_check.outputs.comment_id }}"
+          echo "Approval timestamp:  ${{ steps.verdict_check.outputs.comment_timestamp }}"
+          echo "Last push timestamp: ${{ steps.verdict_check.outputs.last_push_timestamp }}"
           echo "This PR is cleared for merge (security review requirement satisfied)."
 
       - name: Gate BLOCKED
@@ -253,6 +304,10 @@ jobs:
           echo ""
           echo "  (or VERDICT: BLOCKED -- <reason> to explicitly block the PR)"
           echo ""
+          echo "  The verdict comment must be posted AFTER the most recent push."
+          echo "  A pre-existing APPROVED comment that predates the last push is"
+          echo "  treated as stale and does not satisfy the gate."
+          echo ""
           echo "Runbook: vault_mtg_docs/engineering/runbooks/infra-security-review-gate.md"
-          echo "Ticket:  RdHamilton/vault-mtg#2365"
+          echo "Ticket:  RdHamilton/vault-mtg#2387"
           exit 1

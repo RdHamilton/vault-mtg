@@ -1,5 +1,12 @@
 //go:build windows
 
+// NOTE: This file intentionally references the legacy "MTGA-Companion-Daemon"
+// task name and "MTGA-Companion" config dir. These are the actual pre-rename
+// install artifacts that the uninstall path must clean up; the tests assert
+// that legacy-cleanup behavior. They are NOT stale repo references and must not
+// be renamed. This file is excluded from the stale-repo-grep gate in
+// .github/workflows/process-gates.yml.
+
 package localapi_test
 
 import (

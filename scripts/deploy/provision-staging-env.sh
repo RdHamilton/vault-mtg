@@ -2,6 +2,7 @@
 # provision-staging-env.sh
 # Renders the staging env file from SSM parameter hierarchy.
 # Runs ON the EC2 instance via SSM RunShellScript.
+# Canonical copy — do not duplicate into mtga-companion-infra.
 #
 # Secrets are read on the EC2 instance using the instance IAM role --
 # no plaintext credentials are passed through CI/CD.
