@@ -10,8 +10,9 @@
 #   I-01  Stale branch-creation pattern (git checkout main && git pull)
 #   I-13  Stale repo references (MTGA-Companion / mtga-companion-web)
 #   SIZE  Persona file over 13 KB (prep for P-07 slim-down)
-#   DUP   Re-duplicated rule family: Local Verification defined outside _shared.md
+#   DUP   Re-duplicated rule family: Local Verification defined outside _shared.md / orchestration.md
 #   DUP   Re-duplicated rule family: standalone "GitHub shows you as RdHamilton" outside _shared.md
+#   DUP   Re-duplicated rule family: Task Scope enforcement defined outside _shared.md (P-03)
 
 set -euo pipefail
 
@@ -229,6 +230,38 @@ check_dup_github_author() {
 }
 
 # ---------------------------------------------------------------------------
+# Check DUP-TS: Re-duplicated Task Scope enforcement block
+# The canonical definition lives in _shared.md §1.
+# BROADCAST.md is also excluded (it may carry a one-line reminder pointing
+# to _shared.md §1, but must NOT host the full multi-bullet rule block).
+# Heuristic: look for the defining phrases that only appear in a full
+# re-statement of the rule, not in a brief one-line pointer.
+# ---------------------------------------------------------------------------
+
+check_dup_task_scope() {
+  local found=0
+  while IFS= read -r -d '' file; do
+    local base
+    base=$(basename "$file")
+    # _shared.md is the canonical home — skip it
+    if [[ "$base" == "_shared.md" || "$base" == "INVARIANTS.md" ]]; then
+      continue
+    fi
+    # Detect a full re-statement: long phrase only found when the rule is
+    # spelled out in full, not in a one-line pointer.
+    if grep -qE 'MUST perform ONLY the work explicitly described in your assigned instruction' "$file"; then
+      local lines
+      lines=$(grep -nE 'MUST perform ONLY the work explicitly described' "$file" | head -3)
+      fail "dup-task-scope" "$file" "contains a standalone Task Scope definition — replace with a one-line pointer to _shared.md §1:$( echo; echo "$lines" | sed 's/^/        /')"
+      found=1
+    fi
+  done < <(find "$AGENTS_DIR" -maxdepth 1 -name "*.md" -print0)
+  if [[ $found -eq 0 ]]; then
+    pass "dup-task-scope"
+  fi
+}
+
+# ---------------------------------------------------------------------------
 # Run all checks
 # ---------------------------------------------------------------------------
 
@@ -240,6 +273,7 @@ check_branch_pattern
 check_file_sizes
 check_dup_local_verification
 check_dup_github_author
+check_dup_task_scope
 
 echo ""
 if [[ $VIOLATIONS -gt 0 ]]; then
