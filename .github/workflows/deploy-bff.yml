@@ -445,3 +445,23 @@ jobs:
           echo "SSM command timed out waiting for health check" >&2
           exit 1
         fi
+
+    # Publish the deployed SHA to SSM (production only).
+    # Runs only after every preceding step (build, upload, provision, stage,
+    # migrate, restart, healthcheck) has succeeded. A fresh EC2 instance reads
+    # /vaultmtg/app/production/latest-bff-sha during ec2-bootstrap.sh to know
+    # which binary to download from S3; without this step, ASG scale-out or
+    # instance replacement boots in an armed-but-inert state.
+    # Skipped for staging by design (out-of-scope in vault-mtg#2373).
+    - name: Publish deployed SHA to SSM (production only)
+      if: inputs.environment == 'production'
+      env:
+        DEPLOY_SHA: ${{ inputs.deploy-sha }}
+      run: |
+        aws ssm put-parameter \
+          --name /vaultmtg/app/production/latest-bff-sha \
+          --value "${DEPLOY_SHA}" \
+          --type String \
+          --overwrite \
+          --region us-east-1
+        echo "Published /vaultmtg/app/production/latest-bff-sha = ${DEPLOY_SHA}"
