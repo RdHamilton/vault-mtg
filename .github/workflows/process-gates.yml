@@ -120,13 +120,9 @@ jobs:
     steps:
       - name: Check for Pre-Review Checklist header
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          PR_NUMBER: ${{ github.event.pull_request.number }}
-          REPO: ${{ github.repository }}
+          PR_BODY: ${{ github.event.pull_request.body }}
         run: |
-          BODY=$(gh pr view "$PR_NUMBER" --repo "$REPO" --json body --jq '.body')
-
-          if echo "$BODY" | grep -q "## Pre-Review Checklist"; then
+          if echo "$PR_BODY" | grep -q "## Pre-Review Checklist"; then
             echo "Pre-Review Checklist header found. Gate: PASS"
           else
             echo "ERROR: PR body is missing the '## Pre-Review Checklist' section."
