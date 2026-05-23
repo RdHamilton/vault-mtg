@@ -4,6 +4,14 @@ name: Deploy Script Integration Test
 # migrations, or SQL grants — exactly the files whose cross-script contract
 # mismatches caused issues #2192 and #2197 during the v0.3.1 release.
 #
+# Two jobs:
+#   1. deploy-chain-contract -- static contract test (R-21). Fast (<5s) gate
+#      that asserts deploy-env.sh consistency across all consumer scripts and
+#      workflow SSM-path literals. Runs first and gates the integration test.
+#   2. deploy-chain-integration -- dynamic chain test against a throwaway
+#      Postgres in Docker; exercises the actual provision/stage/migrate/restart
+#      logic with stubbed AWS calls.
+#
 # Also runs on a nightly schedule to surface regressions between releases.
 
 on:
@@ -15,8 +23,10 @@ on:
       - 'infra/config/**'
       - 'infra/db/**'
       - 'services/bff/internal/storage/migrations/**'
+      - 'services/bff/internal/config/**'
+      - 'services/bff/cmd/**'
       - 'tests/deploy-chain/**'
-      - '.github/workflows/deploy-script-integration-test.yml'
+      - '.github/workflows/**'
   pull_request:
     branches: [main]
     paths:
@@ -25,8 +35,10 @@ on:
       - 'infra/config/**'
       - 'infra/db/**'
       - 'services/bff/internal/storage/migrations/**'
+      - 'services/bff/internal/config/**'
+      - 'services/bff/cmd/**'
       - 'tests/deploy-chain/**'
-      - '.github/workflows/deploy-script-integration-test.yml'
+      - '.github/workflows/**'
   schedule:
     # Nightly at 03:00 UTC — catches regressions between releases.
     - cron: '0 3 * * *'
@@ -40,10 +52,27 @@ permissions:
   contents: read
 
 jobs:
+  # R-21 -- static contract test. Runs in seconds, no Docker, no network.
+  # Catches cross-script drift (the class of bugs #2192 and #2197) BEFORE the
+  # heavier integration test job spins up Postgres. Failure here blocks the PR
+  # immediately so authors fix the contract before paying for the full chain.
+  deploy-chain-contract:
+    name: Deploy Chain Contract Test
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+
+      - name: Run deploy-chain contract test
+        run: bash tests/deploy-chain/contract-test.sh
+
   deploy-chain-integration:
     name: Deploy Chain Integration Test
     runs-on: ubuntu-latest
     timeout-minutes: 20
+    needs: deploy-chain-contract
 
     steps:
       - name: Checkout code
