@@ -5,6 +5,24 @@ All notable changes to VaultMTG will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.1.2] - 2026-05-24
+
+### Fixed
+
+- **Production BFF credential path** — `provision-db-url.sh` now splices a fresh `DATABASE_URL` inline via the provisioner role, eliminating the BFF's runtime `secretsmanager:GetSecretValue` call that would have caused an AccessDenied crash-loop on next prod deploy (#2540).
+- **Production migration credential path** — `run-migrations.sh` now sources `DATABASE_URL` from the env file written by `provision-db-url.sh` instead of calling Secrets Manager directly, matching the credential model from the staging fix (#2542).
+
+### Added
+
+- **BFF Sentry instrumentation** — crash/error telemetry wired into the Go BFF with `GIT_COMMIT` as the Sentry release tag (R-23).
+- **Nightly staging deploy cron** — automated nightly staging redeploy so staging tracks main continuously (R-20).
+- **Deployed BFF SHA published to SSM** — post-deploy step writes the live binary SHA to SSM for audit and canary tracking.
+- **Manual prod deploy trigger** — `workflow_dispatch` added to release workflow for on-demand production deploys without a tag push.
+
+### Changed
+
+- Various CI hardening: stale-repo-grep gate flipped to hard-fail, process gates enforced, secrets scan expanded, Dependabot bumps for CI actions.
+
 ## [1.4.1] - Unreleased
 
 ### Added
