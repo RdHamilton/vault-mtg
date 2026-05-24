@@ -2,15 +2,40 @@
 # provision-staging-env.sh
 # Renders the staging env file from SSM parameter hierarchy.
 # Runs ON the EC2 instance via SSM RunShellScript.
-# Canonical copy — do not duplicate into mtga-companion-infra.
+# Canonical copy -- do not duplicate into mtga-companion-infra.
 #
-# Secrets are read on the EC2 instance using the instance IAM role --
-# no plaintext credentials are passed through CI/CD.
+# Credential model (Path A bridge, per ADR-022 sect4A.7):
+#   1. The EC2 instance role (mtga-companion-ec2-role-production) is the
+#      AWS calling identity inherited from the SSM RunShellScript session.
+#   2. This script's first AWS call is sts:AssumeRole into the scoped
+#      vaultmtg-staging-deploy-provisioner role. The instance role has
+#      sts:AssumeRole permission on exactly that one ARN (granted by
+#      cloudformation/ec2.yml StagingDeployProvisionerAssumeRole policy),
+#      and the provisioner role's trust policy permits the instance role
+#      to assume it (EC2InstanceRoleBridge statement on staging-deploy-role.yml).
+#   3. The temporary credentials returned by AssumeRole are exported as
+#      AWS_ACCESS_KEY_ID / AWS_SECRET_ACCESS_KEY / AWS_SESSION_TOKEN, scoping
+#      every subsequent aws ssm get-parameter and aws secretsmanager call
+#      to the provisioner role's permissions (/vaultmtg/staging/* +
+#      kms:Decrypt via SSM + secretsmanager on mtga-companion/staging/*).
+#   4. An EXIT trap unsets the env vars after the env file is written so
+#      that no leftover creds remain in the SSM shell environment.
+#
+# Negative test (manual, AC5 -- see EC-6 proof):
+#   To prove the script cannot silently fall back to instance-role creds,
+#   temporarily delete the EC2InstanceRoleBridge statement from
+#   staging-deploy-role.yml and redeploy that stack, then re-run this
+#   script via the staging deploy. The aws sts assume-role call must fail
+#   with AccessDenied and the script must abort with exit 1 (set -e).
+#   Restore the bridge statement immediately afterwards. DO NOT run this
+#   in CI -- it would break every subsequent staging deploy until manual
+#   restoration. Run only as a one-off audit step with the on-call
+#   engineer available to revert.
 #
 # SSM parameter names and file paths are sourced from
-# infra/config/deploy-env.sh — do NOT hardcode them here.
+# infra/config/deploy-env.sh -- do NOT hardcode them here.
 #
-# SSM parameters read (all from /vaultmtg/staging/* — matches ec2.yml IAM Statement 3):
+# SSM parameters read (all from /vaultmtg/staging/* -- matches ec2.yml IAM Statement 3):
 #   /vaultmtg/staging/PORT
 #   /vaultmtg/staging/ALLOWED_ORIGINS
 #   /vaultmtg/staging/CLERK_PUBLISHABLE_KEY
@@ -27,7 +52,9 @@
 #   /vaultmtg/staging/mailchimp-list-id
 #   /vaultmtg/staging/crisp-website-id
 #
-# Any new parameter added here MUST also be granted in ec2.yml IAM Statement 3.
+# Any new parameter added here MUST also be granted in the provisioner
+# role's StagingProvisioningSSMRead policy in
+# mtga-companion-infra/cloudformation/staging-deploy-role.yml.
 
 set -e
 
@@ -38,6 +65,71 @@ set -e
 REGION="$DEPLOY_REGION"
 ENV_FILE="$BFF_STAGING_ENV_FILE"
 ENV_DIR="$BFF_STAGING_ENV_DIR"
+
+# ---------------------------------------------------------------------------
+# Step 1: Assume the scoped provisioner role.
+#
+# Calls aws sts assume-role using the EC2 instance role (the SSM session's
+# default credentials) as the calling principal. Exports the returned
+# temporary credentials so every subsequent aws CLI call in this script
+# runs as vaultmtg-staging-deploy-provisioner.
+#
+# 900s == 15 minutes, the minimum allowed by IAM. The script completes in
+# under 30s in practice, so the short TTL is fine and reduces blast radius
+# if the credentials leak.
+# ---------------------------------------------------------------------------
+PROVISIONER_ROLE_ARN="arn:aws:iam::901347789205:role/vaultmtg-staging-deploy-provisioner"
+SESSION_NAME="env-render-$(date +%s)"
+
+# Defense in depth: clear temporary credentials on any exit (success or
+# failure) so the SSM shell environment never carries them past this script.
+cleanup_creds() {
+  unset AWS_ACCESS_KEY_ID
+  unset AWS_SECRET_ACCESS_KEY
+  unset AWS_SESSION_TOKEN
+}
+trap cleanup_creds EXIT
+
+echo "Assuming role ${PROVISIONER_ROLE_ARN} as session ${SESSION_NAME}..."
+ASSUME_OUTPUT=$(aws sts assume-role \
+  --role-arn "$PROVISIONER_ROLE_ARN" \
+  --role-session-name "$SESSION_NAME" \
+  --duration-seconds 900 \
+  --region "$REGION" \
+  --query 'Credentials.[AccessKeyId,SecretAccessKey,SessionToken]' \
+  --output text)
+
+if [ -z "$ASSUME_OUTPUT" ]; then
+  echo "ERROR: aws sts assume-role returned empty credentials." >&2
+  exit 1
+fi
+
+# Tab-separated by --output text; split into the three variables.
+AWS_ACCESS_KEY_ID=$(echo "$ASSUME_OUTPUT" | awk '{print $1}')
+AWS_SECRET_ACCESS_KEY=$(echo "$ASSUME_OUTPUT" | awk '{print $2}')
+AWS_SESSION_TOKEN=$(echo "$ASSUME_OUTPUT" | awk '{print $3}')
+
+if [ -z "$AWS_ACCESS_KEY_ID" ] || [ -z "$AWS_SECRET_ACCESS_KEY" ] || [ -z "$AWS_SESSION_TOKEN" ]; then
+  echo "ERROR: aws sts assume-role returned incomplete credentials." >&2
+  exit 1
+fi
+
+export AWS_ACCESS_KEY_ID
+export AWS_SECRET_ACCESS_KEY
+export AWS_SESSION_TOKEN
+
+# Verify the assumed identity before proceeding -- guards against any silent
+# fallback to instance-role credentials.
+CALLER_ARN=$(aws sts get-caller-identity --query Arn --output text)
+case "$CALLER_ARN" in
+  *":assumed-role/vaultmtg-staging-deploy-provisioner/${SESSION_NAME}")
+    echo "Assumed role identity confirmed: ${CALLER_ARN}"
+    ;;
+  *)
+    echo "ERROR: caller identity ${CALLER_ARN} is not the provisioner role -- refusing to continue." >&2
+    exit 1
+    ;;
+esac
 
 mkdir -p "$ENV_DIR"
 # Start with an empty env file -- fully re-render on each deploy.
