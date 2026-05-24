@@ -101,6 +101,7 @@ DB_STAGING_NAME="vaultmtg_staging"
 #   step fails and the deploy aborts (or silently skips the env write).
 # ───────────────────────────────────────────────────────────────────────────
 SSM_PROD_DB_SECRET_ARN="/vaultmtg/app/production/db-secret-arn"
+SSM_PROD_APP_DB_SECRET_ARN="/vaultmtg/app/production/app-db-secret-arn"
 SSM_PROD_DB_ENDPOINT="/vaultmtg/app/production/db-endpoint"
 SSM_PROD_DB_NAME="/vaultmtg/app/production/db-name"
 SSM_PROD_ALLOWED_ORIGINS="/vaultmtg/app/production/ALLOWED_ORIGINS"

@@ -3,9 +3,21 @@
 # Renders DATABASE_URL into the production env file with credentials spliced
 # inline from Secrets Manager. Runs ON the EC2 instance via SSM RunShellScript.
 #
+# As of #2223 (ADR-024 implementation), this script reads the vaultmtg_app
+# application secret ARN from SSM_PROD_APP_DB_SECRET_ARN and splices the
+# vaultmtg_app credentials into DATABASE_URL. The BFF binary connects as the
+# least-privilege vaultmtg_app role, not the master superuser.
+#
+# IMPORTANT: run-migrations.sh independently reads SSM_PROD_DB_SECRET_ARN
+# (the master/RDS-managed secret) to run DDL migrations and GRANT statements.
+# The two scripts deliberately use different SSM parameter names:
+#   provision-db-url.sh -> SSM_PROD_APP_DB_SECRET_ARN (vaultmtg_app DML role)
+#   run-migrations.sh   -> SSM_PROD_DB_SECRET_ARN     (master/DDL role)
+# This distinction is enforced by deploy-chain contract test C4/C5.
+#
 # Credential model (mirror of provision-staging-env.sh per #2461, prod half):
 #   1. The EC2 instance role (mtga-companion-ec2-role-production) reads the
-#      /vaultmtg/app/production/{db-secret-arn,db-endpoint,db-name} SSM
+#      /vaultmtg/app/production/{app-db-secret-arn,db-endpoint,db-name} SSM
 #      parameters first; the instance role's VaultmtgAppProductionNamespace
 #      statement (ec2.yml) covers these reads.
 #   2. The script then sts:AssumeRoles into vaultmtg-staging-deploy-provisioner
@@ -22,6 +34,10 @@
 #      databases). Renaming the role to vaultmtg-deploy-provisioner -- or
 #      splitting into per-env provisioners -- is tracked as follow-up tech
 #      debt; mid-incident the existing grant is the correct lever.
+#      NOTE: The provisioner role's GetSecretValue grant covers BOTH the
+#      RDS-managed master secret AND the vaultmtg-production-app-db secret
+#      created by create-production-db.sh (#2223). Both are needed:
+#      this script fetches the app secret; run-migrations.sh fetches the master.
 #   3. The temporary credentials returned by AssumeRole are exported as
 #      AWS_ACCESS_KEY_ID / AWS_SECRET_ACCESS_KEY / AWS_SESSION_TOKEN so the
 #      subsequent aws secretsmanager get-secret-value call runs under the
@@ -36,9 +52,11 @@
 #      DB_PASSWORD / DB_USERNAME after the env file is written, so no
 #      leftover creds remain in the SSM shell environment.
 #
-# Rotation impact: when AWS rotates the RDS secret, the production deploy
-# must be re-run to pick up the new password. This trade-off is accepted
-# until automated rotation re-emission (S-19) is wired.
+# Rotation impact: when the vaultmtg_app secret (vaultmtg-production-app-db)
+# is rotated, re-run this script (provision-db-url.sh) to pick up the new
+# password. Rotation is manual until S-19 (automated rotation re-emission) is
+# wired. The secret Description carries an explicit note: "Rotation: manual
+# until S-19; re-run provision-db-url.sh to pick up new password."
 #
 # SSM parameter names and the env file path are sourced from
 # infra/config/deploy-env.sh -- do NOT hardcode them here.
@@ -60,9 +78,14 @@ ENV_FILE="$BFF_ENV_FILE"
 # include /vaultmtg/app/production/*. The instance role already has read
 # access to /vaultmtg/app/production/* via the VaultmtgAppProductionNamespace
 # policy in ec2.yml.
+#
+# As of #2223: reads SSM_PROD_APP_DB_SECRET_ARN (vaultmtg_app app secret) so
+# the BFF connects as the least-privilege role, not the master superuser.
+# run-migrations.sh independently reads SSM_PROD_DB_SECRET_ARN (master secret)
+# for DDL migrations and GRANT statements.
 # ---------------------------------------------------------------------------
 DB_SECRET_ARN_VALUE=$(aws ssm get-parameter \
-  --name "$SSM_PROD_DB_SECRET_ARN" \
+  --name "$SSM_PROD_APP_DB_SECRET_ARN" \
   --region "$REGION" \
   --query Parameter.Value \
   --output text)
@@ -81,6 +104,9 @@ DB_NAME=$(aws ssm get-parameter \
 
 if [ -z "$DB_SECRET_ARN_VALUE" ] || [ -z "$DB_ENDPOINT" ] || [ -z "$DB_NAME" ]; then
   echo "ERROR: one or more production DB SSM parameters returned empty." >&2
+  echo "  DB_SECRET_ARN_VALUE (from ${SSM_PROD_APP_DB_SECRET_ARN}): '${DB_SECRET_ARN_VALUE}'" >&2
+  echo "  DB_ENDPOINT (from ${SSM_PROD_DB_ENDPOINT}): '${DB_ENDPOINT}'" >&2
+  echo "  DB_NAME (from ${SSM_PROD_DB_NAME}): '${DB_NAME}'" >&2
   exit 1
 fi
 

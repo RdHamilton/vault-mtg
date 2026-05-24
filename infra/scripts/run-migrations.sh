@@ -7,14 +7,22 @@
 # Idempotent: golang-migrate tracks applied versions in the schema_migrations
 # table. Re-running this script when already at HEAD is a no-op.
 #
-# Credential model (#2461 env-file pattern):
-#   DATABASE_URL is sourced from $BFF_ENV_FILE (/etc/mtga-companion/env).
-#   That file is written by provision-db-url.sh at deploy time with inline
-#   credentials spliced from Secrets Manager under the provisioner role.
+# Credential model (post #2223 / ADR-024):
+#   As of #2223, provision-db-url.sh writes vaultmtg_app (least-privilege DML)
+#   credentials into $BFF_ENV_FILE. vaultmtg_app cannot run DDL migrations.
+#   This script independently resolves the master (RDS-managed) credential via
+#   SSM_PROD_DB_SECRET_ARN and the provisioner role, bypassing $BFF_ENV_FILE
+#   for the migration credential. This is required so migrations run under the
+#   master user that has DDL rights.
+#
+#   The two-secret separation is enforced by deploy-chain contract test C4/C5:
+#     provision-db-url.sh -> SSM_PROD_APP_DB_SECRET_ARN (vaultmtg_app DML role)
+#     run-migrations.sh   -> SSM_PROD_DB_SECRET_ARN     (master DDL role)
+#
 #   The EC2 instance role (mtga-companion-ec2-role-production) is NOT granted
 #   secretsmanager:GetSecretValue on the RDS-managed credential (S-03 least-
-#   privilege); using the env file avoids any direct SM call from this script.
-#   This mirrors the pattern established in PR #2539/#2540 for the BFF binary.
+#   privilege); this script assumes into vaultmtg-staging-deploy-provisioner
+#   (the same role used by provision-db-url.sh) which does hold that grant.
 #
 # SSM parameter names and env file path are sourced from
 # infra/config/deploy-env.sh — do NOT hardcode them here.
@@ -62,58 +70,124 @@ if ! command -v psql &>/dev/null; then
     echo "[run-migrations] postgresql15 installed."
 fi
 
-# Source DATABASE_URL from the production env file.
-# provision-db-url.sh (PR #2540) writes inline credentials into this file at
-# deploy time under the vaultmtg-staging-deploy-provisioner role.  The EC2
-# instance role lacks secretsmanager:GetSecretValue on the RDS secret (per
-# S-03 / #2375) so we must not call SM here — the env file is the single
-# source of truth for credentials.
-if [[ ! -f "$BFF_ENV_FILE" ]]; then
-    echo "[run-migrations] ERROR: env file not found at $BFF_ENV_FILE" >&2
-    echo "  Ensure provision-db-url.sh ran successfully before this step." >&2
+# Resolve master (DDL) credentials independently via the provisioner role.
+#
+# As of #2223: provision-db-url.sh now writes vaultmtg_app (least-privilege
+# DML) credentials into $BFF_ENV_FILE. vaultmtg_app lacks DDL rights, so
+# migrations must run under the master user. This block independently reads
+# SSM_PROD_DB_SECRET_ARN (master/RDS-managed secret) via the provisioner role
+# — the same assume-role pattern used by provision-db-url.sh. The provisioner
+# role (vaultmtg-staging-deploy-provisioner) holds GetSecretValue on the
+# RDS-managed credential; the EC2 instance role does not (S-03 / #2375).
+
+echo "[run-migrations] Reading production SSM parameters under instance role..."
+DB_SECRET_ARN_VALUE=$(aws ssm get-parameter \
+    --name    "$SSM_PROD_DB_SECRET_ARN" \
+    --region  "$REGION" \
+    --query   Parameter.Value \
+    --output  text)
+
+DB_ENDPOINT=$(aws ssm get-parameter \
+    --name    "$SSM_PROD_DB_ENDPOINT" \
+    --region  "$REGION" \
+    --query   Parameter.Value \
+    --output  text)
+
+DB_NAME=$(aws ssm get-parameter \
+    --name    "$SSM_PROD_DB_NAME" \
+    --region  "$REGION" \
+    --query   Parameter.Value \
+    --output  text)
+
+if [[ -z "$DB_SECRET_ARN_VALUE" || -z "$DB_ENDPOINT" || -z "$DB_NAME" ]]; then
+    echo "[run-migrations] ERROR: one or more production DB SSM parameters returned empty." >&2
     exit 1
 fi
 
-# shellcheck source=/etc/mtga-companion/env
-. "$BFF_ENV_FILE"
+echo "[run-migrations] Assuming provisioner role for master credential..."
+PROVISIONER_ROLE_ARN="arn:aws:iam::901347789205:role/vaultmtg-staging-deploy-provisioner"
+SESSION_NAME="run-migrations-$(date +%s)"
+
+# Defense in depth: clear temporary credentials AND any secret-bearing
+# variables on any exit (success or failure).
+cleanup_creds() {
+    unset AWS_ACCESS_KEY_ID
+    unset AWS_SECRET_ACCESS_KEY
+    unset AWS_SESSION_TOKEN
+    unset DB_SECRET_JSON MASTER_USER MASTER_PASSWORD
+}
+trap cleanup_creds EXIT
+
+ASSUME_OUTPUT=$(aws sts assume-role \
+    --role-arn         "$PROVISIONER_ROLE_ARN" \
+    --role-session-name "$SESSION_NAME" \
+    --duration-seconds 900 \
+    --region           "$REGION" \
+    --query 'Credentials.[AccessKeyId,SecretAccessKey,SessionToken]' \
+    --output text)
+
+if [[ -z "$ASSUME_OUTPUT" ]]; then
+    echo "[run-migrations] ERROR: aws sts assume-role returned empty credentials." >&2
+    exit 1
+fi
+
+AWS_ACCESS_KEY_ID=$(echo "$ASSUME_OUTPUT"    | awk '{print $1}')
+AWS_SECRET_ACCESS_KEY=$(echo "$ASSUME_OUTPUT" | awk '{print $2}')
+AWS_SESSION_TOKEN=$(echo "$ASSUME_OUTPUT"     | awk '{print $3}')
+
+if [[ -z "$AWS_ACCESS_KEY_ID" || -z "$AWS_SECRET_ACCESS_KEY" || -z "$AWS_SESSION_TOKEN" ]]; then
+    echo "[run-migrations] ERROR: aws sts assume-role returned incomplete credentials." >&2
+    exit 1
+fi
+
+export AWS_ACCESS_KEY_ID
+export AWS_SECRET_ACCESS_KEY
+export AWS_SESSION_TOKEN
+
+CALLER_ARN=$(aws sts get-caller-identity --query Arn --output text)
+case "$CALLER_ARN" in
+    *":assumed-role/vaultmtg-staging-deploy-provisioner/${SESSION_NAME}")
+        echo "[run-migrations] Assumed provisioner role: ${CALLER_ARN}"
+        ;;
+    *)
+        echo "[run-migrations] ERROR: caller identity ${CALLER_ARN} is not the provisioner role." >&2
+        exit 1
+        ;;
+esac
+
+DB_SECRET_JSON=$(aws secretsmanager get-secret-value \
+    --secret-id "$DB_SECRET_ARN_VALUE" \
+    --region    "$REGION" \
+    --query     SecretString \
+    --output    text)
+MASTER_USER=$(printf '%s' "$DB_SECRET_JSON" | jq -r '.username // empty')
+MASTER_PASSWORD=$(printf '%s' "$DB_SECRET_JSON" | jq -r '.password // empty')
+unset DB_SECRET_JSON
+
+if [[ -z "$MASTER_USER" || -z "$MASTER_PASSWORD" ]]; then
+    echo "[run-migrations] ERROR: master secret JSON missing username or password." >&2
+    exit 1
+fi
+
+# Drop temporary provisioner credentials before running psql/migrate so only
+# the parsed username/password are in scope for the migration commands.
+unset AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY AWS_SESSION_TOKEN
+
+# Construct DATABASE_URL from the parsed master credentials.
+# URL-encode username and password so special characters do not break parsing.
+MASTER_USER_ENC=$(jq -rn --arg v "$MASTER_USER" '$v|@uri')
+MASTER_PASSWORD_ENC=$(jq -rn --arg v "$MASTER_PASSWORD" '$v|@uri')
+DATABASE_URL=$(printf 'postgresql://%s:%s@%s:%s/%s?%s' \
+    "$MASTER_USER_ENC" "$MASTER_PASSWORD_ENC" "$DB_ENDPOINT" "$DB_PORT" "$DB_NAME" "$DB_SSL_MODE")
+unset MASTER_USER_ENC MASTER_PASSWORD_ENC
 
 if [[ -z "${DATABASE_URL:-}" ]]; then
-    echo "[run-migrations] ERROR: DATABASE_URL is empty or unset in $BFF_ENV_FILE" >&2
+    echo "[run-migrations] ERROR: DATABASE_URL construction failed." >&2
     exit 1
 fi
 
 # golang-migrate requires a postgres:// scheme; the env file uses postgresql://.
 MIGRATE_DB_URL="${DATABASE_URL/postgresql:\/\//postgres://}"
-
-# Parse credentials and connection details from DATABASE_URL for psql.
-# URL shape: postgresql://USER:PASS@HOST:PORT/DB?sslmode=...
-# Use python3 (already on Amazon Linux 2023) for URL parsing — shell
-# parameter expansion is not robust against special characters in passwords.
-MASTER_USER=$(python3 -c "
-import sys, urllib.parse
-u = urllib.parse.urlparse('${DATABASE_URL}')
-print(u.username)
-")
-MASTER_PASSWORD=$(python3 -c "
-import sys, urllib.parse
-u = urllib.parse.urlparse('${DATABASE_URL}')
-print(urllib.parse.unquote(u.password))
-")
-DB_ENDPOINT=$(python3 -c "
-import sys, urllib.parse
-u = urllib.parse.urlparse('${DATABASE_URL}')
-print(u.hostname)
-")
-DB_NAME=$(python3 -c "
-import sys, urllib.parse
-u = urllib.parse.urlparse('${DATABASE_URL}')
-print(u.path.lstrip('/'))
-")
-
-if [[ -z "$MASTER_USER" || -z "$MASTER_PASSWORD" || -z "$DB_ENDPOINT" || -z "$DB_NAME" ]]; then
-    echo "[run-migrations] ERROR: could not parse credentials from DATABASE_URL" >&2
-    exit 1
-fi
 
 echo "[run-migrations] Applying migrations ..."
 echo "[run-migrations] Target DB: postgres://${MASTER_USER}@${DB_ENDPOINT}:${DB_PORT}/${DB_NAME}?${DB_SSL_MODE}"

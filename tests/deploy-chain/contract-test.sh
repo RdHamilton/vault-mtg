@@ -224,9 +224,10 @@ check_ssm_prefix "SSM_VAULTMTG_STAGING_"  "/vaultmtg/app/staging/"    || c3_ok=0
 echo
 
 # ---- C4: DATABASE_URL construction (env-specific) -------------------------
-echo '== C4: DATABASE_URL construction is correct per env =='
+echo '== C4: DATABASE_URL construction is correct per env; prod uses app-secret-arn not master =='
 PROD_DBURL_FILE="${DEPLOY_SCRIPTS_DIR}/provision-db-url.sh"
 STAGING_PROVISION_FILE="${DEPLOY_SCRIPTS_DIR}/provision-staging-env.sh"
+MIGRATIONS_FILE="${INFRA_SCRIPTS_DIR}/run-migrations.sh"
 
 check_credential_free_dburl() {
   local f="$1" label="$2"
@@ -295,7 +296,43 @@ check_inline_dburl() {
 c4_ok=1
 check_inline_dburl "$PROD_DBURL_FILE"          "production"  || c4_ok=0
 check_inline_dburl "$STAGING_PROVISION_FILE"   "staging"     || c4_ok=0
-[[ "$c4_ok" -eq 1 ]] && pass "production and staging DATABASE_URL are both inline-credential per #2461"
+
+# ADR-024 / #2223: provision-db-url.sh MUST fetch the app-role secret
+# (SSM_PROD_APP_DB_SECRET_ARN) so the BFF connects as vaultmtg_app, NOT the
+# master. run-migrations.sh MUST fetch the master secret (SSM_PROD_DB_SECRET_ARN)
+# so DDL migrations run with elevated rights. These are hard contract assertions
+# — if either reference is swapped, the deploy chain breaks (either the BFF
+# connects as master superuser, violating ADR-024, or migrations fail with
+# permission-denied on DDL statements).
+if grep -qE '\$\{?SSM_PROD_APP_DB_SECRET_ARN\}?' "$PROD_DBURL_FILE"; then
+    pass "provision-db-url.sh reads SSM_PROD_APP_DB_SECRET_ARN (app role secret -- ADR-024)"
+else
+    fail "provision-db-url.sh does not reference SSM_PROD_APP_DB_SECRET_ARN -- BFF may connect as master superuser, violating ADR-024"
+    c4_ok=0
+fi
+
+if grep -qE '\$\{?SSM_PROD_DB_SECRET_ARN\}?' "$PROD_DBURL_FILE"; then
+    fail "provision-db-url.sh references SSM_PROD_DB_SECRET_ARN (master secret) -- should use SSM_PROD_APP_DB_SECRET_ARN for BFF credential; master is reserved for run-migrations.sh"
+    c4_ok=0
+else
+    pass "provision-db-url.sh does NOT reference SSM_PROD_DB_SECRET_ARN (master secret kept separate)"
+fi
+
+if grep -qE '\$\{?SSM_PROD_DB_SECRET_ARN\}?' "$MIGRATIONS_FILE"; then
+    pass "run-migrations.sh reads SSM_PROD_DB_SECRET_ARN (master secret -- DDL rights for migrations)"
+else
+    fail "run-migrations.sh does not reference SSM_PROD_DB_SECRET_ARN -- migrations may run without DDL rights"
+    c4_ok=0
+fi
+
+if grep -qE '\$\{?SSM_PROD_APP_DB_SECRET_ARN\}?' "$MIGRATIONS_FILE"; then
+    fail "run-migrations.sh references SSM_PROD_APP_DB_SECRET_ARN (app secret) -- migrations must use master credential for DDL; app role lacks ALTER TABLE / CREATE INDEX rights"
+    c4_ok=0
+else
+    pass "run-migrations.sh does NOT reference SSM_PROD_APP_DB_SECRET_ARN (app secret kept out of migrations)"
+fi
+
+[[ "$c4_ok" -eq 1 ]] && pass "production and staging DATABASE_URL are both inline-credential per #2461; ADR-024 two-secret separation enforced"
 echo
 
 # ---- C5: DB-credential model symmetry (#2461 -- prod+staging both unpaired) -
@@ -321,7 +358,18 @@ for f in "$PROD_DBURL_FILE" "$STAGING_PROVISION_FILE"; do
   fi
 done
 
-[[ "$c5_ok" -eq 1 ]] && pass "DB credential model symmetry holds (neither prod nor staging write DB_SECRET_ARN or BFF_DB_RESOLVE_FROM_SM)"
+# ADR-024 / #2223: run-migrations.sh uses the master credential (not the app
+# role). It sources credentials directly from Secrets Manager via the provisioner
+# role and does NOT write an env file. The DB_SECRET_ARN pattern would indicate
+# it is trying to read an ARN from the BFF env file, which is now the app ARN —
+# wrong credential for DDL. This assertion fires on the write side; the read
+# side (SSM param distinction) is asserted in C4.
+if grep -qE "^[[:space:]]*(write_param[[:space:]]+DB_SECRET_ARN|printf[[:space:]]+['\"][[:space:]]*DB_SECRET_ARN=|['\"]DB_SECRET_ARN=)" "$MIGRATIONS_FILE" 2>/dev/null; then
+    fail "run-migrations.sh writes DB_SECRET_ARN into an env file -- unexpected; migrations must use independently-resolved master credential per ADR-024"
+    c5_ok=0
+fi
+
+[[ "$c5_ok" -eq 1 ]] && pass "DB credential model symmetry holds (neither prod nor staging write DB_SECRET_ARN or BFF_DB_RESOLVE_FROM_SM; run-migrations.sh does not write env file)"
 echo
 
 # ---- C6: workflow <-> deploy-env.sh SSM-path agreement ----------------------
