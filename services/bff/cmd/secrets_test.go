@@ -62,3 +62,29 @@ func TestResolveDBURL_SpecialCharsInPassword(t *testing.T) {
 	gotPass, _ := u.User.Password()
 	assert.Equal(t, creds.Password, gotPass)
 }
+
+// shouldResolveFromSM gates the runtime Secrets Manager call.
+// The default (toggle unset/false) is OFF — the BFF reads DATABASE_URL
+// inline and never constructs an SM client. Opting in requires BOTH
+// BFF_DB_RESOLVE_FROM_SM=true AND a non-empty DB_SECRET_ARN.
+func TestShouldResolveFromSM(t *testing.T) {
+	cases := []struct {
+		name   string
+		toggle string
+		arn    string
+		want   bool
+	}{
+		{"toggle unset, arn unset", "", "", false},
+		{"toggle unset, arn set (default off)", "", "arn:aws:secretsmanager:...:secret:foo", false},
+		{"toggle false, arn set", "false", "arn:aws:secretsmanager:...:secret:foo", false},
+		{"toggle TRUE (wrong case), arn set", "TRUE", "arn:aws:secretsmanager:...:secret:foo", false},
+		{"toggle true, arn unset", "true", "", false},
+		{"toggle true, arn set (opt-in path)", "true", "arn:aws:secretsmanager:...:secret:foo", true},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			got := shouldResolveFromSM(tc.toggle, tc.arn)
+			assert.Equal(t, tc.want, got)
+		})
+	}
+}

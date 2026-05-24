@@ -74,16 +74,23 @@ func main() {
 		log.Fatalf("config: %v", err)
 	}
 
-	// If DB_SECRET_ARN is set, fetch the current RDS credentials from Secrets
-	// Manager and splice them into DATABASE_URL. This ensures the binary always
-	// uses the up-to-date password even after an automatic RDS rotation —
-	// without requiring manual env-file updates between deploys.
-	if secretARN := os.Getenv("DB_SECRET_ARN"); secretARN != "" {
+	// Runtime Secrets Manager resolution is OPT-IN as of #2461.
+	//
+	// Default (toggle unset / not "true"): the provisioner-side deploy script
+	// has already spliced fresh RDS credentials into DATABASE_URL under a
+	// scoped deploy role, so the BFF never constructs an AWS SDK client.
+	// This keeps the EC2 instance role free of secretsmanager:GetSecretValue
+	// and removes a startup failure mode (AccessDenied → crash-loop).
+	//
+	// Opt-in (BFF_DB_RESOLVE_FROM_SM=true AND DB_SECRET_ARN set): retains
+	// the legacy runtime-resolution path for future rotation-resilience.
+	secretARN := os.Getenv("DB_SECRET_ARN")
+	if shouldResolveFromSM(os.Getenv("BFF_DB_RESOLVE_FROM_SM"), secretARN) {
 		secretCtx, secretCancel := context.WithTimeout(context.Background(), 10*time.Second)
 		defer secretCancel()
 		resolved, resolveErr := resolveDBURL(secretCtx, fetchCredsFromAWS, secretARN, cfg.DatabaseURL)
 		if resolveErr != nil {
-			log.Fatalf("DB_SECRET_ARN: %v", resolveErr)
+			log.Fatalf("BFF_DB_RESOLVE_FROM_SM: %v", resolveErr)
 		}
 		cfg.DatabaseURL = resolved
 		log.Printf("DB credentials resolved from Secrets Manager (arn=...%s)", secretARN[len(secretARN)-12:])

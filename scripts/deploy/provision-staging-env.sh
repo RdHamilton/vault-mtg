@@ -178,14 +178,53 @@ write_param CLERK_PUBLISHABLE_KEY   "$SSM_STAGING_CLERK_PUBLISHABLE_KEY"
 write_param CLERK_SECRET_KEY        "$SSM_STAGING_CLERK_SECRET_KEY" --with-decryption
 write_param CLERK_FRONTEND_API      "$SSM_STAGING_CLERK_FRONTEND_API"
 
-# DB_SECRET_ARN causes the BFF to fetch credentials from Secrets Manager at
-# startup, so the env file never holds a password that can go stale after
-# an RDS rotation.  DATABASE_URL provides only the host/port/dbname.
-write_param DB_SECRET_ARN           "$SSM_STAGING_DB_SECRET_ARN"
+# DB credentials: provisioner-side fetch + splice (#2461).
+#
+# Previously the BFF binary called Secrets Manager at startup to resolve
+# DB_SECRET_ARN. That required secretsmanager:GetSecretValue on the EC2
+# instance role, which is intentionally narrowed (S-02 / #2375). The
+# scoped vaultmtg-staging-deploy-provisioner role this script already
+# assumes (see step 1 above) holds the grant on the staging RDS secret
+# arn:aws:secretsmanager:...:secret:rds!db-12c647a0-* via the
+# StagingProvisioningSecretsManager statement in staging-deploy-role.yml.
+#
+# We fetch the JSON secret once, here, and write a credential-laden
+# DATABASE_URL into the env file. The BFF reads it inline at startup,
+# never constructs an AWS SDK client for SM, and never needs the EC2
+# instance role to be re-widened. DB_SECRET_ARN is deliberately NOT
+# written — the BFF's runtime-resolution path is now opt-in via
+# BFF_DB_RESOLVE_FROM_SM=true (also not written) and stays dormant.
+#
+# Rotation impact: when AWS rotates the RDS secret, the staging deploy
+# must be re-run to pick up the new password. This trade-off is accepted
+# until automated rotation (S-19 / #2356) is wired.
+DB_SECRET_ARN_VALUE=$(aws ssm get-parameter \
+  --name "$SSM_STAGING_DB_SECRET_ARN" \
+  --region "$REGION" \
+  --query Parameter.Value \
+  --output text)
 DB_ENDPOINT=$(aws ssm get-parameter --name "$SSM_STAGING_DB_ENDPOINT" --region "$REGION" --query Parameter.Value --output text)
 DB_NAME=$(aws ssm get-parameter --name "$SSM_STAGING_DB_NAME" --region "$REGION" --query Parameter.Value --output text)
-printf 'DATABASE_URL=postgresql://%s:%s/%s?%s\n' "$DB_ENDPOINT" "$DB_PORT" "$DB_NAME" "$DB_SSL_MODE" >> "$ENV_FILE"
-echo "DATABASE_URL provisioned (credentials omitted; resolved via DB_SECRET_ARN at startup)."
+DB_SECRET_JSON=$(aws secretsmanager get-secret-value \
+  --secret-id "$DB_SECRET_ARN_VALUE" \
+  --region "$REGION" \
+  --query SecretString \
+  --output text)
+DB_USERNAME=$(printf '%s' "$DB_SECRET_JSON" | jq -r '.username // empty')
+DB_PASSWORD=$(printf '%s' "$DB_SECRET_JSON" | jq -r '.password // empty')
+if [ -z "$DB_USERNAME" ] || [ -z "$DB_PASSWORD" ]; then
+  echo "ERROR: RDS secret JSON missing username or password." >&2
+  exit 1
+fi
+# URL-encode credentials so any special characters (`@`, `:`, `/`, `?`,
+# `#`, `%`, etc.) in the rotated password do not break URL parsing.
+DB_USERNAME_ENC=$(jq -rn --arg v "$DB_USERNAME" '$v|@uri')
+DB_PASSWORD_ENC=$(jq -rn --arg v "$DB_PASSWORD" '$v|@uri')
+printf 'DATABASE_URL=postgresql://%s:%s@%s:%s/%s?%s\n' \
+  "$DB_USERNAME_ENC" "$DB_PASSWORD_ENC" "$DB_ENDPOINT" "$DB_PORT" "$DB_NAME" "$DB_SSL_MODE" \
+  >> "$ENV_FILE"
+unset DB_SECRET_JSON DB_USERNAME DB_PASSWORD DB_USERNAME_ENC DB_PASSWORD_ENC
+echo "DATABASE_URL provisioned (credentials spliced from Secrets Manager under provisioner role)."
 
 # VaultMTG service keys
 write_param RESEND_API_KEY          "$SSM_VAULTMTG_STAGING_RESEND_API_KEY"         --with-decryption

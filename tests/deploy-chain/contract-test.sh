@@ -23,15 +23,24 @@
 #         SSM_STAGING_*            -> /vaultmtg/app/staging/...
 #         SSM_VAULTMTG_STAGING_*   -> /vaultmtg/app/staging/...
 #
-#   C4  DATABASE_URL construction is consistent across environments:
-#       provision-db-url.sh (prod) and provision-staging-env.sh (staging)
-#       both emit a credential-free postgresql:// URL of the form
-#       postgresql://${HOST}:${PORT}/${DB}?${SSL}.
+#   C4  DATABASE_URL construction:
+#         Production (provision-db-url.sh) -- emits a credential-free
+#         postgresql:// URL of the form postgresql://${HOST}:${PORT}/${DB}?${SSL}
+#         and pairs it with DB_SECRET_ARN. Runtime SM resolution stays on
+#         for production until #2461 migrates it.
+#         Staging (provision-staging-env.sh) -- as of #2461 the provisioner
+#         splices fresh RDS credentials into DATABASE_URL under its scoped
+#         role and writes NO DB_SECRET_ARN, NO BFF_DB_RESOLVE_FROM_SM. This
+#         removes the runtime SM dependency on the EC2 instance role.
 #
-#   C5  DB-credential model: any script that writes DATABASE_URL into
-#       an env file MUST also write DB_SECRET_ARN (the BFF resolves
-#       credentials from Secrets Manager at startup -- a credential-free
-#       URL without a SECRET_ARN reproduces #2197).
+#   C5  DB-credential model symmetry:
+#         Production -- any DATABASE_URL writer for /etc/mtga-companion/env
+#         (provision-db-url.sh) MUST also write DB_SECRET_ARN (the
+#         legacy runtime-resolution path, kept for #2197 protection until
+#         the prod-side migration ticket lands).
+#         Staging -- provision-staging-env.sh MUST NOT write DB_SECRET_ARN
+#         or BFF_DB_RESOLVE_FROM_SM, so the BFF's runtime SM path stays
+#         dormant. Inverse of the C5 protection on prod; #2461 contract.
 #
 #   C6  Workflow <-> deploy-env.sh consistency: every SSM path literal in
 #       .github/workflows/*.yml that matches the production/staging app
@@ -211,8 +220,8 @@ check_ssm_prefix "SSM_VAULTMTG_STAGING_"  "/vaultmtg/app/staging/"    || c3_ok=0
 [[ "$c3_ok" -eq 1 ]] && pass "All SSM_* constants use the correct /vaultmtg/app/{env}/ prefix"
 echo
 
-# ---- C4: DATABASE_URL construction consistency ----------------------------
-echo '== C4: DATABASE_URL is credential-free in both envs =='
+# ---- C4: DATABASE_URL construction (env-specific) -------------------------
+echo '== C4: DATABASE_URL construction is correct per env =='
 PROD_DBURL_FILE="${DEPLOY_SCRIPTS_DIR}/provision-db-url.sh"
 STAGING_PROVISION_FILE="${DEPLOY_SCRIPTS_DIR}/provision-staging-env.sh"
 
@@ -253,26 +262,73 @@ check_credential_free_dburl() {
   return 1
 }
 
+# Staging (post-#2461): the provisioner role splices fresh RDS credentials
+# into DATABASE_URL via aws secretsmanager get-secret-value + jq, so the
+# BFF binary never calls SM at startup. The URL shape is
+# postgresql://%s:%s@%s:%s/%s?%s (user, pass, host, port, db, ssl) with the
+# user/pass values URL-encoded via jq @uri. Verify both halves of that
+# contract here.
+check_staging_inline_dburl() {
+  local f="$1"
+  if [[ ! -f "$f" ]]; then
+    fail "staging: missing file $f"
+    return 1
+  fi
+  if ! grep -qE 'postgresql://%s:%s@%s:%s/%s\?%s' "$f"; then
+    fail "staging: DATABASE_URL shape in $(basename "$f") is not the inline-credential template postgresql://%s:%s@%s:%s/%s?%s"
+    return 1
+  fi
+  if ! grep -qE 'secretsmanager get-secret-value' "$f"; then
+    fail "staging: $(basename "$f") emits inline-credential DATABASE_URL but never calls aws secretsmanager get-secret-value (#2461 splice broken)"
+    return 1
+  fi
+  if ! grep -qE 'jq[[:space:]]+.*@uri' "$f"; then
+    fail "staging: $(basename "$f") does not URL-encode the spliced username/password via jq @uri (#2461 splice unsafe)"
+    return 1
+  fi
+  return 0
+}
+
 c4_ok=1
-check_credential_free_dburl "$PROD_DBURL_FILE"       "production"  || c4_ok=0
-check_credential_free_dburl "$STAGING_PROVISION_FILE" "staging"    || c4_ok=0
-[[ "$c4_ok" -eq 1 ]] && pass "Both prod and staging construct credential-free DATABASE_URL"
+check_credential_free_dburl "$PROD_DBURL_FILE"  "production"  || c4_ok=0
+check_staging_inline_dburl  "$STAGING_PROVISION_FILE"          || c4_ok=0
+[[ "$c4_ok" -eq 1 ]] && pass "production DATABASE_URL is credential-free; staging DATABASE_URL is inline-credential per #2461"
 echo
 
-# ---- C5: DATABASE_URL implies DB_SECRET_ARN -------------------------------
-echo '== C5: any DATABASE_URL writer also writes DB_SECRET_ARN =='
+# ---- C5: DB-credential model symmetry (#2197 prod + #2461 staging) --------
+echo '== C5: DB credential model -- prod paired with DB_SECRET_ARN; staging unpaired =='
 c5_ok=1
-for f in "$PROD_DBURL_FILE" "$STAGING_PROVISION_FILE"; do
-  # "writes DATABASE_URL" means: assigns or upserts DATABASE_URL= into the
-  # env file (heredocs/printfs that emit `DATABASE_URL=...`).
-  if grep -qE "DATABASE_URL=" "$f"; then
-    if ! grep -qE "DB_SECRET_ARN" "$f"; then
-      fail "$(basename "$f") writes DATABASE_URL but does not write DB_SECRET_ARN -- reproduces #2197"
-      c5_ok=0
-    fi
+
+# Production half (legacy contract -- #2197 protection):
+# any DATABASE_URL writer must also write DB_SECRET_ARN, so the BFF can
+# still resolve credentials at startup. This stays in force until the
+# prod-side migration of #2461 lands.
+if grep -qE "DATABASE_URL=" "$PROD_DBURL_FILE"; then
+  if ! grep -qE "^[[:space:]]*(write_param[[:space:]]+DB_SECRET_ARN|printf[[:space:]].*DB_SECRET_ARN=|DB_SECRET_ARN=)" "$PROD_DBURL_FILE"; then
+    fail "$(basename "$PROD_DBURL_FILE") writes DATABASE_URL but does not write DB_SECRET_ARN -- reproduces #2197"
+    c5_ok=0
   fi
-done
-[[ "$c5_ok" -eq 1 ]] && pass "Every DATABASE_URL writer also writes DB_SECRET_ARN"
+fi
+
+# Staging half (new contract -- #2461):
+# provision-staging-env.sh must NOT write DB_SECRET_ARN= or
+# BFF_DB_RESOLVE_FROM_SM= into the env file. Either would re-enable the
+# BFF's runtime SM call and reintroduce the crash-loop fixed by #2461.
+# Match the actual write site (printf/echo into $ENV_FILE), NOT
+# discussion of the key in comments. Reject the patterns:
+#   write_param DB_SECRET_ARN ...
+#   printf 'DB_SECRET_ARN=...'  >> "$ENV_FILE"
+#   "DB_SECRET_ARN=$value"      >> "$ENV_FILE"
+if grep -qE "^[[:space:]]*(write_param[[:space:]]+DB_SECRET_ARN|printf[[:space:]]+['\"][[:space:]]*DB_SECRET_ARN=|['\"]DB_SECRET_ARN=)" "$STAGING_PROVISION_FILE"; then
+  fail "$(basename "$STAGING_PROVISION_FILE") writes DB_SECRET_ARN into the staging env file -- reproduces #2461 staging crash-loop"
+  c5_ok=0
+fi
+if grep -qE "^[[:space:]]*(write_param[[:space:]]+BFF_DB_RESOLVE_FROM_SM|printf[[:space:]]+['\"][[:space:]]*BFF_DB_RESOLVE_FROM_SM=|['\"]BFF_DB_RESOLVE_FROM_SM=)" "$STAGING_PROVISION_FILE"; then
+  fail "$(basename "$STAGING_PROVISION_FILE") writes BFF_DB_RESOLVE_FROM_SM into the staging env file -- re-enables runtime SM, reproduces #2461"
+  c5_ok=0
+fi
+
+[[ "$c5_ok" -eq 1 ]] && pass "DB credential model symmetry holds (prod paired, staging unpaired)"
 echo
 
 # ---- C6: workflow <-> deploy-env.sh SSM-path agreement ----------------------

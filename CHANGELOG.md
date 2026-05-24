@@ -80,6 +80,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **useRotationNotifications** - Fixed state updates after unmount (#843)
 - **API Route Validation** - Fixed mismatches between frontend and backend routes (#838)
 - **WebSocket Hub Shutdown** - Added graceful shutdown for WebSocket connections (#800)
+- **Staging BFF crash loop** - Removed the BFF's runtime Secrets Manager call from the staging startup path. The provisioner-side deploy script now fetches the RDS secret under its scoped role and writes a credential-laden `DATABASE_URL` inline, so the BFF no longer needs `secretsmanager:GetSecretValue` on the EC2 instance role and no longer crash-loops with AccessDenied. Runtime SM resolution is retained as an opt-in via `BFF_DB_RESOLVE_FROM_SM=true` (default OFF).
 
 ### Changed
 

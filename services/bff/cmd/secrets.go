@@ -44,6 +44,25 @@ func fetchCredsFromAWS(ctx context.Context, arn string) (secretCreds, error) {
 	return creds, nil
 }
 
+// shouldResolveFromSM gates whether main() calls Secrets Manager at startup.
+//
+// As of #2461 the default is OFF. The provisioner-side deploy script
+// (scripts/deploy/provision-staging-env.sh and provision-db-url.sh) fetches
+// the RDS credentials under a scoped deploy role and writes a fully
+// credential-laden DATABASE_URL into the env file. The BFF binary itself
+// no longer constructs an AWS SDK / Secrets Manager client at boot.
+//
+// Setting BFF_DB_RESOLVE_FROM_SM=true (case-sensitive, exact match) AND
+// providing DB_SECRET_ARN restores the legacy runtime resolution path —
+// kept as an opt-in for future rotation-resilience work.
+//
+// Returns false if either input is missing or the toggle is not the
+// literal string "true". An EC2 instance role that lacks
+// secretsmanager:GetSecretValue must not crash-loop the BFF.
+func shouldResolveFromSM(toggle, secretARN string) bool {
+	return toggle == "true" && secretARN != ""
+}
+
 // resolveDBURL returns the DATABASE_URL to use.
 // If secretARN is empty it returns rawURL unchanged.
 // Otherwise it fetches credentials from Secrets Manager and splices them
