@@ -229,12 +229,29 @@ DEPLOY_SHA="abc1234"
 info "Phase 1 — provision-env (SSM stubbed, writes env file to scratch)..."
 
 # Build a stub 'aws' CLI at the front of PATH so all scripts that call
-# `aws ssm get-parameter` or `aws secretsmanager get-secret-value` receive
-# canned local responses.  This is written once here and overwritten in
-# Phase 3 to also handle `aws s3` calls needed by run-migrations.sh.
+# `aws ssm get-parameter`, `aws sts assume-role`,
+# `aws sts get-caller-identity`, or `aws secretsmanager get-secret-value`
+# receive canned local responses.  This is written once here and
+# overwritten in Phase 3 to also handle `aws s3` calls needed by
+# run-migrations.sh.
+#
+# The sts stub persists the assumed session name to a scratch file so
+# that the subsequent get-caller-identity call returns an ARN matching
+# the session-name regex provision-db-url.sh's identity-verify gate
+# checks for (case "$CALLER_ARN" in *":assumed-role/<role>/${SESSION_NAME}"). Without
+# this state-passing, the gate would reject the call and the script
+# would exit 1.
 STUB_AWS="${SCRATCH}/aws"
+STUB_AWS_STATE_DIR="${SCRATCH}/aws-stub-state"
+mkdir -p "$STUB_AWS_STATE_DIR"
+export STUB_AWS_STATE_DIR
 cat > "$STUB_AWS" <<'AWSSTUB_PHASE1'
 #!/usr/bin/env bash
+# Phase 1 aws CLI stub — handles the read+assume-role+get-secret flow that
+# provision-env.sh and provision-db-url.sh exercise.  Session-name state is
+# persisted under $STUB_AWS_STATE_DIR so the identity-verify gate sees an
+# ARN matching the role-session-name returned by assume-role.
+
 if [[ "$1" == "ssm" && "$2" == "get-parameter" ]]; then
     NAME=""
     while [[ $# -gt 0 ]]; do
@@ -250,6 +267,58 @@ if [[ "$1" == "ssm" && "$2" == "get-parameter" ]]; then
     esac
     exit 0
 fi
+
+if [[ "$1" == "sts" && "$2" == "assume-role" ]]; then
+    # provision-db-url.sh invokes:
+    #   aws sts assume-role --role-arn <arn> --role-session-name <session>
+    #     --duration-seconds 900 --region <r>
+    #     --query 'Credentials.[AccessKeyId,SecretAccessKey,SessionToken]'
+    #     --output text
+    # which produces three tab-separated tokens (no JSON wrapper).
+    SESSION=""
+    while [[ $# -gt 0 ]]; do
+        case "$1" in
+            --role-session-name) SESSION="$2"; shift 2 ;;
+            *) shift ;;
+        esac
+    done
+    if [[ -z "$SESSION" ]]; then
+        echo "STUB(phase1): sts assume-role missing --role-session-name" >&2
+        exit 1
+    fi
+    # Persist for the get-caller-identity call that follows.
+    printf '%s' "$SESSION" > "${STUB_AWS_STATE_DIR}/last_session_name"
+    # Tab-separated AccessKeyId, SecretAccessKey, SessionToken (valid shape).
+    printf 'ASIA_STUB_ACCESS_KEY_ID_XXXXXXXX\tstub_secret_access_key_value_XXXXXXXXXXXXXXXXXXXX\tstub_session_token_value_XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX\n'
+    exit 0
+fi
+
+if [[ "$1" == "sts" && "$2" == "get-caller-identity" ]]; then
+    # provision-db-url.sh invokes:
+    #   aws sts get-caller-identity --query Arn --output text
+    # and matches: *":assumed-role/vaultmtg-staging-deploy-provisioner/${SESSION_NAME}"
+    SESSION=""
+    if [[ -f "${STUB_AWS_STATE_DIR}/last_session_name" ]]; then
+        SESSION=$(cat "${STUB_AWS_STATE_DIR}/last_session_name")
+    fi
+    if [[ -z "$SESSION" ]]; then
+        echo "STUB(phase1): sts get-caller-identity called before assume-role (no session-name state)" >&2
+        exit 1
+    fi
+    printf 'arn:aws:sts::901347789205:assumed-role/vaultmtg-staging-deploy-provisioner/%s\n' "$SESSION"
+    exit 0
+fi
+
+if [[ "$1" == "secretsmanager" && "$2" == "get-secret-value" ]]; then
+    # provision-db-url.sh invokes:
+    #   aws secretsmanager get-secret-value --secret-id <arn> --region <r>
+    #     --query SecretString --output text
+    # which returns the raw SecretString (JSON blob) -- not the wrapping
+    # GetSecretValueResponse envelope.
+    printf '{"username":"testuser","password":"testpass"}\n'
+    exit 0
+fi
+
 echo "STUB(phase1): unhandled aws command: $*" >&2
 exit 1
 AWSSTUB_PHASE1
@@ -275,12 +344,26 @@ chmod +x "$PROVISION_DB"
 bash "$PROVISION_DB"
 
 # Contract assertions — the env file must contain the keys downstream scripts depend on.
-for key in ALLOWED_ORIGINS DATABASE_URL DB_SECRET_ARN AWS_DEFAULT_REGION; do
+# Per #2461 / contract-test C5, DB_SECRET_ARN and BFF_DB_RESOLVE_FROM_SM must NOT be
+# written -- the BFF reads inline credentials from DATABASE_URL and the runtime SM
+# call is gated off. Asserting the absence here mirrors the C5 contract at the
+# integration-test layer so a regression that re-introduces either key is caught.
+for key in ALLOWED_ORIGINS DATABASE_URL AWS_DEFAULT_REGION; do
     if ! grep -q "^${key}=" "$STUB_ENV_FILE"; then
         fail "Phase 1 — contract violation: ${key} not written to env file (downstream scripts will break)"
     fi
 done
-pass "Phase 1 — provision-env + provision-db-url ran; all contract keys present in env file"
+for forbidden in DB_SECRET_ARN BFF_DB_RESOLVE_FROM_SM; do
+    if grep -q "^${forbidden}=" "$STUB_ENV_FILE"; then
+        fail "Phase 1 — contract violation (C5): env file MUST NOT contain ${forbidden}= -- re-enables runtime SM, reproduces #2461 crash-loop"
+    fi
+done
+# Verify the SM splice happened: DATABASE_URL must carry the inline credentials
+# returned by the stubbed secretsmanager get-secret-value call.
+if ! grep -q '^DATABASE_URL=postgresql://testuser:testpass@' "$STUB_ENV_FILE"; then
+    fail "Phase 1 — contract violation: DATABASE_URL did not splice testuser:testpass from the stubbed Secrets Manager response (rendered: $(grep ^DATABASE_URL= "$STUB_ENV_FILE"))"
+fi
+pass "Phase 1 — provision-env + provision-db-url ran; required keys present, DB_SECRET_ARN/BFF_DB_RESOLVE_FROM_SM absent (C5), DATABASE_URL spliced from SM"
 
 # ===========================================================================
 # Phase 2: stage-binary.sh (S3 stubbed via aws PATH overlay)
