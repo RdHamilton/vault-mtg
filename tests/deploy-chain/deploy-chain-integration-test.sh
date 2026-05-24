@@ -315,7 +315,12 @@ if [[ "$1" == "secretsmanager" && "$2" == "get-secret-value" ]]; then
     #     --query SecretString --output text
     # which returns the raw SecretString (JSON blob) -- not the wrapping
     # GetSecretValueResponse envelope.
-    printf '{"username":"testuser","password":"testpass"}\n'
+    # Return the throwaway Postgres credentials (deploy_test:deploy_test) so
+    # that the env file written by provision-db-url.sh carries a DATABASE_URL
+    # that run-migrations.sh can source directly against the real container in
+    # Phase 3. Credentials are hardcoded to match PG_USER/PG_PASSWORD set
+    # below (single-quoted heredoc cannot expand outer-scope variables).
+    printf '{"username":"deploy_test","password":"deploy_test"}\n'
     exit 0
 fi
 
@@ -359,9 +364,11 @@ for forbidden in DB_SECRET_ARN BFF_DB_RESOLVE_FROM_SM; do
     fi
 done
 # Verify the SM splice happened: DATABASE_URL must carry the inline credentials
-# returned by the stubbed secretsmanager get-secret-value call.
-if ! grep -q '^DATABASE_URL=postgresql://testuser:testpass@' "$STUB_ENV_FILE"; then
-    fail "Phase 1 — contract violation: DATABASE_URL did not splice testuser:testpass from the stubbed Secrets Manager response (rendered: $(grep ^DATABASE_URL= "$STUB_ENV_FILE"))"
+# returned by the stubbed secretsmanager get-secret-value call (PG_USER:PG_PASSWORD
+# so that Phase 3 run-migrations.sh can use the env file directly against the
+# throwaway Postgres container without a separate credential override).
+if ! grep -q "^DATABASE_URL=postgresql://${PG_USER}:${PG_PASSWORD}@" "$STUB_ENV_FILE"; then
+    fail "Phase 1 — contract violation: DATABASE_URL did not splice ${PG_USER}:${PG_PASSWORD} from the stubbed Secrets Manager response (rendered: $(grep ^DATABASE_URL= "$STUB_ENV_FILE"))"
 fi
 pass "Phase 1 — provision-env + provision-db-url ran; required keys present, DB_SECRET_ARN/BFF_DB_RESOLVE_FROM_SM absent (C5), DATABASE_URL spliced from SM"
 
@@ -404,30 +411,22 @@ DEPLOY_BUCKET="$DEPLOY_BUCKET" DEPLOY_SHA="$DEPLOY_SHA" bash "$STAGE_SCRIPT"
 pass "Phase 2 — binary staged atomically; no .next artifact left behind"
 
 # ===========================================================================
-# Phase 3: run-migrations.sh (SSM/Secrets Manager stubbed, real Postgres)
+# Phase 3: run-migrations.sh (env-file credential model, real Postgres)
 # ===========================================================================
-info "Phase 3 — run-migrations against real Postgres (SSM/SM stubbed)..."
+info "Phase 3 — run-migrations against real Postgres (env-file credential model)..."
 
-# Full aws stub for run-migrations.sh — handles SSM, Secrets Manager, and S3.
+# run-migrations.sh now reads DATABASE_URL from $BFF_ENV_FILE (PR #2461 fix).
+# The env file was written in Phase 1 by provision-db-url.sh with inline
+# credentials using the throwaway Postgres user/password (deploy_test:deploy_test),
+# so Phase 3 can source it directly without a separate credential override.
+# Shape: postgresql://deploy_test:deploy_test@127.0.0.1:15432/deploy_test_db?sslmode=disable
+#
+# No SSM or Secrets Manager calls are made by run-migrations.sh; only S3 is
+# needed (migrations download + grant SQL download).
+
+# Phase 3 aws stub — S3 only (no SSM/SM needed; creds come from the env file).
 cat > "$STUB_AWS" <<AWSSTUB_PHASE3
 #!/usr/bin/env bash
-if [[ "\$1" == "ssm" && "\$2" == "get-parameter" ]]; then
-    NAME=""
-    while [[ \$# -gt 0 ]]; do
-        case "\$1" in --name) NAME="\$2"; shift 2 ;; *) shift ;; esac
-    done
-    case "\$NAME" in
-        */db-secret-arn) echo "arn:aws:secretsmanager:us-east-1:000000000000:secret:stub" ;;
-        */db-endpoint)   echo "127.0.0.1" ;;
-        */db-name)       echo "${PG_DB}" ;;
-        *)               echo "stub_value" ;;
-    esac
-    exit 0
-fi
-if [[ "\$1" == "secretsmanager" && "\$2" == "get-secret-value" ]]; then
-    printf '{"username":"%s","password":"%s"}\n' "${PG_USER}" "${PG_PASSWORD}"
-    exit 0
-fi
 if [[ "\$1" == "s3" ]]; then
     case "\$2" in
         sync)
@@ -461,9 +460,11 @@ AWSSTUB_PHASE3
 chmod +x "$STUB_AWS"
 
 # Patch run-migrations.sh for local test execution:
-#   - sslmode and DB_PORT are already redirected via the patched /tmp/deploy-env.sh
-#   - psql call: inject -p PG_PORT so the grant step uses the right port
-#   - remove dnf install block (psql already on PATH in CI)
+#   - BFF_ENV_FILE / DB_PORT / DB_SSL_MODE already redirected via the patched
+#     /tmp/deploy-env.sh (BFF_ENV_FILE → scratch env file; DB_PORT → 15432;
+#     DB_SSL_MODE → sslmode=disable).
+#   - psql call: inject -p PG_PORT so the grant step connects to the right port.
+#   - remove dnf install block (psql already on PATH in CI).
 MIGRATE_SCRIPT="${SCRATCH}/run-migrations-test.sh"
 sed \
     -e 's|dnf install -y postgresql15||g' \

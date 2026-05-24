@@ -7,13 +7,17 @@
 # Idempotent: golang-migrate tracks applied versions in the schema_migrations
 # table. Re-running this script when already at HEAD is a no-op.
 #
-# Credentials are fetched from Secrets Manager (via the SSM parameter
-# named in SSM_PROD_DB_SECRET_ARN) rather than reading DATABASE_URL
-# from the env file.  The env-file URL is credential-free by design
-# (the BFF resolves creds at startup); it must not be passed to migrate.
+# Credential model (#2461 env-file pattern):
+#   DATABASE_URL is sourced from $BFF_ENV_FILE (/etc/mtga-companion/env).
+#   That file is written by provision-db-url.sh at deploy time with inline
+#   credentials spliced from Secrets Manager under the provisioner role.
+#   The EC2 instance role (mtga-companion-ec2-role-production) is NOT granted
+#   secretsmanager:GetSecretValue on the RDS-managed credential (S-03 least-
+#   privilege); using the env file avoids any direct SM call from this script.
+#   This mirrors the pattern established in PR #2539/#2540 for the BFF binary.
 #
-# SSM parameter names are sourced from infra/config/deploy-env.sh —
-# do NOT hardcode them here.
+# SSM parameter names and env file path are sourced from
+# infra/config/deploy-env.sh — do NOT hardcode them here.
 #
 # Usage (via SSM from the deploy workflow — not run locally):
 #   SSM command with DEPLOY_BUCKET and AWS_REGION env vars injected.
@@ -58,40 +62,58 @@ if ! command -v psql &>/dev/null; then
     echo "[run-migrations] postgresql15 installed."
 fi
 
-# Fetch master credentials from Secrets Manager.
-# These are used for both the migrate step and the grant step below.
-SECRET_ARN=$(aws ssm get-parameter \
-    --region  "$REGION" \
-    --name    "$SSM_PROD_DB_SECRET_ARN" \
-    --query   "Parameter.Value" \
-    --output  text)
+# Source DATABASE_URL from the production env file.
+# provision-db-url.sh (PR #2540) writes inline credentials into this file at
+# deploy time under the vaultmtg-staging-deploy-provisioner role.  The EC2
+# instance role lacks secretsmanager:GetSecretValue on the RDS secret (per
+# S-03 / #2375) so we must not call SM here — the env file is the single
+# source of truth for credentials.
+if [[ ! -f "$BFF_ENV_FILE" ]]; then
+    echo "[run-migrations] ERROR: env file not found at $BFF_ENV_FILE" >&2
+    echo "  Ensure provision-db-url.sh ran successfully before this step." >&2
+    exit 1
+fi
 
-SECRET_JSON=$(aws secretsmanager get-secret-value \
-    --region    "$REGION" \
-    --secret-id "$SECRET_ARN" \
-    --query     "SecretString" \
-    --output    text)
+# shellcheck source=/etc/mtga-companion/env
+. "$BFF_ENV_FILE"
 
-MASTER_PASSWORD=$(echo "$SECRET_JSON" | python3 -c "import json,sys; print(json.load(sys.stdin)['password'])")
-MASTER_USER=$(echo     "$SECRET_JSON" | python3 -c "import json,sys; print(json.load(sys.stdin)['username'])")
+if [[ -z "${DATABASE_URL:-}" ]]; then
+    echo "[run-migrations] ERROR: DATABASE_URL is empty or unset in $BFF_ENV_FILE" >&2
+    exit 1
+fi
 
-DB_ENDPOINT=$(aws ssm get-parameter \
-    --region  "$REGION" \
-    --name    "$SSM_PROD_DB_ENDPOINT" \
-    --query   "Parameter.Value" \
-    --output  text)
+# golang-migrate requires a postgres:// scheme; the env file uses postgresql://.
+MIGRATE_DB_URL="${DATABASE_URL/postgresql:\/\//postgres://}"
 
-DB_NAME=$(aws ssm get-parameter \
-    --region  "$REGION" \
-    --name    "$SSM_PROD_DB_NAME" \
-    --query   "Parameter.Value" \
-    --output  text)
+# Parse credentials and connection details from DATABASE_URL for psql.
+# URL shape: postgresql://USER:PASS@HOST:PORT/DB?sslmode=...
+# Use python3 (already on Amazon Linux 2023) for URL parsing — shell
+# parameter expansion is not robust against special characters in passwords.
+MASTER_USER=$(python3 -c "
+import sys, urllib.parse
+u = urllib.parse.urlparse('${DATABASE_URL}')
+print(u.username)
+")
+MASTER_PASSWORD=$(python3 -c "
+import sys, urllib.parse
+u = urllib.parse.urlparse('${DATABASE_URL}')
+print(urllib.parse.unquote(u.password))
+")
+DB_ENDPOINT=$(python3 -c "
+import sys, urllib.parse
+u = urllib.parse.urlparse('${DATABASE_URL}')
+print(u.hostname)
+")
+DB_NAME=$(python3 -c "
+import sys, urllib.parse
+u = urllib.parse.urlparse('${DATABASE_URL}')
+print(u.path.lstrip('/'))
+")
 
-# URL-encode the password so that any URL-special characters in the
-# RDS-managed secret do not break the connection string.
-ENC_PASS=$(python3 -c 'import urllib.parse,sys; print(urllib.parse.quote(sys.argv[1], safe=""))' "$MASTER_PASSWORD")
-
-MIGRATE_DB_URL="postgres://${MASTER_USER}:${ENC_PASS}@${DB_ENDPOINT}:${DB_PORT}/${DB_NAME}?${DB_SSL_MODE}"
+if [[ -z "$MASTER_USER" || -z "$MASTER_PASSWORD" || -z "$DB_ENDPOINT" || -z "$DB_NAME" ]]; then
+    echo "[run-migrations] ERROR: could not parse credentials from DATABASE_URL" >&2
+    exit 1
+fi
 
 echo "[run-migrations] Applying migrations ..."
 echo "[run-migrations] Target DB: postgres://${MASTER_USER}@${DB_ENDPOINT}:${DB_PORT}/${DB_NAME}?${DB_SSL_MODE}"
