@@ -411,35 +411,95 @@ DEPLOY_BUCKET="$DEPLOY_BUCKET" DEPLOY_SHA="$DEPLOY_SHA" bash "$STAGE_SCRIPT"
 pass "Phase 2 — binary staged atomically; no .next artifact left behind"
 
 # ===========================================================================
-# Phase 3: run-migrations.sh (env-file credential model, real Postgres)
+# Phase 3: run-migrations.sh (independent master-credential model, real Postgres)
 # ===========================================================================
-info "Phase 3 — run-migrations against real Postgres (env-file credential model)..."
+info "Phase 3 — run-migrations against real Postgres (independent master-credential model)..."
 
-# run-migrations.sh now reads DATABASE_URL from $BFF_ENV_FILE (PR #2461 fix).
-# The env file was written in Phase 1 by provision-db-url.sh with inline
-# credentials using the throwaway Postgres user/password (deploy_test:deploy_test),
-# so Phase 3 can source it directly without a separate credential override.
-# Shape: postgresql://deploy_test:deploy_test@127.0.0.1:15432/deploy_test_db?sslmode=disable
+# run-migrations.sh post-#2223 (ADR-024 deviation): instead of sourcing
+# DATABASE_URL from $BFF_ENV_FILE (which now contains vaultmtg_app DML-only
+# credentials), it independently resolves the master credential via:
+#   1. aws ssm get-parameter (db-secret-arn, db-endpoint, db-name)
+#   2. aws sts assume-role  (provisioner role for GetSecretValue)
+#   3. aws sts get-caller-identity (identity-verify gate)
+#   4. aws secretsmanager get-secret-value (master JSON credential)
+#   5. aws s3 sync (migrations download)
+#   6. aws s3 cp  (grant SQL download)
 #
-# No SSM or Secrets Manager calls are made by run-migrations.sh; only S3 is
-# needed (migrations download + grant SQL download).
+# The stub returns the throwaway Postgres credentials (deploy_test:deploy_test)
+# from the secretsmanager call so that run-migrations.sh constructs a
+# DATABASE_URL pointing at the real Docker container on port ${PG_PORT}.
+# SSM calls for db-endpoint and db-name return 127.0.0.1 / deploy_test_db
+# respectively.  Session-name state is persisted under $STUB_AWS_STATE_DIR
+# (same pattern as the Phase 1 stub) so the identity-verify gate passes.
 
-# Phase 3 aws stub — S3 only (no SSM/SM needed; creds come from the env file).
+# Phase 3 aws stub — SSM + STS + SM + S3 (run-migrations.sh independent credential model).
 cat > "$STUB_AWS" <<AWSSTUB_PHASE3
 #!/usr/bin/env bash
+# Phase 3 aws CLI stub — handles the SSM + STS assume-role + Secrets Manager +
+# S3 flow that run-migrations.sh exercises after the #2223 ADR-024 deviation.
+# Session-name state is persisted under \$STUB_AWS_STATE_DIR so the
+# identity-verify gate (sts get-caller-identity) returns the correct ARN.
+
+if [[ "\$1" == "ssm" && "\$2" == "get-parameter" ]]; then
+    NAME=""
+    while [[ \$# -gt 0 ]]; do
+        case "\$1" in --name) NAME="\$2"; shift 2 ;; *) shift ;; esac
+    done
+    case "\$NAME" in
+        */db-secret-arn)  echo "arn:aws:secretsmanager:us-east-1:000000000000:secret:stub-master" ;;
+        */db-endpoint)    echo "127.0.0.1" ;;
+        */db-name)        echo "deploy_test_db" ;;
+        *)                echo "stub_value" ;;
+    esac
+    exit 0
+fi
+
+if [[ "\$1" == "sts" && "\$2" == "assume-role" ]]; then
+    SESSION=""
+    while [[ \$# -gt 0 ]]; do
+        case "\$1" in
+            --role-session-name) SESSION="\$2"; shift 2 ;;
+            *) shift ;;
+        esac
+    done
+    if [[ -z "\$SESSION" ]]; then
+        echo "STUB(phase3): sts assume-role missing --role-session-name" >&2
+        exit 1
+    fi
+    printf '%s' "\$SESSION" > "${STUB_AWS_STATE_DIR}/last_session_name"
+    printf 'ASIA_STUB_ACCESS_KEY_ID_XXXXXXXX\tstub_secret_access_key_value_XXXXXXXXXXXXXXXXXXXX\tstub_session_token_value_XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX\n'
+    exit 0
+fi
+
+if [[ "\$1" == "sts" && "\$2" == "get-caller-identity" ]]; then
+    SESSION=""
+    if [[ -f "${STUB_AWS_STATE_DIR}/last_session_name" ]]; then
+        SESSION=\$(cat "${STUB_AWS_STATE_DIR}/last_session_name")
+    fi
+    if [[ -z "\$SESSION" ]]; then
+        echo "STUB(phase3): sts get-caller-identity called before assume-role (no session-name state)" >&2
+        exit 1
+    fi
+    printf 'arn:aws:sts::901347789205:assumed-role/vaultmtg-staging-deploy-provisioner/%s\n' "\$SESSION"
+    exit 0
+fi
+
+if [[ "\$1" == "secretsmanager" && "\$2" == "get-secret-value" ]]; then
+    # Return the throwaway Postgres credentials so run-migrations.sh constructs
+    # a DATABASE_URL pointing at the Docker container (deploy_test:deploy_test).
+    printf '{"username":"deploy_test","password":"deploy_test"}\n'
+    exit 0
+fi
+
 if [[ "\$1" == "s3" ]]; then
     case "\$2" in
         sync)
-            # aws s3 sync <s3-src> <local-dest> [--option value ...]
-            # Positional: \$3 = s3 src, \$4 = local dest (before flags).
             DEST="\$4"
             mkdir -p "\$DEST"
             cp "${MIGRATIONS_DIR}"/*.sql "\$DEST/"
             exit 0
             ;;
         cp)
-            # aws s3 cp <src> <dest> [--option value ...]
-            # Positional: \$3 = src, \$4 = dest.
             SRC="\$3"; DEST="\$4"
             case "\$SRC" in
                 */grant-production-tables.sql)
