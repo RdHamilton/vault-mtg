@@ -7,9 +7,9 @@
 # exclusively by daemon-release.yml, which triggers on `daemon/v*` tags.
 #
 # Binary naming: canonical artifact names are `vaultmtg-daemon-<os>-<arch>[.exe]`
-# as defined in daemon-release.yml.  During the ADR-022 Phase 2 dual-naming
-# window, legacy `mtga-companion-daemon-*` copies are also published.
-# Any local `make build` output must match the canonical (new) names.
+# as defined in daemon-release.yml. ADR-022 Phase 6 (#1764) cutover 2026-05-25
+# removed the legacy mtga-companion-daemon-* dual-naming. Any local
+# `make build` output must match the canonical (new) names.
 
 name: Daemon CI
 

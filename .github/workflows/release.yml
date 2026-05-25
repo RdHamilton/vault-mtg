@@ -249,8 +249,9 @@ jobs:
 
     # Legacy `cmd/mtga-companion` (Wails-era desktop monolith) was
     # removed in PR #19. The replacement daemon ships via
-    # daemon-release.yml as mtga-companion-daemon-<os>-<arch>; the BFF
-    # ships from this same workflow further below. Nothing else gets
+    # daemon-release.yml as vaultmtg-daemon-<os>-<arch> (ADR-022 Phase 6
+    # cutover #1764 removed the legacy mtga-companion-daemon-* dual-naming);
+    # the BFF ships from this same workflow further below. Nothing else gets
     # built into a tagged GitHub Release from this top-level step.
 
     - name: Generate changelog

@@ -4,7 +4,7 @@
 # Runs ON the EC2 instance via SSM RunShellScript.
 #
 # Required environment variables (exported inline in the SSM command string):
-#   DEPLOY_BUCKET - S3 bucket name (mtga-companion-deploy-artifacts-staging)
+#   DEPLOY_BUCKET - S3 bucket name (vaultmtg-deploy-artifacts-staging)
 #   DEPLOY_SHA    - Git SHA used as the S3 key prefix
 
 set -e
