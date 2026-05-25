@@ -207,27 +207,16 @@ archives:
       - none*
 
   # ---------------------------------------------------------------------------
-  # ADR-022 Phase 2 dual-naming: legacy mtga-companion-daemon-* names.
-  # These copies ensure in-field daemons that check the legacy artifact name
-  # continue to receive updates through the transition window.
-  # Remove these two archive entries in Phase 6 (#1764).
+  # ADR-022 Phase 6 (#1764) cutover completed 2026-05-25:
+  # the legacy dual-naming archive entries (mtga-companion-daemon-darwin-universal
+  # and mtga-companion-daemon-windows-amd64) were removed. Gate verified: zero
+  # legacy artifacts were ever published to a daemon/v* release — the dual-naming
+  # commit (#1760 / 0f958f71) landed AFTER the only daemon release (daemon/v0.3.1,
+  # 2026-05-17 18:58Z UTC; commit landed 2026-05-18 07:35Z UTC), so no in-field
+  # daemon ever fetched a mtga-companion-daemon-* asset under daemon/v0.3.1 or
+  # later tags. sha256sums.txt regenerates on the next daemon release with only
+  # vaultmtg-daemon-* checksums (no manual edit required).
   # ---------------------------------------------------------------------------
-  - id: darwin-universal-legacy
-    ids:
-      - daemon-universal
-    formats:
-      - binary
-    name_template: "mtga-companion-daemon-darwin-universal"
-    allow_different_binary_count: true
-
-  - id: windows-amd64-legacy
-    ids:
-      - daemon
-    formats:
-      - binary
-    name_template: "mtga-companion-daemon-windows-amd64"
-    files:
-      - none*
 
 # ---------------------------------------------------------------------------
 # Checksums
