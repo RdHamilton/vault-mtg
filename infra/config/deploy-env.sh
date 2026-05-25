@@ -164,5 +164,5 @@ SSM_VAULTMTG_STAGING_CRISP_WEBSITE_ID="/vaultmtg/app/staging/crisp-website-id"
 # ───────────────────────────────────────────────────────────────────────────
 # EC2 / INFRASTRUCTURE FACTS
 # ───────────────────────────────────────────────────────────────────────────
-EC2_INSTANCE_TAG="mtga-companion-bff-production"
+EC2_INSTANCE_TAG="vaultmtg-bff-production"
 EC2_INSTANCE_STATE="running"
