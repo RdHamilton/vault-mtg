@@ -32,9 +32,22 @@ DEPLOY_REGION="us-east-1"
 BFF_SERVICE="mtga-companion"
 BFF_STAGING_SERVICE="vault-mtg-bff-staging"
 
+# Rename-prep target names (ADR-022 Phase 5c, ticket #1755).  These are
+# defined alongside the legacy names so that PR A in mtga-companion-infra
+# (ec2-bootstrap.sh systemd-unit rename) can switch the active value in a
+# single edit.  No consumer reads these until PR A lands; they are inert
+# constants in this PR.
+BFF_SERVICE_VAULTMTG="vaultmtg-bff"
+
 # ───────────────────────────────────────────────────────────────────────────
 # BINARY NAMES (installed under /usr/local/bin/)
 #   Used by: stage-binary.sh, stage-binary-staging.sh
+#
+#   NOTE: The release pipeline (.github/workflows/release.yml) produces the
+#   artifact `mtga-bff` and uploads it under that S3 key.  Renaming the
+#   installed-binary filename here would cascade through release.yml,
+#   ci.yml, e2e-smoke.yml, and staging-deploy.yml.  That cascade is out of
+#   scope for ticket #1755 (filesystem/systemd rename) and is deferred.
 # ───────────────────────────────────────────────────────────────────────────
 BFF_BINARY="mtga-bff"
 BFF_STAGING_BINARY="mtga-bff-staging"
@@ -51,12 +64,25 @@ BFF_ENV_FILE="/etc/mtga-companion/env"
 BFF_STAGING_ENV_DIR="/etc/mtga-companion-staging"
 BFF_STAGING_ENV_FILE="/etc/mtga-companion-staging/env"
 
+# Rename-prep target paths (ADR-022 Phase 5c, ticket #1755).  PR A in
+# mtga-companion-infra ships ec2-bootstrap.sh with symlink shims:
+#     /etc/mtga-companion -> /etc/vaultmtg
+# so a partial-deploy window cannot 500.  These constants are inert until
+# PR A lands.
+BFF_ENV_DIR_VAULTMTG="/etc/vaultmtg"
+BFF_ENV_FILE_VAULTMTG="/etc/vaultmtg/env"
+
 # ───────────────────────────────────────────────────────────────────────────
 # NGINX WEB-ROOT DIRECTORIES
 #   Used by: deploy-frontend.sh
 # ───────────────────────────────────────────────────────────────────────────
 FRONTEND_DEPLOY_DIR="/var/www/mtga-companion"
 FRONTEND_STAGING_DIR="/var/www/mtga-companion-staging"
+
+# Rename-prep target web-root (ADR-022 Phase 5c, ticket #1755).  PR A
+# ships symlink shim /var/www/mtga-companion -> /var/www/vaultmtg in
+# ec2-bootstrap.sh.  Inert until PR A lands.
+FRONTEND_DEPLOY_DIR_VAULTMTG="/var/www/vaultmtg"
 
 # ───────────────────────────────────────────────────────────────────────────
 # DB CREDENTIAL MODEL

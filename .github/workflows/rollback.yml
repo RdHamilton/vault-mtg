@@ -57,9 +57,15 @@ jobs:
         done
 
     # Restart the BFF service via restart-bff.sh, which sources deploy-env.sh
-    # to resolve BFF_SERVICE (currently "mtga-companion").  Both scripts are
-    # downloaded from S3 onto the EC2 instance before execution so the service
-    # name is never hardcoded in this workflow.
+    # to resolve BFF_SERVICE.  Both scripts are downloaded from S3 onto the
+    # EC2 instance before execution so the service name is never hardcoded
+    # in this workflow.
+    #
+    # ADR-022 Phase 5c (#1755) is renaming the production systemd unit from
+    # "mtga-companion" to "vaultmtg-bff".  The flip happens in the paired
+    # mtga-companion-infra PR (ec2-bootstrap.sh + systemd unit file) — this
+    # workflow does not need to change because it consumes BFF_SERVICE via
+    # restart-bff.sh, which sources deploy-env.sh at runtime.
     - name: Restart BFF service via restart-bff.sh
       run: |
         SHELL_CMD="aws s3 cp s3://${{ secrets.DEPLOY_BUCKET }}/scripts/deploy-env.sh /tmp/deploy-env.sh && aws s3 cp s3://${{ secrets.DEPLOY_BUCKET }}/scripts/restart-bff.sh /tmp/restart-bff.sh && chmod +x /tmp/restart-bff.sh && /tmp/restart-bff.sh"
