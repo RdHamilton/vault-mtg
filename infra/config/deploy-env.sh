@@ -135,6 +135,29 @@ SSM_PROD_CLERK_PUBLISHABLE_KEY="/vaultmtg/app/production/CLERK_PUBLISHABLE_KEY"
 SSM_PROD_CLERK_FRONTEND_API="/vaultmtg/app/production/CLERK_FRONTEND_API"
 SSM_PROD_PORT="/vaultmtg/app/production/PORT"
 
+# v0.3.3 observability — Sentry + PostHog (ticket #16 / N1)
+#   SENTRY_DSN_BFF       — Sentry Go project DSN, consumed by BFF at startup
+#                          via /etc/vaultmtg/env (provisioned by provision-env.sh).
+#   SENTRY_DSN_SPA       — Sentry React project DSN, consumed by the SPA Vite
+#                          build at build time. NOT written to /etc/vaultmtg/env;
+#                          the SPA build job in deploy-bff.yml will read it
+#                          directly and inject as VITE_SENTRY_DSN.
+#   POSTHOG_API_KEY      — PostHog project API key, consumed by the SPA Vite
+#                          build at build time (VITE_POSTHOG_KEY). NOT written
+#                          to /etc/vaultmtg/env.
+#   POSTHOG_HOST         — PostHog ingestion host (us.i.posthog.com).
+#                          Plain String — not a secret.
+#   SecureString for all DSN/API-key paths; String for POSTHOG_HOST.
+#   Staging mirror is deliberately deferred: the existing staging
+#   `sentry-bff-dsn` parameter (provision-staging-env.sh line 231)
+#   covers staging BFF observability. PostHog and Sentry SDKs tag events
+#   with `environment: production|staging` at init time, so a single
+#   PostHog API key + single SPA Sentry DSN per surface is workable.
+SSM_PROD_SENTRY_DSN_BFF="/vaultmtg/app/production/sentry-dsn-bff"
+SSM_PROD_SENTRY_DSN_SPA="/vaultmtg/app/production/sentry-dsn-spa"
+SSM_PROD_POSTHOG_API_KEY="/vaultmtg/app/production/posthog-api-key"
+SSM_PROD_POSTHOG_HOST="/vaultmtg/app/production/posthog-host"
+
 # ───────────────────────────────────────────────────────────────────────────
 # SSM PARAMETER PATHS — STAGING
 # ───────────────────────────────────────────────────────────────────────────
