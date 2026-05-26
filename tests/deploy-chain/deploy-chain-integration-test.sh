@@ -88,7 +88,7 @@ info "Repo root  : $REPO_ROOT"
 # it from that path (it is downloaded from S3 alongside each script before
 # execution on EC2).  The test harness places a patched copy here so that
 # BFF_ENV_FILE / BFF_ENV_DIR point into the scratch space rather than the
-# real /etc/mtga-companion paths that require root access.
+# real /etc/vaultmtg paths that require root access.
 #
 # DB_PORT and DB_SSL_MODE are also overridden so run-migrations.sh (which
 # reads these vars from deploy-env.sh) connects to the throwaway Docker
@@ -96,14 +96,14 @@ info "Repo root  : $REPO_ROOT"
 # ---------------------------------------------------------------------------
 PG_PORT=15432  # declared here so the sed patches below can reference it
 
-STUB_ENV_DIR="${SCRATCH}/etc/mtga-companion"
-STUB_ENV_FILE="${SCRATCH}/etc/mtga-companion/env"
+STUB_ENV_DIR="${SCRATCH}/etc/vaultmtg"
+STUB_ENV_FILE="${SCRATCH}/etc/vaultmtg/env"
 mkdir -p "$STUB_ENV_DIR"
 
 DEPLOY_ENV_STUB="/tmp/deploy-env.sh"
 sed \
-    -e "s|BFF_ENV_DIR=\"/etc/mtga-companion\"|BFF_ENV_DIR=\"${STUB_ENV_DIR}\"|" \
-    -e "s|BFF_ENV_FILE=\"/etc/mtga-companion/env\"|BFF_ENV_FILE=\"${STUB_ENV_FILE}\"|" \
+    -e "s|BFF_ENV_DIR=\"/etc/vaultmtg\"|BFF_ENV_DIR=\"${STUB_ENV_DIR}\"|" \
+    -e "s|BFF_ENV_FILE=\"/etc/vaultmtg/env\"|BFF_ENV_FILE=\"${STUB_ENV_FILE}\"|" \
     -e 's|DB_PORT="5432"|DB_PORT="'"${PG_PORT}"'"|' \
     -e 's|DB_SSL_MODE="sslmode=require"|DB_SSL_MODE="sslmode=disable"|' \
     "${REPO_ROOT}/infra/config/deploy-env.sh" > "$DEPLOY_ENV_STUB"
@@ -157,7 +157,7 @@ assert_eq() {
 }
 
 # infra/config/deploy-env.sh → BFF_SERVICE (systemd unit name for production BFF)
-assert_eq "BFF_SERVICE" "$ASSERT_BFF_SERVICE" "mtga-companion"
+assert_eq "BFF_SERVICE" "$ASSERT_BFF_SERVICE" "vaultmtg-bff"
 # infra/config/deploy-env.sh → BFF_STAGING_SERVICE (systemd unit name for staging BFF)
 assert_eq "BFF_STAGING_SERVICE" "$ASSERT_BFF_STAGING_SERVICE" "vault-mtg-bff-staging"
 # infra/config/deploy-env.sh → BFF_BINARY (production binary basename in /usr/local/bin)
@@ -567,8 +567,8 @@ cat > "$STUB_SYSTEMCTL" <<'SVCSTUB'
 #!/usr/bin/env bash
 CMD="$1"; SERVICE="${2:-}"
 echo "[stub-systemctl] $CMD $SERVICE"
-if [[ "$CMD" == "restart" && "$SERVICE" != "mtga-companion" ]]; then
-    echo "ERROR: wrong unit name — expected 'mtga-companion', got '${SERVICE}'" >&2
+if [[ "$CMD" == "restart" && "$SERVICE" != "vaultmtg-bff" ]]; then
+    echo "ERROR: wrong unit name — expected 'vaultmtg-bff', got '${SERVICE}'" >&2
     exit 1
 fi
 exit 0
@@ -577,7 +577,7 @@ chmod +x "$STUB_SYSTEMCTL"
 
 bash "${REPO_ROOT}/scripts/deploy/restart-bff.sh"
 
-pass "Phase 4 — restart-bff.sh invoked correct systemd unit name (mtga-companion)"
+pass "Phase 4 — restart-bff.sh invoked correct systemd unit name (vaultmtg-bff)"
 
 # ===========================================================================
 # Phase 5: healthcheck-bff.sh (stub HTTP server)
