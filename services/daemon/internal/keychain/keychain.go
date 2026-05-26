@@ -48,6 +48,13 @@ const (
 // ErrNotFound is returned when no API key is stored in the keychain for this daemon.
 var ErrNotFound = errors.New("keychain: api key not found")
 
+// keyringGet is the package-level indirection for keyring.Get used by Get().
+// Tests substitute this variable to inject per-service-name behavior that
+// the go-keyring mock backend cannot express (MockInitWithError applies the
+// same error to every call).  Production code calls keyring.Get directly via
+// this variable; do not reassign outside of tests.
+var keyringGet = keyring.Get
+
 // Get retrieves the daemon API key from the OS keychain.
 //
 // Migration path (ADR-022 Constraint 1):
@@ -61,7 +68,7 @@ var ErrNotFound = errors.New("keychain: api key not found")
 // to ErrNotFound so the caller initiates re-auth rather than crashing.
 func Get() (string, error) {
 	// ── 1. Try new service name first ────────────────────────────────────────
-	val, err := keyring.Get(ServiceNameNew, AccountKey)
+	val, err := keyringGet(ServiceNameNew, AccountKey)
 	if err == nil {
 		return val, nil
 	}
@@ -70,7 +77,7 @@ func Get() (string, error) {
 	}
 
 	// ── 2. Fall back to legacy service name ──────────────────────────────────
-	legacyVal, legacyErr := keyring.Get(ServiceNameLegacy, AccountKey)
+	legacyVal, legacyErr := keyringGet(ServiceNameLegacy, AccountKey)
 	if legacyErr != nil {
 		if isNotFound(legacyErr) {
 			// Neither entry present — fresh install or wiped keychain.
