@@ -1,4 +1,4 @@
-# Convention & Event Promotion Plan — VaultMTG / MTGA Companion
+# Convention & Event Promotion Plan — VaultMTG
 **Created**: 2026-05-08
 **Updated**: 2026-05-08
 **Window**: September–December 2026

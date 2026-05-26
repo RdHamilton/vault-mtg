@@ -2,7 +2,7 @@
 
 ## Description
 
-Critical security fixes and infrastructure improvements that form the foundation of the MTGA Companion application. This project addresses security vulnerabilities, database enhancements, and log file monitoring improvements.
+Critical security fixes and infrastructure improvements that form the foundation of the VaultMTG application. This project addresses security vulnerabilities, database enhancements, and log file monitoring improvements.
 
 ## Scope
 

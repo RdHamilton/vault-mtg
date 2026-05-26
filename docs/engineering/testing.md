@@ -1,6 +1,6 @@
 # Testing Guide
 
-This document provides comprehensive guidance on testing for the MTGA Companion project.
+This document provides comprehensive guidance on testing for the VaultMTG project.
 
 ## Table of Contents
 
@@ -19,7 +19,7 @@ This document provides comprehensive guidance on testing for the MTGA Companion 
 
 ## Testing Strategy
 
-MTGA Companion employs a multi-layered testing strategy:
+VaultMTG employs a multi-layered testing strategy:
 
 1. **Backend Unit Tests**: Test Go business logic, data processing, and storage
 2. **Frontend Component Tests**: Test React components in isolation with mocked dependencies

@@ -57,18 +57,20 @@ The daemon reads its configuration from a JSON file on your machine.
 
 **macOS path:**
 ```
-~/.mtga-companion/daemon.json
+~/.vaultmtg/daemon.json
 ```
 To open it: press Command + Space, type "Terminal", press Enter, then run:
 ```
-open ~/.mtga-companion/
+open ~/.vaultmtg/
 ```
 
 **Windows path:**
 ```
-%APPDATA%\mtga-companion\daemon.json
+%APPDATA%\vaultmtg\daemon.json
 ```
-To open it: press Windows + R, paste `%APPDATA%\mtga-companion\`, press Enter.
+To open it: press Windows + R, paste `%APPDATA%\vaultmtg\`, press Enter.
+
+> If you installed the daemon before the VaultMTG rename (mid-2026) and have not reinstalled since, the config may still live at `~/.mtga-companion/daemon.json` (macOS) or `%APPDATA%\mtga-companion\daemon.json` (Windows). The daemon migrates configuration forward on first startup; reinstalling the current daemon is the cleanest fix.
 
 Open `daemon.json` in a text editor (Notepad on Windows, TextEdit on Mac). Confirm:
 - The `bff_url` value starts with `https://` and does not have a trailing slash.

@@ -1,6 +1,6 @@
-# MTGA-Companion Development Guide
+# VaultMTG Development Guide
 
-This guide covers setting up your development environment, understanding the codebase, and contributing to MTGA-Companion.
+This guide covers setting up your development environment, understanding the codebase, and contributing to VaultMTG.
 
 ## Table of Contents
 
@@ -41,8 +41,8 @@ go install mvdan.cc/gofumpt@latest
 ### Cloning the Repository
 
 ```bash
-git clone https://github.com/RdHamilton/MTGA-Companion.git
-cd MTGA-Companion
+git clone https://github.com/RdHamilton/vault-mtg.git
+cd vault-mtg
 ```
 
 ### Installing Dependencies
@@ -964,4 +964,4 @@ taskkill /PID <PID> /F
 - Read [ARCHITECTURE.md](ARCHITECTURE.md) to understand the system design
 - Review [DAEMON_API.md](DAEMON_API.md) for WebSocket events
 - Check [CLAUDE.md](../CLAUDE.md) for coding principles
-- Start contributing! Check [good first issues](https://github.com/RdHamilton/MTGA-Companion/labels/good%20first%20issue)
+- Start contributing! Check [good first issues](https://github.com/RdHamilton/vault-mtg/labels/good%20first%20issue)

@@ -69,13 +69,16 @@ This removes your auth token, daemon settings, and any locally cached data.
 1. In Terminal, run:
 
 ```bash
+rm -rf ~/.vaultmtg
+# If you installed the daemon before the VaultMTG rename (mid-2026) the legacy
+# folder may also exist; remove it as well:
 rm -rf ~/.mtga-companion
 ```
 
 If you prefer not to use Terminal:
 1. Open **Finder**, click the **Go** menu in the menu bar, choose **Go to Folder**.
-2. Paste `~/.mtga-companion` and press Enter.
-3. Press Command + Delete to move the folder to the Trash.
+2. Paste `~/.vaultmtg` and press Enter. Press Command + Delete to move the folder to the Trash.
+3. If you have an older install, repeat with `~/.mtga-companion`.
 
 ### Step 5 — Empty the Trash
 
@@ -117,15 +120,20 @@ The installer adds VaultMTG Daemon to Windows startup. Remove it:
 
 This removes your auth token, daemon settings, and any locally cached data.
 
-1. Press **Windows + R**, paste `%APPDATA%\mtga-companion`, press Enter.
-2. A File Explorer window will open. Go up one level (click **mtga-companion**'s parent folder in the address bar).
-3. Right-click the `mtga-companion` folder and choose **Delete**.
+1. Press **Windows + R**, paste `%APPDATA%\vaultmtg`, press Enter.
+2. A File Explorer window will open. Go up one level (click **vaultmtg**'s parent folder in the address bar).
+3. Right-click the `vaultmtg` folder and choose **Delete**.
 
 Alternatively, press Windows + R, paste the following, and press Enter:
 ```
-cmd /c rmdir /s /q "%APPDATA%\mtga-companion"
+cmd /c rmdir /s /q "%APPDATA%\vaultmtg"
 ```
 Click **Yes** on any confirmation prompts.
+
+If you installed the daemon before the VaultMTG rename (mid-2026), the legacy `%APPDATA%\mtga-companion` folder may also exist. Remove it the same way:
+```
+cmd /c rmdir /s /q "%APPDATA%\mtga-companion"
+```
 
 ### Step 5 — Empty the Recycle Bin (optional)
 

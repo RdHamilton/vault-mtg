@@ -1,6 +1,6 @@
-# MTGA-Companion Frontend
+# VaultMTG Frontend
 
-Modern React + TypeScript frontend for the MTGA-Companion desktop application, using a REST API + WebSocket architecture.
+Modern React + TypeScript frontend for the VaultMTG desktop application, using a REST API + WebSocket architecture.
 
 ## Technology Stack
 

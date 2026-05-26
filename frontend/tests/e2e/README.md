@@ -1,6 +1,6 @@
 # E2E Testing with Playwright
 
-This directory contains end-to-end tests for MTGA Companion using Playwright.
+This directory contains end-to-end tests for VaultMTG using Playwright.
 
 ## Architecture
 
@@ -43,21 +43,21 @@ If you prefer to start servers manually:
 
 **Terminal 1 - Start Go API Server:**
 ```bash
-cd /path/to/MTGA-Companion
+cd /path/to/vault-mtg
 go run ./cmd/apiserver
 ```
 Wait for: `API server running at http://localhost:8080`
 
 **Terminal 2 - Start Vite Dev Server:**
 ```bash
-cd /path/to/MTGA-Companion/frontend
+cd /path/to/vault-mtg/frontend
 VITE_USE_REST_API=true npm run dev
 ```
 Wait for: `Local: http://localhost:5173`
 
 **Terminal 3 - Run E2E Tests:**
 ```bash
-cd /path/to/MTGA-Companion/frontend
+cd /path/to/vault-mtg/frontend
 npm run test:e2e
 ```
 

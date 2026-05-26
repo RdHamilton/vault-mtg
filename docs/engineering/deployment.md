@@ -1,6 +1,6 @@
 # Deployment
 
-This document describes the production deployment model for MTGA-Companion and
+This document describes the production deployment model for VaultMTG and
 the two related properties owned by the same operator (`vaultmtg.app` and
 `rhamiltoneng.com`). It is the source of truth for **how production traffic is
 served and how releases ship**.
@@ -68,9 +68,9 @@ Key properties of this model:
 
 | Property | Hostname | Repo | S3 bucket | CloudFront SSM | Build dir |
 |---|---|---|---|---|---|
-| VaultMTG SPA | `app.vaultmtg.app` | `RdHamilton/MTGA-Companion` | `vaultmtg-app-spa` | `/vaultmtg/production/spa-distribution-id` | `frontend/dist/` |
+| VaultMTG SPA | `app.vaultmtg.app` | `RdHamilton/vault-mtg` | `vaultmtg-app-spa` | `/vaultmtg/production/spa-distribution-id` | `frontend/dist/` |
 | VaultMTG Marketing | `vaultmtg.app` (apex + `www`) | `RdHamilton/vault-mtg-web` | `vaultmtg-app-marketing` | `/vaultmtg/production/marketing-distribution-id` | per-repo build output |
-| Ray Hamilton Engineering | `rhamiltoneng.com` (apex + `www`) | `RdHamilton/mtga-companion-web` | `rhamiltoneng-site` | `/rhamiltoneng/production/distribution-id` | per-repo build output |
+| Ray Hamilton Engineering | `rhamiltoneng.com` (apex + `www`) | `RdHamilton/rhamiltoneng-web` | `rhamiltoneng-site` | `/rhamiltoneng/production/distribution-id` | per-repo build output |
 
 Each CloudFront distribution has:
 
@@ -147,9 +147,9 @@ Every deploy workflow assumes a single IAM role via GitHub OIDC:
 
 The role's trust policy restricts the assumable repos to:
 
-- `RdHamilton/MTGA-Companion`
+- `RdHamilton/vault-mtg`
 - `RdHamilton/vault-mtg-web`
-- `RdHamilton/mtga-companion-web`
+- `RdHamilton/rhamiltoneng-web`
 
 No static AWS access keys are stored in GitHub secrets.
 
@@ -159,7 +159,7 @@ No static AWS access keys are stored in GitHub secrets.
 |---|---|
 | VaultMTG SPA | [`.github/workflows/deploy-spa.yml`](../.github/workflows/deploy-spa.yml) |
 | VaultMTG Marketing | `.github/workflows/deploy-*.yml` in `RdHamilton/vault-mtg-web` |
-| rhamiltoneng.com | `.github/workflows/deploy-*.yml` in `RdHamilton/mtga-companion-web` |
+| rhamiltoneng.com | `.github/workflows/deploy-*.yml` in `RdHamilton/rhamiltoneng-web` |
 
 ---
 
@@ -278,7 +278,7 @@ workflows pick up the new values on their next run.
 
 ## Vercel — preview-only
 
-Vercel is wired up for the MTGA-Companion frontend but is **demoted to PR
+Vercel is wired up for the VaultMTG frontend but is **demoted to PR
 preview-only**. Two specific behaviors enforce this:
 
 1. **`vercel.json` `ignoreCommand`** at the repo root:
