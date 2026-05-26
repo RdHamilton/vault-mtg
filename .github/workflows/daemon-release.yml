@@ -104,7 +104,8 @@ jobs:
         # GoReleaser v2 with format:binary writes the universal binary to a
         # subdirectory named after the universal_binaries id + _darwin_all, so
         # the path is dist/daemon-universal_darwin_all/vaultmtg-daemon.
-        uses: actions/upload-artifact@v4
+        # v6 runs on Node 24 (v4 was Node 20, deprecated Sept 2026 -- issue #2242).
+        uses: actions/upload-artifact@v6
         with:
           name: vaultmtg-daemon-darwin-universal
           path: dist/daemon-universal_darwin_all/vaultmtg-daemon
