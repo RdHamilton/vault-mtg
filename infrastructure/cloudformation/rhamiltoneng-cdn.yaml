@@ -40,7 +40,7 @@ Resources:
               SSEAlgorithm: AES256
       Tags:
         - Key: Project
-          Value: mtga-companion
+          Value: vaultmtg
         - Key: Environment
           Value: !Ref Environment
 
@@ -57,7 +57,7 @@ Resources:
       ValidationMethod: DNS
       Tags:
         - Key: Project
-          Value: mtga-companion
+          Value: vaultmtg
         - Key: Environment
           Value: !Ref Environment
 
@@ -117,7 +117,7 @@ Resources:
           MinimumProtocolVersion: TLSv1.2_2021
       Tags:
         - Key: Project
-          Value: mtga-companion
+          Value: vaultmtg
         - Key: Environment
           Value: !Ref Environment
 
