@@ -30,6 +30,7 @@ package main
 import (
 	"context"
 	"log"
+	"net/url"
 	"os"
 	"strings"
 
@@ -41,6 +42,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/feature/rds/auth"
+	"github.com/aws/aws-sdk-go-v2/service/sts"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
@@ -95,12 +97,37 @@ func resolveDSN(ctx context.Context) (string, error) {
 	// used to construct the IAM auth token so a stubborn PAM-auth failure can
 	// be root-caused from CloudWatch logs without round-tripping a redeploy
 	// per hypothesis. Remove after the live root cause is identified.
+	//
+	// Round 2: label order matches value order — DB_USER then DB_NAME.
+	// Earlier rev had labels DB_USER/DB_NAME but passed cfg.DBName/cfg.User,
+	// which is what produced the swapped-looking CloudWatch line. The
+	// underlying cfg.User (= os.Getenv("DB_USER") = "mtga_sync") was always
+	// correct — see BuildAuthToken inputs line for the load-bearing value.
 	log.Printf("[sync:diag] env DB_HOST=%q DB_PORT=%q DB_USER=%q DB_NAME=%q AWS_REGION=%q",
-		cfg.Host, cfg.Port, cfg.DBName, cfg.User, cfg.Region)
+		cfg.Host, cfg.Port, cfg.User, cfg.DBName, cfg.Region)
 	log.Printf("[sync:diag] env AWS_DEFAULT_REGION=%q AWS_LAMBDA_FUNCTION_NAME=%q AWS_EXECUTION_ENV=%q",
 		os.Getenv("AWS_DEFAULT_REGION"),
 		os.Getenv("AWS_LAMBDA_FUNCTION_NAME"),
 		os.Getenv("AWS_EXECUTION_ENV"))
+
+	// Round 2 hypothesis 3 — AWS_SESSION_TOKEN truncation/staleness in transit.
+	// Log only the PREFIX of the env-injected session token to confirm whether
+	// the SDK is using a healthy STS-issued token. Never log the full token.
+	sessionTokenEnv := os.Getenv("AWS_SESSION_TOKEN")
+	sessionTokenPrefix := sessionTokenEnv
+	if len(sessionTokenPrefix) > 32 {
+		sessionTokenPrefix = sessionTokenPrefix[:32] + "..."
+	}
+	log.Printf("[sync:diag] env AWS_SESSION_TOKEN prefix=%q len=%d",
+		sessionTokenPrefix, len(sessionTokenEnv))
+
+	accessKeyEnv := os.Getenv("AWS_ACCESS_KEY_ID")
+	accessKeyEnvPrefix := accessKeyEnv
+	if len(accessKeyEnvPrefix) > 4 {
+		accessKeyEnvPrefix = accessKeyEnvPrefix[:4] + "..."
+	}
+	log.Printf("[sync:diag] env AWS_ACCESS_KEY_ID prefix=%q len=%d",
+		accessKeyEnvPrefix, len(accessKeyEnv))
 
 	awsCfg, err := config.LoadDefaultConfig(ctx)
 	if err != nil {
@@ -122,6 +149,38 @@ func resolveDSN(ctx context.Context) (string, error) {
 		}
 		log.Printf("[sync:diag] creds Source=%q AccessKeyIDPrefix=%q HasSessionToken=%t CanExpire=%t Expires=%s",
 			creds.Source, accessKeyPrefix, creds.SessionToken != "", creds.CanExpire, creds.Expires.UTC().Format("2006-01-02T15:04:05Z"))
+
+		// Round 2 hypothesis 3 — confirm SDK creds match env-injected creds.
+		// If the SDK is using stale or alternate credentials (e.g. from a
+		// cached chain provider), this comparison will flag it.
+		credsMatch := creds.AccessKeyID == accessKeyEnv
+		log.Printf("[sync:diag] creds SDK_AccessKeyID matches env AWS_ACCESS_KEY_ID: %t", credsMatch)
+	}
+
+	// Round 2 hypothesis 2 — STS GetCallerIdentity from within the Lambda.
+	// Confirms:
+	//   (a) STS is reachable from this Lambda VPC (no DNS / endpoint surprise)
+	//   (b) The principal the SDK actually presents matches the role we
+	//       simulated against (mtga-companion-production-sync-lambda-role)
+	//   (c) The session has not been wrapped by an unexpected role chain
+	stsClient := sts.NewFromConfig(awsCfg)
+	if ident, idErr := stsClient.GetCallerIdentity(ctx, &sts.GetCallerIdentityInput{}); idErr != nil {
+		log.Printf("[sync:diag] sts.GetCallerIdentity error: %v", idErr)
+	} else {
+		account := ""
+		if ident.Account != nil {
+			account = *ident.Account
+		}
+		arn := ""
+		if ident.Arn != nil {
+			arn = *ident.Arn
+		}
+		userID := ""
+		if ident.UserId != nil {
+			userID = *ident.UserId
+		}
+		log.Printf("[sync:diag] sts.GetCallerIdentity Account=%q Arn=%q UserId=%q",
+			account, arn, userID)
 	}
 
 	dsn, err := dbconn.BuildDSN(ctx, cfg, awsCfg.Credentials, instrumentedTokenProvider)
@@ -153,20 +212,67 @@ func instrumentedTokenProvider(
 	// Token format: <host>:<port>/?Action=connect&DBUser=...&X-Amz-Algorithm=...
 	// Log the host:port + query parameter NAMES so we can verify shape without
 	// leaking the signature.
+	//
+	// Round 2: also log the X-Amz-Credential VALUE (access key prefix + scope:
+	// <KEY>/<DATE>/<REGION>/<SERVICE>/aws4_request). This is the load-bearing
+	// value for hypothesis 2/3 — it reveals which principal the signer
+	// actually used, the date stamp the request was signed with, and the
+	// service scope. None of these are secret. X-Amz-Signature is the only
+	// secret query parameter and we never log it.
 	if i := strings.IndexByte(token, '?'); i >= 0 {
 		hostPart := token[:i]
 		queryPart := token[i+1:]
 
-		var paramNames []string
+		var (
+			paramNames    []string
+			amzCredential string
+			amzDate       string
+			amzExpires    string
+			dbUserParam   string
+			actionParam   string
+		)
 		for _, kv := range strings.Split(queryPart, "&") {
-			if eq := strings.IndexByte(kv, '='); eq >= 0 {
-				paramNames = append(paramNames, kv[:eq])
-			} else {
+			eq := strings.IndexByte(kv, '=')
+			if eq < 0 {
 				paramNames = append(paramNames, kv)
+				continue
+			}
+			name := kv[:eq]
+			paramNames = append(paramNames, name)
+			value := kv[eq+1:]
+			// URL-decode the credential value so we can read the scope cleanly.
+			// Errors here are not load-bearing — just log the raw value.
+			switch name {
+			case "X-Amz-Credential":
+				if decoded, decodeErr := url.QueryUnescape(value); decodeErr == nil {
+					amzCredential = decoded
+				} else {
+					amzCredential = value
+				}
+				// Redact the access key portion to avoid leaking the AKID;
+				// keep the scope (date/region/service/aws4_request) intact.
+				if slash := strings.IndexByte(amzCredential, '/'); slash > 0 {
+					key := amzCredential[:slash]
+					scope := amzCredential[slash:]
+					if len(key) > 4 {
+						key = key[:4] + "..."
+					}
+					amzCredential = key + scope
+				}
+			case "X-Amz-Date":
+				amzDate = value
+			case "X-Amz-Expires":
+				amzExpires = value
+			case "DBUser":
+				dbUserParam = value
+			case "Action":
+				actionParam = value
 			}
 		}
 		log.Printf("[sync:diag] BuildAuthToken result host=%q len=%d params=%v",
 			hostPart, len(token), paramNames)
+		log.Printf("[sync:diag] BuildAuthToken token Action=%q DBUser=%q X-Amz-Date=%q X-Amz-Expires=%q X-Amz-Credential=%q",
+			actionParam, dbUserParam, amzDate, amzExpires, amzCredential)
 	} else {
 		log.Printf("[sync:diag] BuildAuthToken result UNEXPECTED_SHAPE len=%d", len(token))
 	}
