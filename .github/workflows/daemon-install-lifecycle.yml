@@ -121,10 +121,10 @@ jobs:
           echo "$output" | grep -q "\[DRY_RUN\] would run: launchctl" || \
             { echo "FAIL: expected DRY_RUN launchctl message"; exit 1; }
           echo "PASS: DRY_RUN output contains expected messages"
-          PLIST_PATH="$FAKE_HOME/Library/LaunchAgents/com.mtga-companion.daemon.plist"
+          PLIST_PATH="$FAKE_HOME/Library/LaunchAgents/com.vaultmtg.daemon.plist"
           [ -f "$PLIST_PATH" ] || { echo "FAIL: plist not written to $PLIST_PATH"; exit 1; }
           echo "PASS: plist written at $PLIST_PATH"
-          grep -q "com.mtga-companion.daemon" "$PLIST_PATH" || \
+          grep -q "com.vaultmtg.daemon" "$PLIST_PATH" || \
             { echo "FAIL: plist missing Label"; exit 1; }
           grep -q "RunAtLoad" "$PLIST_PATH" || \
             { echo "FAIL: plist missing RunAtLoad"; exit 1; }
@@ -193,7 +193,7 @@ jobs:
             { echo "FAIL: uninstall.sh did not produce expected output"; exit 1; }
           echo "PASS: uninstall.sh completed without errors"
           # Assert plist was cleaned up (script removes it if present)
-          plist_path="$FAKE_HOME/Library/LaunchAgents/com.mtga-companion.daemon.plist"
+          plist_path="$FAKE_HOME/Library/LaunchAgents/com.vaultmtg.daemon.plist"
           if [ -f "$plist_path" ]; then
             echo "FAIL: plist still present after uninstall — uninstall.sh did not remove it"
             exit 1
