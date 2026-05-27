@@ -617,15 +617,23 @@ jobs:
       # -----------------------------------------------------------------------
         # The .nsi expects /DVERSION= and /DBINARY_PATH= on the makensis command
         # line (see services/daemon/install/windows/nsis/installer.nsi lines
-        # 21–27 and 70). OutFile is `vaultmtg-daemon-setup-${VERSION}.exe` and
-        # is written to the working directory makensis is invoked from.
-        # We invoke from the repo root so the BINARY_PATH (which is relative to
-        # the .nsi 'File' directive's resolution dir, i.e. makensis's cwd) lines
-        # up with services/daemon/bin/.
+        # 21–27 and 70).
+        #
+        # IMPORTANT: NSIS resolves relative paths in `File` directives
+        # *relative to the .nsi script's directory*, NOT relative to the
+        # makensis cwd. Pass an absolute path so the File directive can
+        # locate the binary regardless of where the .nsi sits in the tree.
+        # The matching goreleaser hook (services/daemon/.goreleaser.yml)
+        # uses `{{ .Path }}` which expands to an absolute path for the
+        # same reason.
+        #
+        # OutFile = `vaultmtg-daemon-setup-${VERSION}.exe`, written to the
+        # current working directory of makensis (repo root here).
         shell: pwsh
         run: |
           Write-Host "=== Building NSIS installer ==="
-          $binaryPath = "services\daemon\bin\vaultmtg-daemon-windows-amd64.exe"
+          $binaryPath = (Resolve-Path "services\daemon\bin\vaultmtg-daemon-windows-amd64.exe").Path
+          Write-Host "BINARY_PATH (absolute): $binaryPath"
           if (-not (Test-Path $binaryPath)) {
             Write-Error "FAIL: daemon binary not found at $binaryPath"
             exit 1
