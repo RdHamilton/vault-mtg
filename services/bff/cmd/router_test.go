@@ -579,3 +579,86 @@ func TestRouter_DaemonsRevoke_RouteAbsent_WhenHandlerNil(t *testing.T) {
 		t.Fatalf("DELETE /api/v1/daemons with nil handler: want 404/405, got %d", rr.Code)
 	}
 }
+
+// ─── Admin fleet-health route tests (#2559) ───────────────────────────────────
+
+// stubFleetRepo satisfies the fleetHealthSnapshotter interface (unexported —
+// accessed via handlers.NewAdminFleetHealthHandler which accepts the interface).
+type stubFleetRepo struct{}
+
+func (s *stubFleetRepo) FleetHealthSnapshot(_ context.Context) (repository.FleetHealthSnapshot, error) {
+	return repository.FleetHealthSnapshot{
+		TotalPaired:  5,
+		ActiveLast5m: 1,
+		ActiveLast1h: 3,
+		Revoked:      2,
+	}, nil
+}
+
+func TestRouter_AdminFleetHealth_MissingToken_Returns401(t *testing.T) {
+	deps := depsWithClerk(t)
+	deps.AdminFleetHealthHandler = handlers.NewAdminFleetHealthHandler(&stubFleetRepo{})
+	deps.AdminTokenMiddl = bffmiddleware.AdminTokenAuth("router-test-admin-token")
+
+	r := BuildRouter(minimalConfig(), deps)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/admin/daemons/fleet-health", nil)
+	rr := httptest.NewRecorder()
+	r.ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusUnauthorized {
+		t.Fatalf("GET /api/v1/admin/daemons/fleet-health no token: want 401, got %d", rr.Code)
+	}
+}
+
+func TestRouter_AdminFleetHealth_WrongToken_Returns401(t *testing.T) {
+	deps := depsWithClerk(t)
+	deps.AdminFleetHealthHandler = handlers.NewAdminFleetHealthHandler(&stubFleetRepo{})
+	deps.AdminTokenMiddl = bffmiddleware.AdminTokenAuth("correct-admin-token")
+
+	r := BuildRouter(minimalConfig(), deps)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/admin/daemons/fleet-health", nil)
+	req.Header.Set("Authorization", "Bearer wrong-token")
+	rr := httptest.NewRecorder()
+	r.ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusUnauthorized {
+		t.Fatalf("GET /api/v1/admin/daemons/fleet-health wrong token: want 401, got %d", rr.Code)
+	}
+}
+
+func TestRouter_AdminFleetHealth_CorrectToken_Returns200(t *testing.T) {
+	const adminToken = "correct-admin-token-for-router-test"
+
+	deps := depsWithClerk(t)
+	deps.AdminFleetHealthHandler = handlers.NewAdminFleetHealthHandler(&stubFleetRepo{})
+	deps.AdminTokenMiddl = bffmiddleware.AdminTokenAuth(adminToken)
+
+	r := BuildRouter(minimalConfig(), deps)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/admin/daemons/fleet-health", nil)
+	req.Header.Set("Authorization", "Bearer "+adminToken)
+	rr := httptest.NewRecorder()
+	r.ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusOK {
+		t.Fatalf("GET /api/v1/admin/daemons/fleet-health correct token: want 200, got %d: %s",
+			rr.Code, rr.Body.String())
+	}
+}
+
+func TestRouter_AdminFleetHealth_RouteAbsent_WhenHandlerNil(t *testing.T) {
+	deps := depsWithClerk(t)
+	// AdminFleetHealthHandler intentionally left nil — route must not be mounted.
+
+	r := BuildRouter(minimalConfig(), deps)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/admin/daemons/fleet-health", nil)
+	rr := httptest.NewRecorder()
+	r.ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusNotFound && rr.Code != http.StatusMethodNotAllowed {
+		t.Fatalf("GET /api/v1/admin/daemons/fleet-health nil handler: want 404/405, got %d", rr.Code)
+	}
+}

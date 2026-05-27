@@ -117,6 +117,18 @@ type Config struct {
 	// When empty (e.g. local development or a pre-#2363 deploy) Sentry
 	// initialises without a Release tag — this is safe and expected.
 	GitCommit string
+
+	// BFFAdminToken is the static high-entropy Bearer token that protects the
+	// admin fleet-health endpoint (GET /api/v1/admin/daemons/fleet-health).
+	//
+	// Sourced from BFF_ADMIN_TOKEN (set by ec2-bootstrap.sh from SSM
+	// /vaultmtg/app/production/bff-admin-token, SecureString).
+	//
+	// When empty, the admin endpoint is mounted but the AdminTokenAuth
+	// middleware rejects ALL requests — this is the safe default for local
+	// development. The value must NEVER be logged or included in any error
+	// response body.
+	BFFAdminToken string
 }
 
 // Load reads configuration from environment variables, applies defaults, and
@@ -177,6 +189,7 @@ func Load() (*Config, error) {
 		SentryDSN:                           strings.TrimSpace(os.Getenv("SENTRY_DSN")),
 		PostHogAPIKey:                       strings.TrimSpace(os.Getenv("POSTHOG_API_KEY")),
 		GitCommit:                           strings.TrimSpace(os.Getenv("GIT_COMMIT")),
+		BFFAdminToken:                       strings.TrimSpace(os.Getenv("BFF_ADMIN_TOKEN")),
 	}
 
 	if raw := os.Getenv("DRAFT_RATINGS_STALENESS_THRESHOLD_HOURS"); raw != "" {

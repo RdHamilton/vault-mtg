@@ -195,6 +195,49 @@ func (r *DaemonAPIKeyRepository) RevokeByAccountIDAndDeviceID(ctx context.Contex
 	return true, nil
 }
 
+// FleetHealthSnapshot holds aggregate counts returned by FleetHealthSnapshot.
+// All fields are safe to expose to ops tooling — no PII, no per-user data.
+type FleetHealthSnapshot struct {
+	TotalPaired  int       // non-revoked keys (all time)
+	ActiveLast5m int       // keys with last_used_at within 5 minutes
+	ActiveLast1h int       // keys with last_used_at within 1 hour
+	Revoked      int       // keys with revoked_at IS NOT NULL (all time)
+	AsOf         time.Time // server-side timestamp at query execution
+}
+
+// FleetHealthSnapshot returns a point-in-time aggregate of daemon_api_keys
+// state for operations dashboards. The query returns a single row of counts;
+// no per-row or per-account data is projected — zero PII.
+//
+// "Active" is defined as last_used_at within the window (5m or 1h).
+// Revoked rows are those with revoked_at IS NOT NULL (all time).
+// TotalPaired counts all non-revoked rows regardless of last_used_at.
+func (r *DaemonAPIKeyRepository) FleetHealthSnapshot(ctx context.Context) (FleetHealthSnapshot, error) {
+	const q = `
+		SELECT
+			COUNT(*)                                                              AS total_paired,
+			COUNT(*) FILTER (WHERE last_used_at > now() - INTERVAL '5 minutes')  AS active_last_5m,
+			COUNT(*) FILTER (WHERE last_used_at > now() - INTERVAL '1 hour')     AS active_last_1h,
+			(SELECT COUNT(*) FROM daemon_api_keys WHERE revoked_at IS NOT NULL)   AS revoked,
+			now()                                                                  AS as_of
+		FROM daemon_api_keys
+		WHERE revoked_at IS NULL`
+
+	var snap FleetHealthSnapshot
+	row := r.db.QueryRowContext(ctx, q)
+	if err := row.Scan(
+		&snap.TotalPaired,
+		&snap.ActiveLast5m,
+		&snap.ActiveLast1h,
+		&snap.Revoked,
+		&snap.AsOf,
+	); err != nil {
+		return FleetHealthSnapshot{}, err
+	}
+
+	return snap, nil
+}
+
 // GetByAccountAndDevice returns the daemon_api_keys row matching
 // (accountID, deviceID) regardless of revoked_at state. Returns
 // ErrDaemonAPIKeyNotFound when no row exists. Used by the daemon_register
