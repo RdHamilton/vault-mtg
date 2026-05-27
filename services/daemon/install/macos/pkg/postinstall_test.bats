@@ -124,9 +124,12 @@ setup() {
 }
 
 # ---------------------------------------------------------------------------
-# 1. Plist contains MTGA_DAEMON_CLOUD_API_URL (issue #2127 regression test)
+# 1. Plist contains VAULTMTG_DAEMON_CLOUD_API_URL (issue #2127 + #2564 regression test).
+#    The canonical env var name is VAULTMTG_DAEMON_*; the daemon's EnvWithFallback
+#    shim still reads MTGA_DAEMON_* for existing legacy installs, but new
+#    installs must inject the canonical name (#2564).
 # ---------------------------------------------------------------------------
-@test "plist: MTGA_DAEMON_CLOUD_API_URL key is present with correct value" {
+@test "plist: VAULTMTG_DAEMON_CLOUD_API_URL key is present with correct value" {
   run env \
     PATH="${STUB_DIR}:${PATH}" \
     SUDO_USER="${REAL_USER}" \
@@ -138,8 +141,10 @@ setup() {
   [ "${status}" -eq 0 ]
   [ -f "${PLIST_PATH}" ]
 
-  grep -q "MTGA_DAEMON_CLOUD_API_URL" "${PLIST_PATH}"
+  grep -q "VAULTMTG_DAEMON_CLOUD_API_URL" "${PLIST_PATH}"
   grep -q "staging-api.vaultmtg.app/api/v1" "${PLIST_PATH}"
+  # Guard: must not perpetuate the legacy name in new installs (#2564).
+  ! grep -q "<key>MTGA_DAEMON_CLOUD_API_URL</key>" "${PLIST_PATH}"
 }
 
 # ---------------------------------------------------------------------------

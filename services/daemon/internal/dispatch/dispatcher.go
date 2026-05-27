@@ -35,6 +35,10 @@ type Dispatcher struct {
 	apiKey      string
 	client      *http.Client
 	refresher   Refresher
+	// buffer is the optional ring buffer wired via WithBuffer. When non-nil,
+	// SendOrBuffer enqueues pre-marshaled bytes after retry exhaustion rather
+	// than returning an error to the caller.
+	buffer *RingBuffer
 	// seq is the per-session sequence counter.  Incremented atomically so
 	// Send is safe for concurrent callers.  Reset to 0 on daemon restart
 	// because the Dispatcher itself is recreated on restart.
@@ -61,6 +65,14 @@ func New(cloudAPIURL, ingestPath, apiKey string) *Dispatcher {
 // This enables automatic JWT re-registration without restarting the daemon.
 func (d *Dispatcher) WithRefresher(r Refresher) *Dispatcher {
 	d.refresher = r
+	return d
+}
+
+// WithBuffer attaches a RingBuffer that SendOrBuffer will use to store
+// pre-marshaled event bytes when all retry attempts are exhausted. The buffer
+// is per-Dispatcher; concurrent callers share the same RingBuffer instance.
+func (d *Dispatcher) WithBuffer(b *RingBuffer) *Dispatcher {
+	d.buffer = b
 	return d
 }
 
@@ -113,6 +125,80 @@ func (d *Dispatcher) Send(ctx context.Context, event contract.DaemonEvent) error
 			case <-time.After(backoff):
 			}
 		}
+	}
+	return fmt.Errorf("all %d attempts failed: %w", maxAttempts, lastErr)
+}
+
+// SendOrBuffer behaves like Send but, when a buffer has been wired via
+// WithBuffer, silently enqueues the pre-marshaled event bytes on retry
+// exhaustion instead of returning an error.
+//
+// This satisfies ADR-013 Option C: the sequence number is stamped into the
+// marshaled bytes at emission time (inside Send's seq.Add(1) call), so
+// bytes stored in the buffer carry their original sequence and are replayed
+// verbatim without re-numbering.
+//
+// When no buffer is attached, SendOrBuffer is identical to Send.
+func (d *Dispatcher) SendOrBuffer(ctx context.Context, event contract.DaemonEvent) error {
+	// Stamp sequence and marshal before calling doSend so the bytes are
+	// ready to buffer if needed — same as Send's internal flow, but we need
+	// the marshaled bytes to hand to the ring buffer on failure.
+	event.Sequence = d.seq.Add(1)
+
+	body, err := json.Marshal(event)
+	if err != nil {
+		return fmt.Errorf("marshal event: %w", err)
+	}
+
+	var lastErr error
+	for attempt := 1; attempt <= maxAttempts; attempt++ {
+		var statusCode int
+		statusCode, lastErr = d.doSend(ctx, body)
+		if lastErr == nil {
+			log.Printf("[dispatch] event %q sent (session=%s)", event.Type, event.SessionID)
+			// AC-3: drain buffered events on first successful send (best-effort;
+			// per ADR-013 amendment Q1/OQ-1 a failed drain item is logged and
+			// discarded — no re-enqueue to avoid thundering-herd / livelock).
+			if d.buffer != nil {
+				for _, item := range d.buffer.Drain() {
+					if _, drainErr := d.doSend(ctx, item); drainErr != nil {
+						log.Printf("[dispatch] drain replay failed: %v", drainErr)
+					}
+				}
+			}
+			return nil
+		}
+		// On 401, attempt to refresh the token before retrying.
+		if statusCode == http.StatusUnauthorized && d.refresher != nil {
+			log.Printf("[dispatch] 401 received; attempting token refresh")
+			newToken, refreshErr := d.refresher.Refresh(ctx)
+			if refreshErr != nil {
+				log.Printf("[dispatch] token refresh failed: %v", refreshErr)
+			} else {
+				d.SetToken(newToken)
+				log.Printf("[dispatch] token refreshed; retrying")
+			}
+		}
+		if attempt < maxAttempts {
+			backoff := retryBase * time.Duration(attempt)
+			log.Printf("[dispatch] attempt %d/%d failed: %v; retrying in %s", attempt, maxAttempts, lastErr, backoff)
+			select {
+			case <-ctx.Done():
+				if d.buffer != nil {
+					d.buffer.Enqueue(body)
+					log.Printf("[dispatch] context cancelled; buffered event seq=%d", event.Sequence)
+				}
+				return ctx.Err()
+			case <-time.After(backoff):
+			}
+		}
+	}
+
+	if d.buffer != nil {
+		d.buffer.Enqueue(body)
+		log.Printf("[dispatch] all %d attempts failed; buffered event seq=%d (dropped_total=%d)",
+			maxAttempts, event.Sequence, d.buffer.Dropped())
+		return nil
 	}
 	return fmt.Errorf("all %d attempts failed: %w", maxAttempts, lastErr)
 }

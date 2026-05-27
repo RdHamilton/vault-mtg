@@ -54,6 +54,17 @@ import (
 // Defaults to "dev" for local builds.
 var Version = "dev"
 
+// DefaultCloudAPIURL is the build-time default for cloud_api_url, injected via
+// -ldflags -X main.DefaultCloudAPIURL=<url>. The release workflow picks the value:
+//
+//	stable tags (daemon/v0.3.1) -> https://api.vaultmtg.app/api/v1
+//	pre-release tags (-rc/-alpha/-beta/-pre) -> https://staging-api.vaultmtg.app/api/v1
+//
+// Local builds (`go run`, `go build` without -ldflags) get the localhost default
+// so a developer running the daemon directly from source talks to a local BFF,
+// not production. Issue #2560.
+var DefaultCloudAPIURL = "http://localhost:8080/api/v1"
+
 func main() {
 	defaultCfgPath := defaultConfigPath()
 	cfgPath := flag.String("config", defaultCfgPath, "path to JSON config file")
@@ -84,7 +95,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	log.Printf("[mtga-daemon] version=%s", Version)
+	log.Printf("[mtga-daemon] version=%s default_cloud_api_url=%s", Version, DefaultCloudAPIURL)
 
 	// ── Step 2: keychain migration (legacy plaintext api_key → OS keychain) ────
 	if err := migrateLegacyAPIKey(cfg); err != nil {
@@ -171,9 +182,18 @@ func handleMissingConfig(cfgPath string) {
 
 	// Write a minimal stub so config.Load succeeds even without env vars.
 	// The PKCE flow will fill in the real values.
+	//
+	// Resolution order for the stub cloud_api_url:
+	//   1. VAULTMTG_DAEMON_CLOUD_API_URL env var (set by the postinstall plist on
+	//      packaged installs).
+	//   2. MTGA_DAEMON_CLOUD_API_URL env var (legacy fallback per ADR-022 Phase 2
+	//      dual-read shim).
+	//   3. main.DefaultCloudAPIURL — injected via -ldflags at build time. Stable
+	//      releases get production; pre-release tags get staging; raw `go build`
+	//      gets http://localhost:8080/api/v1 (Issue #2560).
 	cloudAPIURL := config.EnvWithFallback("VAULTMTG_DAEMON_CLOUD_API_URL", "MTGA_DAEMON_CLOUD_API_URL")
 	if cloudAPIURL == "" {
-		cloudAPIURL = "https://api.vaultmtg.app/api/v1"
+		cloudAPIURL = DefaultCloudAPIURL
 	}
 
 	stub := map[string]interface{}{

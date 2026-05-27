@@ -29,14 +29,18 @@ func useMemoryKeyring(t *testing.T) {
 
 // TestHandleMissingConfig_DefaultCloudAPIURL verifies that when no
 // MTGA_DAEMON_CLOUD_API_URL env var is set, handleMissingConfig writes a stub
-// config file with cloud_api_url == "https://api.vaultmtg.app/api/v1".
-// This is the regression test for Issue #2125 where the missing /api/v1 suffix
-// caused POST /daemon/register to 404 on every fresh install.
+// config file with cloud_api_url == main.DefaultCloudAPIURL (the ldflag-injected
+// default — production for stable release builds, staging for -rc/-alpha/-beta/-pre,
+// and localhost for raw `go build` / `go run` per Issue #2560).
+//
+// This is also the regression test for Issue #2125 where the missing /api/v1 suffix
+// caused POST /daemon/register to 404 on every fresh install — the ldflag values
+// always include the /api/v1 suffix.
 func TestHandleMissingConfig_DefaultCloudAPIURL(t *testing.T) {
 	dir := t.TempDir()
 	cfgPath := filepath.Join(dir, "daemon.json")
 
-	// Ensure both old and new env vars are unset so we exercise the hardcoded default.
+	// Ensure both old and new env vars are unset so we exercise the ldflag default.
 	t.Setenv("MTGA_DAEMON_CLOUD_API_URL", "")
 	t.Setenv("VAULTMTG_DAEMON_CLOUD_API_URL", "")
 	// Run in headless mode so no browser is opened during the test.
@@ -53,8 +57,73 @@ func TestHandleMissingConfig_DefaultCloudAPIURL(t *testing.T) {
 
 	got, ok := stub["cloud_api_url"]
 	require.True(t, ok, "stub config must contain cloud_api_url key")
-	assert.Equal(t, "https://api.vaultmtg.app/api/v1", got,
-		"default cloud_api_url must include /api/v1 prefix so registerWithBFF resolves to the correct BFF path")
+	assert.Equal(t, DefaultCloudAPIURL, got,
+		"stub cloud_api_url must match the ldflag-injected DefaultCloudAPIURL — not a hardcoded literal")
+}
+
+// TestHandleMissingConfig_RespectsLdflagInjection verifies that when
+// DefaultCloudAPIURL is overridden (simulating an ldflag injection at build
+// time), handleMissingConfig writes that value into the stub config — proving
+// the constant is not bypassed by any internal hardcoding. Regression for #2560.
+func TestHandleMissingConfig_RespectsLdflagInjection(t *testing.T) {
+	dir := t.TempDir()
+	cfgPath := filepath.Join(dir, "daemon.json")
+
+	// Save and restore the build-time default so this test is hermetic.
+	originalDefault := DefaultCloudAPIURL
+	t.Cleanup(func() { DefaultCloudAPIURL = originalDefault })
+
+	const stagingURL = "https://staging-api.vaultmtg.app/api/v1"
+	DefaultCloudAPIURL = stagingURL
+
+	// All env vars empty so the ldflag default is what wins.
+	t.Setenv("MTGA_DAEMON_CLOUD_API_URL", "")
+	t.Setenv("VAULTMTG_DAEMON_CLOUD_API_URL", "")
+	t.Setenv("MTGA_DAEMON_HEADLESS", "1")
+	t.Setenv("VAULTMTG_DAEMON_HEADLESS", "")
+
+	handleMissingConfig(cfgPath)
+
+	data, err := os.ReadFile(cfgPath)
+	require.NoError(t, err, "stub config file should have been written")
+
+	var stub map[string]interface{}
+	require.NoError(t, json.Unmarshal(data, &stub))
+	assert.Equal(t, stagingURL, stub["cloud_api_url"],
+		"handleMissingConfig must use DefaultCloudAPIURL (ldflag-injected value), not a hardcoded literal")
+}
+
+// TestHandleMissingConfig_DefaultIsNotProductionLiteral guards against a
+// regression where someone re-hardcodes the production URL inside
+// handleMissingConfig. The default for any unsetup local build MUST come from
+// the package-level DefaultCloudAPIURL variable so the release workflow can
+// inject the correct value per environment. #2560.
+func TestHandleMissingConfig_DefaultIsNotProductionLiteral(t *testing.T) {
+	dir := t.TempDir()
+	cfgPath := filepath.Join(dir, "daemon.json")
+
+	originalDefault := DefaultCloudAPIURL
+	t.Cleanup(func() { DefaultCloudAPIURL = originalDefault })
+
+	// Set the package var to an obvious sentinel; any hardcoded literal in
+	// handleMissingConfig would fail this assertion.
+	const sentinel = "https://sentinel-must-appear-in-stub.example.invalid/api/v1"
+	DefaultCloudAPIURL = sentinel
+
+	t.Setenv("MTGA_DAEMON_CLOUD_API_URL", "")
+	t.Setenv("VAULTMTG_DAEMON_CLOUD_API_URL", "")
+	t.Setenv("MTGA_DAEMON_HEADLESS", "1")
+	t.Setenv("VAULTMTG_DAEMON_HEADLESS", "")
+
+	handleMissingConfig(cfgPath)
+
+	data, err := os.ReadFile(cfgPath)
+	require.NoError(t, err)
+	body := string(data)
+	assert.Contains(t, body, sentinel,
+		"stub config must contain the ldflag-injected sentinel — handleMissingConfig must not hardcode a URL literal")
+	assert.NotContains(t, body, "https://api.vaultmtg.app/api/v1",
+		"stub config must NOT contain a literal production URL — that value can only appear via DefaultCloudAPIURL injection")
 }
 
 // TestHandleMissingConfig_EnvOverride verifies that when MTGA_DAEMON_CLOUD_API_URL
