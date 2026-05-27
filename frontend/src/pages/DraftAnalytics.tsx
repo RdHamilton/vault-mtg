@@ -1,6 +1,7 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { apiAdapter } from '@/services/adapter';
 import { useSettings } from '@/hooks/useSettings';
+import { trackEvent } from '@/services/analytics';
 import TemporalTrends from '@/components/TemporalTrends';
 import CommunityComparison from '@/components/CommunityComparison';
 import FormatInsights from '@/components/FormatInsights';
@@ -14,6 +15,9 @@ const DraftAnalytics: React.FC = () => {
   // AC1/AC2: read from global settings — do not manage local auto-refresh state (#2023).
   const { autoRefresh } = useSettings();
 
+  // Analytics: feature_draft_analytics_viewed — fires once per mount when data is non-empty
+  const viewedFiredRef = useRef(false);
+
   useEffect(() => {
     async function fetchSets() {
       try {
@@ -21,6 +25,13 @@ const DraftAnalytics: React.FC = () => {
         setAvailableSets(formats);
         if (formats.length > 0) {
           setSelectedSet((currentSet) => currentSet || formats[0]);
+          if (!viewedFiredRef.current) {
+            viewedFiredRef.current = true;
+            trackEvent({
+              name: 'feature_draft_analytics_viewed',
+              properties: { draft_count: formats.length },
+            });
+          }
         }
       } catch (err) {
         console.error('Failed to fetch draft formats:', err);

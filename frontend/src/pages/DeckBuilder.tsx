@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
+import { trackEvent } from '@/services/analytics';
 import { decks, drafts } from '@/services/api';
 import type { CardWithOwnership, SuggestedLandResponse } from '@/services/api/decks';
 import { ApiRequestError } from '@/services/apiClient';
@@ -30,6 +31,7 @@ export default function DeckBuilder() {
   const { draftEventID } = useParams<{ draftEventID?: string }>();
   const navigate = useNavigate();
   const creatingDeckRef = useRef(false);
+  const deckOpenedFiredRef = useRef(false);
 
   const [deck, setDeck] = useState<models.Deck | null>(null);
   const [cards, setCards] = useState<models.DeckCard[]>([]);
@@ -106,6 +108,21 @@ export default function DeckBuilder() {
 
   // Keyboard shortcuts for undo/redo (Ctrl+Z, Ctrl+Y, Cmd+Shift+Z)
   useDeckUndoRedoKeyboard(handleUndo, handleRedo, !loading && !!deck);
+
+  // Analytics: feature_deck_builder_opened — fires once when deck first loads
+  useEffect(() => {
+    if (!deck || deckOpenedFiredRef.current) return;
+    deckOpenedFiredRef.current = true;
+    const entryPoint = draftEventID
+      ? 'draft_build_around'
+      : deckID
+      ? 'decks_list'
+      : 'direct_link';
+    trackEvent({
+      name: 'feature_deck_builder_opened',
+      properties: { entry_point: entryPoint },
+    });
+  }, [deck, deckID, draftEventID]);
 
   // Load deck data
   useEffect(() => {
@@ -630,6 +647,11 @@ export default function DeckBuilder() {
 
   const handleApplyBuildAround = async (suggestions: CardWithOwnership[], lands: SuggestedLandResponse[]) => {
     if (!deck) return;
+
+    trackEvent({
+      name: 'feature_deck_build_around_started',
+      properties: { seed_type: 'card' },
+    });
 
     // Save snapshot before change for undo
     saveSnapshot(cards);
