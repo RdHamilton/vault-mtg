@@ -5,10 +5,13 @@ package daemon
 
 import (
 	"context"
+	"crypto/sha256"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"log"
+	"sort"
+	"sync"
 	"time"
 
 	"github.com/RdHamilton/vault-mtg/services/contract"
@@ -86,6 +89,20 @@ type Service struct {
 	// v0.4.0). Dropped() is sampled on every SetState update and surfaced on
 	// /api/v1/system/health as metrics.dispatchDropped.
 	eventBuffer *dispatch.RingBuffer
+
+	// driftMu guards the three parse-failure tracking fields below.
+	// recordParseFailure acquires the lock on every typed-parse error;
+	// snapshotAndResetDrift acquires it once per heartbeat tick to read
+	// and zero the state atomically.
+	driftMu sync.Mutex
+	// parseFailureCount counts typed-parse errors since the last heartbeat.
+	parseFailureCount uint32
+	// sampleLineHash is the SHA-256 hex[:16] of the most recently failing
+	// raw log line. Overwritten on each failure; never the raw line itself.
+	sampleLineHash string
+	// failedEventTypes accumulates the distinct event-type strings for which
+	// at least one parse error occurred since the last heartbeat reset.
+	failedEventTypes map[string]struct{}
 }
 
 // New creates a Service from cfg.
@@ -475,7 +492,15 @@ func (s *Service) Run(ctx context.Context) error {
 			if s.cfg.AccountID == "" {
 				continue
 			}
-			evt, err := dispatch.BuildEvent("daemon.heartbeat", s.cfg.AccountID, s.sessionID, struct{}{})
+			// Snapshot and reset the parse-failure counter so each heartbeat
+			// window carries an independent, non-overlapping slice of counts.
+			driftCount, driftHash, driftTypes := s.snapshotAndResetDrift()
+			hbPayload := heartbeatPayload{
+				ParseFailureCount: driftCount,
+				SampleLineHash:    driftHash,
+				FailedEventTypes:  driftTypes,
+			}
+			evt, err := dispatch.BuildEvent("daemon.heartbeat", s.cfg.AccountID, s.sessionID, hbPayload)
 			if err != nil {
 				log.Printf("[daemon] warn: build heartbeat event: %v", err)
 				continue
@@ -526,6 +551,53 @@ func (s *Service) Run(ctx context.Context) error {
 	}
 }
 
+// heartbeatPayload is the JSON body of a daemon.heartbeat event.
+// When parse failures have occurred since the last heartbeat, ParseFailureCount
+// is non-zero and the drift fields are populated; the BFF inspects these to
+// emit a daemon.log_format_drift PostHog event (per ADR-027 §OQ-5, #2569).
+type heartbeatPayload struct {
+	ParseFailureCount uint32   `json:"parse_failure_count"`
+	SampleLineHash    string   `json:"sample_line_hash,omitempty"`
+	FailedEventTypes  []string `json:"failed_event_types,omitempty"`
+}
+
+// recordParseFailure increments the per-heartbeat parse-failure counter,
+// overwrites sampleLineHash with a SHA-256 hex[:16] of rawLine, and adds
+// eventType to the failedEventTypes set. The raw line is never stored.
+// This method is safe to call concurrently; driftMu is acquired internally.
+func (s *Service) recordParseFailure(eventType, rawLine string) {
+	sum := sha256.Sum256([]byte(rawLine))
+	hash := fmt.Sprintf("%x", sum)[:16]
+
+	s.driftMu.Lock()
+	s.parseFailureCount++
+	s.sampleLineHash = hash
+	if s.failedEventTypes == nil {
+		s.failedEventTypes = make(map[string]struct{})
+	}
+	s.failedEventTypes[eventType] = struct{}{}
+	s.driftMu.Unlock()
+}
+
+// snapshotAndResetDrift reads the three drift fields under the lock, zeroes
+// them, and returns copies to the caller. Called once per heartbeat tick so
+// each heartbeat window carries an independent, non-overlapping slice of counts.
+func (s *Service) snapshotAndResetDrift() (count uint32, hash string, types []string) {
+	s.driftMu.Lock()
+	count = s.parseFailureCount
+	hash = s.sampleLineHash
+	for et := range s.failedEventTypes {
+		types = append(types, et)
+	}
+	s.parseFailureCount = 0
+	s.sampleLineHash = ""
+	s.failedEventTypes = nil
+	s.driftMu.Unlock()
+
+	sort.Strings(types)
+	return count, hash, types
+}
+
 // handleEntry classifies a log entry and dispatches it to the BFF.
 func (s *Service) handleEntry(ctx context.Context, entry *logreader.LogEntry) error {
 	if entry == nil || !entry.IsJSON {
@@ -546,6 +618,7 @@ func (s *Service) handleEntry(ctx context.Context, entry *logreader.LogEntry) er
 		p, err := logreader.ParseDraftPack(entry)
 		if err != nil {
 			log.Printf("[daemon] warn: parse draft pack: %v", err)
+			s.recordParseFailure(eventType, entry.Raw)
 			payload = entry.JSON
 		} else {
 			payload = p
@@ -560,6 +633,7 @@ func (s *Service) handleEntry(ctx context.Context, entry *logreader.LogEntry) er
 		p, err := logreader.ParseDraftPick(entry)
 		if err != nil {
 			log.Printf("[daemon] warn: parse draft pick: %v", err)
+			s.recordParseFailure(eventType, entry.Raw)
 			payload = entry.JSON
 		} else {
 			payload = p
@@ -571,6 +645,7 @@ func (s *Service) handleEntry(ctx context.Context, entry *logreader.LogEntry) er
 		p, err := logreader.ParseInventoryEntry(entry)
 		if err != nil {
 			log.Printf("[daemon] warn: parse inventory: %v", err)
+			s.recordParseFailure(eventType, entry.Raw)
 			payload = entry.JSON
 		} else {
 			payload = p
@@ -579,6 +654,7 @@ func (s *Service) handleEntry(ctx context.Context, entry *logreader.LogEntry) er
 		p, err := logreader.ParseQuestProgressEntry(entry)
 		if err != nil {
 			log.Printf("[daemon] warn: parse quest progress: %v", err)
+			s.recordParseFailure(eventType, entry.Raw)
 			payload = entry.JSON
 		} else {
 			payload = p
@@ -587,6 +663,7 @@ func (s *Service) handleEntry(ctx context.Context, entry *logreader.LogEntry) er
 		p, err := logreader.ParseQuestCompletedEntry(entry)
 		if err != nil {
 			log.Printf("[daemon] warn: parse quest completed: %v", err)
+			s.recordParseFailure(eventType, entry.Raw)
 			payload = entry.JSON
 		} else {
 			payload = p
@@ -595,6 +672,7 @@ func (s *Service) handleEntry(ctx context.Context, entry *logreader.LogEntry) er
 		p, err := logreader.ParseCollectionEntry(entry)
 		if err != nil {
 			log.Printf("[daemon] warn: parse collection: %v", err)
+			s.recordParseFailure(eventType, entry.Raw)
 			payload = entry.JSON
 		} else {
 			payload = p
@@ -603,6 +681,7 @@ func (s *Service) handleEntry(ctx context.Context, entry *logreader.LogEntry) er
 		p, err := logreader.ParseDeckEntry(entry)
 		if err != nil {
 			log.Printf("[daemon] warn: parse deck: %v", err)
+			s.recordParseFailure(eventType, entry.Raw)
 			payload = entry.JSON
 		} else {
 			payload = p
@@ -622,6 +701,7 @@ func (s *Service) handleEntry(ctx context.Context, entry *logreader.LogEntry) er
 		p, err := logreader.ParseMatchCompletedEntry(entry, s.mtgaUserID)
 		if err != nil {
 			log.Printf("[daemon] warn: parse match completed: %v", err)
+			s.recordParseFailure(eventType, entry.Raw)
 			payload = entry.JSON
 		} else {
 			payload = p

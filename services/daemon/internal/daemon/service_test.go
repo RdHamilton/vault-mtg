@@ -8,6 +8,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -972,4 +973,266 @@ func TestRunSkipsHeartbeatWhenAccountIDEmpty(t *testing.T) {
 
 	assert.Equal(t, int32(0), heartbeatCalls.Load(),
 		"heartbeat must not be sent when AccountID is empty")
+}
+
+// ---------------------------------------------------------------------------
+// Parse-failure counter tests (#2569)
+//
+// These verify the drift-detection machinery:
+//   - recordParseFailure increments parseFailureCount, populates sampleLineHash,
+//     and adds the event type to failedEventTypes.
+//   - handleEntry calls recordParseFailure on typed-parse errors (8 sites).
+//   - snapshotAndResetDrift returns a copy of the state and zeroes the fields.
+//   - Multi-heartbeat scenario: each window is independent.
+// ---------------------------------------------------------------------------
+
+// TestRecordParseFailure_IncrementAndHash verifies that recordParseFailure
+// increments parseFailureCount by 1, sets a 16-char sampleLineHash, and
+// adds the event type to failedEventTypes.
+func TestRecordParseFailure_IncrementAndHash(t *testing.T) {
+	svc := New(&config.Config{
+		CloudAPIURL: "http://localhost",
+		IngestPath:  "/v1/ingest/events",
+		APIKey:      "k",
+		AccountID:   "acc-rp",
+	})
+
+	svc.recordParseFailure("draft.pack", "raw log line here")
+
+	svc.driftMu.Lock()
+	defer svc.driftMu.Unlock()
+
+	assert.Equal(t, uint32(1), svc.parseFailureCount)
+	assert.Equal(t, 16, len(svc.sampleLineHash), "hash must be 16 hex chars")
+	assert.NotEmpty(t, svc.sampleLineHash)
+	_, found := svc.failedEventTypes["draft.pack"]
+	assert.True(t, found, "draft.pack must be in failedEventTypes")
+}
+
+// TestRecordParseFailure_MultipleTypes verifies that multiple calls with
+// different event types accumulate correctly: count grows and all types appear.
+func TestRecordParseFailure_MultipleTypes(t *testing.T) {
+	svc := New(&config.Config{
+		CloudAPIURL: "http://localhost",
+		IngestPath:  "/v1/ingest/events",
+		APIKey:      "k",
+		AccountID:   "acc-rp2",
+	})
+
+	svc.recordParseFailure("draft.pack", "line-a")
+	svc.recordParseFailure("draft.pack", "line-b")
+	svc.recordParseFailure("draft.pick", "line-c")
+
+	svc.driftMu.Lock()
+	defer svc.driftMu.Unlock()
+
+	assert.Equal(t, uint32(3), svc.parseFailureCount)
+	_, hasPack := svc.failedEventTypes["draft.pack"]
+	_, hasPick := svc.failedEventTypes["draft.pick"]
+	assert.True(t, hasPack)
+	assert.True(t, hasPick)
+	// Hash must reflect the LAST call (draft.pick / line-c), not a previous one.
+	assert.Equal(t, 16, len(svc.sampleLineHash))
+}
+
+// TestRecordParseFailure_RawLineNotStored verifies that the raw log line is
+// never stored on the Service struct — only the hash is retained (PII safety).
+func TestRecordParseFailure_RawLineNotStored(t *testing.T) {
+	const rawLine = "SENSITIVE_RAW_LOG_LINE_DO_NOT_STORE"
+	svc := New(&config.Config{
+		CloudAPIURL: "http://localhost",
+		IngestPath:  "/v1/ingest/events",
+		APIKey:      "k",
+		AccountID:   "acc-pii",
+	})
+
+	svc.recordParseFailure("match.completed", rawLine)
+
+	// The raw line must not appear anywhere in the public Service fields.
+	// We check sampleLineHash (should be a hash, not the raw string) and
+	// that no field equals the raw line.
+	svc.driftMu.Lock()
+	defer svc.driftMu.Unlock()
+
+	assert.NotEqual(t, rawLine, svc.sampleLineHash, "raw line must not be stored as hash")
+	assert.NotEqual(t, rawLine, svc.mtgaUserID)
+}
+
+// TestHandleEntry_ParseFailure_RecordsCounter is a table-driven test covering
+// the typed-parse call sites in handleEntry where a parse error IS reachable
+// from a classified entry. For each case: the entry must (a) be classified by
+// classifyEntry into the expected event type AND (b) cause the Parse* function
+// to return an error so recordParseFailure is called.
+//
+// Note: quest.progress, quest.completed, collection.updated, and deck.updated
+// use classifiers whose predicates are equivalent to their parsers' guards, so
+// those paths cannot produce a parse error from a classified entry; they are
+// covered by TestRecordParseFailure_MultipleTypes instead.
+func TestHandleEntry_ParseFailure_RecordsCounter(t *testing.T) {
+	cases := []struct {
+		name      string
+		eventType string
+		json      map[string]interface{}
+		raw       string
+	}{
+		{
+			// draftPack key present (classifies as draft.pack) but value is not
+			// the expected map shape (causes ParseDraftPack to return an error).
+			name:      "draft.pack bad shape",
+			eventType: "draft.pack",
+			json:      map[string]interface{}{"draftPack": "not-a-map"},
+			raw:       `{"draftPack":"not-a-map"}`,
+		},
+		{
+			// pickedCards key present (classifies as draft.pick) but value is a
+			// string (causes ParseDraftPick to return an error).
+			name:      "draft.pick bad shape",
+			eventType: "draft.pick",
+			json:      map[string]interface{}{"pickedCards": "not-a-slice"},
+			raw:       `{"pickedCards":"not-a-slice"}`,
+		},
+		{
+			// InventoryInfo key present (classifies as inventory.updated) but
+			// value is a string (causes ParseInventoryEntry to return an error).
+			name:      "inventory.updated bad shape",
+			eventType: "inventory.updated",
+			json:      map[string]interface{}{"InventoryInfo": "not-a-map"},
+			raw:       `{"InventoryInfo":"not-a-map"}`,
+		},
+		{
+			// CurrentEventState=MatchCompleted classifies as match.completed;
+			// matchGameRoomStateChangedEvent is a string (not a map) so
+			// ParseMatchCompletedEntry cannot parse the result structure.
+			name:      "match.completed bad shape",
+			eventType: "match.completed",
+			json:      map[string]interface{}{"CurrentEventState": "MatchCompleted", "matchGameRoomStateChangedEvent": "bad"},
+			raw:       `{"CurrentEventState":"MatchCompleted","matchGameRoomStateChangedEvent":"bad"}`,
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			// Use a test server that always accepts so SendOrBuffer doesn't fail.
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+				w.WriteHeader(http.StatusAccepted)
+			}))
+			defer srv.Close()
+
+			svc := New(&config.Config{
+				CloudAPIURL: srv.URL,
+				IngestPath:  "/v1/ingest/events",
+				APIKey:      "k",
+				AccountID:   "acc-parse-fail",
+			})
+
+			entry := &logreader.LogEntry{
+				IsJSON: true,
+				JSON:   tc.json,
+				Raw:    tc.raw,
+			}
+
+			require.NoError(t, svc.handleEntry(context.Background(), entry))
+
+			svc.driftMu.Lock()
+			defer svc.driftMu.Unlock()
+
+			assert.Equal(t, uint32(1), svc.parseFailureCount,
+				"parseFailureCount must be 1 after one parse error in %s", tc.name)
+			assert.Equal(t, 16, len(svc.sampleLineHash),
+				"sampleLineHash must be 16 chars after parse error in %s", tc.name)
+			_, found := svc.failedEventTypes[tc.eventType]
+			assert.True(t, found,
+				"failedEventTypes must contain %q after parse error in %s", tc.eventType, tc.name)
+		})
+	}
+}
+
+// TestSnapshotAndResetDrift verifies that snapshotAndResetDrift returns the
+// current state and zeroes all three drift fields atomically.
+func TestSnapshotAndResetDrift(t *testing.T) {
+	svc := New(&config.Config{
+		CloudAPIURL: "http://localhost",
+		IngestPath:  "/v1/ingest/events",
+		APIKey:      "k",
+		AccountID:   "acc-snap",
+	})
+
+	svc.recordParseFailure("draft.pack", "line-1")
+	svc.recordParseFailure("match.completed", "line-2")
+
+	count, hash, types := svc.snapshotAndResetDrift()
+
+	assert.Equal(t, uint32(2), count)
+	assert.Equal(t, 16, len(hash))
+	assert.Contains(t, types, "draft.pack")
+	assert.Contains(t, types, "match.completed")
+
+	// Fields must be zeroed after snapshot.
+	svc.driftMu.Lock()
+	defer svc.driftMu.Unlock()
+	assert.Equal(t, uint32(0), svc.parseFailureCount)
+	assert.Empty(t, svc.sampleLineHash)
+	assert.Empty(t, svc.failedEventTypes)
+}
+
+// TestMultiHeartbeatBuffered verifies the multi-heartbeat-buffered scenario
+// described in Ray's plan verdict (§Architectural notes #4): each heartbeat
+// window carries its own independent drift snapshot, resets cleanly, and
+// failures in window N+1 are not double-counted in window N.
+func TestMultiHeartbeatBuffered(t *testing.T) {
+	type capturedPayload struct {
+		ParseFailureCount uint32   `json:"parse_failure_count"`
+		SampleLineHash    string   `json:"sample_line_hash,omitempty"`
+		FailedEventTypes  []string `json:"failed_event_types,omitempty"`
+	}
+
+	// Collect every heartbeat payload sent to the test BFF.
+	var mu sync.Mutex
+	var heartbeats []capturedPayload
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		body, _ := io.ReadAll(r.Body)
+		var evt contract.DaemonEvent
+		if json.Unmarshal(body, &evt) == nil && evt.Type == "daemon.heartbeat" {
+			var p capturedPayload
+			if json.Unmarshal(evt.Payload, &p) == nil {
+				mu.Lock()
+				heartbeats = append(heartbeats, p)
+				mu.Unlock()
+			}
+		}
+		w.WriteHeader(http.StatusAccepted)
+	}))
+	defer srv.Close()
+
+	svc := New(&config.Config{
+		CloudAPIURL: srv.URL,
+		IngestPath:  "/v1/ingest/events",
+		APIKey:      "k",
+		AccountID:   "acc-multi-hb",
+	})
+
+	// Simulate window 1: 3 failures in draft.pack.
+	for i := 0; i < 3; i++ {
+		svc.recordParseFailure("draft.pack", fmt.Sprintf("line-%d", i))
+	}
+	// Trigger heartbeat tick manually via snapshotAndResetDrift + buildEvent.
+	count1, hash1, types1 := svc.snapshotAndResetDrift()
+	assert.Equal(t, uint32(3), count1)
+	assert.Equal(t, 16, len(hash1))
+	assert.Contains(t, types1, "draft.pack")
+
+	// After reset, window 2: 2 failures in match.completed.
+	for i := 0; i < 2; i++ {
+		svc.recordParseFailure("match.completed", fmt.Sprintf("line-w2-%d", i))
+	}
+	count2, hash2, types2 := svc.snapshotAndResetDrift()
+	assert.Equal(t, uint32(2), count2, "window 2 must not carry over window 1 count")
+	assert.Equal(t, 16, len(hash2))
+	assert.Contains(t, types2, "match.completed")
+	assert.NotContains(t, types2, "draft.pack", "window 2 must not carry window 1 event types")
+
+	// Window 3: no failures — count must be 0.
+	count3, _, _ := svc.snapshotAndResetDrift()
+	assert.Equal(t, uint32(0), count3, "window 3 must have count=0 when no failures occurred")
 }

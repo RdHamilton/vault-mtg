@@ -147,6 +147,30 @@ func (h *IngestHandler) IngestEvent(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	// Heartbeat drift detection: if parse_failure_count > 0, the daemon
+	// encountered typed-parse failures in this window. Emit daemon.log_format_drift
+	// to PostHog so Faye can detect MTGA log-format changes within one heartbeat
+	// window (≤30 s). PostHog emission is BFF-only per ADR-027 §OQ-5.
+	if event.Type == "daemon.heartbeat" {
+		var hb struct {
+			ParseFailureCount uint32   `json:"parse_failure_count"`
+			SampleLineHash    string   `json:"sample_line_hash,omitempty"`
+			FailedEventTypes  []string `json:"failed_event_types,omitempty"`
+		}
+		if err := json.Unmarshal(event.Payload, &hb); err == nil && hb.ParseFailureCount > 0 {
+			hashedAccountID := hashAccountID(event.AccountID)
+			_ = h.postHogClient.Enqueue(posthog.Capture{
+				DistinctId: hashedAccountID,
+				Event:      "daemon.log_format_drift",
+				Properties: posthog.NewProperties().
+					Set("account_id_hash", hashedAccountID).
+					Set("parse_failure_count", hb.ParseFailureCount).
+					Set("sample_line_hash", hb.SampleLineHash).
+					Set("failed_event_types", hb.FailedEventTypes),
+			})
+		}
+	}
+
 	if h.broadcaster != nil {
 		h.broadcaster.BroadcastDaemonEvent(userID, event)
 	}
