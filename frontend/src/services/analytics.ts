@@ -317,8 +317,10 @@ export type AnalyticsEvent =
     }
   | {
       name: 'app_user_identified';
+      // NOTE: user_id intentionally omitted — frontend Clerk user_id hashing is
+      // pending a follow-up ticket. Do NOT add user_id here until that lands.
+      // See: vault-mtg-tickets#1836 Ray adj. Q3.
       properties: {
-        user_id: string;
         auth_method: 'email' | 'google' | 'apple' | 'facebook';
       };
     }

@@ -8,7 +8,8 @@ import App from './App.tsx'
 import { AppProvider } from './context/AppContext'
 import { DownloadProvider } from './context/DownloadContext'
 import { TaskProgressProvider } from './context/TaskProgressContext'
-import { initializeServices } from './services/adapter'
+import { initializeServices, servicesInitMs } from './services/adapter'
+import { trackEvent, initAnalytics } from './services/analytics'
 import StagingErrorBoundary from './components/StagingErrorBoundary'
 import { runLocalStorageMigration } from './utils/localStorageMigration'
 
@@ -64,8 +65,17 @@ const renderApp = () => {
   )
 }
 
+const SESSION_STARTED_KEY = 'vaultmtg_ph_app_session_started_fired'
+
 // Initialize services (REST API and WebSocket) before rendering — see #1243 for Vercel BFF smoke-test
+initAnalytics()
 initializeServices().then(() => {
+  // Fire app_session_started once per browser session after services initialize.
+  // Guarded by sessionStorage so page-reloads within the same tab don't double-fire.
+  if (!sessionStorage.getItem(SESSION_STARTED_KEY)) {
+    trackEvent({ name: 'app_session_started', properties: { services_init_ms: servicesInitMs } })
+    sessionStorage.setItem(SESSION_STARTED_KEY, '1')
+  }
   renderApp()
 }).catch((error) => {
   console.error('Failed to initialize services:', error)
