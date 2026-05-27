@@ -643,11 +643,20 @@ jobs:
             Write-Error "makensis failed with exit code $LASTEXITCODE"
             exit 1
           }
-          $installerPath = "vaultmtg-daemon-setup-ci-test.exe"
-          if (-not (Test-Path $installerPath)) {
-            Write-Error "FAIL: NSIS installer not produced at $installerPath"
+          # NSIS writes OutFile relative paths to the .nsi script's directory,
+          # not the makensis cwd. The installer.nsi declares
+          # OutFile "vaultmtg-daemon-setup-${VERSION}.exe" so the artifact lands
+          # in services\daemon\install\windows\nsis\. Resolve and move it to
+          # the repo root so subsequent steps can find it consistently and
+          # downstream uploads (e.g. artifact glob 'vaultmtg-daemon-setup-*.exe'
+          # from the repo root) keep working when this pattern is reused.
+          $producedPath = "services\daemon\install\windows\nsis\vaultmtg-daemon-setup-ci-test.exe"
+          if (-not (Test-Path $producedPath)) {
+            Write-Error "FAIL: NSIS installer not produced at $producedPath"
             exit 1
           }
+          Move-Item -Path $producedPath -Destination "vaultmtg-daemon-setup-ci-test.exe" -Force
+          $installerPath = "vaultmtg-daemon-setup-ci-test.exe"
           $size = (Get-Item $installerPath).Length
           Write-Host "PASS: NSIS installer built at $installerPath ($size bytes)"
 
