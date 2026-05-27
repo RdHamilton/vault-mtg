@@ -33,6 +33,7 @@ export * as bffAuth from './bffAuth';
 export * as bffHealth from './bffHealth';
 export * as bffMatchHistory from './bffMatchHistory';
 export * as bffDraftHistory from './bffDraftHistory';
+export * as bffDaemons from './bffDaemons';
 
 // Re-export commonly used types
 export type {
@@ -139,6 +140,11 @@ export type {
   DraftHistoryParams,
   DraftHistoryResponse,
 } from './bffDraftHistory';
+
+export type {
+  DaemonDevice,
+  ListDaemonsResponse,
+} from './bffDaemons';
 
 export type {
   OpponentDeckProfile,
