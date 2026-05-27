@@ -172,8 +172,6 @@ export function ConnectedDevicesSection() {
             data-device-id={device.device_id}
             id={`device-row-${device.device_id}`}
             className="device-row"
-            // Also keep the testid-based selector pattern used in tests
-            {...{ 'data-testid': 'device-row' }}
           >
             <div
               data-testid={`device-row-${device.device_id}`}
