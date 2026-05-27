@@ -179,6 +179,69 @@ func TestSystemDaemonConnectAndDisconnect(t *testing.T) {
 	}
 }
 
+// TestSystemHealth_DispatchDroppedZero verifies that /api/v1/system/health
+// includes dispatch_dropped:0 when no events have been lost.
+func TestSystemHealth_DispatchDroppedZero(t *testing.T) {
+	srv := startTestServer(t, nil)
+
+	var body struct {
+		Metrics struct {
+			TotalProcessed  int64 `json:"totalProcessed"`
+			TotalErrors     int64 `json:"totalErrors"`
+			DispatchDropped int64 `json:"dispatchDropped"`
+		} `json:"metrics"`
+	}
+	getJSON(t, srv, "/api/v1/system/health", &body)
+	if body.Metrics.DispatchDropped != 0 {
+		t.Errorf("dispatchDropped: got %d, want 0", body.Metrics.DispatchDropped)
+	}
+}
+
+// TestSystemHealth_DispatchDroppedNonZero verifies that when the state
+// carries a non-zero DispatchDropped count, it is surfaced in the health
+// response metrics.
+func TestSystemHealth_DispatchDroppedNonZero(t *testing.T) {
+	srv := startTestServer(t, func(s *localapi.State) {
+		s.DispatchDropped = 7
+	})
+
+	var body struct {
+		Metrics struct {
+			DispatchDropped int64 `json:"dispatchDropped"`
+		} `json:"metrics"`
+	}
+	getJSON(t, srv, "/api/v1/system/health", &body)
+	if body.Metrics.DispatchDropped != 7 {
+		t.Errorf("dispatchDropped: got %d, want 7", body.Metrics.DispatchDropped)
+	}
+}
+
+// TestSetState_DispatchDroppedWired verifies that SetState propagates the
+// DispatchDropped counter and it is reflected in subsequent /health polls.
+func TestSetState_DispatchDroppedWired(t *testing.T) {
+	srv := startTestServer(t, nil)
+
+	started := time.Date(2026, 5, 11, 21, 0, 0, 0, time.UTC)
+	srv.SetState(localapi.State{
+		Version:         "0.3.3",
+		SessionID:       "sess",
+		StartedAt:       started,
+		CloudAPIURL:     "https://api.vaultmtg.app/api/v1",
+		BFFReachable:    true,
+		DispatchDropped: 42,
+	})
+
+	var body struct {
+		Metrics struct {
+			DispatchDropped int64 `json:"dispatchDropped"`
+		} `json:"metrics"`
+	}
+	getJSON(t, srv, "/api/v1/system/health", &body)
+	if body.Metrics.DispatchDropped != 42 {
+		t.Errorf("dispatchDropped after SetState: got %d, want 42", body.Metrics.DispatchDropped)
+	}
+}
+
 func TestSetStateUpdatesEndpoints(t *testing.T) {
 	srv := startTestServer(t, nil)
 

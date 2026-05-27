@@ -864,13 +864,14 @@ func TestHandleEntry_MatchCompleted_WithCachedMtgaUserID(t *testing.T) {
 // T4 — 401 dispatch silently ignored in keychain mode
 // ---------------------------------------------------------------------------
 
-// TestDispatcher_401InKeychainModeIsNotRetried documents the current behavior
-// when the BFF returns 401 while the daemon is in keychain mode.
+// TestDispatcher_401InKeychainModeIsNotRetried documents the behavior when
+// the BFF returns 401 while the daemon is in keychain mode.
 //
 // In keychain mode WithRefresher is NOT wired (see service.New), so a 401
-// causes the dispatcher to exhaust all retries and return an error.  The run
-// loop logs the error and continues — there is no automatic re-registration
-// or re-PKCE path triggered.
+// causes the dispatcher to exhaust all retries.  With the ring buffer wired
+// (added in #2557), the failed event is silently buffered and handleEntry
+// returns nil — no error surfaces to the run loop.  The event is not lost;
+// it sits in the ring buffer pending a drain on next successful dispatch.
 //
 // Known gap — tracked in issue #2135: keychain-mode 401 has no recovery
 // path today.  When that issue is implemented, this test must be updated to
@@ -911,12 +912,11 @@ func TestDispatcher_401InKeychainModeIsNotRetried(t *testing.T) {
 		JSON:   map[string]interface{}{"draftPack": []interface{}{"card1"}},
 	}
 
-	// handleEntry returns an error (all retries exhausted) — this is the
-	// "silent failure" the run loop logs and discards.  We assert it returns
-	// non-nil so any future change to swallow or escalate the error is caught.
+	// With the ring buffer wired (#2557), handleEntry returns nil after
+	// retry exhaustion — the failed event is buffered, not dropped.
 	err := svc.handleEntry(context.Background(), entry)
-	assert.Error(t, err,
-		"keychain-mode 401 must surface an error from handleEntry (logged + discarded by run loop)")
+	assert.NoError(t, err,
+		"handleEntry must return nil when the ring buffer absorbs the failure (#2557)")
 
 	// No /daemon/register call must be made — the refresher is not wired.
 	assert.Equal(t, int32(0), registerCalls.Load(),

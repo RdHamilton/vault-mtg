@@ -79,6 +79,12 @@ type Service struct {
 	// keychainGet is the function used to read the API key from the OS keychain.
 	// Defaults to keychain.Get; overridden in tests for deterministic behaviour.
 	keychainGet func() (string, error)
+	// eventBuffer is the bounded ring buffer wired into the dispatcher so that
+	// events are not silently lost when the BFF is transiently unreachable.
+	// Capacity is 1000 (hard-coded for v0.3.3; configurable knob deferred to
+	// v0.4.0). Dropped() is sampled on every SetState update and surfaced on
+	// /api/v1/system/health as metrics.dispatchDropped.
+	eventBuffer *dispatch.RingBuffer
 }
 
 // New creates a Service from cfg.
@@ -105,12 +111,16 @@ func New(cfg *config.Config) *Service {
 	default:
 		token = cfg.APIKey
 	}
-	d := dispatch.New(cfg.CloudAPIURL, cfg.IngestPath, token)
+	// Bounded ring buffer: capacity 1000, hard-coded for v0.3.3.
+	// Configurable knob deferred to v0.4.0 (see #2557 follow-on).
+	buf := dispatch.NewRingBuffer(1000)
+	d := dispatch.New(cfg.CloudAPIURL, cfg.IngestPath, token).WithBuffer(buf)
 	sessionID := fmt.Sprintf("live-%s", uuid.New().String())
 
 	svc := &Service{
 		cfg:         cfg,
 		dispatcher:  d,
+		eventBuffer: buf,
 		sessionID:   sessionID,
 		regClient:   registrar.NewClient(cfg.CloudAPIURL),
 		version:     "dev",
@@ -165,7 +175,7 @@ func (s *Service) flushGREBuffer(ctx context.Context, sessionID string, entries 
 	dispatchCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()
 
-	return s.dispatcher.Send(dispatchCtx, evt)
+	return s.dispatcher.SendOrBuffer(dispatchCtx, evt)
 }
 
 // WithVersion sets the build-time version string used for update checks.
@@ -333,10 +343,11 @@ func (s *Service) Run(ctx context.Context) error {
 	// 127.0.0.1:9001 so the SPA's "daemon connected" indicator can detect
 	// this process. Non-fatal — if the port is busy (e.g. a previous daemon
 	// instance is still draining), the daemon continues with dispatch only.
+	startedAt := time.Now().UTC()
 	localAPI := localapi.New(localapi.DefaultPort, localapi.State{
 		Version:      s.version,
 		SessionID:    s.sessionID,
-		StartedAt:    time.Now().UTC(),
+		StartedAt:    startedAt,
 		AccountID:    s.cfg.AccountID,
 		CloudAPIURL:  s.cfg.CloudAPIURL,
 		BFFReachable: true, // optimistic — flips when a dispatch fails
@@ -414,6 +425,21 @@ func (s *Service) Run(ctx context.Context) error {
 			go s.runUpdateCheck(ctx)
 
 		case <-heartbeatTicker.C:
+			// Refresh the localapi state snapshot so /health reflects the
+			// current dispatch_dropped counter. The heartbeat tick is the
+			// natural update point — 30-second staleness is acceptable.
+			now := time.Now().UTC()
+			localAPI.SetState(localapi.State{
+				Version:         s.version,
+				SessionID:       s.sessionID,
+				StartedAt:       startedAt,
+				AccountID:       s.cfg.AccountID,
+				CloudAPIURL:     s.cfg.CloudAPIURL,
+				BFFReachable:    true,
+				DispatchDropped: s.eventBuffer.Dropped(),
+				LastDispatchAt:  &now,
+			})
+
 			// Skip when AccountID is not yet set (daemon not authenticated).
 			if s.cfg.AccountID == "" {
 				continue
@@ -424,7 +450,7 @@ func (s *Service) Run(ctx context.Context) error {
 				continue
 			}
 			dispatchCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
-			if sendErr := s.dispatcher.Send(dispatchCtx, evt); sendErr != nil {
+			if sendErr := s.dispatcher.SendOrBuffer(dispatchCtx, evt); sendErr != nil {
 				log.Printf("[daemon] warn: heartbeat dispatch: %v", sendErr)
 			}
 			cancel()
@@ -581,7 +607,7 @@ func (s *Service) handleEntry(ctx context.Context, entry *logreader.LogEntry) er
 	dispatchCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()
 
-	return s.dispatcher.Send(dispatchCtx, evt)
+	return s.dispatcher.SendOrBuffer(dispatchCtx, evt)
 }
 
 // classifyEntry maps a log entry to a semantic event type string.
