@@ -6,6 +6,7 @@ package daemon
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log"
 	"time"
@@ -79,6 +80,12 @@ type Service struct {
 	// keychainGet is the function used to read the API key from the OS keychain.
 	// Defaults to keychain.Get; overridden in tests for deterministic behaviour.
 	keychainGet func() (string, error)
+	// eventBuffer is the bounded ring buffer wired into the dispatcher so that
+	// events are not silently lost when the BFF is transiently unreachable.
+	// Capacity is 1000 (hard-coded for v0.3.3; configurable knob deferred to
+	// v0.4.0). Dropped() is sampled on every SetState update and surfaced on
+	// /api/v1/system/health as metrics.dispatchDropped.
+	eventBuffer *dispatch.RingBuffer
 }
 
 // New creates a Service from cfg.
@@ -105,12 +112,16 @@ func New(cfg *config.Config) *Service {
 	default:
 		token = cfg.APIKey
 	}
-	d := dispatch.New(cfg.CloudAPIURL, cfg.IngestPath, token)
+	// Bounded ring buffer: capacity 1000, hard-coded for v0.3.3.
+	// Configurable knob deferred to v0.4.0 (see #2557 follow-on).
+	buf := dispatch.NewRingBuffer(1000)
+	d := dispatch.New(cfg.CloudAPIURL, cfg.IngestPath, token).WithBuffer(buf)
 	sessionID := fmt.Sprintf("live-%s", uuid.New().String())
 
 	svc := &Service{
 		cfg:         cfg,
 		dispatcher:  d,
+		eventBuffer: buf,
 		sessionID:   sessionID,
 		regClient:   registrar.NewClient(cfg.CloudAPIURL),
 		version:     "dev",
@@ -122,10 +133,13 @@ func New(cfg *config.Config) *Service {
 			Token:  token,
 		}),
 	}
-	// Wire the legacy refresher only when NOT in keychain mode. With keychain
-	// the api_key does not expire, and the legacy /api/daemon/register endpoint
-	// is not served by the BFF — calling it on every 401 would just spam 404s.
-	if !cfg.Keychain {
+	// Wire the appropriate Refresher based on the auth mode:
+	// - Keychain mode: KeychainReauthRequired fires the tray hook and returns
+	//   ErrReauthRequired, which breaks the retry loop immediately.
+	// - Legacy mode: Refresh calls the registration endpoint to obtain a new JWT.
+	if cfg.Keychain {
+		d.WithRefresher(svc.keychainRefresherAdapter())
+	} else {
 		d.WithRefresher(svc)
 	}
 
@@ -165,7 +179,7 @@ func (s *Service) flushGREBuffer(ctx context.Context, sessionID string, entries 
 	dispatchCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()
 
-	return s.dispatcher.Send(dispatchCtx, evt)
+	return s.dispatcher.SendOrBuffer(dispatchCtx, evt)
 }
 
 // WithVersion sets the build-time version string used for update checks.
@@ -180,6 +194,33 @@ func (s *Service) WithVersion(v string) {
 // the BFF returns 401 so a new JWT can be obtained before the next retry.
 func (s *Service) Refresh(ctx context.Context) (string, error) {
 	return s.register(ctx)
+}
+
+// KeychainReauthRequired is called when the BFF returns 401 in keychain mode.
+// It fires the tray hook (if wired) so the UI can prompt the user to
+// re-authenticate, then returns dispatch.ErrReauthRequired to signal the
+// dispatcher to break its retry loop immediately.
+func (s *Service) KeychainReauthRequired(reason string) error {
+	if s.trayHooks.SetReauthRequired != nil {
+		s.trayHooks.SetReauthRequired(reason)
+	}
+	return dispatch.ErrReauthRequired
+}
+
+// keychainRefresherAdapter wraps KeychainReauthRequired as a dispatch.Refresher.
+// The Refresh signature requires (ctx, token) but keychain reauth does not need
+// them — it unconditionally fires the tray hook and returns ErrReauthRequired.
+func (s *Service) keychainRefresherAdapter() dispatch.Refresher {
+	return refresherFunc(func(_ context.Context) (string, error) {
+		return "", s.KeychainReauthRequired("BFF returned 401")
+	})
+}
+
+// refresherFunc is a function type that adapts a plain func to dispatch.Refresher.
+type refresherFunc func(ctx context.Context) (string, error)
+
+func (f refresherFunc) Refresh(ctx context.Context) (string, error) {
+	return f(ctx)
 }
 
 // register calls the BFF registration endpoint and persists the resulting JWT.
@@ -333,10 +374,11 @@ func (s *Service) Run(ctx context.Context) error {
 	// 127.0.0.1:9001 so the SPA's "daemon connected" indicator can detect
 	// this process. Non-fatal — if the port is busy (e.g. a previous daemon
 	// instance is still draining), the daemon continues with dispatch only.
+	startedAt := time.Now().UTC()
 	localAPI := localapi.New(localapi.DefaultPort, localapi.State{
 		Version:      s.version,
 		SessionID:    s.sessionID,
-		StartedAt:    time.Now().UTC(),
+		StartedAt:    startedAt,
 		AccountID:    s.cfg.AccountID,
 		CloudAPIURL:  s.cfg.CloudAPIURL,
 		BFFReachable: true, // optimistic — flips when a dispatch fails
@@ -414,6 +456,21 @@ func (s *Service) Run(ctx context.Context) error {
 			go s.runUpdateCheck(ctx)
 
 		case <-heartbeatTicker.C:
+			// Refresh the localapi state snapshot so /health reflects the
+			// current dispatch_dropped counter. The heartbeat tick is the
+			// natural update point — 30-second staleness is acceptable.
+			now := time.Now().UTC()
+			localAPI.SetState(localapi.State{
+				Version:         s.version,
+				SessionID:       s.sessionID,
+				StartedAt:       startedAt,
+				AccountID:       s.cfg.AccountID,
+				CloudAPIURL:     s.cfg.CloudAPIURL,
+				BFFReachable:    true,
+				DispatchDropped: s.eventBuffer.Dropped(),
+				LastDispatchAt:  &now,
+			})
+
 			// Skip when AccountID is not yet set (daemon not authenticated).
 			if s.cfg.AccountID == "" {
 				continue
@@ -424,7 +481,7 @@ func (s *Service) Run(ctx context.Context) error {
 				continue
 			}
 			dispatchCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
-			if sendErr := s.dispatcher.Send(dispatchCtx, evt); sendErr != nil {
+			if sendErr := s.dispatcher.SendOrBuffer(dispatchCtx, evt); sendErr != nil {
 				log.Printf("[daemon] warn: heartbeat dispatch: %v", sendErr)
 			}
 			cancel()
@@ -581,7 +638,14 @@ func (s *Service) handleEntry(ctx context.Context, entry *logreader.LogEntry) er
 	dispatchCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()
 
-	return s.dispatcher.Send(dispatchCtx, evt)
+	if err := s.dispatcher.SendOrBuffer(dispatchCtx, evt); err != nil {
+		if errors.Is(err, dispatch.ErrReauthRequired) {
+			// Logged once by the dispatcher; suppress per-entry spam.
+			return nil
+		}
+		return err
+	}
+	return nil
 }
 
 // classifyEntry maps a log entry to a semantic event type string.

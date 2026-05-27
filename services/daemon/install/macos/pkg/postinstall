@@ -171,7 +171,7 @@ cat > "${PLIST_PATH}" <<PLIST
         <string>${CLERK_PUBLISHABLE_KEY}</string>
         <key>CLERK_OAUTH_CLIENT_ID</key>
         <string>${CLERK_OAUTH_CLIENT_ID}</string>
-        <key>MTGA_DAEMON_CLOUD_API_URL</key>
+        <key>VAULTMTG_DAEMON_CLOUD_API_URL</key>
         <string>${CLOUD_API_URL}</string>
     </dict>
 

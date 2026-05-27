@@ -31,8 +31,9 @@ const shutdownTimeout = 5 * time.Second
 
 // State is the subset of daemon state exposed by the local API. Some fields
 // (Version, SessionID, StartedAt, AccountID, CloudAPIURL) are stable for the
-// life of the daemon process; others (LastDispatchAt, BFFReachable) change as
-// the daemon dispatches events. The daemon refreshes them via SetState.
+// life of the daemon process; others (LastDispatchAt, BFFReachable,
+// DispatchDropped) change as the daemon dispatches events. The daemon
+// refreshes them via SetState.
 type State struct {
 	Version        string
 	SessionID      string
@@ -41,6 +42,10 @@ type State struct {
 	CloudAPIURL    string
 	LastDispatchAt *time.Time
 	BFFReachable   bool
+	// DispatchDropped is the cumulative number of events dropped into the
+	// ring buffer after retry exhaustion. Surfaced on /api/v1/system/health
+	// metrics.dispatchDropped for observability.
+	DispatchDropped int64
 }
 
 // Server is the loopback HTTP server. Construct with New, then call Start

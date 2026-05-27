@@ -9,6 +9,7 @@ import {
   MLSettingsSection,
   ApiKeySection,
   UserProfileSection,
+  ConnectedDevicesSection,
 } from '../components/settings/sections';
 import { SettingsAccordion } from '../components/settings/SettingsAccordion';
 import type { SettingsAccordionItem } from '../components/settings/SettingsAccordion';
@@ -156,6 +157,12 @@ const Settings = () => {
         label: 'API Key',
         icon: '🔑',
         content: <ApiKeySection />,
+      },
+      {
+        id: 'connected-devices',
+        label: 'Connected Devices',
+        icon: '🖥️',
+        content: <ConnectedDevicesSection />,
       },
       {
         id: 'preferences',

@@ -32,6 +32,10 @@ type TrayHooks struct {
 	// SetKeychainError shows or hides the keychain error state (StatusKeychainError
 	// + "Try Again" menu item) in the tray. Call with true when retrying; false when resolved.
 	SetKeychainError func(bool)
+	// SetReauthRequired notifies the tray that the daemon received a 401 in
+	// keychain mode and user re-authentication is needed. The reason string is
+	// a human-readable hint shown in the tray tooltip or menu item.
+	SetReauthRequired func(reason string)
 }
 
 // WithTray attaches tray integration to the service.

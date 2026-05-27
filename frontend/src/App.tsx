@@ -29,6 +29,7 @@ import Home from './pages/Home';
 import KeyboardShortcutsHandler from './components/KeyboardShortcutsHandler';
 import ProtectedRoute from './components/ProtectedRoute';
 import { SseInitializer } from './components/SseInitializer';
+import { PostHogRouteTracker } from './components/PostHogRouteTracker';
 import { EventsOn } from './services/adapter';
 import { setClerkTokenProvider } from './services/apiClient';
 import { updateReplayState } from './utils/replayState';
@@ -195,6 +196,7 @@ function ReplayEventHandler() {
 function App() {
   return (
     <Router>
+      <PostHogRouteTracker />
       <ClerkApiClientSync />
       <SseInitializer />
       <SentryUserSync />
