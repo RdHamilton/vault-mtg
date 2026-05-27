@@ -84,18 +84,18 @@ func TestDaemonAPIKey_Fields(t *testing.T) {
 	assert.Equal(t, "darwin", k.Platform)
 	assert.Equal(t, "0.3.1", k.DaemonVer)
 	assert.Equal(t, now, k.CreatedAt)
-	assert.Nil(t, k.LastUsed)
+	assert.Nil(t, k.LastUsedAt)
 	assert.Nil(t, k.RevokedAt)
 }
 
-// TestDaemonAPIKey_LastUsed verifies the optional LastUsed pointer field.
-func TestDaemonAPIKey_LastUsed(t *testing.T) {
+// TestDaemonAPIKey_LastUsedAt verifies the optional LastUsedAt pointer field.
+func TestDaemonAPIKey_LastUsedAt(t *testing.T) {
 	now := time.Now().UTC()
 	k := repository.DaemonAPIKey{
-		LastUsed: &now,
+		LastUsedAt: &now,
 	}
-	require.NotNil(t, k.LastUsed)
-	assert.Equal(t, now, *k.LastUsed)
+	require.NotNil(t, k.LastUsedAt)
+	assert.Equal(t, now, *k.LastUsedAt)
 }
 
 // TestDaemonAPIKey_RevokedAt verifies the optional RevokedAt pointer field.

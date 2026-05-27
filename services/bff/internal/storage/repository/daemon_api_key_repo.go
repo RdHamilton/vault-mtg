@@ -13,16 +13,16 @@ var ErrDaemonAPIKeyNotFound = errors.New("daemon api key not found")
 // DaemonAPIKey is the in-memory representation of a daemon_api_keys row.
 // KeyHash contains the bcrypt hash — never the plaintext key.
 type DaemonAPIKey struct {
-	ID        string
-	AccountID string
-	KeyHash   string
-	KeyPrefix string
-	DeviceID  string
-	Platform  string
-	DaemonVer string
-	CreatedAt time.Time
-	LastUsed  *time.Time
-	RevokedAt *time.Time
+	ID         string
+	AccountID  string
+	KeyHash    string
+	KeyPrefix  string
+	DeviceID   string
+	Platform   string
+	DaemonVer  string
+	CreatedAt  time.Time
+	LastUsedAt *time.Time
+	RevokedAt  *time.Time
 }
 
 // daemonAPIKeyDB is the minimal interface required by DaemonAPIKeyRepository.
@@ -61,7 +61,7 @@ func (r *DaemonAPIKeyRepository) UpsertKey(ctx context.Context, accountID, keyHa
 		INSERT INTO daemon_api_keys (account_id, key_hash, key_prefix, device_id, platform, daemon_ver)
 		VALUES ($1, $2, $3, $4, $5, $6)
 		ON CONFLICT (account_id) DO NOTHING
-		RETURNING id, account_id, key_hash, key_prefix, device_id, platform, daemon_ver, created_at, last_used, revoked_at`
+		RETURNING id, account_id, key_hash, key_prefix, device_id, platform, daemon_ver, created_at, last_used_at, revoked_at`
 
 	row := r.db.QueryRowContext(ctx, q, accountID, keyHash, keyPrefix, deviceID, platform, daemonVer)
 	k, err := scanDaemonAPIKey(row)
@@ -85,7 +85,7 @@ func (r *DaemonAPIKeyRepository) UpsertKey(ctx context.Context, accountID, keyHa
 // Returns ErrDaemonAPIKeyNotFound when no active key exists.
 func (r *DaemonAPIKeyRepository) GetActive(ctx context.Context, accountID string) (*DaemonAPIKey, error) {
 	const q = `
-		SELECT id, account_id, key_hash, key_prefix, device_id, platform, daemon_ver, created_at, last_used, revoked_at
+		SELECT id, account_id, key_hash, key_prefix, device_id, platform, daemon_ver, created_at, last_used_at, revoked_at
 		FROM   daemon_api_keys
 		WHERE  account_id = $1 AND revoked_at IS NULL
 		LIMIT  1`
@@ -98,9 +98,10 @@ func (r *DaemonAPIKeyRepository) GetActive(ctx context.Context, accountID string
 	return k, err
 }
 
-// UpdateLastUsed sets last_used to now for the given key id.
+// UpdateLastUsed sets last_used_at to now for the given key id.
+// updated_at is bumped in lockstep to keep the audit trail current.
 func (r *DaemonAPIKeyRepository) UpdateLastUsed(ctx context.Context, id string) error {
-	const q = `UPDATE daemon_api_keys SET last_used = now() WHERE id = $1`
+	const q = `UPDATE daemon_api_keys SET last_used_at = now(), updated_at = now() WHERE id = $1`
 	_, err := r.db.ExecContext(ctx, q, id)
 	return err
 }
@@ -113,7 +114,7 @@ func (r *DaemonAPIKeyRepository) UpdateLastUsed(ctx context.Context, id string) 
 // scale; revisit with a prefix-index lookup if the key count grows large.
 func (r *DaemonAPIKeyRepository) ListAllActive(ctx context.Context) ([]DaemonAPIKey, error) {
 	const q = `
-		SELECT id, account_id, key_hash, key_prefix, device_id, platform, daemon_ver, created_at, last_used, revoked_at
+		SELECT id, account_id, key_hash, key_prefix, device_id, platform, daemon_ver, created_at, last_used_at, revoked_at
 		FROM   daemon_api_keys
 		WHERE  revoked_at IS NULL`
 
@@ -126,7 +127,7 @@ func (r *DaemonAPIKeyRepository) ListAllActive(ctx context.Context) ([]DaemonAPI
 	var keys []DaemonAPIKey
 	for rows.Next() {
 		var k DaemonAPIKey
-		if err := rows.Scan(&k.ID, &k.AccountID, &k.KeyHash, &k.KeyPrefix, &k.DeviceID, &k.Platform, &k.DaemonVer, &k.CreatedAt, &k.LastUsed, &k.RevokedAt); err != nil {
+		if err := rows.Scan(&k.ID, &k.AccountID, &k.KeyHash, &k.KeyPrefix, &k.DeviceID, &k.Platform, &k.DaemonVer, &k.CreatedAt, &k.LastUsedAt, &k.RevokedAt); err != nil {
 			return nil, err
 		}
 		keys = append(keys, k)
@@ -137,7 +138,7 @@ func (r *DaemonAPIKeyRepository) ListAllActive(ctx context.Context) ([]DaemonAPI
 // scanDaemonAPIKey scans a single row into a DaemonAPIKey.
 func scanDaemonAPIKey(row *sql.Row) (*DaemonAPIKey, error) {
 	var k DaemonAPIKey
-	err := row.Scan(&k.ID, &k.AccountID, &k.KeyHash, &k.KeyPrefix, &k.DeviceID, &k.Platform, &k.DaemonVer, &k.CreatedAt, &k.LastUsed, &k.RevokedAt)
+	err := row.Scan(&k.ID, &k.AccountID, &k.KeyHash, &k.KeyPrefix, &k.DeviceID, &k.Platform, &k.DaemonVer, &k.CreatedAt, &k.LastUsedAt, &k.RevokedAt)
 	if err != nil {
 		return nil, err
 	}
