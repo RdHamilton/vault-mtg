@@ -194,7 +194,9 @@ func main() {
 	}
 
 	// Wire API key handler and auth middleware when a database is available.
+	// sqlDB is declared here so it is in scope for NewHealthzHandler below.
 	var (
+		sqlDB                 *sql.DB
 		apiKeysHandler        *handlers.APIKeysHandler
 		apiKeyAuthMiddl       func(http.Handler) http.Handler
 		daemonAPIKeyAuthMiddl func(http.Handler) http.Handler
@@ -226,7 +228,8 @@ func main() {
 	projCtx, projCancel := context.WithCancel(context.Background())
 
 	if cfg.DatabaseURL != "" {
-		sqlDB, err := sql.Open("pgx", cfg.DatabaseURL)
+		var err error
+		sqlDB, err = sql.Open("pgx", cfg.DatabaseURL)
 		if err != nil {
 			log.Fatalf("open db: %v", err)
 		}
@@ -402,7 +405,15 @@ func main() {
 		log.Printf("WARN: no DATABASE_URL — API key auth unavailable (env=%s); guarded endpoints return 503", cfg.Env)
 	}
 
-	healthzHandler := handlers.NewHealthzHandler(cfg.Env, cfg.DatabaseURL, storage.MigrationStatus)
+	embeddedVersion := "unknown"
+	if v, err := storage.EmbeddedMaxVersion(); err == nil {
+		embeddedVersion = fmt.Sprintf("%d", v)
+	}
+	var healthzPinger handlers.Pinger
+	if sqlDB != nil {
+		healthzPinger = sqlDB
+	}
+	healthzHandler := handlers.NewHealthzHandler(cfg.Env, healthzPinger, embeddedVersion)
 
 	// E2EUnguardedSSE is only honoured in development; in any other env the
 	// flag is silently ignored so a misconfigured staging/prod box stays safe.

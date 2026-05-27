@@ -1,36 +1,39 @@
 package handlers
 
 import (
+	"context"
 	"encoding/json"
 	"log"
 	"net/http"
+	"time"
 )
 
-// MigrationChecker is the function signature used by HealthzHandler to check
-// whether the database schema is up-to-date.  Injected at construction time so
-// tests can supply a stub without a real database.
-type MigrationChecker func(databaseURL string) string
+// Pinger is a minimal interface that wraps the single DB method used by
+// HealthzHandler.  *sql.DB satisfies it; tests supply a lightweight fake.
+type Pinger interface {
+	PingContext(ctx context.Context) error
+}
 
 // HealthzHandler handles GET /healthz.
 //
 // This endpoint is intentionally public (no auth required) so that staging
 // deploy health checks and uptime monitors can reach it without a Clerk token.
 type HealthzHandler struct {
-	env            string
-	databaseURL    string
-	checkMigration MigrationChecker
+	env             string
+	db              Pinger
+	embeddedVersion string
 }
 
 // NewHealthzHandler returns a HealthzHandler.
 //
-//   - env         — value of cfg.Env (e.g. "staging", "production")
-//   - databaseURL — value of cfg.DatabaseURL; may be empty in development
-//   - checker     — called to obtain the migration status string
-func NewHealthzHandler(env, databaseURL string, checker MigrationChecker) *HealthzHandler {
+//   - env             — value of cfg.Env (e.g. "staging", "production")
+//   - db              — shared *sql.DB pool injected at startup; nil in development
+//   - embeddedVersion — pre-computed value from storage.EmbeddedMaxVersion()
+func NewHealthzHandler(env string, db Pinger, embeddedVersion string) *HealthzHandler {
 	return &HealthzHandler{
-		env:            env,
-		databaseURL:    databaseURL,
-		checkMigration: checker,
+		env:             env,
+		db:              db,
+		embeddedVersion: embeddedVersion,
 	}
 }
 
@@ -43,15 +46,27 @@ type healthzResponse struct {
 
 // ServeHTTP handles GET /healthz.
 //
-// Always returns 200.  The migration_version field is "up-to-date" when the
-// DB is reachable and at the latest schema version; "unknown" otherwise.
+// Always returns 200.  The migration_version field is the highest embedded
+// migration version when the DB is reachable; "unknown" otherwise.
 func (h *HealthzHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	migrations := h.checkMigration(h.databaseURL)
+	migrationVersion := h.embeddedVersion
+
+	if h.db != nil {
+		ctx, cancel := context.WithTimeout(r.Context(), 2*time.Second)
+		defer cancel()
+
+		if err := h.db.PingContext(ctx); err != nil {
+			log.Printf("[HealthzHandler] db ping: %v", err)
+			migrationVersion = "unknown"
+		}
+	} else {
+		migrationVersion = "unknown"
+	}
 
 	resp := healthzResponse{
 		Status:           "ok",
 		Env:              h.env,
-		MigrationVersion: migrations,
+		MigrationVersion: migrationVersion,
 	}
 
 	w.Header().Set("Content-Type", "application/json")
