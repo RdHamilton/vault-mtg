@@ -1,18 +1,104 @@
 package handlers_test
 
 import (
+	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
+	"sync/atomic"
 	"testing"
 
 	"github.com/RdHamilton/vault-mtg/services/bff/internal/api/handlers"
-	"github.com/RdHamilton/vault-mtg/services/bff/internal/storage"
 )
 
+// pingFake is a minimal Pinger fake used by healthz tests.
+// pingErr controls whether PingContext returns an error.
+// pingCalls counts how many times PingContext was called.
+type pingFake struct {
+	pingErr   error
+	pingCalls atomic.Int64
+}
+
+func (f *pingFake) PingContext(_ context.Context) error {
+	f.pingCalls.Add(1)
+	return f.pingErr
+}
+
+// --- 3 new tests (written first, TDD) ---
+
+// TestHealthzHandler_PingerCalledExactlyOnce verifies that each ServeHTTP
+// invocation calls PingContext exactly once.
+func TestHealthzHandler_PingerCalledExactlyOnce(t *testing.T) {
+	pinger := &pingFake{}
+	h := handlers.NewHealthzHandler("staging", pinger, "42")
+
+	req := httptest.NewRequest(http.MethodGet, "/healthz", nil)
+	w := httptest.NewRecorder()
+	h.ServeHTTP(w, req)
+
+	if got := pinger.pingCalls.Load(); got != 1 {
+		t.Errorf("PingContext call count: want 1, got %d", got)
+	}
+}
+
+// TestHealthzHandler_NilDB_ReturnsUnknown verifies that when no *sql.DB is
+// provided (development mode), migration_version is "unknown" and the
+// handler still returns 200.
+func TestHealthzHandler_NilDB_ReturnsUnknown(t *testing.T) {
+	h := handlers.NewHealthzHandler("development", nil, "42")
+
+	req := httptest.NewRequest(http.MethodGet, "/healthz", nil)
+	w := httptest.NewRecorder()
+	h.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", w.Code)
+	}
+
+	var body struct {
+		MigrationVersion string `json:"migration_version"`
+	}
+	if err := json.NewDecoder(w.Body).Decode(&body); err != nil {
+		t.Fatalf("decode body: %v", err)
+	}
+
+	if body.MigrationVersion != "unknown" {
+		t.Errorf("migration_version: want %q, got %q", "unknown", body.MigrationVersion)
+	}
+}
+
+// TestHealthzHandler_PingFailure_ReturnsUnknown verifies that a ping error
+// degrades migration_version to "unknown" while the status code stays 200.
+func TestHealthzHandler_PingFailure_ReturnsUnknown(t *testing.T) {
+	pinger := &pingFake{pingErr: errors.New("connection refused")}
+	h := handlers.NewHealthzHandler("production", pinger, "42")
+
+	req := httptest.NewRequest(http.MethodGet, "/healthz", nil)
+	w := httptest.NewRecorder()
+	h.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200 even on ping failure, got %d", w.Code)
+	}
+
+	var body struct {
+		MigrationVersion string `json:"migration_version"`
+	}
+	if err := json.NewDecoder(w.Body).Decode(&body); err != nil {
+		t.Fatalf("decode body: %v", err)
+	}
+
+	if body.MigrationVersion != "unknown" {
+		t.Errorf("migration_version: want %q, got %q", "unknown", body.MigrationVersion)
+	}
+}
+
+// --- 6 existing tests updated to use Pinger fake ---
+
 func TestHealthzHandler_Returns200WithCorrectEnv(t *testing.T) {
-	checker := func(_ string) string { return storage.MigrationStatusUpToDate }
-	h := handlers.NewHealthzHandler("staging", "postgres://localhost/test", checker)
+	pinger := &pingFake{}
+	h := handlers.NewHealthzHandler("staging", pinger, "42")
 
 	req := httptest.NewRequest(http.MethodGet, "/healthz", nil)
 	w := httptest.NewRecorder()
@@ -40,15 +126,15 @@ func TestHealthzHandler_Returns200WithCorrectEnv(t *testing.T) {
 		t.Errorf("expected env 'staging', got %q", body.Env)
 	}
 
-	if body.MigrationVersion != storage.MigrationStatusUpToDate {
-		t.Errorf("expected migration_version %q, got %q", storage.MigrationStatusUpToDate, body.MigrationVersion)
+	if body.MigrationVersion != "42" {
+		t.Errorf("expected migration_version %q, got %q", "42", body.MigrationVersion)
 	}
 }
 
 func TestHealthzHandler_Returns200WithUnknownMigrationsWhenDBUnreachable(t *testing.T) {
-	// Simulates a DB that is down: checker returns "unknown".
-	checker := func(_ string) string { return storage.MigrationStatusUnknown }
-	h := handlers.NewHealthzHandler("staging", "postgres://unreachable/db", checker)
+	// Simulates a DB that is down: ping returns error.
+	pinger := &pingFake{pingErr: errors.New("unreachable")}
+	h := handlers.NewHealthzHandler("staging", pinger, "42")
 
 	req := httptest.NewRequest(http.MethodGet, "/healthz", nil)
 	w := httptest.NewRecorder()
@@ -66,8 +152,8 @@ func TestHealthzHandler_Returns200WithUnknownMigrationsWhenDBUnreachable(t *test
 		t.Fatalf("decode body: %v", err)
 	}
 
-	if body.MigrationVersion != storage.MigrationStatusUnknown {
-		t.Errorf("expected migration_version %q, got %q", storage.MigrationStatusUnknown, body.MigrationVersion)
+	if body.MigrationVersion != "unknown" {
+		t.Errorf("expected migration_version %q, got %q", "unknown", body.MigrationVersion)
 	}
 }
 
@@ -75,8 +161,8 @@ func TestHealthzHandler_Returns200WithUnknownMigrationsWhenDBUnreachable(t *test
 // any Authorization header — it must be mounted outside the auth middleware
 // group.
 func TestHealthzHandler_NoAuthHeaderRequired(t *testing.T) {
-	checker := func(_ string) string { return storage.MigrationStatusUpToDate }
-	h := handlers.NewHealthzHandler("production", "", checker)
+	pinger := &pingFake{}
+	h := handlers.NewHealthzHandler("production", pinger, "42")
 
 	// No Authorization header set — should still return 200.
 	req := httptest.NewRequest(http.MethodGet, "/healthz", nil)
@@ -92,8 +178,8 @@ func TestHealthzHandler_NoAuthHeaderRequired(t *testing.T) {
 // TestHealthzHandler_ProductionEnvInResponse verifies the env field reflects
 // what was passed to NewHealthzHandler.
 func TestHealthzHandler_ProductionEnvInResponse(t *testing.T) {
-	checker := func(_ string) string { return storage.MigrationStatusUpToDate }
-	h := handlers.NewHealthzHandler("production", "", checker)
+	pinger := &pingFake{}
+	h := handlers.NewHealthzHandler("production", pinger, "42")
 
 	req := httptest.NewRequest(http.MethodGet, "/healthz", nil)
 	w := httptest.NewRecorder()
@@ -116,10 +202,10 @@ func TestHealthzHandler_ProductionEnvInResponse(t *testing.T) {
 // style test that exercises the full handler and asserts the response JSON
 // contains a "migration_version" key (not the old "migrations" key).
 func TestHealthzHandler_ResponseContainsMigrationVersionField(t *testing.T) {
-	const wantVersion = "up-to-date"
+	const wantVersion = "42"
 
-	checker := func(_ string) string { return wantVersion }
-	h := handlers.NewHealthzHandler("staging", "postgres://localhost/test", checker)
+	pinger := &pingFake{}
+	h := handlers.NewHealthzHandler("staging", pinger, wantVersion)
 
 	req := httptest.NewRequest(http.MethodGet, "/healthz", nil)
 	w := httptest.NewRecorder()
@@ -162,8 +248,8 @@ func TestHealthzHandler_ResponseContainsMigrationVersionField(t *testing.T) {
 // TestHealthzHandler_ContentTypeIsJSON asserts the handler sets the correct
 // Content-Type header.
 func TestHealthzHandler_ContentTypeIsJSON(t *testing.T) {
-	checker := func(_ string) string { return storage.MigrationStatusUpToDate }
-	h := handlers.NewHealthzHandler("staging", "", checker)
+	pinger := &pingFake{}
+	h := handlers.NewHealthzHandler("staging", pinger, "42")
 
 	req := httptest.NewRequest(http.MethodGet, "/healthz", nil)
 	w := httptest.NewRecorder()
