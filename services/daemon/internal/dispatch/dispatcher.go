@@ -156,6 +156,16 @@ func (d *Dispatcher) SendOrBuffer(ctx context.Context, event contract.DaemonEven
 		statusCode, lastErr = d.doSend(ctx, body)
 		if lastErr == nil {
 			log.Printf("[dispatch] event %q sent (session=%s)", event.Type, event.SessionID)
+			// AC-3: drain buffered events on first successful send (best-effort;
+			// per ADR-013 amendment Q1/OQ-1 a failed drain item is logged and
+			// discarded — no re-enqueue to avoid thundering-herd / livelock).
+			if d.buffer != nil {
+				for _, item := range d.buffer.Drain() {
+					if _, drainErr := d.doSend(ctx, item); drainErr != nil {
+						log.Printf("[dispatch] drain replay failed: %v", drainErr)
+					}
+				}
+			}
 			return nil
 		}
 		// On 401, attempt to refresh the token before retrying.

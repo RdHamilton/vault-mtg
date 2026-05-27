@@ -6,6 +6,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -202,4 +203,117 @@ func TestSendOrBuffer_NoBuffer_NoPanic_ContextCancelled(t *testing.T) {
 
 	// May return context.DeadlineExceeded or nil — just must not panic.
 	_ = d.SendOrBuffer(ctx, evt)
+}
+
+// TestSendOrBuffer_DrainOnSuccess verifies AC-3: when BFF recovers after a
+// failure, the next successful SendOrBuffer drains the ring buffer and replays
+// each buffered item via doSend (best-effort, no re-enqueue on drain failure).
+//
+// Scenario:
+//
+//	Call 1: BFF down (500) — event A is buffered after 3 retry attempts.
+//	Call 2: BFF up (202)  — event B is sent; drain fires; buffered event A is replayed.
+//
+// Expected doSend call count:
+//
+//	3  (call 1: 3 retry attempts, all 500)
+//	+1 (call 2: event B succeeds on first attempt)
+//	+1 (drain: event A replayed)
+//	= 5 total server-side hits.
+func TestSendOrBuffer_DrainOnSuccess(t *testing.T) {
+	var serverHits atomic.Int32
+	var receivedBodies [][]byte
+	var mu sync.Mutex
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		n := serverHits.Add(1)
+		body, _ := io.ReadAll(r.Body)
+		mu.Lock()
+		receivedBodies = append(receivedBodies, body)
+		mu.Unlock()
+		// First 3 hits (call 1's retries) return 500; all subsequent succeed.
+		if n <= 3 {
+			w.WriteHeader(http.StatusInternalServerError)
+		} else {
+			w.WriteHeader(http.StatusAccepted)
+		}
+	}))
+	defer srv.Close()
+
+	buf := dispatch.NewRingBuffer(10)
+	d := dispatch.New(srv.URL, "/v1/ingest/events", "tok").WithBuffer(buf)
+
+	// Call 1: BFF down — event A buffered after retry exhaustion.
+	evtA, err := dispatch.BuildEvent("event.a", "acc", "sess", map[string]string{"event": "a"})
+	require.NoError(t, err)
+	require.NoError(t, d.SendOrBuffer(context.Background(), evtA),
+		"SendOrBuffer must not return error when buffer absorbs the failure")
+
+	// Buffer must now hold exactly one item (event A).
+	require.Equal(t, 3, int(serverHits.Load()), "3 retry attempts expected for failed call")
+
+	// Call 2: BFF up — event B sent; drain fires; event A replayed.
+	evtB, err := dispatch.BuildEvent("event.b", "acc", "sess", map[string]string{"event": "b"})
+	require.NoError(t, err)
+	require.NoError(t, d.SendOrBuffer(context.Background(), evtB))
+
+	// Total server hits: 3 (retries) + 1 (event B) + 1 (drain of event A) = 5.
+	assert.Equal(t, int32(5), serverHits.Load(), "expected 5 total server hits")
+
+	// Buffer must be empty after drain.
+	assert.Nil(t, buf.Drain(), "buffer must be empty after drain-on-success")
+
+	// Verify the drained event A was replayed (its bytes appear in received bodies).
+	mu.Lock()
+	defer mu.Unlock()
+	require.Len(t, receivedBodies, 5)
+
+	// Body at index 3 (0-indexed) is event B; body at index 4 is the drained event A.
+	var decodedB, decodedA contract.DaemonEvent
+	require.NoError(t, json.Unmarshal(receivedBodies[3], &decodedB))
+	require.NoError(t, json.Unmarshal(receivedBodies[4], &decodedA))
+	assert.Equal(t, "event.b", decodedB.Type, "4th hit must be event B")
+	assert.Equal(t, "event.a", decodedA.Type, "5th hit must be drained event A")
+	// Sequence numbers: A was seq=1, B was seq=2 (stamped at emission; drain replays verbatim).
+	assert.Equal(t, uint64(1), decodedA.Sequence, "drained event A must carry its original sequence=1")
+	assert.Equal(t, uint64(2), decodedB.Sequence, "event B must carry sequence=2")
+}
+
+// TestSendOrBuffer_DrainFailureIsBestEffort verifies that a drain item that
+// fails to send is simply logged and discarded — it is NOT re-enqueued.
+// This prevents thundering-herd / livelock when BFF is intermittently flaky
+// (per ADR-013 amendment Q1/OQ-1).
+func TestSendOrBuffer_DrainFailureIsBestEffort(t *testing.T) {
+	var serverHits atomic.Int32
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		n := serverHits.Add(1)
+		// Hits 1-3: call 1 retries (500 → buffers event A).
+		// Hit 4:    call 2 event B succeeds (202) — drain fires.
+		// Hit 5:    drain replays event A — return 500 (drain failure).
+		if n == 4 {
+			w.WriteHeader(http.StatusAccepted)
+		} else {
+			w.WriteHeader(http.StatusInternalServerError)
+		}
+	}))
+	defer srv.Close()
+
+	buf := dispatch.NewRingBuffer(10)
+	d := dispatch.New(srv.URL, "/v1/ingest/events", "tok").WithBuffer(buf)
+
+	// Call 1 fails → event A buffered.
+	evtA, err := dispatch.BuildEvent("event.a", "acc", "sess", map[string]string{})
+	require.NoError(t, err)
+	require.NoError(t, d.SendOrBuffer(context.Background(), evtA))
+
+	// Call 2 succeeds → drain fires; drain item hits 500 but must NOT re-enqueue.
+	evtB, err := dispatch.BuildEvent("event.b", "acc", "sess", map[string]string{})
+	require.NoError(t, err)
+	require.NoError(t, d.SendOrBuffer(context.Background(), evtB))
+
+	// Buffer must be empty — event A was drained (and lost to best-effort failure),
+	// not re-enqueued.
+	assert.Nil(t, buf.Drain(), "drained item must not be re-enqueued on drain failure")
+	assert.Equal(t, int32(5), serverHits.Load())
 }
