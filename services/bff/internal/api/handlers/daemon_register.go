@@ -133,6 +133,10 @@ type daemonRegisterResponse struct {
 	// On 200 (existing key) this field is empty; the daemon uses its keychain copy.
 	APIKey    string `json:"api_key"`
 	AccountID string `json:"account_id"`
+	// DeviceID is the server-authoritative UUID for this daemon installation.
+	// Echoed from the repo row on both 201 (new) and 200 (existing) responses
+	// per ADR-028 and ADR-034 §1.
+	DeviceID string `json:"device_id"`
 }
 
 // Register handles POST /v1/daemon/register.
@@ -159,8 +163,14 @@ func (h *DaemonRegisterHandler) Register(w http.ResponseWriter, r *http.Request)
 		writeJSONError(w, "invalid request body", http.StatusBadRequest)
 		return
 	}
+	// device_id handling per ADR-028:
+	//   - Empty → BFF mints a fresh server-issued UUIDv4 (first-install path).
+	//   - Non-empty, valid UUID → pass through to UpsertKey (cached value from daemon.json).
+	//   - Non-empty, malformed → 400 (tampered-daemon defense per ADR-028 §"Implementation Notes").
 	if reqBody.DeviceID == "" {
-		writeJSONError(w, "device_id is required", http.StatusBadRequest)
+		reqBody.DeviceID = uuid.NewString()
+	} else if _, err := uuid.Parse(reqBody.DeviceID); err != nil {
+		writeJSONError(w, "device_id must be a valid UUID", http.StatusBadRequest)
 		return
 	}
 	if reqBody.Platform == "" {
@@ -263,9 +273,13 @@ func (h *DaemonRegisterHandler) Register(w http.ResponseWriter, r *http.Request)
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(statusCode)
 
+	// Echo rec.DeviceID (the authoritative server-stored value, not reqBody.DeviceID)
+	// per ADR-028 and ADR-034 §1. On 201: the newly-minted value; on 200: the
+	// existing row's value. api_key is empty on 200 (daemon uses keychain copy).
 	if err := json.NewEncoder(w).Encode(daemonRegisterResponse{
 		APIKey:    responseKey,
 		AccountID: accountID,
+		DeviceID:  rec.DeviceID,
 	}); err != nil {
 		log.Printf("[daemon_register] encode: %v", err)
 	}

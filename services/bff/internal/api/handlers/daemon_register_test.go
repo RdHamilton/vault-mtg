@@ -260,19 +260,121 @@ func TestDaemonRegister_APIKeyFormat(t *testing.T) {
 	}
 }
 
-func TestDaemonRegister_MissingDeviceID_Returns400(t *testing.T) {
+// TestDaemonRegister_EmptyDeviceID_MintsAndReturns201 verifies that when the
+// daemon sends an empty device_id (first install, no cached value), the BFF
+// mints a fresh server-issued UUIDv4, returns 201, and the response body
+// contains a parseable device_id.
+// Per ADR-028: empty device_id is no longer 400; the BFF is now the source of truth.
+func TestDaemonRegister_EmptyDeviceID_MintsAndReturns201(t *testing.T) {
 	repo := &stubDaemonAPIKeyRepo{}
 	h := handlers.NewDaemonRegisterHandler(repo, nil)
 
-	req := newRegisterRequestWithBody("user_nodevice", map[string]string{
+	req := newRegisterRequestWithBody("user_firstinstall", map[string]string{
+		"device_id":  "",
 		"platform":   "darwin",
-		"daemon_ver": "0.3.1",
+		"daemon_ver": "0.3.3",
+	})
+	rr := httptest.NewRecorder()
+	h.Register(rr, req)
+
+	if rr.Code != http.StatusCreated {
+		t.Fatalf("expected 201 for empty device_id (BFF mints), got %d: %s", rr.Code, rr.Body.String())
+	}
+
+	var resp map[string]any
+	if err := json.NewDecoder(rr.Body).Decode(&resp); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+
+	// Response must include a valid device_id minted by the BFF.
+	deviceID, _ := resp["device_id"].(string)
+	if deviceID == "" {
+		t.Fatal("expected non-empty device_id in response when BFF mints")
+	}
+	if _, err := uuid.Parse(deviceID); err != nil {
+		t.Errorf("server-minted device_id must be a valid UUID, got %q: %v", deviceID, err)
+	}
+
+	// The stub repo must have received the minted device_id (not empty string).
+	if len(repo.upsertCalls) != 1 {
+		t.Fatalf("expected exactly 1 UpsertKey call, got %d", len(repo.upsertCalls))
+	}
+	if repo.upsertCalls[0].DeviceID == "" {
+		t.Error("UpsertKey must receive the minted device_id, not empty string")
+	}
+	if _, err := uuid.Parse(repo.upsertCalls[0].DeviceID); err != nil {
+		t.Errorf("minted device_id passed to UpsertKey must be a valid UUID, got %q", repo.upsertCalls[0].DeviceID)
+	}
+}
+
+// TestDaemonRegister_TwoEmptyDeviceIDCalls_TwoDistinctUUIDs verifies that two
+// sequential requests with empty device_id from the same account_id each receive
+// a distinct server-minted device_id. This confirms multi-device pairing semantics
+// per ADR-028: each empty-device_id call produces a new installation identity.
+func TestDaemonRegister_TwoEmptyDeviceIDCalls_TwoDistinctUUIDs(t *testing.T) {
+	repo := &stubDaemonAPIKeyRepo{}
+	h := handlers.NewDaemonRegisterHandler(repo, nil)
+
+	body := map[string]string{
+		"device_id":  "",
+		"platform":   "darwin",
+		"daemon_ver": "0.3.3",
+	}
+
+	rr1 := httptest.NewRecorder()
+	h.Register(rr1, newRegisterRequestWithBody("user_multidevice", body))
+	if rr1.Code != http.StatusCreated {
+		t.Fatalf("first call: expected 201, got %d: %s", rr1.Code, rr1.Body.String())
+	}
+
+	rr2 := httptest.NewRecorder()
+	h.Register(rr2, newRegisterRequestWithBody("user_multidevice", body))
+	if rr2.Code != http.StatusCreated {
+		t.Fatalf("second call: expected 201, got %d: %s", rr2.Code, rr2.Body.String())
+	}
+
+	if len(repo.upsertCalls) != 2 {
+		t.Fatalf("expected 2 UpsertKey calls, got %d", len(repo.upsertCalls))
+	}
+	id1 := repo.upsertCalls[0].DeviceID
+	id2 := repo.upsertCalls[1].DeviceID
+	if id1 == id2 {
+		t.Errorf("two empty device_id calls from the same account must produce distinct UUIDs; both got %q", id1)
+	}
+	if _, err := uuid.Parse(id1); err != nil {
+		t.Errorf("first minted device_id must be valid UUID, got %q", id1)
+	}
+	if _, err := uuid.Parse(id2); err != nil {
+		t.Errorf("second minted device_id must be valid UUID, got %q", id2)
+	}
+}
+
+// TestDaemonRegister_MalformedDeviceID_Returns400 verifies that a non-empty,
+// non-UUID device_id is rejected with 400. This is the tampered-daemon defense
+// per ADR-028 §"Implementation Notes" item 1 bullet 4.
+func TestDaemonRegister_MalformedDeviceID_Returns400(t *testing.T) {
+	repo := &stubDaemonAPIKeyRepo{}
+	h := handlers.NewDaemonRegisterHandler(repo, nil)
+
+	req := newRegisterRequestWithBody("user_tampered", map[string]string{
+		"device_id":  "not-a-uuid",
+		"platform":   "darwin",
+		"daemon_ver": "0.3.3",
 	})
 	rr := httptest.NewRecorder()
 	h.Register(rr, req)
 
 	if rr.Code != http.StatusBadRequest {
-		t.Errorf("expected 400 for missing device_id, got %d", rr.Code)
+		t.Errorf("expected 400 for malformed device_id, got %d: %s", rr.Code, rr.Body.String())
+	}
+
+	var resp map[string]any
+	if err := json.NewDecoder(rr.Body).Decode(&resp); err != nil {
+		t.Fatalf("decode error response: %v", err)
+	}
+	errMsg, _ := resp["error"].(string)
+	if errMsg != "device_id must be a valid UUID" {
+		t.Errorf("expected error message %q, got %q", "device_id must be a valid UUID", errMsg)
 	}
 }
 
@@ -396,5 +498,78 @@ func TestDaemonRegister_ActiveRowReplay_PassesThroughDeviceID(t *testing.T) {
 	}
 	if repo.upsertCalls[0].DeviceID != activeDeviceID {
 		t.Errorf("active row replay MUST pass device_id through unchanged; got %q", repo.upsertCalls[0].DeviceID)
+	}
+}
+
+// TestDaemonRegister_DeviceIDEchoedOn201 verifies that a 201 response body
+// includes the server-authoritative device_id read from the repo row (rec.DeviceID),
+// not from the request body. Per ADR-034 §1 and Ray's Q4 verdict.
+func TestDaemonRegister_DeviceIDEchoedOn201(t *testing.T) {
+	repo := &stubDaemonAPIKeyRepo{}
+	h := handlers.NewDaemonRegisterHandler(repo, nil)
+
+	req := newRegisterRequest("user_echo201")
+	rr := httptest.NewRecorder()
+	h.Register(rr, req)
+
+	if rr.Code != http.StatusCreated {
+		t.Fatalf("expected 201, got %d: %s", rr.Code, rr.Body.String())
+	}
+
+	var resp map[string]any
+	if err := json.NewDecoder(rr.Body).Decode(&resp); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+
+	deviceID, _ := resp["device_id"].(string)
+	if deviceID == "" {
+		t.Fatal("device_id must be non-empty in 201 response per ADR-034 §1")
+	}
+	if _, err := uuid.Parse(deviceID); err != nil {
+		t.Errorf("device_id in 201 response must be a valid UUID, got %q", deviceID)
+	}
+}
+
+// TestDaemonRegister_DeviceIDEchoedOn200 verifies that a 200 (already-registered)
+// response body includes the device_id from the existing repo row. Per ADR-034 §1:
+// "The response always carries the resolved device_id ... api_key is empty on 200."
+func TestDaemonRegister_DeviceIDEchoedOn200(t *testing.T) {
+	const existingDeviceID = "550e8400-e29b-41d4-a716-446655440002"
+	existing := &repository.DaemonAPIKey{
+		ID:        "uuid-existing-echo",
+		AccountID: "user_echo200",
+		KeyHash:   "hash",
+		KeyPrefix: "sk_live_abc",
+		DeviceID:  existingDeviceID,
+		Platform:  "darwin",
+		DaemonVer: "0.3.1",
+		CreatedAt: time.Now().UTC(),
+	}
+	repo := &stubDaemonAPIKeyRepo{existing: existing}
+	h := handlers.NewDaemonRegisterHandler(repo, nil)
+
+	req := newRegisterRequest("user_echo200")
+	rr := httptest.NewRecorder()
+	h.Register(rr, req)
+
+	if rr.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rr.Code, rr.Body.String())
+	}
+
+	var resp map[string]any
+	if err := json.NewDecoder(rr.Body).Decode(&resp); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+
+	// api_key must be empty on 200 (ADR-034 §1).
+	apiKey, _ := resp["api_key"].(string)
+	if apiKey != "" {
+		t.Errorf("api_key must be empty on 200 response, got %q", apiKey)
+	}
+
+	// device_id must be echoed from the repo row (ADR-034 §1).
+	deviceID, _ := resp["device_id"].(string)
+	if deviceID != existingDeviceID {
+		t.Errorf("device_id in 200 response must equal repo row value %q, got %q", existingDeviceID, deviceID)
 	}
 }
