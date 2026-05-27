@@ -31,6 +31,7 @@
 import { useEffect, useRef } from 'react';
 import { useLocation } from 'react-router-dom';
 import { trackEvent } from '@/services/analytics';
+import { setCurrentPage } from '@/services/pageTracker';
 
 // ── First-feature guard ───────────────────────────────────────────────────────
 
@@ -99,13 +100,15 @@ export function PostHogRouteTracker(): null {
 
   useEffect(() => {
     if (previousPathRef.current === null) {
-      // Skip initial mount — first value seeds the ref.
+      // Skip initial mount — first value seeds the ref and the module-level page.
       previousPathRef.current = pathname;
+      setCurrentPage(toPageSlug(pathname));
       return;
     }
 
     const previous = previousPathRef.current;
     previousPathRef.current = pathname;
+    setCurrentPage(toPageSlug(pathname));
 
     trackEvent({
       name: 'page_viewed',

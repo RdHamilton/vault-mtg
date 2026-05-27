@@ -132,6 +132,125 @@ describe('analytics', () => {
     expect(Events.APP_USER_SIGNED_OUT).toBe('app_user_signed_out');
   });
 
+  it('trackEvent handles error_auth_failed with reason_class network', async () => {
+    vi.stubEnv('VITE_POSTHOG_KEY', 'phc_testkey');
+    const posthog = (await import('posthog-js')).default;
+    const { initAnalytics, trackEvent } = await import('../analytics');
+
+    initAnalytics();
+    trackEvent({
+      name: 'error_auth_failed',
+      properties: { reason_class: 'network' },
+    });
+
+    expect(posthog.capture).toHaveBeenCalledWith('error_auth_failed', {
+      reason_class: 'network',
+    });
+    vi.unstubAllEnvs();
+  });
+
+  it('NEGATIVE: error_auth_failed payload uses reason_class, not context', async () => {
+    vi.stubEnv('VITE_POSTHOG_KEY', 'phc_testkey');
+    const posthog = (await import('posthog-js')).default;
+    const { initAnalytics, trackEvent } = await import('../analytics');
+
+    initAnalytics();
+    trackEvent({
+      name: 'error_auth_failed',
+      properties: { reason_class: 'network' },
+    });
+
+    const capturedProps = (posthog.capture as ReturnType<typeof vi.fn>).mock.calls[0][1] as Record<string, unknown>;
+    expect(capturedProps).not.toHaveProperty('context');
+    expect(capturedProps).toHaveProperty('reason_class', 'network');
+    vi.unstubAllEnvs();
+  });
+
+  it('NEGATIVE: error_auth_failed payload never contains user_id', async () => {
+    vi.stubEnv('VITE_POSTHOG_KEY', 'phc_testkey');
+    const posthog = (await import('posthog-js')).default;
+    const { initAnalytics, trackEvent } = await import('../analytics');
+
+    initAnalytics();
+    trackEvent({
+      name: 'error_auth_failed',
+      properties: { reason_class: 'network' },
+    });
+
+    const capturedProps = (posthog.capture as ReturnType<typeof vi.fn>).mock.calls[0][1] as Record<string, unknown>;
+    expect(capturedProps).not.toHaveProperty('user_id');
+    vi.unstubAllEnvs();
+  });
+
+  it('trackEvent handles error_daemon_connection_failed with correct shape', async () => {
+    vi.stubEnv('VITE_POSTHOG_KEY', 'phc_testkey');
+    const posthog = (await import('posthog-js')).default;
+    const { initAnalytics, trackEvent } = await import('../analytics');
+
+    initAnalytics();
+    trackEvent({
+      name: 'error_daemon_connection_failed',
+      properties: { previous_status: 'connected', duration_connected_seconds: 120 },
+    });
+
+    expect(posthog.capture).toHaveBeenCalledWith('error_daemon_connection_failed', {
+      previous_status: 'connected',
+      duration_connected_seconds: 120,
+    });
+    vi.unstubAllEnvs();
+  });
+
+  it('NEGATIVE: error_daemon_connection_failed payload never contains user_id', async () => {
+    vi.stubEnv('VITE_POSTHOG_KEY', 'phc_testkey');
+    const posthog = (await import('posthog-js')).default;
+    const { initAnalytics, trackEvent } = await import('../analytics');
+
+    initAnalytics();
+    trackEvent({
+      name: 'error_daemon_connection_failed',
+      properties: { previous_status: 'reconnecting', duration_connected_seconds: 0 },
+    });
+
+    const capturedProps = (posthog.capture as ReturnType<typeof vi.fn>).mock.calls[0][1] as Record<string, unknown>;
+    expect(capturedProps).not.toHaveProperty('user_id');
+    vi.unstubAllEnvs();
+  });
+
+  it('trackEvent handles error_data_load_failed with correct shape', async () => {
+    vi.stubEnv('VITE_POSTHOG_KEY', 'phc_testkey');
+    const posthog = (await import('posthog-js')).default;
+    const { initAnalytics, trackEvent } = await import('../analytics');
+
+    initAnalytics();
+    trackEvent({
+      name: 'error_data_load_failed',
+      properties: { page: 'match_history', endpoint: '/api/v1/matches', status_code: 500 },
+    });
+
+    expect(posthog.capture).toHaveBeenCalledWith('error_data_load_failed', {
+      page: 'match_history',
+      endpoint: '/api/v1/matches',
+      status_code: 500,
+    });
+    vi.unstubAllEnvs();
+  });
+
+  it('NEGATIVE: error_data_load_failed payload never contains user_id', async () => {
+    vi.stubEnv('VITE_POSTHOG_KEY', 'phc_testkey');
+    const posthog = (await import('posthog-js')).default;
+    const { initAnalytics, trackEvent } = await import('../analytics');
+
+    initAnalytics();
+    trackEvent({
+      name: 'error_data_load_failed',
+      properties: { page: 'decks', endpoint: '/api/v1/decks', status_code: 404 },
+    });
+
+    const capturedProps = (posthog.capture as ReturnType<typeof vi.fn>).mock.calls[0][1] as Record<string, unknown>;
+    expect(capturedProps).not.toHaveProperty('user_id');
+    vi.unstubAllEnvs();
+  });
+
   // ── Funnel event taxonomy declarations ───────────────────────────────────────
 
   it('Events.FUNNEL_SIGN_UP_STARTED is declared in the taxonomy', async () => {

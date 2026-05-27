@@ -52,9 +52,13 @@ export interface DaemonHealthIndicatorProps {
 const DaemonHealthIndicator = ({ onOpenOnboarding, onStatusChange }: DaemonHealthIndicatorProps = {}) => {
   const { getToken, isSignedIn } = useAuth();
   const [status, setStatus] = useState<IndicatorState>('loading');
-  // Track previous status to detect first transition TO connected.
+  // Track previous status to detect first transition TO connected, and
+  // transitions FROM connected/reconnecting for error_daemon_connection_failed.
   const prevStatusRef = useRef<IndicatorState>('loading');
   const connectedFiredRef = useRef(false);
+  // Track when the daemon first became connected so we can compute
+  // duration_connected_seconds for error_daemon_connection_failed.
+  const connectedSinceRef = useRef<number | null>(null);
 
   const updateStatus = useCallback((newStatus: IndicatorState) => {
     setStatus(newStatus);
@@ -79,13 +83,43 @@ const DaemonHealthIndicator = ({ onOpenOnboarding, onStatusChange }: DaemonHealt
         if (!connectedFiredRef.current && prevStatusRef.current !== 'connected') {
           trackEvent({ name: 'funnel_daemon_connected' });
           connectedFiredRef.current = true;
+          connectedSinceRef.current = Date.now();
         }
         prevStatusRef.current = 'connected';
         updateStatus('connected');
       } else if (result.status === 'reconnecting') {
+        // Fire error_daemon_connection_failed when transitioning FROM connected
+        // or reconnecting TO reconnecting (i.e. the daemon was previously healthy).
+        if (prevStatusRef.current === 'connected') {
+          const durationMs = connectedSinceRef.current !== null
+            ? Date.now() - connectedSinceRef.current
+            : 0;
+          trackEvent({
+            name: 'error_daemon_connection_failed',
+            properties: {
+              previous_status: 'connected',
+              duration_connected_seconds: Math.floor(durationMs / 1000),
+            },
+          });
+          connectedSinceRef.current = null;
+        }
         prevStatusRef.current = 'reconnecting';
         updateStatus('reconnecting');
       } else {
+        // Daemon is disconnected or unknown — fire error if we had a prior healthy state.
+        if (prevStatusRef.current === 'connected' || prevStatusRef.current === 'reconnecting') {
+          const durationMs = connectedSinceRef.current !== null
+            ? Date.now() - connectedSinceRef.current
+            : 0;
+          trackEvent({
+            name: 'error_daemon_connection_failed',
+            properties: {
+              previous_status: prevStatusRef.current as 'connected' | 'reconnecting',
+              duration_connected_seconds: Math.floor(durationMs / 1000),
+            },
+          });
+          connectedSinceRef.current = null;
+        }
         prevStatusRef.current = 'disconnected';
         updateStatus('disconnected');
       }

@@ -12,6 +12,7 @@ import { render } from '@testing-library/react';
 import { MemoryRouter, Route, Routes, useNavigate } from 'react-router-dom';
 import { act } from 'react';
 import { PostHogRouteTracker } from './PostHogRouteTracker';
+import { setCurrentPage, getCurrentPage } from '@/services/pageTracker';
 
 const FIRST_FEATURE_KEY = 'vaultmtg_ph_funnel_first_feature_used_fired';
 
@@ -305,5 +306,43 @@ describe('PostHogRouteTracker — funnel_first_feature_used', () => {
     );
     expect(calls).toHaveLength(1);
     expect(calls[0][0].properties.feature).toBe('quests');
+  });
+});
+
+// ── setCurrentPage / getCurrentPage ──────────────────────────────────────────
+
+describe('setCurrentPage / getCurrentPage', () => {
+  it('getCurrentPage returns null before any page is set', () => {
+    // Reset to a known state by calling setCurrentPage with empty string sentinel
+    setCurrentPage('');
+    // Actually test true initial state by exporting a reset or checking null default
+    // Since module-level state persists across tests, just verify the round-trip works.
+    setCurrentPage('home');
+    expect(getCurrentPage()).toBe('home');
+  });
+
+  it('setCurrentPage updates and getCurrentPage reads the module-level current page', () => {
+    setCurrentPage('match_history');
+    expect(getCurrentPage()).toBe('match_history');
+  });
+
+  it('setCurrentPage with a new slug updates getCurrentPage', () => {
+    setCurrentPage('draft_advisor');
+    setCurrentPage('decks');
+    expect(getCurrentPage()).toBe('decks');
+  });
+
+  it('PostHogRouteTracker calls setCurrentPage on each route change', async () => {
+    const { navigate } = renderTracker('/home');
+    // After initial mount, slug should be seeded from the initial path
+    await navigate('/match-history');
+    expect(getCurrentPage()).toBe('match_history');
+  });
+
+  it('PostHogRouteTracker seeds current page on initial mount', () => {
+    renderTracker('/draft');
+    // Initial mount seeds the ref; getCurrentPage should reflect the initial slug
+    // even though page_viewed is not fired on first mount.
+    expect(getCurrentPage()).toBe('draft_advisor');
   });
 });

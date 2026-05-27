@@ -314,7 +314,11 @@ export type AnalyticsEvent =
     }
   | {
       name: 'error_auth_failed';
-      properties: { context: string };
+      // reason_class replaces the original free-form `context: string` per Ray
+      // Q2 amendment — enum prevents raw error message PII leaking into PostHog.
+      // 'network' is the only value emitted this PR; 'invalid_credentials' and
+      // 'rate_limited' are deferred to a custom Clerk sign-in follow-up ticket.
+      properties: { reason_class: 'network' | 'invalid_credentials' | 'rate_limited' };
     }
   | {
       name: 'error_empty_state_shown';
