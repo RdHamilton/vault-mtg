@@ -176,7 +176,7 @@ func TestRegisterWithBFF_HappyPath(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	apiKey, accountID, alreadyRegistered, err := registerWithBFF(
+	apiKey, accountID, _, alreadyRegistered, err := registerWithBFF(
 		context.Background(),
 		srv.URL,
 		"clerk-jwt-token",
@@ -203,7 +203,7 @@ func TestRegisterWithBFF_AlreadyRegistered(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	apiKey, accountID, alreadyRegistered, err := registerWithBFF(
+	apiKey, accountID, _, alreadyRegistered, err := registerWithBFF(
 		context.Background(),
 		srv.URL,
 		"clerk-jwt-token",
@@ -228,7 +228,7 @@ func TestRegisterWithBFF_BFF4xx(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	_, _, _, err := registerWithBFF(
+	_, _, _, _, err := registerWithBFF(
 		context.Background(),
 		srv.URL,
 		"clerk-jwt-token",
@@ -250,7 +250,7 @@ func TestRegisterWithBFF_NonJSON(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	_, _, _, err := registerWithBFF(
+	_, _, _, _, err := registerWithBFF(
 		context.Background(),
 		srv.URL,
 		"clerk-jwt-token",
@@ -277,7 +277,7 @@ func TestRegisterWithBFF_ContextCancelled(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 50*time.Millisecond)
 	defer cancel()
 
-	_, _, _, err := registerWithBFF(
+	_, _, _, _, err := registerWithBFF(
 		ctx,
 		srv.URL,
 		"clerk-jwt-token",
@@ -389,7 +389,7 @@ func TestRunPKCEAuth_AlreadyRegistered_KeychainPresent(t *testing.T) {
 	// that the downstream config-write logic works correctly.
 
 	// Verify registerWithBFF surfaces alreadyRegistered=true.
-	_, accountID, alreadyRegistered, regErr := registerWithBFF(
+	_, accountID, _, alreadyRegistered, regErr := registerWithBFF(
 		context.Background(),
 		srv.URL,
 		"clerk-jwt",
@@ -422,6 +422,108 @@ func TestRunPKCEAuth_AlreadyRegistered_KeychainPresent(t *testing.T) {
 	// Verify the existing keychain entry was NOT overwritten.
 	afterKey, _ := keychain.Get()
 	assert.Equal(t, existingKey, afterKey, "existing keychain entry must be preserved")
+}
+
+// ---------------------------------------------------------------------------
+// ADR-028 — server-issued device_id tests
+// ---------------------------------------------------------------------------
+
+// TestRegisterWithBFF_FirstInstallSendsEmptyDeviceID verifies that when
+// cfg.DaemonID is empty (first install, no daemon.json), the request body
+// sent to the BFF has device_id == "". Per ADR-028: the daemon no longer
+// mints client-side; it sends empty and the BFF mints the UUID.
+func TestRegisterWithBFF_FirstInstallSendsEmptyDeviceID(t *testing.T) {
+	var receivedDeviceID string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var body map[string]string
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			t.Errorf("decode request body: %v", err)
+		}
+		receivedDeviceID = body["device_id"]
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusCreated)
+		_, _ = w.Write([]byte(`{"api_key":"sk_live_newkey","account_id":"acc_789","device_id":"f47ac10b-58cc-4372-a567-0e02b2c3d479"}`))
+	}))
+	defer srv.Close()
+
+	// Empty device_id: first install with no cached daemon_id.
+	apiKey, accountID, deviceID, alreadyRegistered, err := registerWithBFF(
+		context.Background(),
+		srv.URL,
+		"clerk-jwt",
+		"", // empty — no client-side mint
+		"darwin",
+		"0.3.3",
+	)
+
+	require.NoError(t, err)
+	assert.False(t, alreadyRegistered)
+	assert.Equal(t, "sk_live_newkey", apiKey)
+	assert.Equal(t, "acc_789", accountID)
+	assert.Equal(t, "f47ac10b-58cc-4372-a567-0e02b2c3d479", deviceID, "registerWithBFF must return the server-issued device_id")
+	// The daemon must have sent empty device_id to the BFF.
+	assert.Equal(t, "", receivedDeviceID, "first-install request must send empty device_id so the BFF mints")
+}
+
+// TestRegisterWithBFF_PersistsServerIssuedDeviceID verifies that the
+// device_id returned by the BFF in the register response is returned from
+// registerWithBFF so the caller can persist it in cfg.DaemonID.
+// Per ADR-028 §"Implementation Notes" item 2: daemon persists server-issued value.
+func TestRegisterWithBFF_PersistsServerIssuedDeviceID(t *testing.T) {
+	const serverDeviceID = "f47ac10b-58cc-4372-a567-0e02b2c3d479"
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusCreated)
+		_, _ = w.Write([]byte(`{"api_key":"sk_live_abc","account_id":"acc_123","device_id":"` + serverDeviceID + `"}`))
+	}))
+	defer srv.Close()
+
+	_, _, deviceID, _, err := registerWithBFF(
+		context.Background(),
+		srv.URL,
+		"clerk-jwt",
+		"",
+		"darwin",
+		"0.3.3",
+	)
+	require.NoError(t, err)
+	assert.Equal(t, serverDeviceID, deviceID, "registerWithBFF must return server-issued device_id from 201 response")
+}
+
+// TestRegisterWithBFF_ReinstallSendsEmptyDeviceID verifies the reinstall scenario:
+// daemon.json deleted → cfg.DaemonID is empty → registerWithBFF sends empty device_id.
+// The BFF mints a fresh UUID (new row), ending the old device pairing. Per ADR-028.
+func TestRegisterWithBFF_ReinstallSendsEmptyDeviceID(t *testing.T) {
+	const newServerDeviceID = "550e8400-e29b-41d4-a716-446655440999"
+	var receivedDeviceID string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var body map[string]string
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			t.Errorf("decode request body: %v", err)
+		}
+		receivedDeviceID = body["device_id"]
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusCreated)
+		_, _ = w.Write([]byte(`{"api_key":"sk_live_newkey2","account_id":"acc_re","device_id":"` + newServerDeviceID + `"}`))
+	}))
+	defer srv.Close()
+
+	// Reinstall: config deleted, so DaemonID is empty.
+	apiKey, accountID, deviceID, alreadyRegistered, err := registerWithBFF(
+		context.Background(),
+		srv.URL,
+		"clerk-jwt",
+		"", // daemon.json was deleted → empty
+		"darwin",
+		"0.3.3",
+	)
+
+	require.NoError(t, err)
+	assert.False(t, alreadyRegistered, "reinstall must produce a fresh registration (201)")
+	assert.Equal(t, "sk_live_newkey2", apiKey)
+	assert.Equal(t, "acc_re", accountID)
+	assert.Equal(t, newServerDeviceID, deviceID, "registerWithBFF must return the newly server-issued device_id")
+	assert.Equal(t, "", receivedDeviceID, "reinstall must send empty device_id — BFF mints a new one")
 }
 
 // TestRunPKCEAuth_AlreadyRegistered_KeychainMissing verifies that when
