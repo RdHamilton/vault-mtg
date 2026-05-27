@@ -186,7 +186,7 @@ export function ConnectedDevicesSection() {
               </div>
               <div className="device-actions">
                 <button
-                  data-testid={`revoke-button-${index}`}
+                  data-testid="revoke-button"
                   className="action-button action-button--danger"
                   onClick={() => void handleRevoke(device.device_id)}
                   aria-label={`Revoke device ${truncateDeviceId(device.device_id)}`}

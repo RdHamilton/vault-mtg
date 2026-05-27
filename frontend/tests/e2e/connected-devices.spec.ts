@@ -230,14 +230,10 @@ test.describe('Connected Devices — Settings page', () => {
     // Click Revoke for DEVICE_A (first row)
     await page.locator('[data-testid="revoke-button"]').first().click();
 
-    // DEVICE_A row gone
-    await expect(
-      page.locator(`[data-testid="device-row-${DEVICE_A.device_id}"]`)
-    ).not.toBeVisible({ timeout: 5_000 });
+    // After revoke, only 1 row remains
+    await expect(page.locator('[data-testid="device-row"]')).toHaveCount(1, { timeout: 5_000 });
 
-    // DEVICE_B row still present
-    await expect(
-      page.locator(`[data-testid="device-row-${DEVICE_B.device_id}"]`)
-    ).toBeVisible();
+    // The remaining row is DEVICE_B (darwin) — platform is unique per fixture
+    await expect(page.locator('[data-testid="device-row"]').first().locator('.device-platform')).toHaveText('darwin');
   });
 });
