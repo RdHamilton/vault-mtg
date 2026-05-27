@@ -271,8 +271,8 @@ func (h *DaemonRegisterHandler) Register(w http.ResponseWriter, r *http.Request)
 				Properties: posthog.NewProperties().
 					Set("device_id", deviceID).
 					Set("account_id_hash", hashAccountID(acct)).
-					Set("app_version", "").
-					Set("daemon_version", daemonVer).
+					Set("platform", platform).
+					Set("daemon_ver", daemonVer).
 					Set("time_since_signup_seconds", timeSinceSignup),
 			}); err != nil {
 				log.Printf("[daemon_register] posthog enqueue: %v", err)
