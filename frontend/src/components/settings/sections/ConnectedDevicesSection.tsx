@@ -165,20 +165,18 @@ export function ConnectedDevicesSection() {
         Revoking a device will disconnect it on its next heartbeat.
       </p>
       <div className="connected-devices-list">
-        {devices.map((device) => (
+        {devices.map((device, index) => (
           <div
             key={device.device_id}
             data-testid="device-row"
-            data-device-id={device.device_id}
-            id={`device-row-${device.device_id}`}
             className="device-row"
           >
             <div
-              data-testid={`device-row-${device.device_id}`}
+              data-testid={`device-row-${index}`}
               className="device-row-inner"
             >
               <div className="device-info">
-                <span className="device-id" title={device.device_id}>
+                <span className="device-id">
                   {truncateDeviceId(device.device_id)}
                 </span>
                 <span className="device-platform">{device.platform}</span>
@@ -188,8 +186,7 @@ export function ConnectedDevicesSection() {
               </div>
               <div className="device-actions">
                 <button
-                  data-testid="revoke-button"
-                  data-device-id={device.device_id}
+                  data-testid={`revoke-button-${index}`}
                   className="action-button action-button--danger"
                   onClick={() => void handleRevoke(device.device_id)}
                   aria-label={`Revoke device ${truncateDeviceId(device.device_id)}`}
@@ -200,7 +197,7 @@ export function ConnectedDevicesSection() {
             </div>
             {revokeErrors[device.device_id] && (
               <div
-                data-testid={`revoke-error-${device.device_id}`}
+                data-testid={`revoke-error-${index}`}
                 className="device-revoke-error"
                 role="alert"
               >

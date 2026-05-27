@@ -117,8 +117,8 @@ describe('ConnectedDevicesSection', () => {
 
       await waitFor(() => {
         // Paired at dates should appear somewhere in the rendered rows
-        expect(screen.getByTestId(`device-row-${DEVICE_A.device_id}`)).toBeInTheDocument();
-        expect(screen.getByTestId(`device-row-${DEVICE_B.device_id}`)).toBeInTheDocument();
+        expect(screen.getByTestId('device-row-0')).toBeInTheDocument();
+        expect(screen.getByTestId('device-row-1')).toBeInTheDocument();
       });
     });
 
@@ -126,7 +126,8 @@ describe('ConnectedDevicesSection', () => {
       render(<ConnectedDevicesSection />);
 
       await waitFor(() => {
-        expect(screen.getAllByTestId('revoke-button')).toHaveLength(2);
+        expect(screen.getByTestId('revoke-button-0')).toBeInTheDocument();
+        expect(screen.getByTestId('revoke-button-1')).toBeInTheDocument();
       });
     });
 
@@ -151,8 +152,12 @@ describe('ConnectedDevicesSection', () => {
         expect(screen.getAllByTestId('device-row')).toHaveLength(2);
       });
 
+      // Scans visible text nodes
       expect(screen.queryByText(DEVICE_A.device_id)).not.toBeInTheDocument();
       expect(screen.queryByText(DEVICE_B.device_id)).not.toBeInTheDocument();
+      // Scans entire rendered HTML including ALL DOM attributes (title, data-*, id, aria-*, etc.)
+      expect(document.body.innerHTML).not.toContain(DEVICE_A.device_id);
+      expect(document.body.innerHTML).not.toContain(DEVICE_B.device_id);
     });
   });
 
@@ -180,17 +185,16 @@ describe('ConnectedDevicesSection', () => {
         expect(screen.getAllByTestId('device-row')).toHaveLength(2);
       });
 
-      const revokeButtons = screen.getAllByTestId('revoke-button');
       await act(async () => {
-        fireEvent.click(revokeButtons[0]);
+        fireEvent.click(screen.getByTestId('revoke-button-0'));
       });
 
       await waitFor(() => {
         expect(screen.getAllByTestId('device-row')).toHaveLength(1);
       });
 
-      // DEVICE_A row must be gone
-      expect(screen.queryByTestId(`device-row-${DEVICE_A.device_id}`)).not.toBeInTheDocument();
+      // DEVICE_A row must be gone — verify by truncated id text no longer present
+      expect(screen.queryByText('aaaaaaaa…')).not.toBeInTheDocument();
     });
 
     it('calls revokeDaemon with the correct device_id and token', async () => {
@@ -200,10 +204,10 @@ describe('ConnectedDevicesSection', () => {
       render(<ConnectedDevicesSection />);
 
       await waitFor(() => {
-        expect(screen.getByTestId('revoke-button')).toBeInTheDocument();
+        expect(screen.getByTestId('revoke-button-0')).toBeInTheDocument();
       });
 
-      fireEvent.click(screen.getByTestId('revoke-button'));
+      fireEvent.click(screen.getByTestId('revoke-button-0'));
 
       await waitFor(() => {
         expect(mockRevokeDaemon).toHaveBeenCalledWith(
@@ -223,15 +227,15 @@ describe('ConnectedDevicesSection', () => {
       render(<ConnectedDevicesSection />);
 
       await waitFor(() => {
-        expect(screen.getByTestId('revoke-button')).toBeInTheDocument();
+        expect(screen.getByTestId('revoke-button-0')).toBeInTheDocument();
       });
 
       await act(async () => {
-        fireEvent.click(screen.getByTestId('revoke-button'));
+        fireEvent.click(screen.getByTestId('revoke-button-0'));
       });
 
       await waitFor(() => {
-        expect(screen.queryByTestId(`device-row-${DEVICE_A.device_id}`)).not.toBeInTheDocument();
+        expect(screen.queryByTestId('device-row')).not.toBeInTheDocument();
       });
     });
   });
@@ -244,14 +248,14 @@ describe('ConnectedDevicesSection', () => {
       render(<ConnectedDevicesSection />);
 
       await waitFor(() => {
-        expect(screen.getAllByTestId('revoke-button')).toHaveLength(2);
+        expect(screen.getByTestId('revoke-button-0')).toBeInTheDocument();
+        expect(screen.getByTestId('revoke-button-1')).toBeInTheDocument();
       });
 
-      const revokeButtons = screen.getAllByTestId('revoke-button');
-      fireEvent.click(revokeButtons[0]);
+      fireEvent.click(screen.getByTestId('revoke-button-0'));
 
       await waitFor(() => {
-        expect(screen.getByTestId(`revoke-error-${DEVICE_A.device_id}`)).toBeInTheDocument();
+        expect(screen.getByTestId('revoke-error-0')).toBeInTheDocument();
       });
     });
 
@@ -262,17 +266,17 @@ describe('ConnectedDevicesSection', () => {
       render(<ConnectedDevicesSection />);
 
       await waitFor(() => {
-        expect(screen.getByTestId('revoke-button')).toBeInTheDocument();
+        expect(screen.getByTestId('revoke-button-0')).toBeInTheDocument();
       });
 
-      fireEvent.click(screen.getByTestId('revoke-button'));
+      fireEvent.click(screen.getByTestId('revoke-button-0'));
 
       await waitFor(() => {
-        expect(screen.getByTestId(`revoke-error-${DEVICE_A.device_id}`)).toBeInTheDocument();
+        expect(screen.getByTestId('revoke-error-0')).toBeInTheDocument();
       });
 
       // Row must still be present
-      expect(screen.getByTestId(`device-row-${DEVICE_A.device_id}`)).toBeInTheDocument();
+      expect(screen.getByTestId('device-row-0')).toBeInTheDocument();
     });
 
     it('does not show error on the other rows', async () => {
@@ -282,19 +286,19 @@ describe('ConnectedDevicesSection', () => {
       render(<ConnectedDevicesSection />);
 
       await waitFor(() => {
-        expect(screen.getAllByTestId('revoke-button')).toHaveLength(2);
+        expect(screen.getByTestId('revoke-button-0')).toBeInTheDocument();
+        expect(screen.getByTestId('revoke-button-1')).toBeInTheDocument();
       });
 
-      // Click the first revoke button (DEVICE_A)
-      const revokeButtons = screen.getAllByTestId('revoke-button');
-      fireEvent.click(revokeButtons[0]);
+      // Click the first revoke button (DEVICE_A at index 0)
+      fireEvent.click(screen.getByTestId('revoke-button-0'));
 
       await waitFor(() => {
-        expect(screen.getByTestId(`revoke-error-${DEVICE_A.device_id}`)).toBeInTheDocument();
+        expect(screen.getByTestId('revoke-error-0')).toBeInTheDocument();
       });
 
-      // DEVICE_B should have no error
-      expect(screen.queryByTestId(`revoke-error-${DEVICE_B.device_id}`)).not.toBeInTheDocument();
+      // Row 1 (DEVICE_B) should have no error
+      expect(screen.queryByTestId('revoke-error-1')).not.toBeInTheDocument();
     });
   });
 
@@ -339,7 +343,7 @@ describe('ConnectedDevicesSection', () => {
       expect(screen.queryByText('2026-05-27T09:00:00Z')).not.toBeInTheDocument();
     });
 
-    it('never renders the full device_id UUID', async () => {
+    it('never renders the full device_id UUID in text or DOM attributes', async () => {
       mockListDaemons.mockResolvedValue({ devices: [DEVICE_A] });
 
       render(<ConnectedDevicesSection />);
@@ -348,7 +352,10 @@ describe('ConnectedDevicesSection', () => {
         expect(screen.getByTestId('device-row')).toBeInTheDocument();
       });
 
+      // Scans visible text nodes
       expect(screen.queryByText(DEVICE_A.device_id)).not.toBeInTheDocument();
+      // Scans entire rendered HTML including ALL DOM attributes (title, data-*, id, aria-*, etc.)
+      expect(document.body.innerHTML).not.toContain(DEVICE_A.device_id);
     });
   });
 });
