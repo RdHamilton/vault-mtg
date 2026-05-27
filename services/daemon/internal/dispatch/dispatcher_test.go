@@ -241,6 +241,35 @@ func TestDispatcher401RefreshFailureContinuesRetry(t *testing.T) {
 	assert.EqualValues(t, 3, requestCount.Load())
 }
 
+// TestDispatcher_ErrReauthRequiredBreaksRetryLoop verifies that when a Refresher
+// returns ErrReauthRequired the dispatcher breaks the retry loop immediately
+// after the first BFF hit and surfaces ErrReauthRequired to the caller.
+// The BFF must receive exactly 1 request — no retries.
+func TestDispatcher_ErrReauthRequiredBreaksRetryLoop(t *testing.T) {
+	var requestCount atomic.Int32
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requestCount.Add(1)
+		w.WriteHeader(http.StatusUnauthorized)
+	}))
+	defer srv.Close()
+
+	ref := &mockRefresher{err: dispatch.ErrReauthRequired}
+	d := dispatch.New(srv.URL, "/v1/ingest/events", "old-token").WithRefresher(ref)
+
+	evt, err := dispatch.BuildEvent("test.event", "acc", "sess", map[string]string{})
+	require.NoError(t, err)
+
+	sendErr := d.Send(context.Background(), evt)
+	require.Error(t, sendErr)
+	assert.True(t, errors.Is(sendErr, dispatch.ErrReauthRequired),
+		"error must wrap ErrReauthRequired")
+	// Sentinel breaks after 1 attempt — no retries.
+	assert.EqualValues(t, 1, requestCount.Load(),
+		"BFF must be hit exactly once when refresher returns ErrReauthRequired")
+	// Refresher called exactly once.
+	assert.Equal(t, 1, ref.calls, "Refresh must be called exactly once")
+}
+
 // TestSetToken verifies that SetToken updates the bearer token used on next send.
 func TestSetToken(t *testing.T) {
 	var lastAuth string

@@ -69,6 +69,24 @@ jobs:
           GOPRIVATE: github.com/RdHamilton/vault-mtg
         run: go test -race ./...
 
+      - name: Resolve build-time DefaultCloudAPIURL
+        # Pick the cloud_api_url that goreleaser will bake into the binary via
+        # `-X main.DefaultCloudAPIURL=<url>` (#2560). Pre-release tags (rc/alpha/
+        # beta/pre) ship the staging URL; stable tags ship production; manual
+        # workflow_dispatch on a branch defaults to staging so a snapshot build
+        # is never silently aimed at prod.
+        id: default_url
+        run: |
+          REF="${{ github.ref_name }}"
+          if [[ "$REF" == *"-rc"* || "$REF" == *"-alpha"* || "$REF" == *"-beta"* || "$REF" == *"-pre"* ]]; then
+            echo "url=https://staging-api.vaultmtg.app/api/v1" >> "$GITHUB_OUTPUT"
+          elif [[ "$REF" == daemon/v* ]]; then
+            echo "url=https://api.vaultmtg.app/api/v1" >> "$GITHUB_OUTPUT"
+          else
+            # workflow_dispatch on a branch — never touch prod from a snapshot.
+            echo "url=https://staging-api.vaultmtg.app/api/v1" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Resolve semver tag for GoReleaser
         # GoReleaser v2 requires GORELEASER_CURRENT_TAG to be a parseable semver
         # string -- the prefixed form `daemon/v0.3.2-rc1` fails the internal
@@ -115,6 +133,9 @@ jobs:
           # Plain semver (e.g. 'v0.3.1') used by .goreleaser.yml ldflags to embed
           # a clean version string in the binary ({{ .Env.PLAIN_VERSION }}).
           PLAIN_VERSION: ${{ steps.semver.outputs.tag }}
+          # cloud_api_url baked into the binary via `-X main.DefaultCloudAPIURL=`
+          # so `handleMissingConfig` never falls back to a hardcoded URL (#2560).
+          DEFAULT_CLOUD_API_URL: ${{ steps.default_url.outputs.url }}
 
       - name: Rename GitHub Release to daemon/v* tag (ADR-023)
         # GoReleaser publishes the release at the bare semver tag (e.g.

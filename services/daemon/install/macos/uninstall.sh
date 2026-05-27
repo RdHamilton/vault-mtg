@@ -13,7 +13,7 @@
 
 set -euo pipefail
 
-INSTALL_DIR="/usr/local/bin"
+INSTALL_DIR="${INSTALL_DIR:-/usr/local/bin}"
 BINARY_NAME="vaultmtg-daemon"
 
 # ADR-022 Phase 2: new label.

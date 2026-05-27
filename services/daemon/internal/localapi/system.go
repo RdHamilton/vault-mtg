@@ -63,8 +63,9 @@ type websocketHealthResponse struct {
 }
 
 type healthMetricsResponse struct {
-	TotalProcessed int64 `json:"totalProcessed"`
-	TotalErrors    int64 `json:"totalErrors"`
+	TotalProcessed  int64 `json:"totalProcessed"`
+	TotalErrors     int64 `json:"totalErrors"`
+	DispatchDropped int64 `json:"dispatchDropped"`
 }
 
 // accountResponse mirrors models.Account. For v0.3.x the daemon doesn't store
@@ -159,7 +160,9 @@ func (s *Server) handleSystemHealth(w http.ResponseWriter, r *http.Request) {
 			Status:           "n/a",
 			ConnectedClients: 0,
 		},
-		Metrics: healthMetricsResponse{},
+		Metrics: healthMetricsResponse{
+			DispatchDropped: st.DispatchDropped,
+		},
 	})
 }
 

@@ -137,7 +137,16 @@ builds:
       - goos: windows
         goarch: arm64
     ldflags:
-      - -s -w -X main.Version={{ .Env.PLAIN_VERSION }}
+      # main.Version embeds the release version for `mtga-daemon -version` output.
+      # main.DefaultCloudAPIURL is the build-time default cloud_api_url written
+      # to daemon.json by handleMissingConfig when no env var is supplied (#2560).
+      # The release workflow picks the env value:
+      #   stable tags (daemon/v0.3.1)      -> https://api.vaultmtg.app/api/v1
+      #   pre-release  (-rc/-alpha/-beta/-pre) -> https://staging-api.vaultmtg.app/api/v1
+      # Local `goreleaser release --snapshot` uses whatever DEFAULT_CLOUD_API_URL
+      # is in the env; if unset, goreleaser substitutes an empty string and the
+      # binary falls back to the package-level localhost default.
+      - -s -w -X main.Version={{ .Env.PLAIN_VERSION }} -X main.DefaultCloudAPIURL={{ .Env.DEFAULT_CLOUD_API_URL }}
     mod_timestamp: "{{ .CommitTimestamp }}"
     # Windows NSIS installer -- compiled after the Windows amd64 binary is built.
     # makensis is available on ubuntu runners via apt; skipped in snapshot mode.

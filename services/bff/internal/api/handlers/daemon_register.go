@@ -10,6 +10,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/posthog/posthog-go"
 	"golang.org/x/crypto/bcrypt"
 
@@ -29,9 +30,14 @@ const (
 	daemonRateLimitMax = 5
 )
 
-// daemonAPIKeyUpsertRepo is the subset of DaemonAPIKeyRepository used by DaemonRegisterHandler.
+// daemonAPIKeyUpsertRepo is the subset of DaemonAPIKeyRepository used by
+// DaemonRegisterHandler. GetByAccountAndDevice supports the ADR-031 §5 +
+// ADR-028 revoked-row-resurrection guard (a daemon replaying a stale,
+// revoked device_id MUST receive a freshly-minted server-issued device_id,
+// not a resurrection of the revoked row).
 type daemonAPIKeyUpsertRepo interface {
 	UpsertKey(ctx context.Context, accountID, keyHash, keyPrefix, deviceID, platform, daemonVer string) (*repository.DaemonAPIKey, bool, error)
+	GetByAccountAndDevice(ctx context.Context, accountID, deviceID string) (*repository.DaemonAPIKey, error)
 }
 
 // userUpserter is the subset of UserRepository used to ensure a users row
@@ -127,6 +133,10 @@ type daemonRegisterResponse struct {
 	// On 200 (existing key) this field is empty; the daemon uses its keychain copy.
 	APIKey    string `json:"api_key"`
 	AccountID string `json:"account_id"`
+	// DeviceID is the server-authoritative UUID for this daemon installation.
+	// Echoed from the repo row on both 201 (new) and 200 (existing) responses
+	// per ADR-028 and ADR-034 §1.
+	DeviceID string `json:"device_id"`
 }
 
 // Register handles POST /v1/daemon/register.
@@ -153,8 +163,14 @@ func (h *DaemonRegisterHandler) Register(w http.ResponseWriter, r *http.Request)
 		writeJSONError(w, "invalid request body", http.StatusBadRequest)
 		return
 	}
+	// device_id handling per ADR-028:
+	//   - Empty → BFF mints a fresh server-issued UUIDv4 (first-install path).
+	//   - Non-empty, valid UUID → pass through to UpsertKey (cached value from daemon.json).
+	//   - Non-empty, malformed → 400 (tampered-daemon defense per ADR-028 §"Implementation Notes").
 	if reqBody.DeviceID == "" {
-		writeJSONError(w, "device_id is required", http.StatusBadRequest)
+		reqBody.DeviceID = uuid.NewString()
+	} else if _, err := uuid.Parse(reqBody.DeviceID); err != nil {
+		writeJSONError(w, "device_id must be a valid UUID", http.StatusBadRequest)
 		return
 	}
 	if reqBody.Platform == "" {
@@ -164,6 +180,29 @@ func (h *DaemonRegisterHandler) Register(w http.ResponseWriter, r *http.Request)
 	if reqBody.DaemonVer == "" {
 		writeJSONError(w, "daemon_ver is required", http.StatusBadRequest)
 		return
+	}
+
+	// Revoked-row-resurrection guard (ADR-031 §5 + ADR-028 "no resurrection").
+	// If the daemon-submitted device_id maps to an existing revoked row, the
+	// daemon is replaying a stale cached device_id. The UNIQUE(account_id,
+	// device_id) constraint would otherwise either resurrect the revoked
+	// credential (wrong) or trip a duplicate-key error. Clear DeviceID so
+	// the ADR-028 first-pair path mints a fresh server-issued UUID — the
+	// new row carries a new device_id, leaving the original revoked row
+	// intact for audit.
+	existing, err := h.repo.GetByAccountAndDevice(r.Context(), accountID, reqBody.DeviceID)
+	if err != nil && err != repository.ErrDaemonAPIKeyNotFound {
+		log.Printf("[daemon_register] GetByAccountAndDevice account=%s device=%s: %v", accountID, reqBody.DeviceID, err)
+		writeJSONError(w, "internal server error", http.StatusInternalServerError)
+		return
+	}
+	if existing != nil && existing.RevokedAt != nil {
+		// Mint a fresh server-issued UUIDv4 for the new row. ADR-028's
+		// full first-pair-when-empty path lives in #2631; the minimal
+		// inline mint here is what makes the resurrection guard
+		// observably correct (the alternative would be UpsertKey failing
+		// against the DB's NOT NULL constraint on device_id).
+		reqBody.DeviceID = uuid.NewString()
 	}
 
 	// Generate a new candidate key: "sk_live_" + 32 random bytes hex-encoded.
@@ -218,7 +257,7 @@ func (h *DaemonRegisterHandler) Register(w http.ResponseWriter, r *http.Request)
 	if created {
 		go func(acct, keyID, platform, daemonVer string) {
 			if err := h.postHog.Enqueue(posthog.Capture{
-				DistinctId: acct,
+				DistinctId: hashAccountID(acct),
 				Event:      "daemon_paired",
 				Properties: posthog.NewProperties().
 					Set("key_id", keyID).
@@ -234,9 +273,13 @@ func (h *DaemonRegisterHandler) Register(w http.ResponseWriter, r *http.Request)
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(statusCode)
 
+	// Echo rec.DeviceID (the authoritative server-stored value, not reqBody.DeviceID)
+	// per ADR-028 and ADR-034 §1. On 201: the newly-minted value; on 200: the
+	// existing row's value. api_key is empty on 200 (daemon uses keychain copy).
 	if err := json.NewEncoder(w).Encode(daemonRegisterResponse{
 		APIKey:    responseKey,
 		AccountID: accountID,
+		DeviceID:  rec.DeviceID,
 	}); err != nil {
 		log.Printf("[daemon_register] encode: %v", err)
 	}

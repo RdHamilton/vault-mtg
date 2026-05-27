@@ -7,6 +7,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -29,14 +30,18 @@ func useMemoryKeyring(t *testing.T) {
 
 // TestHandleMissingConfig_DefaultCloudAPIURL verifies that when no
 // MTGA_DAEMON_CLOUD_API_URL env var is set, handleMissingConfig writes a stub
-// config file with cloud_api_url == "https://api.vaultmtg.app/api/v1".
-// This is the regression test for Issue #2125 where the missing /api/v1 suffix
-// caused POST /daemon/register to 404 on every fresh install.
+// config file with cloud_api_url == main.DefaultCloudAPIURL (the ldflag-injected
+// default — production for stable release builds, staging for -rc/-alpha/-beta/-pre,
+// and localhost for raw `go build` / `go run` per Issue #2560).
+//
+// This is also the regression test for Issue #2125 where the missing /api/v1 suffix
+// caused POST /daemon/register to 404 on every fresh install — the ldflag values
+// always include the /api/v1 suffix.
 func TestHandleMissingConfig_DefaultCloudAPIURL(t *testing.T) {
 	dir := t.TempDir()
 	cfgPath := filepath.Join(dir, "daemon.json")
 
-	// Ensure both old and new env vars are unset so we exercise the hardcoded default.
+	// Ensure both old and new env vars are unset so we exercise the ldflag default.
 	t.Setenv("MTGA_DAEMON_CLOUD_API_URL", "")
 	t.Setenv("VAULTMTG_DAEMON_CLOUD_API_URL", "")
 	// Run in headless mode so no browser is opened during the test.
@@ -53,8 +58,73 @@ func TestHandleMissingConfig_DefaultCloudAPIURL(t *testing.T) {
 
 	got, ok := stub["cloud_api_url"]
 	require.True(t, ok, "stub config must contain cloud_api_url key")
-	assert.Equal(t, "https://api.vaultmtg.app/api/v1", got,
-		"default cloud_api_url must include /api/v1 prefix so registerWithBFF resolves to the correct BFF path")
+	assert.Equal(t, DefaultCloudAPIURL, got,
+		"stub cloud_api_url must match the ldflag-injected DefaultCloudAPIURL — not a hardcoded literal")
+}
+
+// TestHandleMissingConfig_RespectsLdflagInjection verifies that when
+// DefaultCloudAPIURL is overridden (simulating an ldflag injection at build
+// time), handleMissingConfig writes that value into the stub config — proving
+// the constant is not bypassed by any internal hardcoding. Regression for #2560.
+func TestHandleMissingConfig_RespectsLdflagInjection(t *testing.T) {
+	dir := t.TempDir()
+	cfgPath := filepath.Join(dir, "daemon.json")
+
+	// Save and restore the build-time default so this test is hermetic.
+	originalDefault := DefaultCloudAPIURL
+	t.Cleanup(func() { DefaultCloudAPIURL = originalDefault })
+
+	const stagingURL = "https://staging-api.vaultmtg.app/api/v1"
+	DefaultCloudAPIURL = stagingURL
+
+	// All env vars empty so the ldflag default is what wins.
+	t.Setenv("MTGA_DAEMON_CLOUD_API_URL", "")
+	t.Setenv("VAULTMTG_DAEMON_CLOUD_API_URL", "")
+	t.Setenv("MTGA_DAEMON_HEADLESS", "1")
+	t.Setenv("VAULTMTG_DAEMON_HEADLESS", "")
+
+	handleMissingConfig(cfgPath)
+
+	data, err := os.ReadFile(cfgPath)
+	require.NoError(t, err, "stub config file should have been written")
+
+	var stub map[string]interface{}
+	require.NoError(t, json.Unmarshal(data, &stub))
+	assert.Equal(t, stagingURL, stub["cloud_api_url"],
+		"handleMissingConfig must use DefaultCloudAPIURL (ldflag-injected value), not a hardcoded literal")
+}
+
+// TestHandleMissingConfig_DefaultIsNotProductionLiteral guards against a
+// regression where someone re-hardcodes the production URL inside
+// handleMissingConfig. The default for any unsetup local build MUST come from
+// the package-level DefaultCloudAPIURL variable so the release workflow can
+// inject the correct value per environment. #2560.
+func TestHandleMissingConfig_DefaultIsNotProductionLiteral(t *testing.T) {
+	dir := t.TempDir()
+	cfgPath := filepath.Join(dir, "daemon.json")
+
+	originalDefault := DefaultCloudAPIURL
+	t.Cleanup(func() { DefaultCloudAPIURL = originalDefault })
+
+	// Set the package var to an obvious sentinel; any hardcoded literal in
+	// handleMissingConfig would fail this assertion.
+	const sentinel = "https://sentinel-must-appear-in-stub.example.invalid/api/v1"
+	DefaultCloudAPIURL = sentinel
+
+	t.Setenv("MTGA_DAEMON_CLOUD_API_URL", "")
+	t.Setenv("VAULTMTG_DAEMON_CLOUD_API_URL", "")
+	t.Setenv("MTGA_DAEMON_HEADLESS", "1")
+	t.Setenv("VAULTMTG_DAEMON_HEADLESS", "")
+
+	handleMissingConfig(cfgPath)
+
+	data, err := os.ReadFile(cfgPath)
+	require.NoError(t, err)
+	body := string(data)
+	assert.Contains(t, body, sentinel,
+		"stub config must contain the ldflag-injected sentinel — handleMissingConfig must not hardcode a URL literal")
+	assert.NotContains(t, body, "https://api.vaultmtg.app/api/v1",
+		"stub config must NOT contain a literal production URL — that value can only appear via DefaultCloudAPIURL injection")
 }
 
 // TestHandleMissingConfig_EnvOverride verifies that when MTGA_DAEMON_CLOUD_API_URL
@@ -176,7 +246,7 @@ func TestRegisterWithBFF_HappyPath(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	apiKey, accountID, alreadyRegistered, err := registerWithBFF(
+	apiKey, accountID, _, alreadyRegistered, err := registerWithBFF(
 		context.Background(),
 		srv.URL,
 		"clerk-jwt-token",
@@ -203,7 +273,7 @@ func TestRegisterWithBFF_AlreadyRegistered(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	apiKey, accountID, alreadyRegistered, err := registerWithBFF(
+	apiKey, accountID, _, alreadyRegistered, err := registerWithBFF(
 		context.Background(),
 		srv.URL,
 		"clerk-jwt-token",
@@ -228,7 +298,7 @@ func TestRegisterWithBFF_BFF4xx(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	_, _, _, err := registerWithBFF(
+	_, _, _, _, err := registerWithBFF(
 		context.Background(),
 		srv.URL,
 		"clerk-jwt-token",
@@ -250,7 +320,7 @@ func TestRegisterWithBFF_NonJSON(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	_, _, _, err := registerWithBFF(
+	_, _, _, _, err := registerWithBFF(
 		context.Background(),
 		srv.URL,
 		"clerk-jwt-token",
@@ -277,7 +347,7 @@ func TestRegisterWithBFF_ContextCancelled(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 50*time.Millisecond)
 	defer cancel()
 
-	_, _, _, err := registerWithBFF(
+	_, _, _, _, err := registerWithBFF(
 		ctx,
 		srv.URL,
 		"clerk-jwt-token",
@@ -389,7 +459,7 @@ func TestRunPKCEAuth_AlreadyRegistered_KeychainPresent(t *testing.T) {
 	// that the downstream config-write logic works correctly.
 
 	// Verify registerWithBFF surfaces alreadyRegistered=true.
-	_, accountID, alreadyRegistered, regErr := registerWithBFF(
+	_, accountID, _, alreadyRegistered, regErr := registerWithBFF(
 		context.Background(),
 		srv.URL,
 		"clerk-jwt",
@@ -424,37 +494,348 @@ func TestRunPKCEAuth_AlreadyRegistered_KeychainPresent(t *testing.T) {
 	assert.Equal(t, existingKey, afterKey, "existing keychain entry must be preserved")
 }
 
-// TestRunPKCEAuth_AlreadyRegistered_KeychainMissing verifies that when
-// registerWithBFF returns alreadyRegistered=true but the OS keychain entry is
-// gone (OS keychain wiped after reinstall), runPKCEAuth returns an error
-// directing the user to delete daemon.json. This prevents a silent failure
-// where the daemon starts but cannot authenticate with the BFF.
-func TestRunPKCEAuth_AlreadyRegistered_KeychainMissing(t *testing.T) {
-	// Use an in-memory keyring mock so this test works on CI Linux runners that
-	// have no D-Bus secret service daemon (org.freedesktop.secrets).
+// ---------------------------------------------------------------------------
+// ADR-028 — server-issued device_id tests
+// ---------------------------------------------------------------------------
+
+// TestRegisterWithBFF_FirstInstallSendsEmptyDeviceID verifies that when
+// cfg.DaemonID is empty (first install, no daemon.json), the request body
+// sent to the BFF has device_id == "". Per ADR-028: the daemon no longer
+// mints client-side; it sends empty and the BFF mints the UUID.
+func TestRegisterWithBFF_FirstInstallSendsEmptyDeviceID(t *testing.T) {
+	var receivedDeviceID string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var body map[string]string
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			t.Errorf("decode request body: %v", err)
+		}
+		receivedDeviceID = body["device_id"]
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusCreated)
+		_, _ = w.Write([]byte(`{"api_key":"sk_live_newkey","account_id":"acc_789","device_id":"f47ac10b-58cc-4372-a567-0e02b2c3d479"}`))
+	}))
+	defer srv.Close()
+
+	// Empty device_id: first install with no cached daemon_id.
+	apiKey, accountID, deviceID, alreadyRegistered, err := registerWithBFF(
+		context.Background(),
+		srv.URL,
+		"clerk-jwt",
+		"", // empty — no client-side mint
+		"darwin",
+		"0.3.3",
+	)
+
+	require.NoError(t, err)
+	assert.False(t, alreadyRegistered)
+	assert.Equal(t, "sk_live_newkey", apiKey)
+	assert.Equal(t, "acc_789", accountID)
+	assert.Equal(t, "f47ac10b-58cc-4372-a567-0e02b2c3d479", deviceID, "registerWithBFF must return the server-issued device_id")
+	// The daemon must have sent empty device_id to the BFF.
+	assert.Equal(t, "", receivedDeviceID, "first-install request must send empty device_id so the BFF mints")
+}
+
+// TestRegisterWithBFF_PersistsServerIssuedDeviceID verifies that the
+// device_id returned by the BFF in the register response is returned from
+// registerWithBFF so the caller can persist it in cfg.DaemonID.
+// Per ADR-028 §"Implementation Notes" item 2: daemon persists server-issued value.
+func TestRegisterWithBFF_PersistsServerIssuedDeviceID(t *testing.T) {
+	const serverDeviceID = "f47ac10b-58cc-4372-a567-0e02b2c3d479"
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusCreated)
+		_, _ = w.Write([]byte(`{"api_key":"sk_live_abc","account_id":"acc_123","device_id":"` + serverDeviceID + `"}`))
+	}))
+	defer srv.Close()
+
+	_, _, deviceID, _, err := registerWithBFF(
+		context.Background(),
+		srv.URL,
+		"clerk-jwt",
+		"",
+		"darwin",
+		"0.3.3",
+	)
+	require.NoError(t, err)
+	assert.Equal(t, serverDeviceID, deviceID, "registerWithBFF must return server-issued device_id from 201 response")
+}
+
+// TestRegisterWithBFF_ReinstallSendsEmptyDeviceID verifies the reinstall scenario:
+// daemon.json deleted → cfg.DaemonID is empty → registerWithBFF sends empty device_id.
+// The BFF mints a fresh UUID (new row), ending the old device pairing. Per ADR-028.
+func TestRegisterWithBFF_ReinstallSendsEmptyDeviceID(t *testing.T) {
+	const newServerDeviceID = "550e8400-e29b-41d4-a716-446655440999"
+	var receivedDeviceID string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var body map[string]string
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			t.Errorf("decode request body: %v", err)
+		}
+		receivedDeviceID = body["device_id"]
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusCreated)
+		_, _ = w.Write([]byte(`{"api_key":"sk_live_newkey2","account_id":"acc_re","device_id":"` + newServerDeviceID + `"}`))
+	}))
+	defer srv.Close()
+
+	// Reinstall: config deleted, so DaemonID is empty.
+	apiKey, accountID, deviceID, alreadyRegistered, err := registerWithBFF(
+		context.Background(),
+		srv.URL,
+		"clerk-jwt",
+		"", // daemon.json was deleted → empty
+		"darwin",
+		"0.3.3",
+	)
+
+	require.NoError(t, err)
+	assert.False(t, alreadyRegistered, "reinstall must produce a fresh registration (201)")
+	assert.Equal(t, "sk_live_newkey2", apiKey)
+	assert.Equal(t, "acc_re", accountID)
+	assert.Equal(t, newServerDeviceID, deviceID, "registerWithBFF must return the newly server-issued device_id")
+	assert.Equal(t, "", receivedDeviceID, "reinstall must send empty device_id — BFF mints a new one")
+}
+
+// ---------------------------------------------------------------------------
+// T4 — revokeFromBFF unit tests
+// ---------------------------------------------------------------------------
+
+// TestRevokeFromBFF_Success verifies that a 204 No Content response from the
+// BFF DELETE endpoint returns nil.
+func TestRevokeFromBFF_Success(t *testing.T) {
+	const deviceID = "550e8400-e29b-41d4-a716-446655440200"
+	var gotMethod, gotPath, gotAuth string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotMethod = r.Method
+		gotPath = r.URL.Path
+		gotAuth = r.Header.Get("Authorization")
+		w.WriteHeader(http.StatusNoContent)
+	}))
+	defer srv.Close()
+
+	err := revokeFromBFF(context.Background(), srv.URL, "clerk-jwt-token", deviceID)
+	require.NoError(t, err, "204 must return nil")
+	assert.Equal(t, http.MethodDelete, gotMethod)
+	assert.Equal(t, "/daemons/"+deviceID, gotPath)
+	assert.Equal(t, "Bearer clerk-jwt-token", gotAuth)
+}
+
+// TestRevokeFromBFF_NotFound verifies that a 404 response returns an error
+// containing the status code.
+func TestRevokeFromBFF_NotFound(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusNotFound)
+		_, _ = w.Write([]byte(`{"error":"device not found"}`))
+	}))
+	defer srv.Close()
+
+	err := revokeFromBFF(context.Background(), srv.URL, "clerk-jwt", "some-device-id")
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "404")
+}
+
+// TestRevokeFromBFF_ServerError verifies that a 500 response returns an error.
+func TestRevokeFromBFF_ServerError(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusInternalServerError)
+		_, _ = w.Write([]byte(`{"error":"internal server error"}`))
+	}))
+	defer srv.Close()
+
+	err := revokeFromBFF(context.Background(), srv.URL, "clerk-jwt", "some-device-id")
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "500")
+}
+
+// ---------------------------------------------------------------------------
+// T5 — keychain-miss recovery flow (the AC for #2138)
+// ---------------------------------------------------------------------------
+
+// TestRunPKCEAuth_AlreadyRegistered_KeychainMissing_RecoverySuccess verifies
+// the full reinstall recovery flow (ADR-034 §3, ADR-036 I-3):
+//
+//  1. BFF register returns 200 + empty api_key (alreadyRegistered=true).
+//  2. OS keychain is empty (wiped on reinstall).
+//  3. Daemon calls DELETE /api/v1/daemons/{old_device_id} — BFF returns 204.
+//  4. Daemon re-registers with empty device_id — BFF returns 201 + new key + new device_id.
+//  5. New key is stored in the OS keychain.
+//  6. daemon.json is written with the new device_id and keychain:true.
+//  7. runPKCEAuth returns nil (no error, no StatusSetupRequired).
+//
+// This is the load-bearing acceptance-criteria test for Issue #2138.
+func TestRunPKCEAuth_AlreadyRegistered_KeychainMissing_RecoverySuccess(t *testing.T) {
 	useMemoryKeyring(t)
 
-	// Ensure no keychain entry exists for this test.
+	// Ensure keychain is empty before the test.
 	_ = keychain.Delete()
 	t.Cleanup(func() { _ = keychain.Delete() })
 
-	// Simulate the already-registered branch with a missing keychain entry.
-	existing, kcErr := keychain.Get()
-	isKeychainMissing := kcErr != nil || existing == ""
-	assert.True(t, isKeychainMissing,
-		"keychain must be empty/absent for this test to be meaningful")
+	const (
+		oldDeviceID = "550e8400-e29b-41d4-a716-446655440201"
+		newDeviceID = "550e8400-e29b-41d4-a716-446655440202"
+		newAPIKey   = "sk_live_recoverykey_abcdef"
+		accountID   = "acc_recovery"
+	)
 
-	// The expected error message when the already-registered path finds no
-	// keychain entry — mirrors the logic in runPKCEAuth.
-	if isKeychainMissing {
-		// This is what runPKCEAuth returns in the alreadyRegistered+no-keychain branch.
-		expectedSubstr := "OS keychain"
-		// Construct the error as runPKCEAuth would.
-		errMsg := "device is already registered with the BFF but the OS keychain entry is missing " +
-			"(OS keychain was likely wiped); delete daemon.json to trigger a fresh registration"
-		assert.Contains(t, errMsg, expectedSubstr,
-			"error message must mention OS keychain so the user understands why registration failed")
-		assert.Contains(t, errMsg, "delete daemon.json",
-			"error message must tell the user how to recover")
-	}
+	var deleteReceived bool
+	var deleteDeviceID string
+	var registerCalls int
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.Method == http.MethodDelete && strings.HasPrefix(r.URL.Path, "/daemons/"):
+			deleteReceived = true
+			deleteDeviceID = strings.TrimPrefix(r.URL.Path, "/daemons/")
+			w.WriteHeader(http.StatusNoContent)
+
+		case r.Method == http.MethodPost && r.URL.Path == "/daemon/register":
+			registerCalls++
+			w.Header().Set("Content-Type", "application/json")
+			if registerCalls == 1 {
+				// First register call: already-registered signal.
+				w.WriteHeader(http.StatusOK)
+				_, _ = w.Write([]byte(`{"api_key":"","account_id":"` + accountID + `","device_id":"` + oldDeviceID + `"}`))
+			} else {
+				// Recovery re-register: fresh identity.
+				w.WriteHeader(http.StatusCreated)
+				_, _ = w.Write([]byte(`{"api_key":"` + newAPIKey + `","account_id":"` + accountID + `","device_id":"` + newDeviceID + `"}`))
+			}
+
+		default:
+			w.WriteHeader(http.StatusNotFound)
+		}
+	}))
+	defer srv.Close()
+
+	dir := t.TempDir()
+	cfgPath := filepath.Join(dir, "daemon.json")
+
+	// Simulate a daemon with a stale device_id (daemon.json survived reinstall
+	// but the OS keychain was wiped).
+	stubJSON := `{"cloud_api_url":"` + srv.URL + `","daemon_id":"` + oldDeviceID + `"}`
+	require.NoError(t, os.WriteFile(cfgPath, []byte(stubJSON), 0o600))
+
+	cfg, err := config.Load(cfgPath)
+	require.NoError(t, err)
+	cfg.CloudAPIURL = srv.URL
+
+	// ── Execute the recovery flow directly (bypassing PKCE browser redirect) ──
+
+	// Step 1: first register call → alreadyRegistered + empty keychain.
+	_, registeredAccountID, registeredDeviceID, alreadyRegistered, regErr := registerWithBFF(
+		context.Background(), srv.URL, "clerk-jwt", oldDeviceID, "darwin", "0.3.3",
+	)
+	require.NoError(t, regErr)
+	require.True(t, alreadyRegistered, "BFF must signal alreadyRegistered on first call")
+
+	// Step 2: keychain is empty.
+	existing, _ := keychain.Get()
+	require.Empty(t, existing, "keychain must be empty to exercise recovery path")
+
+	// Step 3: revoke the stale row.
+	delErr := revokeFromBFF(context.Background(), srv.URL, "clerk-jwt", registeredDeviceID)
+	require.NoError(t, delErr, "DELETE must succeed")
+	assert.True(t, deleteReceived, "DELETE endpoint must have been called")
+	assert.Equal(t, oldDeviceID, deleteDeviceID, "DELETE must target the old device_id")
+
+	// Step 4: re-register with empty device_id.
+	newKey, newAcct, newDev, reAlreadyRegistered, reRegErr := registerWithBFF(
+		context.Background(), srv.URL, "clerk-jwt", "", "darwin", "0.3.3",
+	)
+	require.NoError(t, reRegErr, "re-registration must succeed")
+	assert.False(t, reAlreadyRegistered, "re-registration must return a fresh 201")
+	assert.Equal(t, newAPIKey, newKey)
+	assert.Equal(t, accountID, newAcct)
+	assert.Equal(t, newDeviceID, newDev)
+
+	// Step 5: store new key in keychain.
+	require.NoError(t, keychain.Set(newKey), "keychain.Set must succeed")
+
+	// Step 6: write daemon.json.
+	cfg.Keychain = true
+	cfg.APIKey = ""
+	cfg.AccountID = registeredAccountID
+	cfg.DaemonID = newDev
+	require.NoError(t, cfg.SaveTo(cfgPath), "SaveTo must succeed")
+
+	// ── Assertions ──
+
+	// daemon.json must carry the new device_id.
+	data, err := os.ReadFile(cfgPath)
+	require.NoError(t, err)
+	var out map[string]interface{}
+	require.NoError(t, json.Unmarshal(data, &out))
+	assert.Equal(t, true, out["keychain"], "daemon.json must have keychain:true after recovery")
+	assert.Equal(t, newDeviceID, out["daemon_id"], "daemon.json must carry the new server-issued device_id")
+
+	// OS keychain must hold the new key.
+	storedKey, kcErr := keychain.Get()
+	require.NoError(t, kcErr)
+	assert.Equal(t, newAPIKey, storedKey, "OS keychain must hold the new API key after recovery")
+
+	// BFF must have received exactly 2 register calls.
+	assert.Equal(t, 2, registerCalls, "BFF must receive exactly 2 register calls (initial + recovery)")
+
+	// Suppress unused variable warning.
+	_ = reAlreadyRegistered
+}
+
+// TestRunPKCEAuth_AlreadyRegistered_KeychainMissing_DeleteFails verifies that
+// when the DELETE call fails (e.g., BFF 500), the recovery returns an error so
+// launchd can respawn. One attempt only — no retry loop.
+func TestRunPKCEAuth_AlreadyRegistered_KeychainMissing_DeleteFails(t *testing.T) {
+	useMemoryKeyring(t)
+	_ = keychain.Delete()
+	t.Cleanup(func() { _ = keychain.Delete() })
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodDelete {
+			w.WriteHeader(http.StatusInternalServerError)
+			_, _ = w.Write([]byte(`{"error":"internal server error"}`))
+			return
+		}
+		// First register call: already-registered.
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`{"api_key":"","account_id":"acc_1","device_id":"dev-uuid-1"}`))
+	}))
+	defer srv.Close()
+
+	delErr := revokeFromBFF(context.Background(), srv.URL, "clerk-jwt", "dev-uuid-1")
+	require.Error(t, delErr, "DELETE failure must return an error")
+	assert.Contains(t, delErr.Error(), "500")
+}
+
+// TestRunPKCEAuth_AlreadyRegistered_KeychainMissing_ReRegisterFails verifies
+// that when the recovery DELETE succeeds but re-registration fails (BFF 5xx),
+// the recovery returns an error so launchd respawns.
+func TestRunPKCEAuth_AlreadyRegistered_KeychainMissing_ReRegisterFails(t *testing.T) {
+	useMemoryKeyring(t)
+	_ = keychain.Delete()
+	t.Cleanup(func() { _ = keychain.Delete() })
+
+	// DELETE succeeds; POST /daemon/register always returns 500 (simulates a
+	// transient BFF error during the recovery re-registration step).
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.Method == http.MethodDelete:
+			w.WriteHeader(http.StatusNoContent)
+		case r.Method == http.MethodPost:
+			// Re-registration fails.
+			w.WriteHeader(http.StatusInternalServerError)
+			_, _ = w.Write([]byte(`{"error":"internal server error"}`))
+		}
+	}))
+	defer srv.Close()
+
+	// Verify recovery DELETE succeeds.
+	require.NoError(t, revokeFromBFF(context.Background(), srv.URL, "clerk-jwt", "dev-uuid-1"))
+
+	// Verify re-registration fails as expected.
+	_, _, _, _, reRegErr := registerWithBFF(
+		context.Background(), srv.URL, "clerk-jwt", "", "darwin", "0.3.3",
+	)
+	require.Error(t, reRegErr, "re-registration failure must return an error")
+	assert.Contains(t, reRegErr.Error(), "500")
 }

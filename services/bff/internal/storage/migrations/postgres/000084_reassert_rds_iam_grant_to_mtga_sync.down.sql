@@ -1,9 +1,3 @@
--- Revoke rds_iam from mtga_sync. Guarded against environments where the
--- rds_iam role does not exist (local/test). Reverses 000084.
-DO $$
-BEGIN
-  IF EXISTS (SELECT FROM pg_catalog.pg_roles WHERE rolname = 'rds_iam') THEN
-    REVOKE rds_iam FROM mtga_sync;
-  END IF;
-END
-$$;
+-- No-op (rewritten 2026-05-27). Paired with the no-op up.sql.
+-- See 000084_reassert_rds_iam_grant_to_mtga_sync.up.sql for rationale.
+SELECT 1;

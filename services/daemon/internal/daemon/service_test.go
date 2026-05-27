@@ -861,20 +861,16 @@ func TestHandleEntry_MatchCompleted_WithCachedMtgaUserID(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
-// T4 — 401 dispatch silently ignored in keychain mode
+// Keychain mode 401 recovery — sentinel + tray hook (#2563)
 // ---------------------------------------------------------------------------
 
-// TestDispatcher_401InKeychainModeIsNotRetried documents the current behavior
-// when the BFF returns 401 while the daemon is in keychain mode.
-//
-// In keychain mode WithRefresher is NOT wired (see service.New), so a 401
-// causes the dispatcher to exhaust all retries and return an error.  The run
-// loop logs the error and continues — there is no automatic re-registration
-// or re-PKCE path triggered.
-//
-// Known gap — tracked in issue #2135: keychain-mode 401 has no recovery
-// path today.  When that issue is implemented, this test must be updated to
-// assert that re-registration (PKCE or a refresh endpoint) is triggered.
+// TestDispatcher_401InKeychainModeIsNotRetried verifies the full #2563 contract:
+//   - BFF receives exactly 1 ingest request (retry loop breaks immediately)
+//   - dispatch.ErrReauthRequired is the sentinel returned by the refresher
+//   - handleEntry returns nil (ErrReauthRequired is suppressed, not propagated)
+//   - The tray hook (SetReauthRequired) is fired exactly once
+//   - No re-registration endpoint is ever called
+//   - The failed event is buffered by the ring buffer (token is NOT mutated)
 func TestDispatcher_401InKeychainModeIsNotRetried(t *testing.T) {
 	var registerCalls atomic.Int32
 	var ingestCalls atomic.Int32
@@ -886,8 +882,6 @@ func TestDispatcher_401InKeychainModeIsNotRetried(t *testing.T) {
 			ingestCalls.Add(1)
 			w.WriteHeader(http.StatusUnauthorized)
 		case "/daemon/register", "/api/daemon/register":
-			// Any call to a re-registration endpoint is a failure — keychain
-			// mode must not attempt re-registration on 401 today.
 			registerCalls.Add(1)
 			w.WriteHeader(http.StatusOK)
 			_, _ = w.Write([]byte(`{"api_key":"sk_new","account_id":"acc_new"}`))
@@ -901,30 +895,43 @@ func TestDispatcher_401InKeychainModeIsNotRetried(t *testing.T) {
 		CloudAPIURL: srv.URL,
 		IngestPath:  "/ingest/events",
 		AccountID:   "acc-keychain",
-		Keychain:    true, // keychain mode — no refresher wired
+		Keychain:    true,
 	}
 	svc := New(cfg)
 
-	// Dispatch a single event that will produce a 401 from the stub BFF.
+	// Wire the tray hook so we can assert it was fired.
+	var reauthReasonCalls atomic.Int32
+	var capturedReason string
+	svc.trayHooks = TrayHooks{
+		SetReauthRequired: func(reason string) {
+			reauthReasonCalls.Add(1)
+			capturedReason = reason
+		},
+	}
+
 	entry := &logreader.LogEntry{
 		IsJSON: true,
 		JSON:   map[string]interface{}{"draftPack": []interface{}{"card1"}},
 	}
 
-	// handleEntry returns an error (all retries exhausted) — this is the
-	// "silent failure" the run loop logs and discards.  We assert it returns
-	// non-nil so any future change to swallow or escalate the error is caught.
+	// handleEntry must return nil — ErrReauthRequired is suppressed to avoid
+	// per-entry spam in the run loop; the tray hook is the user-facing signal.
 	err := svc.handleEntry(context.Background(), entry)
-	assert.Error(t, err,
-		"keychain-mode 401 must surface an error from handleEntry (logged + discarded by run loop)")
+	assert.NoError(t, err,
+		"handleEntry must return nil when ErrReauthRequired is suppressed (#2563)")
 
-	// No /daemon/register call must be made — the refresher is not wired.
+	// Retry loop must break after the first ingest attempt.
+	assert.EqualValues(t, 1, ingestCalls.Load(),
+		"BFF ingest endpoint must be hit exactly once — no retries on ErrReauthRequired")
+
+	// No re-registration endpoint may be called in keychain mode.
 	assert.Equal(t, int32(0), registerCalls.Load(),
-		"re-registration endpoint must never be called in keychain mode on 401 (gap #2135)")
+		"re-registration endpoint must never be called in keychain mode")
 
-	// The ingest endpoint must have been called (the dispatcher did attempt dispatch).
-	assert.Greater(t, ingestCalls.Load(), int32(0),
-		"ingest endpoint must have been called at least once")
+	// Tray hook must have been fired exactly once with a non-empty reason.
+	assert.EqualValues(t, 1, reauthReasonCalls.Load(),
+		"SetReauthRequired tray hook must be fired exactly once")
+	assert.NotEmpty(t, capturedReason, "tray hook reason must not be empty")
 }
 
 // TestRunSkipsHeartbeatWhenAccountIDEmpty verifies that no heartbeat is sent

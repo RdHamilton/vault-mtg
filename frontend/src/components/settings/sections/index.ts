@@ -30,3 +30,5 @@ export type { ApiKeySectionProps } from './ApiKeySection';
 
 export { UserProfileSection } from './UserProfileSection';
 export type { UserProfileSectionProps, UserProfileData } from './UserProfileSection';
+
+export { ConnectedDevicesSection } from './ConnectedDevicesSection';
