@@ -16,6 +16,7 @@ import (
 	bffmiddleware "github.com/RdHamilton/vault-mtg/services/bff/internal/api/middleware"
 	"github.com/RdHamilton/vault-mtg/services/bff/internal/api/sse"
 	"github.com/RdHamilton/vault-mtg/services/bff/internal/config"
+	"github.com/RdHamilton/vault-mtg/services/bff/internal/dbpool"
 	"github.com/RdHamilton/vault-mtg/services/bff/internal/projection"
 	"github.com/RdHamilton/vault-mtg/services/bff/internal/storage"
 	"github.com/RdHamilton/vault-mtg/services/bff/internal/storage/repository"
@@ -233,6 +234,12 @@ func main() {
 		sqlDB, err = sql.Open("pgx", cfg.DatabaseURL)
 		if err != nil {
 			log.Fatalf("open db: %v", err)
+		}
+		dbpool.Configure(sqlDB)
+		pingCtx, pingCancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer pingCancel()
+		if err := sqlDB.PingContext(pingCtx); err != nil {
+			log.Fatalf("db ping: %v", err)
 		}
 
 		apiKeyRepo := repository.NewAPIKeyRepository(sqlDB)
