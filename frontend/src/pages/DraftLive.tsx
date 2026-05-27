@@ -14,6 +14,7 @@ import { useDraftEventStream, useDraftSession } from '@/hooks';
 import type { DraftPackPayload } from '@/hooks';
 import { getDraftRatings } from '@/services/api/bffDraftRatings';
 import type { BffCardRating } from '@/services/api/bffDraftRatings';
+import { trackEvent } from '@/services/analytics';
 import LoadingSpinner from '../components/LoadingSpinner';
 import EmptyState from '../components/EmptyState';
 import './DraftLive.css';
@@ -184,6 +185,23 @@ const DraftLive: React.FC = () => {
       return { arenaId: id, rating, grade, gihwr: rating?.gihwr };
     });
   }, [session.currentPackCards, ratingsMap]);
+
+  // Analytics: feature_draft_advisor_pick_viewed — fires once per pack when cards are non-empty
+  const lastPickKeyRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (packCards.length === 0 || !setCode) return;
+    const key = `${setCode}/${session.packNumber}/${session.pickNumber}`;
+    if (lastPickKeyRef.current === key) return;
+    lastPickKeyRef.current = key;
+    trackEvent({
+      name: 'feature_draft_advisor_pick_viewed',
+      properties: {
+        set_code: setCode,
+        pack_number: session.packNumber,
+        pick_number: session.pickNumber,
+      },
+    });
+  }, [packCards.length, setCode, session.packNumber, session.pickNumber]);
 
   // Top pick = highest GIHWR. Undefined when all are unrated.
   const topPickArenaId: number | null = useMemo(() => {

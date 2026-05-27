@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
+import { trackEvent } from '@/services/analytics';
 import { collection, cards as cardsApi } from '@/services/api';
 import { gui } from '@/types/models';
 import { useDownload } from '@/context/DownloadContext';
@@ -51,6 +52,7 @@ export default function Collection() {
   const isLoadingRef = useRef<boolean>(false);
   const isAutoRefreshingRef = useRef<boolean>(false);
   const autoRefreshTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const viewedFiredRef = useRef(false);
 
   const [filters, setFilters] = useState<FilterState>({
     searchTerm: '',
@@ -102,6 +104,15 @@ export default function Collection() {
       setCards(normalizedCards);
       setTotalCount(normalizedCards.length);
       setFilterCount(normalizedCards.length);
+
+      // Analytics: feature_collection_viewed — once per mount when data is non-empty
+      if (normalizedCards.length > 0 && !viewedFiredRef.current) {
+        viewedFiredRef.current = true;
+        trackEvent({
+          name: 'feature_collection_viewed',
+          properties: { card_count: normalizedCards.length },
+        });
+      }
 
       // Show download progress if cards were fetched from Scryfall
       const unknownFetched = response?.unknownCardsFetched ?? 0;

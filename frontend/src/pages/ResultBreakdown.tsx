@@ -1,4 +1,5 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
+import { trackEvent } from '@/services/analytics';
 import { matches } from '@/services/api';
 import { models } from '@/types/models';
 import LoadingSpinner from '../components/LoadingSpinner';
@@ -14,6 +15,15 @@ const ResultBreakdown = () => {
   const [metrics, setMetrics] = useState<models.Statistics | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+
+  // Analytics: 300ms trailing debounce for feature_chart_interacted (Ray Q1)
+  const chartInteractedTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const fireChartInteracted = (interaction: 'filter_applied' | 'time_range_changed' | 'format_changed') => {
+    if (chartInteractedTimerRef.current) clearTimeout(chartInteractedTimerRef.current);
+    chartInteractedTimerRef.current = setTimeout(() => {
+      trackEvent({ name: 'feature_chart_interacted', properties: { chart: 'result_breakdown', interaction } });
+    }, 300);
+  };
 
   useEffect(() => {
     const loadMetrics = async () => {
@@ -110,7 +120,7 @@ const ResultBreakdown = () => {
         <div className="filter-row">
           <div className="filter-group">
             <label className="filter-label">Date Range</label>
-            <select value={dateRange} onChange={(e) => updateFilters('resultBreakdown', { dateRange: e.target.value })}>
+            <select value={dateRange} onChange={(e) => { updateFilters('resultBreakdown', { dateRange: e.target.value }); fireChartInteracted('time_range_changed'); }}>
               <option value="7days">Last 7 Days</option>
               <option value="30days">Last 30 Days</option>
               <option value="90days">Last 90 Days</option>
@@ -146,7 +156,7 @@ const ResultBreakdown = () => {
 
           <div className="filter-group">
             <label className="filter-label">Format</label>
-            <select value={format} onChange={(e) => updateFilters('resultBreakdown', { format: e.target.value })}>
+            <select value={format} onChange={(e) => { updateFilters('resultBreakdown', { format: e.target.value }); fireChartInteracted('format_changed'); }}>
               <option value="all">All Formats</option>
               <option value="constructed">Constructed</option>
               <option value="limited">Limited</option>

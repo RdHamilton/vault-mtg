@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { trackEvent } from '@/services/analytics';
 import {
   DaemonConnectionSection,
   AppPreferencesSection,
@@ -126,6 +127,10 @@ const Settings = () => {
     if (success) {
       setSaved(true);
       setTimeout(() => setSaved(false), 3000);
+      trackEvent({
+        name: 'feature_settings_changed',
+        properties: { setting_section: 'preferences', setting_key: 'save' },
+      });
     }
   };
 

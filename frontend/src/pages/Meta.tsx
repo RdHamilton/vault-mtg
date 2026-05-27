@@ -1,4 +1,5 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
+import { trackEvent } from '@/services/analytics';
 import { meta } from '@/services/api';
 import { gui } from '@/types/models';
 import { useDownload } from '@/context/DownloadContext';
@@ -106,6 +107,7 @@ export default function Meta() {
   const [selectedArchetype, setSelectedArchetype] = useState<gui.ArchetypeInfo | null>(null);
   const [autoRefreshing, setAutoRefreshing] = useState(false);
   const { startDownload, updateProgress, completeDownload, failDownload } = useDownload();
+  const viewedFiredRef = useRef(false);
 
   // Run legacy localStorage key migration once on component mount
   useEffect(() => {
@@ -120,6 +122,11 @@ export default function Meta() {
       try {
         const data = await getMetaDashboard(format);
         setDashboardData(data);
+        // Analytics: feature_meta_viewed — fires once per mount when data is non-empty
+        if (!viewedFiredRef.current) {
+          viewedFiredRef.current = true;
+          trackEvent({ name: 'feature_meta_viewed' });
+        }
       } catch (err) {
         setError(err instanceof Error ? err.message : 'Failed to load meta data');
       } finally {

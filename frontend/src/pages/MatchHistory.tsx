@@ -271,6 +271,7 @@ const MatchHistory = () => {
     setPage(1); // Reset to first page when sorting changes
   };
 
+
   // Sort and paginate matches
   const sortedMatches = [...matchList].sort((a, b) => {
     let aVal: string | number = String(a[sortField] ?? '');
@@ -352,7 +353,13 @@ const MatchHistory = () => {
         <div className="filter-row">
           <div className="filter-group">
             <label className="filter-label">Date Range</label>
-            <select value={dateRange} onChange={(e) => updateFilters('matchHistory', { dateRange: e.target.value })}>
+            <select
+              value={dateRange}
+              onChange={(e) => {
+                updateFilters('matchHistory', { dateRange: e.target.value });
+                trackEvent({ name: 'feature_match_history_filtered', properties: { filter_type: 'date_range', filter_value: e.target.value } });
+              }}
+            >
               <option value="7days">Last 7 Days</option>
               <option value="30days">Last 30 Days</option>
               <option value="90days">Last 90 Days</option>
@@ -388,7 +395,13 @@ const MatchHistory = () => {
 
           <div className="filter-group">
             <label className="filter-label">Card Format</label>
-            <select value={cardFormat} onChange={(e) => updateFilters('matchHistory', { cardFormat: e.target.value })}>
+            <select
+              value={cardFormat}
+              onChange={(e) => {
+                updateFilters('matchHistory', { cardFormat: e.target.value });
+                trackEvent({ name: 'feature_match_history_filtered', properties: { filter_type: 'format', filter_value: e.target.value } });
+              }}
+            >
               <option value="all">All Card Formats</option>
               <option value="Standard">Standard</option>
               <option value="Historic">Historic</option>
@@ -401,7 +414,13 @@ const MatchHistory = () => {
 
           <div className="filter-group">
             <label className="filter-label">Queue Type</label>
-            <select value={queueType} onChange={(e) => updateFilters('matchHistory', { queueType: e.target.value })}>
+            <select
+              value={queueType}
+              onChange={(e) => {
+                updateFilters('matchHistory', { queueType: e.target.value });
+                trackEvent({ name: 'feature_match_history_filtered', properties: { filter_type: 'format', filter_value: e.target.value } });
+              }}
+            >
               <option value="all">All Queues</option>
               <option value="Ladder">Ranked</option>
               <option value="Play">Play Queue</option>
@@ -410,7 +429,13 @@ const MatchHistory = () => {
 
           <div className="filter-group">
             <label className="filter-label">Result</label>
-            <select value={result} onChange={(e) => updateFilters('matchHistory', { result: e.target.value })}>
+            <select
+              value={result}
+              onChange={(e) => {
+                updateFilters('matchHistory', { result: e.target.value });
+                trackEvent({ name: 'feature_match_history_filtered', properties: { filter_type: 'result', filter_value: e.target.value } });
+              }}
+            >
               <option value="all">All Results</option>
               <option value="win">Wins Only</option>
               <option value="loss">Losses Only</option>
@@ -546,7 +571,16 @@ const MatchHistory = () => {
                 <tr
                   key={match.ID}
                   className={`result-${match.Result.toLowerCase()} clickable-row`}
-                  onClick={() => setSelectedMatch(match)}
+                  onClick={() => {
+                    setSelectedMatch(match);
+                    trackEvent({
+                      name: 'feature_match_details_opened',
+                      properties: {
+                        match_result: match.Result.toLowerCase() as 'win' | 'loss' | 'draw',
+                        format: match.Format ?? '',
+                      },
+                    });
+                  }}
                   title="Click to view match details"
                 >
                   <td>{formatTimestamp(match.Timestamp)}</td>
