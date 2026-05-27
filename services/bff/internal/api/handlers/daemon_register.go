@@ -226,11 +226,16 @@ func (h *DaemonRegisterHandler) Register(w http.ResponseWriter, r *http.Request)
 	// can resolve the key's account_id (Clerk user_id) back to users.id
 	// (int64) on subsequent ingest calls. Skipped when userRepo is nil
 	// (test-only path).
+	var userCreatedAt time.Time
 	if h.userRepo != nil {
-		if _, err := h.userRepo.UpsertByClerkUserID(r.Context(), accountID); err != nil {
+		user, err := h.userRepo.UpsertByClerkUserID(r.Context(), accountID)
+		if err != nil {
 			log.Printf("[daemon_register] UpsertByClerkUserID account=%s: %v", accountID, err)
 			writeJSONError(w, "internal server error", http.StatusInternalServerError)
 			return
+		}
+		if user != nil {
+			userCreatedAt = user.CreatedAt
 		}
 	}
 
@@ -253,21 +258,26 @@ func (h *DaemonRegisterHandler) Register(w http.ResponseWriter, r *http.Request)
 		statusCode = http.StatusCreated
 	}
 
-	// Emit PostHog daemon_paired event on first pairing.
+	// Emit PostHog daemon_paired event on first pairing (ADR-027 §3).
 	if created {
-		go func(acct, keyID, platform, daemonVer string) {
+		go func(acct, deviceID, platform, daemonVer string, signupTime time.Time) {
+			var timeSinceSignup float64
+			if !signupTime.IsZero() {
+				timeSinceSignup = time.Since(signupTime).Seconds()
+			}
 			if err := h.postHog.Enqueue(posthog.Capture{
 				DistinctId: hashAccountID(acct),
 				Event:      "daemon_paired",
 				Properties: posthog.NewProperties().
-					Set("key_id", keyID).
+					Set("device_id", deviceID).
+					Set("account_id_hash", hashAccountID(acct)).
 					Set("platform", platform).
 					Set("daemon_ver", daemonVer).
-					Set("source", "pkce"),
+					Set("time_since_signup_seconds", timeSinceSignup),
 			}); err != nil {
 				log.Printf("[daemon_register] posthog enqueue: %v", err)
 			}
-		}(accountID, rec.ID, reqBody.Platform, reqBody.DaemonVer)
+		}(accountID, rec.DeviceID, reqBody.Platform, reqBody.DaemonVer, userCreatedAt)
 	}
 
 	w.Header().Set("Content-Type", "application/json")

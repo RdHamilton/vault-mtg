@@ -696,6 +696,370 @@ func TestDaemonRegister_R2R3_ReinstallEmptyDeviceID_Returns201WithNewKey(t *test
 	}
 }
 
+// ─── stub user repo ───────────────────────────────────────────────────────────
+
+// stubUserRepo implements userUpserter for tests that need a user with a
+// known CreatedAt so time_since_signup_seconds can be asserted.
+type stubUserRepo struct {
+	user *repository.User
+	err  error
+}
+
+func (s *stubUserRepo) UpsertByClerkUserID(_ context.Context, _ string) (*repository.User, error) {
+	if s.err != nil {
+		return nil, s.err
+	}
+	return s.user, nil
+}
+
+// ─── ADR-027 conformance tests ────────────────────────────────────────────────
+
+// makeWGPostHog returns a wgPostHogClient that calls wg.Done() on each Enqueue.
+func makeWGPostHog(wg *sync.WaitGroup) (*wgPostHogClient, *mockPostHogClient) {
+	inner := &mockPostHogClient{}
+	return &wgPostHogClient{inner: inner, wg: wg}, inner
+}
+
+// TestDaemonRegister_PostHogEvent_HasDeviceID verifies that the daemon_paired
+// PostHog event includes a "device_id" property set to the server-authoritative
+// device UUID per ADR-027 §3.
+func TestDaemonRegister_PostHogEvent_HasDeviceID(t *testing.T) {
+	const clerkUserID = "user_deviceid_check"
+	var wg sync.WaitGroup
+	wg.Add(1)
+	ph, inner := makeWGPostHog(&wg)
+
+	repo := &stubDaemonAPIKeyRepo{}
+	h := handlers.NewDaemonRegisterHandler(repo, nil).WithPostHogClient(ph)
+
+	req := newRegisterRequest(clerkUserID)
+	rr := httptest.NewRecorder()
+	h.Register(rr, req)
+
+	if rr.Code != http.StatusCreated {
+		t.Fatalf("expected 201, got %d: %s", rr.Code, rr.Body.String())
+	}
+	wg.Wait()
+
+	if len(inner.calls) != 1 {
+		t.Fatalf("expected 1 PostHog call, got %d", len(inner.calls))
+	}
+	capture, ok := inner.calls[0].(posthog.Capture)
+	if !ok {
+		t.Fatal("PostHog message is not a posthog.Capture")
+	}
+
+	deviceID, exists := capture.Properties["device_id"]
+	if !exists {
+		t.Fatal("daemon_paired event must include 'device_id' property per ADR-027 §3")
+	}
+	deviceIDStr, _ := deviceID.(string)
+	if _, err := uuid.Parse(deviceIDStr); err != nil {
+		t.Errorf("device_id property must be a valid UUID, got %q", deviceIDStr)
+	}
+}
+
+// TestDaemonRegister_PostHogEvent_HasAccountIDHashProperty verifies that the
+// daemon_paired event includes an explicit "account_id_hash" property per
+// ADR-027 §3. The DistinctId being hashed is tested separately.
+func TestDaemonRegister_PostHogEvent_HasAccountIDHashProperty(t *testing.T) {
+	const clerkUserID = "user_acct_hash_prop"
+	wantHash := testHashAccountID(clerkUserID)
+
+	var wg sync.WaitGroup
+	wg.Add(1)
+	ph, inner := makeWGPostHog(&wg)
+
+	repo := &stubDaemonAPIKeyRepo{}
+	h := handlers.NewDaemonRegisterHandler(repo, nil).WithPostHogClient(ph)
+
+	req := newRegisterRequest(clerkUserID)
+	rr := httptest.NewRecorder()
+	h.Register(rr, req)
+
+	if rr.Code != http.StatusCreated {
+		t.Fatalf("expected 201, got %d: %s", rr.Code, rr.Body.String())
+	}
+	wg.Wait()
+
+	if len(inner.calls) != 1 {
+		t.Fatalf("expected 1 PostHog call, got %d", len(inner.calls))
+	}
+	capture, ok := inner.calls[0].(posthog.Capture)
+	if !ok {
+		t.Fatal("PostHog message is not a posthog.Capture")
+	}
+
+	hashProp, exists := capture.Properties["account_id_hash"]
+	if !exists {
+		t.Fatal("daemon_paired event must include explicit 'account_id_hash' property per ADR-027 §3")
+	}
+	hashStr, _ := hashProp.(string)
+	if hashStr != wantHash {
+		t.Errorf("account_id_hash property: got %q, want %q", hashStr, wantHash)
+	}
+}
+
+// TestDaemonRegister_PostHogEvent_OmitsKeyID_AndSource verifies that the
+// daemon_paired event does NOT contain "key_id" or "source" properties.
+// These were present in the legacy emission and are non-conformant with ADR-027 §3.
+func TestDaemonRegister_PostHogEvent_OmitsKeyID_AndSource(t *testing.T) {
+	var wg sync.WaitGroup
+	wg.Add(1)
+	ph, inner := makeWGPostHog(&wg)
+
+	repo := &stubDaemonAPIKeyRepo{}
+	h := handlers.NewDaemonRegisterHandler(repo, nil).WithPostHogClient(ph)
+
+	req := newRegisterRequest("user_omit_check")
+	rr := httptest.NewRecorder()
+	h.Register(rr, req)
+
+	if rr.Code != http.StatusCreated {
+		t.Fatalf("expected 201, got %d: %s", rr.Code, rr.Body.String())
+	}
+	wg.Wait()
+
+	if len(inner.calls) != 1 {
+		t.Fatalf("expected 1 PostHog call, got %d", len(inner.calls))
+	}
+	capture, ok := inner.calls[0].(posthog.Capture)
+	if !ok {
+		t.Fatal("PostHog message is not a posthog.Capture")
+	}
+
+	if _, exists := capture.Properties["key_id"]; exists {
+		t.Error("daemon_paired event must NOT include 'key_id' property — non-conformant per ADR-027 §3")
+	}
+	if _, exists := capture.Properties["source"]; exists {
+		t.Error("daemon_paired event must NOT include 'source' property — non-conformant per ADR-027 §3")
+	}
+}
+
+// TestDaemonRegister_PostHogEvent_HasTimeSinceSignup verifies that the
+// daemon_paired event includes a "time_since_signup_seconds" property derived
+// from the user's CreatedAt field per Ray's Option A decision.
+func TestDaemonRegister_PostHogEvent_HasTimeSinceSignup(t *testing.T) {
+	const clerkUserID = "user_signup_time"
+	signupTime := time.Now().UTC().Add(-72 * time.Hour) // signed up 72 hours ago
+
+	userRepo := &stubUserRepo{
+		user: &repository.User{
+			ID:          42,
+			ClerkUserID: func() *string { s := clerkUserID; return &s }(),
+			CreatedAt:   signupTime,
+		},
+	}
+
+	var wg sync.WaitGroup
+	wg.Add(1)
+	ph, inner := makeWGPostHog(&wg)
+
+	repo := &stubDaemonAPIKeyRepo{}
+	h := handlers.NewDaemonRegisterHandler(repo, userRepo).WithPostHogClient(ph)
+
+	req := newRegisterRequest(clerkUserID)
+	rr := httptest.NewRecorder()
+	h.Register(rr, req)
+
+	if rr.Code != http.StatusCreated {
+		t.Fatalf("expected 201, got %d: %s", rr.Code, rr.Body.String())
+	}
+	wg.Wait()
+
+	if len(inner.calls) != 1 {
+		t.Fatalf("expected 1 PostHog call, got %d", len(inner.calls))
+	}
+	capture, ok := inner.calls[0].(posthog.Capture)
+	if !ok {
+		t.Fatal("PostHog message is not a posthog.Capture")
+	}
+
+	raw, exists := capture.Properties["time_since_signup_seconds"]
+	if !exists {
+		t.Fatal("daemon_paired event must include 'time_since_signup_seconds' property per ADR-027 §3")
+	}
+	secondsFloat, ok := raw.(float64)
+	if !ok {
+		t.Fatalf("time_since_signup_seconds must be numeric, got %T", raw)
+	}
+	// 72h = 259200s; allow ±5s for execution jitter.
+	const expectedSeconds = 72 * 3600
+	if secondsFloat < expectedSeconds-5 || secondsFloat > expectedSeconds+5 {
+		t.Errorf("time_since_signup_seconds: got %.0f, want ~%d (±5s)", secondsFloat, expectedSeconds)
+	}
+}
+
+// TestDaemonRegister_PostHogDistinctIDIsHashed_RawAccountIDAbsent extends
+// the existing PII test to also assert that the raw account_id is absent from
+// ALL event properties (not just DistinctId).
+func TestDaemonRegister_PostHogDistinctIDIsHashed_RawAccountIDAbsent(t *testing.T) {
+	const clerkUserID = "user_pii_absent_check"
+
+	var wg sync.WaitGroup
+	wg.Add(1)
+	ph, inner := makeWGPostHog(&wg)
+
+	repo := &stubDaemonAPIKeyRepo{}
+	h := handlers.NewDaemonRegisterHandler(repo, nil).WithPostHogClient(ph)
+
+	req := newRegisterRequest(clerkUserID)
+	rr := httptest.NewRecorder()
+	h.Register(rr, req)
+
+	if rr.Code != http.StatusCreated {
+		t.Fatalf("expected 201, got %d: %s", rr.Code, rr.Body.String())
+	}
+	wg.Wait()
+
+	if len(inner.calls) != 1 {
+		t.Fatalf("expected 1 PostHog call, got %d", len(inner.calls))
+	}
+	capture, ok := inner.calls[0].(posthog.Capture)
+	if !ok {
+		t.Fatal("PostHog message is not a posthog.Capture")
+	}
+
+	// DistinctId must not be the raw Clerk user_id.
+	if capture.DistinctId == clerkUserID {
+		t.Errorf("DistinctId must be hashed, got raw Clerk user_id %q — PII leak", capture.DistinctId)
+	}
+
+	// No property may contain the raw account_id string value.
+	for k, v := range capture.Properties {
+		if strVal, ok := v.(string); ok && strVal == clerkUserID {
+			t.Errorf("PostHog property %q contains raw account_id %q — PII leak", k, clerkUserID)
+		}
+	}
+}
+
+// TestDaemonRegister_PostHogEvent_HasPlatform verifies that the daemon_paired
+// PostHog event includes a "platform" property with the value sent by the
+// daemon in the request body, per ADR-027 §3.
+func TestDaemonRegister_PostHogEvent_HasPlatform(t *testing.T) {
+	const clerkUserID = "user_platform_check"
+	const wantPlatform = "darwin"
+
+	var wg sync.WaitGroup
+	wg.Add(1)
+	ph, inner := makeWGPostHog(&wg)
+
+	repo := &stubDaemonAPIKeyRepo{}
+	h := handlers.NewDaemonRegisterHandler(repo, nil).WithPostHogClient(ph)
+
+	req := newRegisterRequestWithBody(clerkUserID, map[string]string{
+		"device_id":  "550e8400-e29b-41d4-a716-446655440200",
+		"platform":   wantPlatform,
+		"daemon_ver": "0.3.1",
+	})
+	rr := httptest.NewRecorder()
+	h.Register(rr, req)
+
+	if rr.Code != http.StatusCreated {
+		t.Fatalf("expected 201, got %d: %s", rr.Code, rr.Body.String())
+	}
+	wg.Wait()
+
+	if len(inner.calls) != 1 {
+		t.Fatalf("expected 1 PostHog call, got %d", len(inner.calls))
+	}
+	capture, ok := inner.calls[0].(posthog.Capture)
+	if !ok {
+		t.Fatal("PostHog message is not a posthog.Capture")
+	}
+
+	got, exists := capture.Properties["platform"]
+	if !exists {
+		t.Fatal("daemon_paired event must include 'platform' property per ADR-027 §3")
+	}
+	if got != wantPlatform {
+		t.Errorf("platform property: got %q, want %q", got, wantPlatform)
+	}
+}
+
+// TestDaemonRegister_PostHogEvent_DaemonVerKeyName verifies that the
+// daemon_paired PostHog event uses the key name "daemon_ver" (not
+// "daemon_version"), per ADR-027 §3's pinned schema.
+func TestDaemonRegister_PostHogEvent_DaemonVerKeyName(t *testing.T) {
+	const clerkUserID = "user_daemonver_key"
+	const wantVer = "0.3.1"
+
+	var wg sync.WaitGroup
+	wg.Add(1)
+	ph, inner := makeWGPostHog(&wg)
+
+	repo := &stubDaemonAPIKeyRepo{}
+	h := handlers.NewDaemonRegisterHandler(repo, nil).WithPostHogClient(ph)
+
+	req := newRegisterRequestWithBody(clerkUserID, map[string]string{
+		"device_id":  "550e8400-e29b-41d4-a716-446655440201",
+		"platform":   "windows",
+		"daemon_ver": wantVer,
+	})
+	rr := httptest.NewRecorder()
+	h.Register(rr, req)
+
+	if rr.Code != http.StatusCreated {
+		t.Fatalf("expected 201, got %d: %s", rr.Code, rr.Body.String())
+	}
+	wg.Wait()
+
+	if len(inner.calls) != 1 {
+		t.Fatalf("expected 1 PostHog call, got %d", len(inner.calls))
+	}
+	capture, ok := inner.calls[0].(posthog.Capture)
+	if !ok {
+		t.Fatal("PostHog message is not a posthog.Capture")
+	}
+
+	// The key must be exactly "daemon_ver", not "daemon_version".
+	if _, exists := capture.Properties["daemon_version"]; exists {
+		t.Error("daemon_paired event must NOT use key 'daemon_version' — ADR-027 §3 pins the name as 'daemon_ver'")
+	}
+	got, exists := capture.Properties["daemon_ver"]
+	if !exists {
+		t.Fatal("daemon_paired event must include 'daemon_ver' property per ADR-027 §3")
+	}
+	if got != wantVer {
+		t.Errorf("daemon_ver property: got %q, want %q", got, wantVer)
+	}
+}
+
+// TestDaemonRegister_PostHogEvent_NoAppVersion verifies that the daemon_paired
+// PostHog event does NOT contain an "app_version" property. That property is
+// not part of the ADR-027 §3 pinned schema (it belongs to frontend events).
+// Per Najah's PM-constraint §C2, out-of-spec properties are banned without an
+// ADR update.
+func TestDaemonRegister_PostHogEvent_NoAppVersion(t *testing.T) {
+	var wg sync.WaitGroup
+	wg.Add(1)
+	ph, inner := makeWGPostHog(&wg)
+
+	repo := &stubDaemonAPIKeyRepo{}
+	h := handlers.NewDaemonRegisterHandler(repo, nil).WithPostHogClient(ph)
+
+	req := newRegisterRequest("user_no_app_version")
+	rr := httptest.NewRecorder()
+	h.Register(rr, req)
+
+	if rr.Code != http.StatusCreated {
+		t.Fatalf("expected 201, got %d: %s", rr.Code, rr.Body.String())
+	}
+	wg.Wait()
+
+	if len(inner.calls) != 1 {
+		t.Fatalf("expected 1 PostHog call, got %d", len(inner.calls))
+	}
+	capture, ok := inner.calls[0].(posthog.Capture)
+	if !ok {
+		t.Fatal("PostHog message is not a posthog.Capture")
+	}
+
+	if _, exists := capture.Properties["app_version"]; exists {
+		t.Error("daemon_paired event must NOT include 'app_version' property — not in ADR-027 §3 pinned schema (Najah PM-constraint §C2)")
+	}
+}
+
 // TestDaemonRegister_R2R3_RevokedDeviceRe_Register_Returns201 verifies the
 // revoked-row resurrection guard for the R3 path: daemon presents a device_id
 // that maps to a revoked row. The BFF must NOT resurrect that row — instead it
