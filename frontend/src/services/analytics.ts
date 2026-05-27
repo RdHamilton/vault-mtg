@@ -74,6 +74,9 @@ export const Events = {
   FUNNEL_FIRST_GAME_PLAYED: 'funnel_first_game_played',
   FUNNEL_FIRST_DATA_LOADED: 'funnel_first_data_loaded',
   FUNNEL_FIRST_FEATURE_USED: 'funnel_first_feature_used',
+  // ADR-027: BFF-only emission — taxonomy declared here for type safety;
+  // the SPA never calls trackEvent with this name.
+  FUNNEL_DAEMON_PAIRED: 'funnel_daemon_paired',
 
   // Page views
   PAGE_VIEWED: 'page_viewed',
@@ -204,6 +207,13 @@ export type AnalyticsEvent =
           | 'charts'
           | 'quests';
       };
+    }
+  // ADR-027: BFF emits this event server-side when the daemon completes its
+  // first pairing handshake. The SPA never calls trackEvent with this name —
+  // this branch exists only so the constant is type-safe if referenced.
+  | {
+      name: 'funnel_daemon_paired';
+      properties?: Record<string, never>;
     }
   // Page views
   | {

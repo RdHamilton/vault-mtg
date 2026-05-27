@@ -32,6 +32,39 @@ import { useEffect, useRef } from 'react';
 import { useLocation } from 'react-router-dom';
 import { trackEvent } from '@/services/analytics';
 
+// ── First-feature guard ───────────────────────────────────────────────────────
+
+const FIRST_FEATURE_KEY = 'vaultmtg_ph_funnel_first_feature_used_fired';
+
+type FirstFeature =
+  | 'draft'
+  | 'draft_analytics'
+  | 'decks'
+  | 'collection'
+  | 'meta'
+  | 'charts'
+  | 'quests';
+
+/**
+ * Returns the qualifying feature slug for a pathname, or null if the route
+ * does not count as a "first feature used" event.
+ *
+ * /match-history is intentionally excluded — it is the default post-signup
+ * view and therefore not a signal of deliberate feature exploration.
+ * /home, /setup, /download, /settings, /api-keys, /profile are excluded
+ * for the same reason.
+ */
+function toFirstFeature(pathname: string): FirstFeature | null {
+  if (pathname === '/draft' || pathname === '/draft/live') return 'draft';
+  if (pathname === '/draft-analytics') return 'draft_analytics';
+  if (pathname === '/decks' || pathname.startsWith('/deck-builder')) return 'decks';
+  if (pathname === '/collection') return 'collection';
+  if (pathname === '/meta') return 'meta';
+  if (pathname.startsWith('/charts/')) return 'charts';
+  if (pathname === '/quests') return 'quests';
+  return null;
+}
+
 /** Map a pathname to the canonical PostHog page slug. */
 function toPageSlug(pathname: string): string {
   if (pathname === '/' || pathname === '/home') return 'home';
@@ -81,6 +114,18 @@ export function PostHogRouteTracker(): null {
         previous_page: toPageSlug(previous),
       },
     });
+
+    // Fire funnel_first_feature_used once per session when the user first
+    // navigates to a qualifying feature route. Guarded by sessionStorage so
+    // it fires at most once even across route changes within the same tab.
+    const feature = toFirstFeature(pathname);
+    if (feature !== null && !sessionStorage.getItem(FIRST_FEATURE_KEY)) {
+      trackEvent({
+        name: 'funnel_first_feature_used',
+        properties: { feature },
+      });
+      sessionStorage.setItem(FIRST_FEATURE_KEY, '1');
+    }
   }, [pathname]);
 
   return null;

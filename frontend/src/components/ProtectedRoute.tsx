@@ -1,5 +1,6 @@
 import { Outlet, useLocation } from 'react-router-dom';
 import { useAuth, SignInButton } from '@clerk/react';
+import { trackEvent } from '@/services/analytics';
 import './ProtectedRoute.css';
 
 interface ProtectedRouteProps {
@@ -45,7 +46,16 @@ const ProtectedRoute = ({ children }: ProtectedRouteProps) => {
           </p>
           <div className="protected-route-actions">
             <SignInButton mode="modal">
-              <button className="protected-route-btn" data-testid="protected-route-sign-in-btn">
+              <button
+                className="protected-route-btn"
+                data-testid="protected-route-sign-in-btn"
+                onClick={() =>
+                  trackEvent({
+                    name: 'funnel_sign_up_started',
+                    properties: { entry_point: 'protected_route_redirect' },
+                  })
+                }
+              >
                 Sign In
               </button>
             </SignInButton>

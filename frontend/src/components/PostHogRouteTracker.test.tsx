@@ -7,11 +7,13 @@
  * - Normalizes dynamic route segments to slugs (e.g. /deck-builder/:id → deck_builder).
  * - No user_id is ever included in any page_viewed payload.
  */
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render } from '@testing-library/react';
 import { MemoryRouter, Route, Routes, useNavigate } from 'react-router-dom';
 import { act } from 'react';
 import { PostHogRouteTracker } from './PostHogRouteTracker';
+
+const FIRST_FEATURE_KEY = 'vaultmtg_ph_funnel_first_feature_used_fired';
 
 // ── Analytics mock ────────────────────────────────────────────────────────────
 
@@ -64,6 +66,11 @@ function renderTracker(initialPath = '/home') {
 describe('PostHogRouteTracker', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    sessionStorage.clear();
+  });
+
+  afterEach(() => {
+    sessionStorage.clear();
   });
 
   it('does NOT fire page_viewed on the initial mount (skip-first rule)', () => {
@@ -146,5 +153,157 @@ describe('PostHogRouteTracker', () => {
       </MemoryRouter>,
     );
     expect(container.firstChild).toBeNull();
+  });
+});
+
+// ── funnel_first_feature_used ─────────────────────────────────────────────────
+
+describe('PostHogRouteTracker — funnel_first_feature_used', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    sessionStorage.clear();
+  });
+
+  afterEach(() => {
+    sessionStorage.clear();
+  });
+
+  it('fires funnel_first_feature_used when navigating to a qualifying route for the first time', async () => {
+    const { navigate } = renderTracker('/home');
+    await navigate('/draft');
+    const calls = mockTrackEvent.mock.calls.filter(
+      ([e]: [{ name: string }]) => e.name === 'funnel_first_feature_used',
+    );
+    expect(calls).toHaveLength(1);
+    expect(calls[0][0]).toEqual({
+      name: 'funnel_first_feature_used',
+      properties: { feature: 'draft' },
+    });
+  });
+
+  it('fires funnel_first_feature_used with feature "charts" for any /charts/* route', async () => {
+    const { navigate } = renderTracker('/home');
+    await navigate('/charts/win-rate-trend');
+    const calls = mockTrackEvent.mock.calls.filter(
+      ([e]: [{ name: string }]) => e.name === 'funnel_first_feature_used',
+    );
+    expect(calls).toHaveLength(1);
+    expect(calls[0][0].properties.feature).toBe('charts');
+  });
+
+  it('fires funnel_first_feature_used with feature "decks" for /decks route', async () => {
+    const { navigate } = renderTracker('/home');
+    await navigate('/decks');
+    const calls = mockTrackEvent.mock.calls.filter(
+      ([e]: [{ name: string }]) => e.name === 'funnel_first_feature_used',
+    );
+    expect(calls).toHaveLength(1);
+    expect(calls[0][0].properties.feature).toBe('decks');
+  });
+
+  it('fires funnel_first_feature_used with feature "decks" for /deck-builder/* route', async () => {
+    const { navigate } = renderTracker('/home');
+    await navigate('/deck-builder/abc-123');
+    const calls = mockTrackEvent.mock.calls.filter(
+      ([e]: [{ name: string }]) => e.name === 'funnel_first_feature_used',
+    );
+    expect(calls).toHaveLength(1);
+    expect(calls[0][0].properties.feature).toBe('decks');
+  });
+
+  it('does NOT fire funnel_first_feature_used on non-qualifying routes (/match-history)', async () => {
+    const { navigate } = renderTracker('/home');
+    await navigate('/match-history');
+    const calls = mockTrackEvent.mock.calls.filter(
+      ([e]: [{ name: string }]) => e.name === 'funnel_first_feature_used',
+    );
+    expect(calls).toHaveLength(0);
+  });
+
+  it('does NOT fire funnel_first_feature_used on /home', async () => {
+    const { navigate } = renderTracker('/draft');
+    await navigate('/home');
+    const calls = mockTrackEvent.mock.calls.filter(
+      ([e]: [{ name: string }]) => e.name === 'funnel_first_feature_used',
+    );
+    expect(calls).toHaveLength(0);
+  });
+
+  it('fires funnel_first_feature_used only once per session (sessionStorage guard)', async () => {
+    const { navigate } = renderTracker('/home');
+    await navigate('/draft');
+    await navigate('/home');
+    await navigate('/collection');
+    const calls = mockTrackEvent.mock.calls.filter(
+      ([e]: [{ name: string }]) => e.name === 'funnel_first_feature_used',
+    );
+    expect(calls).toHaveLength(1);
+    expect(calls[0][0].properties.feature).toBe('draft');
+  });
+
+  it('does NOT fire funnel_first_feature_used when sessionStorage guard is already set', async () => {
+    sessionStorage.setItem(FIRST_FEATURE_KEY, '1');
+    const { navigate } = renderTracker('/home');
+    await navigate('/collection');
+    const calls = mockTrackEvent.mock.calls.filter(
+      ([e]: [{ name: string }]) => e.name === 'funnel_first_feature_used',
+    );
+    expect(calls).toHaveLength(0);
+  });
+
+  it('sets sessionStorage guard after firing funnel_first_feature_used', async () => {
+    const { navigate } = renderTracker('/home');
+    await navigate('/meta');
+    expect(sessionStorage.getItem(FIRST_FEATURE_KEY)).toBe('1');
+  });
+
+  it('NEGATIVE: funnel_first_feature_used payload never contains user_id', async () => {
+    const { navigate } = renderTracker('/home');
+    await navigate('/quests');
+    mockTrackEvent.mock.calls
+      .filter(([e]: [{ name: string }]) => e.name === 'funnel_first_feature_used')
+      .forEach(([e]: [{ properties: Record<string, unknown> }]) => {
+        expect(e.properties).not.toHaveProperty('user_id');
+      });
+  });
+
+  it('fires funnel_first_feature_used with feature "collection" for /collection', async () => {
+    const { navigate } = renderTracker('/home');
+    await navigate('/collection');
+    const calls = mockTrackEvent.mock.calls.filter(
+      ([e]: [{ name: string }]) => e.name === 'funnel_first_feature_used',
+    );
+    expect(calls).toHaveLength(1);
+    expect(calls[0][0].properties.feature).toBe('collection');
+  });
+
+  it('fires funnel_first_feature_used with feature "meta" for /meta', async () => {
+    const { navigate } = renderTracker('/home');
+    await navigate('/meta');
+    const calls = mockTrackEvent.mock.calls.filter(
+      ([e]: [{ name: string }]) => e.name === 'funnel_first_feature_used',
+    );
+    expect(calls).toHaveLength(1);
+    expect(calls[0][0].properties.feature).toBe('meta');
+  });
+
+  it('fires funnel_first_feature_used with feature "draft_analytics" for /draft-analytics', async () => {
+    const { navigate } = renderTracker('/home');
+    await navigate('/draft-analytics');
+    const calls = mockTrackEvent.mock.calls.filter(
+      ([e]: [{ name: string }]) => e.name === 'funnel_first_feature_used',
+    );
+    expect(calls).toHaveLength(1);
+    expect(calls[0][0].properties.feature).toBe('draft_analytics');
+  });
+
+  it('fires funnel_first_feature_used with feature "quests" for /quests', async () => {
+    const { navigate } = renderTracker('/home');
+    await navigate('/quests');
+    const calls = mockTrackEvent.mock.calls.filter(
+      ([e]: [{ name: string }]) => e.name === 'funnel_first_feature_used',
+    );
+    expect(calls).toHaveLength(1);
+    expect(calls[0][0].properties.feature).toBe('quests');
   });
 });

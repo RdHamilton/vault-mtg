@@ -132,6 +132,95 @@ describe('analytics', () => {
     expect(Events.APP_USER_SIGNED_OUT).toBe('app_user_signed_out');
   });
 
+  // ── Funnel event taxonomy declarations ───────────────────────────────────────
+
+  it('Events.FUNNEL_SIGN_UP_STARTED is declared in the taxonomy', async () => {
+    vi.stubEnv('VITE_POSTHOG_KEY', '');
+    const { Events } = await import('../analytics');
+    vi.unstubAllEnvs();
+    expect(Events.FUNNEL_SIGN_UP_STARTED).toBe('funnel_sign_up_started');
+  });
+
+  it('Events.FUNNEL_FIRST_FEATURE_USED is declared in the taxonomy', async () => {
+    vi.stubEnv('VITE_POSTHOG_KEY', '');
+    const { Events } = await import('../analytics');
+    vi.unstubAllEnvs();
+    expect(Events.FUNNEL_FIRST_FEATURE_USED).toBe('funnel_first_feature_used');
+  });
+
+  it('Events.FUNNEL_DAEMON_PAIRED is declared in the taxonomy (declaration-only — BFF emits)', async () => {
+    vi.stubEnv('VITE_POSTHOG_KEY', '');
+    const { Events } = await import('../analytics');
+    vi.unstubAllEnvs();
+    expect(Events.FUNNEL_DAEMON_PAIRED).toBe('funnel_daemon_paired');
+  });
+
+  it('trackEvent handles funnel_sign_up_started with entry_point protected_route_redirect', async () => {
+    vi.stubEnv('VITE_POSTHOG_KEY', 'phc_testkey');
+    const posthog = (await import('posthog-js')).default;
+    const { initAnalytics, trackEvent } = await import('../analytics');
+
+    initAnalytics();
+    trackEvent({
+      name: 'funnel_sign_up_started',
+      properties: { entry_point: 'protected_route_redirect' },
+    });
+
+    expect(posthog.capture).toHaveBeenCalledWith('funnel_sign_up_started', {
+      entry_point: 'protected_route_redirect',
+    });
+    vi.unstubAllEnvs();
+  });
+
+  it('NEGATIVE: funnel_sign_up_started payload does not contain user_id', async () => {
+    vi.stubEnv('VITE_POSTHOG_KEY', 'phc_testkey');
+    const posthog = (await import('posthog-js')).default;
+    const { initAnalytics, trackEvent } = await import('../analytics');
+
+    initAnalytics();
+    trackEvent({
+      name: 'funnel_sign_up_started',
+      properties: { entry_point: 'protected_route_redirect' },
+    });
+
+    const capturedProps = (posthog.capture as ReturnType<typeof vi.fn>).mock.calls[0][1] as Record<string, unknown>;
+    expect(capturedProps).not.toHaveProperty('user_id');
+    vi.unstubAllEnvs();
+  });
+
+  it('trackEvent handles funnel_first_feature_used with feature draft', async () => {
+    vi.stubEnv('VITE_POSTHOG_KEY', 'phc_testkey');
+    const posthog = (await import('posthog-js')).default;
+    const { initAnalytics, trackEvent } = await import('../analytics');
+
+    initAnalytics();
+    trackEvent({
+      name: 'funnel_first_feature_used',
+      properties: { feature: 'draft' },
+    });
+
+    expect(posthog.capture).toHaveBeenCalledWith('funnel_first_feature_used', {
+      feature: 'draft',
+    });
+    vi.unstubAllEnvs();
+  });
+
+  it('NEGATIVE: funnel_first_feature_used payload does not contain user_id', async () => {
+    vi.stubEnv('VITE_POSTHOG_KEY', 'phc_testkey');
+    const posthog = (await import('posthog-js')).default;
+    const { initAnalytics, trackEvent } = await import('../analytics');
+
+    initAnalytics();
+    trackEvent({
+      name: 'funnel_first_feature_used',
+      properties: { feature: 'charts' },
+    });
+
+    const capturedProps = (posthog.capture as ReturnType<typeof vi.fn>).mock.calls[0][1] as Record<string, unknown>;
+    expect(capturedProps).not.toHaveProperty('user_id');
+    vi.unstubAllEnvs();
+  });
+
   // ── trackEvent typed API ──────────────────────────────────────────────────
 
   it('trackEvent calls posthog.capture with correct event name and typed properties', async () => {
