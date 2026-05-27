@@ -126,8 +126,7 @@ describe('ConnectedDevicesSection', () => {
       render(<ConnectedDevicesSection />);
 
       await waitFor(() => {
-        expect(screen.getByTestId('revoke-button-0')).toBeInTheDocument();
-        expect(screen.getByTestId('revoke-button-1')).toBeInTheDocument();
+        expect(screen.getAllByTestId('revoke-button')).toHaveLength(2);
       });
     });
 
@@ -186,7 +185,7 @@ describe('ConnectedDevicesSection', () => {
       });
 
       await act(async () => {
-        fireEvent.click(screen.getByTestId('revoke-button-0'));
+        fireEvent.click(screen.getAllByTestId('revoke-button')[0]);
       });
 
       await waitFor(() => {
@@ -204,10 +203,10 @@ describe('ConnectedDevicesSection', () => {
       render(<ConnectedDevicesSection />);
 
       await waitFor(() => {
-        expect(screen.getByTestId('revoke-button-0')).toBeInTheDocument();
+        expect(screen.getByTestId('revoke-button')).toBeInTheDocument();
       });
 
-      fireEvent.click(screen.getByTestId('revoke-button-0'));
+      fireEvent.click(screen.getByTestId('revoke-button'));
 
       await waitFor(() => {
         expect(mockRevokeDaemon).toHaveBeenCalledWith(
@@ -227,11 +226,11 @@ describe('ConnectedDevicesSection', () => {
       render(<ConnectedDevicesSection />);
 
       await waitFor(() => {
-        expect(screen.getByTestId('revoke-button-0')).toBeInTheDocument();
+        expect(screen.getByTestId('revoke-button')).toBeInTheDocument();
       });
 
       await act(async () => {
-        fireEvent.click(screen.getByTestId('revoke-button-0'));
+        fireEvent.click(screen.getByTestId('revoke-button'));
       });
 
       await waitFor(() => {
@@ -248,11 +247,10 @@ describe('ConnectedDevicesSection', () => {
       render(<ConnectedDevicesSection />);
 
       await waitFor(() => {
-        expect(screen.getByTestId('revoke-button-0')).toBeInTheDocument();
-        expect(screen.getByTestId('revoke-button-1')).toBeInTheDocument();
+        expect(screen.getAllByTestId('revoke-button')).toHaveLength(2);
       });
 
-      fireEvent.click(screen.getByTestId('revoke-button-0'));
+      fireEvent.click(screen.getAllByTestId('revoke-button')[0]);
 
       await waitFor(() => {
         expect(screen.getByTestId('revoke-error-0')).toBeInTheDocument();
@@ -266,10 +264,10 @@ describe('ConnectedDevicesSection', () => {
       render(<ConnectedDevicesSection />);
 
       await waitFor(() => {
-        expect(screen.getByTestId('revoke-button-0')).toBeInTheDocument();
+        expect(screen.getByTestId('revoke-button')).toBeInTheDocument();
       });
 
-      fireEvent.click(screen.getByTestId('revoke-button-0'));
+      fireEvent.click(screen.getByTestId('revoke-button'));
 
       await waitFor(() => {
         expect(screen.getByTestId('revoke-error-0')).toBeInTheDocument();
@@ -286,12 +284,11 @@ describe('ConnectedDevicesSection', () => {
       render(<ConnectedDevicesSection />);
 
       await waitFor(() => {
-        expect(screen.getByTestId('revoke-button-0')).toBeInTheDocument();
-        expect(screen.getByTestId('revoke-button-1')).toBeInTheDocument();
+        expect(screen.getAllByTestId('revoke-button')).toHaveLength(2);
       });
 
       // Click the first revoke button (DEVICE_A at index 0)
-      fireEvent.click(screen.getByTestId('revoke-button-0'));
+      fireEvent.click(screen.getAllByTestId('revoke-button')[0]);
 
       await waitFor(() => {
         expect(screen.getByTestId('revoke-error-0')).toBeInTheDocument();
