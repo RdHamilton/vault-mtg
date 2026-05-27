@@ -47,6 +47,17 @@ type Dispatcher struct {
 	// SendOrBuffer enqueues pre-marshaled bytes after retry exhaustion rather
 	// than returning an error to the caller.
 	buffer *RingBuffer
+	// onBFFFailure is an optional callback invoked once when SendOrBuffer
+	// exhausts all retry attempts and buffers the event (terminal failure path
+	// only). statusCode is the last HTTP status returned by the BFF, or 0 for
+	// transport-level failures. The callback must NOT be invoked on intermediate
+	// retry attempts or on context-cancellation buffering — only on the
+	// "all attempts failed" branch. Set via WithOnBFFFailure; nil is safe.
+	onBFFFailure func(statusCode int)
+	// onBFFSuccess is an optional callback invoked when SendOrBuffer successfully
+	// delivers an event to the BFF (HTTP 2xx). Called before draining the buffer.
+	// Set via WithOnBFFSuccess; nil is safe.
+	onBFFSuccess func()
 	// seq is the per-session sequence counter.  Incremented atomically so
 	// Send is safe for concurrent callers.  Reset to 0 on daemon restart
 	// because the Dispatcher itself is recreated on restart.
@@ -84,10 +95,34 @@ func (d *Dispatcher) WithBuffer(b *RingBuffer) *Dispatcher {
 	return d
 }
 
+// WithOnBFFFailure registers an optional callback that is invoked exactly once
+// when SendOrBuffer exhausts all retry attempts and buffers the event. The
+// callback receives the HTTP status code from the last BFF attempt (0 for
+// transport-level failures). It is NOT called on intermediate retries or when
+// buffering occurs due to context cancellation. Set to nil to disable.
+func (d *Dispatcher) WithOnBFFFailure(cb func(statusCode int)) *Dispatcher {
+	d.onBFFFailure = cb
+	return d
+}
+
+// WithOnBFFSuccess registers an optional callback invoked when SendOrBuffer
+// successfully delivers an event (HTTP 2xx). Called before buffer drain.
+// Used by the service to reset the consecutive-failure counter.
+func (d *Dispatcher) WithOnBFFSuccess(cb func()) *Dispatcher {
+	d.onBFFSuccess = cb
+	return d
+}
+
 // SetToken updates the bearer token used for subsequent requests.
 // Called after successful re-registration to swap in the new JWT.
 func (d *Dispatcher) SetToken(token string) {
 	d.apiKey = token
+}
+
+// Token returns the current bearer token. Used when building a transient
+// dispatcher that needs the same credentials as the primary dispatcher.
+func (d *Dispatcher) Token() string {
+	return d.apiKey
 }
 
 // Send assigns the next per-session sequence number to the event, encodes it
@@ -163,11 +198,18 @@ func (d *Dispatcher) SendOrBuffer(ctx context.Context, event contract.DaemonEven
 	}
 
 	var lastErr error
+	var lastStatusCode int
 	for attempt := 1; attempt <= maxAttempts; attempt++ {
 		var statusCode int
 		statusCode, lastErr = d.doSend(ctx, body)
 		if lastErr == nil {
 			log.Printf("[dispatch] event %q sent (session=%s)", event.Type, event.SessionID)
+			// Notify the service of a confirmed BFF success before draining the
+			// buffer. This allows the service to reset failure counters at the
+			// earliest possible moment (before replay events potentially fail).
+			if d.onBFFSuccess != nil {
+				d.onBFFSuccess()
+			}
 			// AC-3: drain buffered events on first successful send (best-effort;
 			// per ADR-013 amendment Q1/OQ-1 a failed drain item is logged and
 			// discarded — no re-enqueue to avoid thundering-herd / livelock).
@@ -180,6 +222,7 @@ func (d *Dispatcher) SendOrBuffer(ctx context.Context, event contract.DaemonEven
 			}
 			return nil
 		}
+		lastStatusCode = statusCode
 		// On 401, attempt to refresh the token before retrying.
 		if statusCode == http.StatusUnauthorized && d.refresher != nil {
 			log.Printf("[dispatch] 401 received; attempting token refresh")
@@ -218,6 +261,14 @@ func (d *Dispatcher) SendOrBuffer(ctx context.Context, event contract.DaemonEven
 		d.buffer.Enqueue(body)
 		log.Printf("[dispatch] all %d attempts failed; buffered event seq=%d (dropped_total=%d)",
 			maxAttempts, event.Sequence, d.buffer.Dropped())
+		// Notify the caller that a terminal BFF failure occurred. The last
+		// known HTTP status code is passed (0 for transport-level failures)
+		// so the service can record it for the dispatch_degraded counter.
+		// This fires ONLY on the "all retries exhausted" path — NOT on
+		// intermediate retries and NOT on context-cancellation buffering.
+		if d.onBFFFailure != nil {
+			d.onBFFFailure(lastStatusCode)
+		}
 		return nil
 	}
 	return fmt.Errorf("all %d attempts failed: %w", maxAttempts, lastErr)

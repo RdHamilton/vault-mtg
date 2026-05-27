@@ -10,6 +10,7 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"runtime"
 	"sort"
 	"sync"
 	"time"
@@ -103,6 +104,18 @@ type Service struct {
 	// failedEventTypes accumulates the distinct event-type strings for which
 	// at least one parse error occurred since the last heartbeat reset.
 	failedEventTypes map[string]struct{}
+
+	// bffMu guards the two BFF-failure tracking fields below.
+	// recordBFFFailure and clearBFFFailureCounter acquire this lock.
+	bffMu sync.Mutex
+	// consecutiveBFFFailures counts how many consecutive SendOrBuffer calls
+	// have ended in terminal failure (all retries exhausted). Reset to 0 on
+	// the next successful dispatch. Included in the heartbeat payload so the
+	// BFF can emit daemon.dispatch_degraded when the count exceeds the threshold.
+	consecutiveBFFFailures uint32
+	// lastBFFStatusCode is the HTTP status code from the most recent terminal
+	// BFF failure. 0 for transport-level failures.
+	lastBFFStatusCode int
 }
 
 // New creates a Service from cfg.
@@ -167,6 +180,14 @@ func New(cfg *config.Config) *Service {
 		StaleMinutes:   cfg.GRESessionStaleMinutes,
 		Flush:          svc.flushGREBuffer,
 	})
+
+	// Wire the BFF-failure callback so terminal dispatch failures are counted,
+	// and the success callback so the counter resets on the next confirmed send.
+	// The counter is included in the next heartbeat payload so the BFF can emit
+	// daemon.dispatch_degraded to PostHog when the count exceeds the threshold.
+	// onBFFFailure fires only on "all retries exhausted" — NOT on context
+	// cancellation. onBFFSuccess fires only on an actual HTTP 2xx delivery.
+	d.WithOnBFFFailure(svc.recordBFFFailure).WithOnBFFSuccess(svc.clearBFFFailureCounter)
 
 	return svc
 }
@@ -314,6 +335,19 @@ func (s *Service) retryKeychain(ctx context.Context) error {
 		}
 		log.Printf("[daemon] keychain retry %d/%d failed: %v", attempt, keychainMaxRetries, err)
 	}
+
+	// Dispatch daemon.keychain_error only when AccountID is non-empty (post-auth
+	// case B per Ray's OQ-1 verdict). Pre-auth keychain failures are unobservable
+	// via the BFF emission boundary — the event would have no api_key and never
+	// reach the BFF. The correct signal for the pre-auth case is heartbeat-absence.
+	if s.cfg.AccountID != "" {
+		errorType := "os_error"
+		if errors.Is(s.keychainErr, keychain.ErrNotFound) {
+			errorType = "not_found"
+		}
+		go s.dispatchKeychainError(ctx, errorType)
+	}
+
 	return fmt.Errorf("keychain unavailable after %d retries", keychainMaxRetries)
 }
 
@@ -495,10 +529,19 @@ func (s *Service) Run(ctx context.Context) error {
 			// Snapshot and reset the parse-failure counter so each heartbeat
 			// window carries an independent, non-overlapping slice of counts.
 			driftCount, driftHash, driftTypes := s.snapshotAndResetDrift()
+			// Snapshot BFF failure counter under lock; do not reset it here —
+			// the daemon resets it on the next successful SendOrBuffer, not per
+			// heartbeat. The BFF decides whether to emit dispatch_degraded.
+			s.bffMu.Lock()
+			bffFailCount := s.consecutiveBFFFailures
+			bffStatusCode := s.lastBFFStatusCode
+			s.bffMu.Unlock()
 			hbPayload := heartbeatPayload{
-				ParseFailureCount: driftCount,
-				SampleLineHash:    driftHash,
-				FailedEventTypes:  driftTypes,
+				ParseFailureCount:      driftCount,
+				SampleLineHash:         driftHash,
+				FailedEventTypes:       driftTypes,
+				ConsecutiveBFFFailures: bffFailCount,
+				LastBFFStatusCode:      bffStatusCode,
 			}
 			evt, err := dispatch.BuildEvent("daemon.heartbeat", s.cfg.AccountID, s.sessionID, hbPayload)
 			if err != nil {
@@ -555,10 +598,17 @@ func (s *Service) Run(ctx context.Context) error {
 // When parse failures have occurred since the last heartbeat, ParseFailureCount
 // is non-zero and the drift fields are populated; the BFF inspects these to
 // emit a daemon.log_format_drift PostHog event (per ADR-027 §OQ-5, #2569).
+// ConsecutiveBFFFailures is the number of consecutive SendOrBuffer terminal
+// failures since the last success; the BFF emits daemon.dispatch_degraded when
+// this counter is >= dispatchDegradedThreshold (#2139).
 type heartbeatPayload struct {
+	// From #2569: parse-failure drift detection.
 	ParseFailureCount uint32   `json:"parse_failure_count"`
 	SampleLineHash    string   `json:"sample_line_hash,omitempty"`
 	FailedEventTypes  []string `json:"failed_event_types,omitempty"`
+	// From #2139: BFF dispatch degradation signal.
+	ConsecutiveBFFFailures uint32 `json:"consecutive_bff_failures,omitempty"`
+	LastBFFStatusCode      int    `json:"last_bff_status_code,omitempty"`
 }
 
 // recordParseFailure increments the per-heartbeat parse-failure counter,
@@ -596,6 +646,110 @@ func (s *Service) snapshotAndResetDrift() (count uint32, hash string, types []st
 
 	sort.Strings(types)
 	return count, hash, types
+}
+
+// recordBFFFailure increments the consecutive-BFF-failure counter and records
+// the last status code. Called by the onBFFFailure callback wired into the
+// Dispatcher in New(). Safe to call concurrently; bffMu is held internally.
+func (s *Service) recordBFFFailure(statusCode int) {
+	s.bffMu.Lock()
+	s.consecutiveBFFFailures++
+	s.lastBFFStatusCode = statusCode
+	s.bffMu.Unlock()
+}
+
+// clearBFFFailureCounter resets the consecutive-failure counter and status code
+// to zero. Called after a successful SendOrBuffer. Safe to call concurrently.
+func (s *Service) clearBFFFailureCounter() {
+	s.bffMu.Lock()
+	s.consecutiveBFFFailures = 0
+	s.lastBFFStatusCode = 0
+	s.bffMu.Unlock()
+}
+
+// authFailedPayload is the JSON body of a daemon.auth_failed dispatch event.
+// reason is one of: "bff_rejected", "pkce_timeout", "pkce_cancelled".
+// BFFStatusCode is populated only when reason is "bff_rejected"; it carries the
+// raw HTTP status (401, 403, etc.) for operator routing on the dashboard.
+type authFailedPayload struct {
+	Reason        string `json:"reason"`
+	BFFStatusCode int    `json:"bff_status_code,omitempty"`
+	Platform      string `json:"platform"`
+	DaemonVersion string `json:"daemon_version"`
+}
+
+// keychainErrorPayload is the JSON body of a daemon.keychain_error dispatch event.
+// ErrorType is one of: "not_found", "os_error".
+type keychainErrorPayload struct {
+	ErrorType     string `json:"error_type"`
+	Platform      string `json:"platform"`
+	DaemonVersion string `json:"daemon_version"`
+}
+
+// dispatchAuthFailed sends a daemon.auth_failed event to the BFF via a
+// transient dispatcher that has NO refresher set. This is intentional:
+// dispatching telemetry about an auth failure must not itself trigger the
+// auth-failure tray hook again (which would happen if we used s.dispatcher in
+// keychain mode and the BFF returned 401 for the telemetry event). A no-refresher
+// dispatcher will retry up to 3 times and buffer on exhaustion — correct
+// behaviour for a telemetry event that the BFF may briefly be unable to accept.
+// reason must be one of: "bff_rejected", "pkce_timeout", "pkce_cancelled".
+// For "bff_rejected", lastBFFStatusCode is read under the lock and included as
+// bff_status_code. This is best-effort — errors are logged and swallowed.
+func (s *Service) dispatchAuthFailed(ctx context.Context, reason string) {
+	s.bffMu.Lock()
+	statusCode := s.lastBFFStatusCode
+	s.bffMu.Unlock()
+
+	p := authFailedPayload{
+		Reason:        reason,
+		Platform:      runtime.GOOS,
+		DaemonVersion: s.version,
+	}
+	if reason == "bff_rejected" {
+		p.BFFStatusCode = statusCode
+	}
+
+	evt, err := dispatch.BuildEvent("daemon.auth_failed", s.cfg.AccountID, s.sessionID, p)
+	if err != nil {
+		log.Printf("[daemon] warn: build auth_failed event: %v", err)
+		return
+	}
+	// Use a transient dispatcher without a refresher so that if the BFF
+	// returns 401 for this telemetry event, we retry silently and buffer —
+	// without re-triggering the keychain reauth tray hook a second time.
+	// Token() returns the primary dispatcher's current bearer token.
+	d := dispatch.New(s.cfg.CloudAPIURL, s.cfg.IngestPath, s.dispatcher.Token()).
+		WithBuffer(s.eventBuffer)
+	dispatchCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
+	if err := d.SendOrBuffer(dispatchCtx, evt); err != nil {
+		log.Printf("[daemon] warn: dispatch auth_failed event: %v", err)
+	}
+}
+
+// dispatchKeychainError sends a daemon.keychain_error event to the BFF via a
+// transient no-refresher dispatcher (same pattern as dispatchAuthFailed).
+// errorType must be one of: "not_found", "os_error".
+// This is best-effort — errors are logged and swallowed.
+func (s *Service) dispatchKeychainError(ctx context.Context, errorType string) {
+	p := keychainErrorPayload{
+		ErrorType:     errorType,
+		Platform:      runtime.GOOS,
+		DaemonVersion: s.version,
+	}
+	evt, err := dispatch.BuildEvent("daemon.keychain_error", s.cfg.AccountID, s.sessionID, p)
+	if err != nil {
+		log.Printf("[daemon] warn: build keychain_error event: %v", err)
+		return
+	}
+	d := dispatch.New(s.cfg.CloudAPIURL, s.cfg.IngestPath, s.dispatcher.Token()).
+		WithBuffer(s.eventBuffer)
+	dispatchCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
+	if err := d.SendOrBuffer(dispatchCtx, evt); err != nil {
+		log.Printf("[daemon] warn: dispatch keychain_error event: %v", err)
+	}
 }
 
 // handleEntry classifies a log entry and dispatches it to the BFF.
@@ -720,11 +874,21 @@ func (s *Service) handleEntry(ctx context.Context, entry *logreader.LogEntry) er
 
 	if err := s.dispatcher.SendOrBuffer(dispatchCtx, evt); err != nil {
 		if errors.Is(err, dispatch.ErrReauthRequired) {
-			// Logged once by the dispatcher; suppress per-entry spam.
+			// ErrReauthRequired: the BFF returned 401/403 in keychain mode.
+			// Fire a dedicated daemon.auth_failed dispatch event in a goroutine
+			// (fire-and-forget) so the BFF can emit to PostHog with low latency.
+			// Runs in a goroutine so the run-loop entry is not blocked by
+			// additional dispatch retries. Uses a transient no-refresher
+			// dispatcher so the auth-failure tray hook is not re-triggered.
+			go s.dispatchAuthFailed(context.Background(), "bff_rejected")
 			return nil
 		}
 		return err
 	}
+	// NOTE: the BFF failure/success counter is managed entirely via the
+	// onBFFFailure and onBFFSuccess callbacks wired to the Dispatcher in New().
+	// Do NOT call clearBFFFailureCounter here — it is called by onBFFSuccess
+	// inside SendOrBuffer on confirmed HTTP 2xx delivery.
 	return nil
 }
 

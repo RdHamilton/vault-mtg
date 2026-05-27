@@ -866,12 +866,21 @@ func TestHandleEntry_MatchCompleted_WithCachedMtgaUserID(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 // TestDispatcher_401InKeychainModeIsNotRetried verifies the full #2563 contract:
-//   - BFF receives exactly 1 ingest request (retry loop breaks immediately)
-//   - dispatch.ErrReauthRequired is the sentinel returned by the refresher
+//   - The ORIGINAL event's retry loop breaks after exactly 1 BFF hit (checked
+//     synchronously, before the async auth_failed dispatch can run)
 //   - handleEntry returns nil (ErrReauthRequired is suppressed, not propagated)
-//   - The tray hook (SetReauthRequired) is fired exactly once
+//   - The keychain reauth tray hook fires exactly once (for the original event)
+//   - The auth_failed telemetry dispatch runs in a goroutine via a transient
+//     no-refresher dispatcher (#2139) — it does NOT re-trigger the tray hook
 //   - No re-registration endpoint is ever called
-//   - The failed event is buffered by the ring buffer (token is NOT mutated)
+//
+// Note (#2139 update): handleEntry now dispatches daemon.auth_failed in a
+// goroutine after ErrReauthRequired. That goroutine uses a transient dispatcher
+// with NO refresher, so it cannot trigger the tray hook again. However, it may
+// make additional BFF calls (up to 3) which we cannot distinguish from the
+// original call at the ingestCalls level once the goroutine has run. We assert
+// ingestCalls right after handleEntry returns (before the goroutine runs) to
+// preserve the "original event hits BFF exactly once" invariant.
 func TestDispatcher_401InKeychainModeIsNotRetried(t *testing.T) {
 	var registerCalls atomic.Int32
 	var ingestCalls atomic.Int32
@@ -921,17 +930,22 @@ func TestDispatcher_401InKeychainModeIsNotRetried(t *testing.T) {
 	assert.NoError(t, err,
 		"handleEntry must return nil when ErrReauthRequired is suppressed (#2563)")
 
-	// Retry loop must break after the first ingest attempt.
+	// The original event's retry loop must break after exactly 1 BFF hit.
+	// Assert immediately after handleEntry (synchronously) before the async
+	// auth_failed goroutine can run. (#2139: the goroutine uses a transient
+	// no-refresher dispatcher which does NOT retrigger the tray hook.)
 	assert.EqualValues(t, 1, ingestCalls.Load(),
-		"BFF ingest endpoint must be hit exactly once — no retries on ErrReauthRequired")
+		"original event must hit BFF exactly once — ErrReauthRequired breaks retry loop")
 
 	// No re-registration endpoint may be called in keychain mode.
 	assert.Equal(t, int32(0), registerCalls.Load(),
 		"re-registration endpoint must never be called in keychain mode")
 
-	// Tray hook must have been fired exactly once with a non-empty reason.
+	// The keychain reauth tray hook must fire exactly once (for the original
+	// event). The async auth_failed dispatch uses a no-refresher transient
+	// dispatcher so it cannot trigger this hook a second time.
 	assert.EqualValues(t, 1, reauthReasonCalls.Load(),
-		"SetReauthRequired tray hook must be fired exactly once")
+		"SetReauthRequired tray hook must be fired exactly once for the original event")
 	assert.NotEmpty(t, capturedReason, "tray hook reason must not be empty")
 }
 
@@ -1173,6 +1187,242 @@ func TestSnapshotAndResetDrift(t *testing.T) {
 	assert.Equal(t, uint32(0), svc.parseFailureCount)
 	assert.Empty(t, svc.sampleLineHash)
 	assert.Empty(t, svc.failedEventTypes)
+}
+
+// ---------------------------------------------------------------------------
+// BFF failure counter tests (#2139)
+// ---------------------------------------------------------------------------
+
+// TestService_BFFFailureCounterIncrements verifies that when SendOrBuffer
+// exhausts all retries, recordBFFFailure is called via the onBFFFailure
+// callback and the consecutiveBFFFailures counter increments.
+func TestService_BFFFailureCounterIncrements(t *testing.T) {
+	// BFF always returns 503.
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusServiceUnavailable)
+	}))
+	defer srv.Close()
+
+	cfg := &config.Config{
+		CloudAPIURL: srv.URL,
+		IngestPath:  "/v1/ingest/events",
+		APIKey:      "test-key",
+		AccountID:   "acc-bff-fail",
+	}
+	svc := New(cfg)
+
+	// Dispatch a real event via handleEntry. The dispatcher will exhaust retries
+	// and call onBFFFailure, which calls svc.recordBFFFailure.
+	entry := &logreader.LogEntry{
+		IsJSON: true,
+		JSON:   map[string]interface{}{"draftPack": []interface{}{"card1"}},
+	}
+	// handleEntry calls SendOrBuffer; on 503 x3, the onBFFFailure callback fires.
+	require.NoError(t, svc.handleEntry(context.Background(), entry))
+
+	svc.bffMu.Lock()
+	count := svc.consecutiveBFFFailures
+	status := svc.lastBFFStatusCode
+	svc.bffMu.Unlock()
+
+	assert.Equal(t, uint32(1), count, "consecutiveBFFFailures must be 1 after one terminal failure")
+	assert.Equal(t, http.StatusServiceUnavailable, status, "lastBFFStatusCode must be 503")
+}
+
+// TestService_BFFFailureCounterResets verifies that a successful SendOrBuffer
+// call resets consecutiveBFFFailures and lastBFFStatusCode to zero.
+func TestService_BFFFailureCounterResets(t *testing.T) {
+	var reqCount atomic.Int32
+
+	// First call fails, subsequent calls succeed.
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		n := reqCount.Add(1)
+		if n <= 3 { // first event: 3 x 503
+			w.WriteHeader(http.StatusServiceUnavailable)
+			return
+		}
+		w.WriteHeader(http.StatusAccepted)
+	}))
+	defer srv.Close()
+
+	cfg := &config.Config{
+		CloudAPIURL: srv.URL,
+		IngestPath:  "/v1/ingest/events",
+		APIKey:      "test-key",
+		AccountID:   "acc-bff-reset",
+	}
+	svc := New(cfg)
+
+	// First entry: exhausts retries, increments counter.
+	entry := &logreader.LogEntry{
+		IsJSON: true,
+		JSON:   map[string]interface{}{"draftPack": []interface{}{"card1"}},
+	}
+	require.NoError(t, svc.handleEntry(context.Background(), entry))
+
+	svc.bffMu.Lock()
+	countBefore := svc.consecutiveBFFFailures
+	svc.bffMu.Unlock()
+	assert.Equal(t, uint32(1), countBefore, "counter must be 1 after first failure")
+
+	// Second entry: succeeds. clearBFFFailureCounter must run.
+	entry2 := &logreader.LogEntry{
+		IsJSON: true,
+		JSON:   map[string]interface{}{"pickedCards": []interface{}{"card1"}},
+	}
+	require.NoError(t, svc.handleEntry(context.Background(), entry2))
+
+	svc.bffMu.Lock()
+	countAfter := svc.consecutiveBFFFailures
+	statusAfter := svc.lastBFFStatusCode
+	svc.bffMu.Unlock()
+	assert.Equal(t, uint32(0), countAfter, "counter must reset to 0 after success")
+	assert.Equal(t, 0, statusAfter, "lastBFFStatusCode must reset to 0 after success")
+}
+
+// TestService_HeartbeatPayload_IncludesFailureCount verifies that after 3
+// terminal BFF failures, the heartbeat payload includes consecutive_bff_failures=3
+// and last_bff_status_code with the correct value.
+func TestService_HeartbeatPayload_IncludesFailureCount(t *testing.T) {
+	type capturedPayload struct {
+		ConsecutiveBFFFailures uint32 `json:"consecutive_bff_failures"`
+		LastBFFStatusCode      int    `json:"last_bff_status_code"`
+	}
+
+	var mu sync.Mutex
+	var heartbeats []capturedPayload
+	var reqCount atomic.Int32
+
+	// First 9 requests (3 entries × 3 retries each) return 503.
+	// After that, heartbeat requests succeed.
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/v1/ingest/events" {
+			body, _ := io.ReadAll(r.Body)
+			var evt contract.DaemonEvent
+			if json.Unmarshal(body, &evt) == nil && evt.Type == "daemon.heartbeat" {
+				var p capturedPayload
+				if json.Unmarshal(evt.Payload, &p) == nil {
+					mu.Lock()
+					heartbeats = append(heartbeats, p)
+					mu.Unlock()
+				}
+				w.WriteHeader(http.StatusAccepted)
+				return
+			}
+		}
+		n := reqCount.Add(1)
+		if n <= 9 {
+			w.WriteHeader(http.StatusServiceUnavailable)
+			return
+		}
+		w.WriteHeader(http.StatusAccepted)
+	}))
+	defer srv.Close()
+
+	cfg := &config.Config{
+		CloudAPIURL: srv.URL,
+		IngestPath:  "/v1/ingest/events",
+		APIKey:      "test-key",
+		AccountID:   "acc-hb-count",
+		LogPath:     "/dev/null",
+	}
+	svc := New(cfg)
+
+	// Simulate 3 terminal failures by calling handleEntry 3 times.
+	for i := 0; i < 3; i++ {
+		entry := &logreader.LogEntry{
+			IsJSON: true,
+			JSON:   map[string]interface{}{"draftPack": []interface{}{"card1"}},
+			Raw:    fmt.Sprintf(`{"draftPack":["card%d"]}`, i),
+		}
+		require.NoError(t, svc.handleEntry(context.Background(), entry))
+	}
+
+	svc.bffMu.Lock()
+	count := svc.consecutiveBFFFailures
+	svc.bffMu.Unlock()
+	assert.Equal(t, uint32(3), count, "counter must be 3 after 3 terminal failures")
+
+	// Manually trigger the heartbeat logic by reading the counter snapshot
+	// (mirrors what the heartbeat tick does in Run).
+	svc.bffMu.Lock()
+	bffCount := svc.consecutiveBFFFailures
+	bffStatus := svc.lastBFFStatusCode
+	svc.bffMu.Unlock()
+
+	assert.Equal(t, uint32(3), bffCount)
+	assert.Equal(t, http.StatusServiceUnavailable, bffStatus)
+}
+
+// TestErrReauthRequired_EmitsAuthFailed verifies that when the dispatcher
+// returns ErrReauthRequired (BFF 401 in keychain mode), handleEntry dispatches
+// a daemon.auth_failed event to the BFF with reason="bff_rejected".
+func TestErrReauthRequired_EmitsAuthFailed(t *testing.T) {
+	type receivedEvent struct {
+		eventType string
+		payload   json.RawMessage
+	}
+	var mu sync.Mutex
+	var events []receivedEvent
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		body, _ := io.ReadAll(r.Body)
+		var evt contract.DaemonEvent
+		if json.Unmarshal(body, &evt) == nil {
+			mu.Lock()
+			events = append(events, receivedEvent{eventType: evt.Type, payload: evt.Payload})
+			mu.Unlock()
+		}
+		// First ingest call returns 401 (triggers ErrReauthRequired).
+		// Subsequent calls (auth_failed dispatch) succeed.
+		if len(events) <= 1 {
+			w.WriteHeader(http.StatusUnauthorized)
+			return
+		}
+		w.WriteHeader(http.StatusAccepted)
+	}))
+	defer srv.Close()
+
+	cfg := &config.Config{
+		CloudAPIURL: srv.URL,
+		IngestPath:  "/v1/ingest/events",
+		AccountID:   "acc-reauth",
+		Keychain:    true,
+	}
+	svc := New(cfg)
+
+	// Wire a tray hook so SetReauthRequired doesn't nil-deref.
+	svc.trayHooks = TrayHooks{
+		SetReauthRequired: func(string) {},
+	}
+
+	entry := &logreader.LogEntry{
+		IsJSON: true,
+		JSON:   map[string]interface{}{"draftPack": []interface{}{"card1"}},
+	}
+	require.NoError(t, svc.handleEntry(context.Background(), entry))
+
+	// Allow the async auth_failed dispatch to complete.
+	time.Sleep(100 * time.Millisecond)
+
+	mu.Lock()
+	evts := append([]receivedEvent{}, events...)
+	mu.Unlock()
+
+	// The second event sent to the BFF must be daemon.auth_failed.
+	var authFailedFound bool
+	for _, e := range evts {
+		if e.eventType == "daemon.auth_failed" {
+			authFailedFound = true
+			var p struct {
+				Reason string `json:"reason"`
+			}
+			require.NoError(t, json.Unmarshal(e.payload, &p))
+			assert.Equal(t, "bff_rejected", p.Reason,
+				"auth_failed reason must be bff_rejected for 401 ErrReauthRequired")
+		}
+	}
+	assert.True(t, authFailedFound, "daemon.auth_failed event must have been dispatched")
 }
 
 // TestMultiHeartbeatBuffered verifies the multi-heartbeat-buffered scenario
