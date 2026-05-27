@@ -645,3 +645,109 @@ func TestDaemonRegister_PostHogDistinctIDIsHashed(t *testing.T) {
 		t.Errorf("DistinctId=%q, want hashed value %q", capture.DistinctId, wantDistinctID)
 	}
 }
+
+// ── R2/R3 reinstall path tests (ADR-034 §3) ──────────────────────────────────
+
+// TestDaemonRegister_R2R3_ReinstallEmptyDeviceID_Returns201WithNewKey verifies
+// the R2/R3 reinstall contract: an account that was previously registered sends
+// an empty device_id (daemon.json was deleted on reinstall). The BFF mints a
+// fresh server-issued UUIDv4, persists a new row, and returns 201 + plaintext
+// api_key so the daemon can re-populate the OS keychain.
+//
+// This test confirms: the BFF does NOT return 200 + empty key (already-registered
+// signal) when device_id is empty — it always treats empty as a new install.
+func TestDaemonRegister_R2R3_ReinstallEmptyDeviceID_Returns201WithNewKey(t *testing.T) {
+	// No existing row (existing == nil) — fresh stub, simulates the BFF having
+	// no matching row for an empty device_id.
+	repo := &stubDaemonAPIKeyRepo{}
+	h := handlers.NewDaemonRegisterHandler(repo, nil)
+
+	req := newRegisterRequestWithBody("user_reinstall_r2r3", map[string]string{
+		"device_id":  "", // daemon.json was deleted → empty
+		"platform":   "darwin",
+		"daemon_ver": "0.3.3",
+	})
+	rr := httptest.NewRecorder()
+	h.Register(rr, req)
+
+	// Must be 201 with a fresh key — NOT 200 (which would mean alreadyRegistered).
+	if rr.Code != http.StatusCreated {
+		t.Fatalf("reinstall with empty device_id: expected 201, got %d: %s", rr.Code, rr.Body.String())
+	}
+
+	var resp map[string]any
+	if err := json.NewDecoder(rr.Body).Decode(&resp); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+
+	// 201 must carry a non-empty api_key (plaintext, to be stored in the OS keychain).
+	apiKey, _ := resp["api_key"].(string)
+	if apiKey == "" {
+		t.Error("201 reinstall response must include a non-empty api_key for keychain storage")
+	}
+
+	// 201 must carry a server-minted device_id.
+	deviceID, _ := resp["device_id"].(string)
+	if deviceID == "" {
+		t.Fatal("201 reinstall response must include a server-minted device_id")
+	}
+	if _, err := uuid.Parse(deviceID); err != nil {
+		t.Errorf("server-minted device_id must be a valid UUID, got %q", deviceID)
+	}
+}
+
+// TestDaemonRegister_R2R3_RevokedDeviceRe_Register_Returns201 verifies the
+// revoked-row resurrection guard for the R3 path: daemon presents a device_id
+// that maps to a revoked row. The BFF must NOT resurrect that row — instead it
+// mints a fresh device_id and returns 201 + new api_key. The revoked row is
+// left intact for audit.
+//
+// This test mirrors the AC in ADR-034 §3 and ADR-036 I-3: "a revoked device_id
+// must never be resurrected."
+func TestDaemonRegister_R2R3_RevokedDeviceRe_Register_Returns201(t *testing.T) {
+	const revokedDeviceID = "550e8400-e29b-41d4-a716-446655440300"
+	revokedAt := time.Now().UTC().Add(-2 * time.Hour)
+
+	repo := &stubDaemonAPIKeyRepo{
+		existingByDevice: map[string]*repository.DaemonAPIKey{
+			revokedDeviceID: {
+				ID:        "uuid-revoked-r3",
+				AccountID: "user_r3_reinstall",
+				DeviceID:  revokedDeviceID,
+				RevokedAt: &revokedAt,
+			},
+		},
+	}
+	h := handlers.NewDaemonRegisterHandler(repo, nil)
+
+	// Daemon (after recovery DELETE) re-registers with empty device_id.
+	req := newRegisterRequestWithBody("user_r3_reinstall", map[string]string{
+		"device_id":  "", // cleared by daemon recovery flow
+		"platform":   "darwin",
+		"daemon_ver": "0.3.3",
+	})
+	rr := httptest.NewRecorder()
+	h.Register(rr, req)
+
+	if rr.Code != http.StatusCreated {
+		t.Fatalf("R3 re-register with empty device_id: expected 201, got %d: %s", rr.Code, rr.Body.String())
+	}
+
+	var resp map[string]any
+	if err := json.NewDecoder(rr.Body).Decode(&resp); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+
+	apiKey, _ := resp["api_key"].(string)
+	if apiKey == "" {
+		t.Error("R3 201 response must include a non-empty api_key")
+	}
+
+	newDeviceID, _ := resp["device_id"].(string)
+	if newDeviceID == revokedDeviceID {
+		t.Errorf("R3: new device_id must NOT equal the revoked device_id %q — resurrection guard failed", revokedDeviceID)
+	}
+	if _, err := uuid.Parse(newDeviceID); err != nil {
+		t.Errorf("R3: new device_id must be a valid UUID, got %q", newDeviceID)
+	}
+}

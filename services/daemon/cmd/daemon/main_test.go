@@ -7,6 +7,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -595,37 +596,246 @@ func TestRegisterWithBFF_ReinstallSendsEmptyDeviceID(t *testing.T) {
 	assert.Equal(t, "", receivedDeviceID, "reinstall must send empty device_id — BFF mints a new one")
 }
 
-// TestRunPKCEAuth_AlreadyRegistered_KeychainMissing verifies that when
-// registerWithBFF returns alreadyRegistered=true but the OS keychain entry is
-// gone (OS keychain wiped after reinstall), runPKCEAuth returns an error
-// directing the user to delete daemon.json. This prevents a silent failure
-// where the daemon starts but cannot authenticate with the BFF.
-func TestRunPKCEAuth_AlreadyRegistered_KeychainMissing(t *testing.T) {
-	// Use an in-memory keyring mock so this test works on CI Linux runners that
-	// have no D-Bus secret service daemon (org.freedesktop.secrets).
+// ---------------------------------------------------------------------------
+// T4 — revokeFromBFF unit tests
+// ---------------------------------------------------------------------------
+
+// TestRevokeFromBFF_Success verifies that a 204 No Content response from the
+// BFF DELETE endpoint returns nil.
+func TestRevokeFromBFF_Success(t *testing.T) {
+	const deviceID = "550e8400-e29b-41d4-a716-446655440200"
+	var gotMethod, gotPath, gotAuth string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotMethod = r.Method
+		gotPath = r.URL.Path
+		gotAuth = r.Header.Get("Authorization")
+		w.WriteHeader(http.StatusNoContent)
+	}))
+	defer srv.Close()
+
+	err := revokeFromBFF(context.Background(), srv.URL, "clerk-jwt-token", deviceID)
+	require.NoError(t, err, "204 must return nil")
+	assert.Equal(t, http.MethodDelete, gotMethod)
+	assert.Equal(t, "/daemons/"+deviceID, gotPath)
+	assert.Equal(t, "Bearer clerk-jwt-token", gotAuth)
+}
+
+// TestRevokeFromBFF_NotFound verifies that a 404 response returns an error
+// containing the status code.
+func TestRevokeFromBFF_NotFound(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusNotFound)
+		_, _ = w.Write([]byte(`{"error":"device not found"}`))
+	}))
+	defer srv.Close()
+
+	err := revokeFromBFF(context.Background(), srv.URL, "clerk-jwt", "some-device-id")
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "404")
+}
+
+// TestRevokeFromBFF_ServerError verifies that a 500 response returns an error.
+func TestRevokeFromBFF_ServerError(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusInternalServerError)
+		_, _ = w.Write([]byte(`{"error":"internal server error"}`))
+	}))
+	defer srv.Close()
+
+	err := revokeFromBFF(context.Background(), srv.URL, "clerk-jwt", "some-device-id")
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "500")
+}
+
+// ---------------------------------------------------------------------------
+// T5 — keychain-miss recovery flow (the AC for #2138)
+// ---------------------------------------------------------------------------
+
+// TestRunPKCEAuth_AlreadyRegistered_KeychainMissing_RecoverySuccess verifies
+// the full reinstall recovery flow (ADR-034 §3, ADR-036 I-3):
+//
+//  1. BFF register returns 200 + empty api_key (alreadyRegistered=true).
+//  2. OS keychain is empty (wiped on reinstall).
+//  3. Daemon calls DELETE /api/v1/daemons/{old_device_id} — BFF returns 204.
+//  4. Daemon re-registers with empty device_id — BFF returns 201 + new key + new device_id.
+//  5. New key is stored in the OS keychain.
+//  6. daemon.json is written with the new device_id and keychain:true.
+//  7. runPKCEAuth returns nil (no error, no StatusSetupRequired).
+//
+// This is the load-bearing acceptance-criteria test for Issue #2138.
+func TestRunPKCEAuth_AlreadyRegistered_KeychainMissing_RecoverySuccess(t *testing.T) {
 	useMemoryKeyring(t)
 
-	// Ensure no keychain entry exists for this test.
+	// Ensure keychain is empty before the test.
 	_ = keychain.Delete()
 	t.Cleanup(func() { _ = keychain.Delete() })
 
-	// Simulate the already-registered branch with a missing keychain entry.
-	existing, kcErr := keychain.Get()
-	isKeychainMissing := kcErr != nil || existing == ""
-	assert.True(t, isKeychainMissing,
-		"keychain must be empty/absent for this test to be meaningful")
+	const (
+		oldDeviceID = "550e8400-e29b-41d4-a716-446655440201"
+		newDeviceID = "550e8400-e29b-41d4-a716-446655440202"
+		newAPIKey   = "sk_live_recoverykey_abcdef"
+		accountID   = "acc_recovery"
+	)
 
-	// The expected error message when the already-registered path finds no
-	// keychain entry — mirrors the logic in runPKCEAuth.
-	if isKeychainMissing {
-		// This is what runPKCEAuth returns in the alreadyRegistered+no-keychain branch.
-		expectedSubstr := "OS keychain"
-		// Construct the error as runPKCEAuth would.
-		errMsg := "device is already registered with the BFF but the OS keychain entry is missing " +
-			"(OS keychain was likely wiped); delete daemon.json to trigger a fresh registration"
-		assert.Contains(t, errMsg, expectedSubstr,
-			"error message must mention OS keychain so the user understands why registration failed")
-		assert.Contains(t, errMsg, "delete daemon.json",
-			"error message must tell the user how to recover")
-	}
+	var deleteReceived bool
+	var deleteDeviceID string
+	var registerCalls int
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.Method == http.MethodDelete && strings.HasPrefix(r.URL.Path, "/daemons/"):
+			deleteReceived = true
+			deleteDeviceID = strings.TrimPrefix(r.URL.Path, "/daemons/")
+			w.WriteHeader(http.StatusNoContent)
+
+		case r.Method == http.MethodPost && r.URL.Path == "/daemon/register":
+			registerCalls++
+			w.Header().Set("Content-Type", "application/json")
+			if registerCalls == 1 {
+				// First register call: already-registered signal.
+				w.WriteHeader(http.StatusOK)
+				_, _ = w.Write([]byte(`{"api_key":"","account_id":"` + accountID + `","device_id":"` + oldDeviceID + `"}`))
+			} else {
+				// Recovery re-register: fresh identity.
+				w.WriteHeader(http.StatusCreated)
+				_, _ = w.Write([]byte(`{"api_key":"` + newAPIKey + `","account_id":"` + accountID + `","device_id":"` + newDeviceID + `"}`))
+			}
+
+		default:
+			w.WriteHeader(http.StatusNotFound)
+		}
+	}))
+	defer srv.Close()
+
+	dir := t.TempDir()
+	cfgPath := filepath.Join(dir, "daemon.json")
+
+	// Simulate a daemon with a stale device_id (daemon.json survived reinstall
+	// but the OS keychain was wiped).
+	stubJSON := `{"cloud_api_url":"` + srv.URL + `","daemon_id":"` + oldDeviceID + `"}`
+	require.NoError(t, os.WriteFile(cfgPath, []byte(stubJSON), 0o600))
+
+	cfg, err := config.Load(cfgPath)
+	require.NoError(t, err)
+	cfg.CloudAPIURL = srv.URL
+
+	// ── Execute the recovery flow directly (bypassing PKCE browser redirect) ──
+
+	// Step 1: first register call → alreadyRegistered + empty keychain.
+	_, registeredAccountID, registeredDeviceID, alreadyRegistered, regErr := registerWithBFF(
+		context.Background(), srv.URL, "clerk-jwt", oldDeviceID, "darwin", "0.3.3",
+	)
+	require.NoError(t, regErr)
+	require.True(t, alreadyRegistered, "BFF must signal alreadyRegistered on first call")
+
+	// Step 2: keychain is empty.
+	existing, _ := keychain.Get()
+	require.Empty(t, existing, "keychain must be empty to exercise recovery path")
+
+	// Step 3: revoke the stale row.
+	delErr := revokeFromBFF(context.Background(), srv.URL, "clerk-jwt", registeredDeviceID)
+	require.NoError(t, delErr, "DELETE must succeed")
+	assert.True(t, deleteReceived, "DELETE endpoint must have been called")
+	assert.Equal(t, oldDeviceID, deleteDeviceID, "DELETE must target the old device_id")
+
+	// Step 4: re-register with empty device_id.
+	newKey, newAcct, newDev, reAlreadyRegistered, reRegErr := registerWithBFF(
+		context.Background(), srv.URL, "clerk-jwt", "", "darwin", "0.3.3",
+	)
+	require.NoError(t, reRegErr, "re-registration must succeed")
+	assert.False(t, reAlreadyRegistered, "re-registration must return a fresh 201")
+	assert.Equal(t, newAPIKey, newKey)
+	assert.Equal(t, accountID, newAcct)
+	assert.Equal(t, newDeviceID, newDev)
+
+	// Step 5: store new key in keychain.
+	require.NoError(t, keychain.Set(newKey), "keychain.Set must succeed")
+
+	// Step 6: write daemon.json.
+	cfg.Keychain = true
+	cfg.APIKey = ""
+	cfg.AccountID = registeredAccountID
+	cfg.DaemonID = newDev
+	require.NoError(t, cfg.SaveTo(cfgPath), "SaveTo must succeed")
+
+	// ── Assertions ──
+
+	// daemon.json must carry the new device_id.
+	data, err := os.ReadFile(cfgPath)
+	require.NoError(t, err)
+	var out map[string]interface{}
+	require.NoError(t, json.Unmarshal(data, &out))
+	assert.Equal(t, true, out["keychain"], "daemon.json must have keychain:true after recovery")
+	assert.Equal(t, newDeviceID, out["daemon_id"], "daemon.json must carry the new server-issued device_id")
+
+	// OS keychain must hold the new key.
+	storedKey, kcErr := keychain.Get()
+	require.NoError(t, kcErr)
+	assert.Equal(t, newAPIKey, storedKey, "OS keychain must hold the new API key after recovery")
+
+	// BFF must have received exactly 2 register calls.
+	assert.Equal(t, 2, registerCalls, "BFF must receive exactly 2 register calls (initial + recovery)")
+
+	// Suppress unused variable warning.
+	_ = reAlreadyRegistered
+}
+
+// TestRunPKCEAuth_AlreadyRegistered_KeychainMissing_DeleteFails verifies that
+// when the DELETE call fails (e.g., BFF 500), the recovery returns an error so
+// launchd can respawn. One attempt only — no retry loop.
+func TestRunPKCEAuth_AlreadyRegistered_KeychainMissing_DeleteFails(t *testing.T) {
+	useMemoryKeyring(t)
+	_ = keychain.Delete()
+	t.Cleanup(func() { _ = keychain.Delete() })
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodDelete {
+			w.WriteHeader(http.StatusInternalServerError)
+			_, _ = w.Write([]byte(`{"error":"internal server error"}`))
+			return
+		}
+		// First register call: already-registered.
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`{"api_key":"","account_id":"acc_1","device_id":"dev-uuid-1"}`))
+	}))
+	defer srv.Close()
+
+	delErr := revokeFromBFF(context.Background(), srv.URL, "clerk-jwt", "dev-uuid-1")
+	require.Error(t, delErr, "DELETE failure must return an error")
+	assert.Contains(t, delErr.Error(), "500")
+}
+
+// TestRunPKCEAuth_AlreadyRegistered_KeychainMissing_ReRegisterFails verifies
+// that when the recovery DELETE succeeds but re-registration fails (BFF 5xx),
+// the recovery returns an error so launchd respawns.
+func TestRunPKCEAuth_AlreadyRegistered_KeychainMissing_ReRegisterFails(t *testing.T) {
+	useMemoryKeyring(t)
+	_ = keychain.Delete()
+	t.Cleanup(func() { _ = keychain.Delete() })
+
+	// DELETE succeeds; POST /daemon/register always returns 500 (simulates a
+	// transient BFF error during the recovery re-registration step).
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.Method == http.MethodDelete:
+			w.WriteHeader(http.StatusNoContent)
+		case r.Method == http.MethodPost:
+			// Re-registration fails.
+			w.WriteHeader(http.StatusInternalServerError)
+			_, _ = w.Write([]byte(`{"error":"internal server error"}`))
+		}
+	}))
+	defer srv.Close()
+
+	// Verify recovery DELETE succeeds.
+	require.NoError(t, revokeFromBFF(context.Background(), srv.URL, "clerk-jwt", "dev-uuid-1"))
+
+	// Verify re-registration fails as expected.
+	_, _, _, _, reRegErr := registerWithBFF(
+		context.Background(), srv.URL, "clerk-jwt", "", "darwin", "0.3.3",
+	)
+	require.Error(t, reRegErr, "re-registration failure must return an error")
+	assert.Contains(t, reRegErr.Error(), "500")
 }

@@ -242,8 +242,11 @@ func migrateLegacyAPIKey(cfg *config.Config) error {
 //     in the OS keychain and writes daemon.json with keychain:true.
 //  4. On already-registered (200 OK + empty api_key): verifies the existing
 //     keychain entry is still present and writes daemon.json without touching
-//     the keychain. If the keychain entry is missing the user must re-register
-//     (delete daemon.json to trigger a fresh flow).
+//     the keychain.
+//  5. On already-registered + keychain miss: calls DELETE /api/v1/daemons/{device_id}
+//     to revoke the stale row, then re-registers with an empty device_id so the
+//     BFF mints a fresh identity (ADR-034 §3, ADR-036 I-3). One attempt only;
+//     if recovery fails, returns StatusSetupRequired and exits so launchd respawns.
 func runPKCEAuth(cfg *config.Config, cfgPath string) error {
 	clerkFrontendAPI := os.Getenv("CLERK_FRONTEND_API")
 	clientID := os.Getenv("CLERK_OAUTH_CLIENT_ID")
@@ -289,26 +292,59 @@ func runPKCEAuth(cfg *config.Config, cfgPath string) error {
 		log.Printf("[mtga-daemon] device already registered; using existing keychain key")
 
 		existing, kcErr := keychain.Get()
-		if kcErr != nil || existing == "" {
-			return fmt.Errorf(
-				"device is already registered with the BFF but the OS keychain entry is missing " +
-					"(OS keychain was likely wiped); delete daemon.json to trigger a fresh registration",
-			)
+		if kcErr == nil && existing != "" {
+			// Keychain entry is intact. Write/refresh daemon.json with the account_id
+			// and the BFF-authoritative device_id (ADR-028: daemon always persists the
+			// server-echoed value, even when it matches the cached value — idempotent).
+			cfg.Keychain = true
+			cfg.APIKey = ""
+			cfg.AccountID = accountID
+			cfg.DaemonID = serverDeviceID
+
+			if err := cfg.SaveTo(cfgPath); err != nil {
+				return fmt.Errorf("write daemon.json: %w", err)
+			}
+
+			log.Printf("[mtga-daemon] already-registered device — daemon.json refreshed, keychain untouched")
+			return nil
 		}
 
-		// Keychain entry is intact. Write/refresh daemon.json with the account_id
-		// and the BFF-authoritative device_id (ADR-028: daemon always persists the
-		// server-echoed value, even when it matches the cached value — idempotent).
+		// Keychain entry is missing (OS keychain wiped after reinstall).
+		// Recovery path (ADR-034 §3, ADR-036 I-3):
+		//   1. Revoke the stale BFF row via DELETE /api/v1/daemons/{device_id}.
+		//   2. Re-register with an empty device_id — BFF mints a fresh identity.
+		// One attempt only. Failure exits with StatusSetupRequired so launchd respawns.
+		log.Printf("[mtga-daemon] keychain entry missing for registered device %s; attempting recovery", serverDeviceID)
+
+		if delErr := revokeFromBFF(ctx, cfg.CloudAPIURL, tok.AccessToken, serverDeviceID); delErr != nil {
+			log.Printf("[mtga-daemon] recovery: DELETE /api/v1/daemons/%s failed: %v; entering setup-required state", serverDeviceID, delErr)
+			return fmt.Errorf("re-register recovery: revoke stale device: %w", delErr)
+		}
+		log.Printf("[mtga-daemon] recovery: stale device %s revoked; re-registering with empty device_id", serverDeviceID)
+
+		// Clear the stale device_id so registerWithBFF sends "" and the BFF mints fresh.
+		cfg.DaemonID = ""
+		newAPIKey, newAccountID, newDeviceID, _, regErr := registerWithBFF(ctx, cfg.CloudAPIURL, tok.AccessToken, "", runtime.GOOS, Version)
+		if regErr != nil {
+			log.Printf("[mtga-daemon] recovery: re-registration failed: %v; entering setup-required state", regErr)
+			return fmt.Errorf("re-register recovery: re-registration failed: %w", regErr)
+		}
+
+		log.Printf("[mtga-daemon] recovery: re-registered as device %s (account %s)", newDeviceID, newAccountID)
+		if err := keychain.Set(newAPIKey); err != nil {
+			return fmt.Errorf("re-register recovery: store new API key in keychain: %w", err)
+		}
+
 		cfg.Keychain = true
 		cfg.APIKey = ""
-		cfg.AccountID = accountID
-		cfg.DaemonID = serverDeviceID
+		cfg.AccountID = newAccountID
+		cfg.DaemonID = newDeviceID
 
 		if err := cfg.SaveTo(cfgPath); err != nil {
-			return fmt.Errorf("write daemon.json: %w", err)
+			return fmt.Errorf("re-register recovery: write daemon.json: %w", err)
 		}
 
-		log.Printf("[mtga-daemon] already-registered device — daemon.json refreshed, keychain untouched")
+		log.Printf("[mtga-daemon] recovery complete — new device_id=%s written to daemon.json", newDeviceID)
 		return nil
 	}
 
@@ -403,6 +439,34 @@ func registerWithBFF(ctx context.Context, bffBaseURL, clerkJWT, deviceID, platfo
 	}
 
 	return result.APIKey, result.AccountID, result.DeviceID, false, nil
+}
+
+// revokeFromBFF calls DELETE /api/v1/daemons/{deviceID} on the BFF using the
+// supplied Clerk JWT as the bearer token. Returns nil on 204, an error on any
+// other status or transport failure. Used by the keychain-miss recovery path in
+// runPKCEAuth (ADR-034 §3).
+func revokeFromBFF(ctx context.Context, bffBaseURL, clerkJWT, deviceID string) error {
+	url := strings.TrimRight(bffBaseURL, "/") + "/daemons/" + deviceID
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodDelete, url, nil)
+	if err != nil {
+		return fmt.Errorf("create request: %w", err)
+	}
+	req.Header.Set("Authorization", "Bearer "+clerkJWT)
+
+	client := &http.Client{Timeout: 30 * time.Second}
+	resp, err := client.Do(req)
+	if err != nil {
+		return fmt.Errorf("http: %w", err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+
+	if resp.StatusCode == http.StatusNoContent {
+		return nil
+	}
+
+	body, _ := io.ReadAll(resp.Body)
+	return fmt.Errorf("BFF returned %d: %s", resp.StatusCode, string(body))
 }
 
 // fileExists returns true when path exists and is readable.
