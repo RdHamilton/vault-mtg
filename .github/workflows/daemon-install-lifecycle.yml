@@ -131,7 +131,7 @@ jobs:
           grep -q "KeepAlive" "$PLIST_PATH" || \
             { echo "FAIL: plist missing KeepAlive"; exit 1; }
           echo "PASS: plist contains required keys (Label, RunAtLoad, KeepAlive)"
-          CONFIG_FILE="$FAKE_HOME/.mtga-companion/daemon.json"
+          CONFIG_FILE="$FAKE_HOME/.vaultmtg/daemon.json"
           [ -f "$CONFIG_FILE" ] || { echo "FAIL: config not written to $CONFIG_FILE"; exit 1; }
           python3 -c "
           import json, sys
@@ -149,7 +149,7 @@ jobs:
           FAKE_HOME: ${{ runner.temp }}/fake-home-install
         run: |
           echo "=== REINSTALL (DRY_RUN) ==="
-          original=$(cat "$FAKE_HOME/.mtga-companion/daemon.json")
+          original=$(cat "$FAKE_HOME/.vaultmtg/daemon.json")
           output=$(env \
             HOME="$FAKE_HOME" \
             RELEASE_TAG="daemon/v0.3.1" \
@@ -161,7 +161,7 @@ jobs:
           echo "$output" | grep -q "Config already exists, skipping" || \
             { echo "FAIL: reinstall should skip existing config"; exit 1; }
           echo "PASS: config was not overwritten on reinstall"
-          after=$(cat "$FAKE_HOME/.mtga-companion/daemon.json")
+          after=$(cat "$FAKE_HOME/.vaultmtg/daemon.json")
           [ "$original" = "$after" ] || \
             { echo "FAIL: config content changed on reinstall"; exit 1; }
           echo "PASS: config content unchanged after reinstall"
