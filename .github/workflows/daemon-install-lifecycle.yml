@@ -80,6 +80,63 @@ jobs:
           ls -la services/daemon/install/macos/pkg/
 
       # -----------------------------------------------------------------------
+      - name: "[ASSERT] pkg-root layout — uninstall.sh present in share dir"
+      # -----------------------------------------------------------------------
+        # Run build-pkg.sh unsigned (no TEAM_ID) in dry-run mode to assert that
+        # the pkg-root contains uninstall.sh at the expected share-dir path.
+        # pkgbuild / hdiutil are not available on GitHub runners, so we stub them
+        # and inspect the intermediate PKG_ROOT directly via the SHARE_DIR path.
+        # Ray Q5: CI does not require a real .pkg artifact — layout assertion only.
+        env:
+          BINARY_PATH: ${{ runner.temp }}/stub-daemon
+          VERSION: ci-test
+        run: |
+          echo "=== [ASSERT] pkg-root uninstall.sh layout ==="
+          # Create a stub binary so build-pkg.sh has something to cp.
+          touch "$BINARY_PATH"
+          chmod +x "$BINARY_PATH"
+
+          # Stub pkgbuild and hdiutil so the script does not fail on missing tools.
+          STUB_DIR="$(mktemp -d)"
+          printf '#!/usr/bin/env bash\necho "stub-pkgbuild: $*"\nexit 0\n' > "$STUB_DIR/pkgbuild"
+          printf '#!/usr/bin/env bash\necho "stub-hdiutil: $*"\nexit 0\n' > "$STUB_DIR/hdiutil"
+          chmod +x "$STUB_DIR/pkgbuild" "$STUB_DIR/hdiutil"
+
+          # Capture PKG_ROOT from build-pkg.sh by sourcing the setup block only.
+          # We extract the mktemp-generated path by running the script through the
+          # stubs and parsing the mkdir output; simplest approach is to stub mkdir
+          # to record the pkg-root path, then inspect it.
+          #
+          # Alternative: run the script with PATH override and capture the echo
+          # output. build-pkg.sh always prints "[build-pkg] done" on success.
+          # After that, the pkg-root dir is cleaned up. To assert the layout
+          # before cleanup we patch the cleanup line out.
+          PATCHED="$(mktemp)"
+          # Remove the cleanup line so PKG_ROOT survives for inspection.
+          sed '/rm -rf.*PKG_ROOT.*DMG_STAGING/d' \
+            services/daemon/install/macos/pkg/build-pkg.sh > "$PATCHED"
+          chmod +x "$PATCHED"
+
+          # Run the patched script with stubbed pkgbuild/hdiutil.
+          output=$(env \
+            PATH="$STUB_DIR:$PATH" \
+            BINARY_PATH="$BINARY_PATH" \
+            VERSION="ci-test" \
+            bash "$PATCHED" 2>&1)
+          echo "$output"
+
+          # The patched script still runs 'rm -rf "$(dirname ..."' for the outer
+          # temp dirs, but PKG_ROOT itself now exists. Find uninstall.sh.
+          UNINSTALL_PATH=$(find /tmp -path "*/pkg-root/usr/local/share/vaultmtg/uninstall.sh" \
+            -newer "$PATCHED" 2>/dev/null | head -1)
+          if [[ -z "$UNINSTALL_PATH" ]]; then
+            echo "FAIL: uninstall.sh not found in pkg-root under /usr/local/share/vaultmtg/"
+            exit 1
+          fi
+          echo "PASS: uninstall.sh found at $UNINSTALL_PATH"
+          rm -f "$PATCHED"
+
+      # -----------------------------------------------------------------------
       - name: "[UNIT] Run existing bats install-script unit tests"
       # -----------------------------------------------------------------------
         # These tests cover: arch detection, URL construction, DRY_RUN mode,
@@ -791,6 +848,32 @@ jobs:
             exit 1
           }
           Write-Host "PASS: /health returned 200"
+
+      # -----------------------------------------------------------------------
+      - name: "[ASSERT] Uninstall.exe present in $INSTDIR (#1831)"
+      # -----------------------------------------------------------------------
+        # Verify the NSIS installer wrote Uninstall.exe to $INSTDIR before we
+        # attempt to run it. This assertion is a standalone step so failures are
+        # clearly attributed to the installer's WriteUninstaller directive rather
+        # than mixed into the uninstall execution step.
+        # Ray Q3 (#1831 plan review): assert existence only; execution is the
+        # next step.
+        shell: pwsh
+        run: |
+          $uninstaller = Join-Path $Env:LOCALAPPDATA "VaultMTG\Uninstall.exe"
+          Write-Host "Checking for Uninstall.exe at: $uninstaller"
+          if (-not (Test-Path $uninstaller)) {
+            Write-Error "FAIL: Uninstall.exe not found at $uninstaller — NSIS WriteUninstaller may have failed"
+            Write-Host "--- contents of $Env:LOCALAPPDATA\VaultMTG ---"
+            if (Test-Path (Join-Path $Env:LOCALAPPDATA "VaultMTG")) {
+              Get-ChildItem (Join-Path $Env:LOCALAPPDATA "VaultMTG")
+            } else {
+              Write-Host "(directory does not exist)"
+            }
+            exit 1
+          }
+          $size = (Get-Item $uninstaller).Length
+          Write-Host "PASS: Uninstall.exe present at $uninstaller ($size bytes)"
 
       # -----------------------------------------------------------------------
       - name: "[LIFECYCLE] UNINSTALL — run Uninstall.exe in silent mode"

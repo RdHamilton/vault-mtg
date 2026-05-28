@@ -30,6 +30,11 @@ PKG_ID="com.vaultmtg.daemon"
 PKG_NAME="vaultmtg-daemon-darwin-universal.pkg"
 DMG_NAME="vaultmtg-daemon-darwin-universal.dmg"
 
+# Share directory — where the uninstall script is installed on the target system.
+# Referenced here (to populate the package root) and in postinstall (echo to user).
+# Single constant — never copy-paste this path.
+SHARE_DIR="/usr/local/share/vaultmtg"
+
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PKG_ROOT="$(mktemp -d)/pkg-root"
 DMG_STAGING="$(mktemp -d)/dmg-staging"
@@ -44,6 +49,13 @@ echo "[build-pkg] building .pkg version ${VERSION}"
 mkdir -p "${PKG_ROOT}/usr/local/bin"
 cp "${BINARY_PATH}" "${PKG_ROOT}/usr/local/bin/${BINARY_NAME}"
 chmod 755 "${PKG_ROOT}/usr/local/bin/${BINARY_NAME}"
+
+# Install the uninstall script to the share directory so users have a clean
+# removal path after install. The path is echoed by postinstall so users see
+# it immediately after installation completes.
+mkdir -p "${PKG_ROOT}${SHARE_DIR}"
+cp "${SCRIPT_DIR}/../uninstall.sh" "${PKG_ROOT}${SHARE_DIR}/uninstall.sh"
+chmod 755 "${PKG_ROOT}${SHARE_DIR}/uninstall.sh"
 
 # ---------------------------------------------------------------------------
 # Build the .pkg using the postinstall script for LaunchAgent setup.
