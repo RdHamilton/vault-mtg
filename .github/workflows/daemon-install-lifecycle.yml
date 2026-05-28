@@ -80,6 +80,55 @@ jobs:
           ls -la services/daemon/install/macos/pkg/
 
       # -----------------------------------------------------------------------
+      - name: "[ASSERT] pkg-root layout — uninstall.sh present in share dir"
+      # -----------------------------------------------------------------------
+        # Run build-pkg.sh in DRY_RUN=1 mode to assert that the pkg-root
+        # contains uninstall.sh at the expected share-dir path without needing
+        # pkgbuild or hdiutil.  DRY_RUN exits after populating the pkg-root and
+        # printing "PKG_ROOT=<path>" to stdout — we capture that line and assert
+        # with test -f, avoiding any reliance on find -newer mtime granularity.
+        # Ray Q5: CI does not require a real .pkg artifact — layout assertion only.
+        env:
+          BINARY_PATH: ${{ runner.temp }}/stub-daemon
+          VERSION: ci-test
+        run: |
+          echo "=== [ASSERT] pkg-root uninstall.sh layout ==="
+          # Create a stub binary so build-pkg.sh has something to cp.
+          touch "$BINARY_PATH"
+          chmod +x "$BINARY_PATH"
+
+          # DRY_RUN=1 populates the pkg-root and exits before calling pkgbuild/hdiutil.
+          # build-pkg.sh emits "PKG_ROOT=<path>" on stdout so we can locate the dir
+          # without parsing mktemp output or relying on find -newer mtime resolution.
+          output=$(env \
+            BINARY_PATH="$BINARY_PATH" \
+            VERSION="ci-test" \
+            DRY_RUN=1 \
+            bash services/daemon/install/macos/pkg/build-pkg.sh 2>&1)
+          echo "$output"
+
+          # Extract the PKG_ROOT path emitted by build-pkg.sh.
+          PKG_ROOT=$(echo "$output" | grep '^PKG_ROOT=' | head -1 | cut -d= -f2-)
+          if [[ -z "$PKG_ROOT" ]]; then
+            echo "FAIL: build-pkg.sh did not emit PKG_ROOT= line"
+            exit 1
+          fi
+          echo "PKG_ROOT resolved to: $PKG_ROOT"
+
+          # Assert uninstall.sh is present at the expected share-dir path.
+          UNINSTALL_PATH="${PKG_ROOT}/usr/local/share/vaultmtg/uninstall.sh"
+          if [[ ! -f "$UNINSTALL_PATH" ]]; then
+            echo "FAIL: uninstall.sh not found at $UNINSTALL_PATH"
+            echo "--- PKG_ROOT contents ---"
+            find "$PKG_ROOT" -type f | sort || true
+            exit 1
+          fi
+          echo "PASS: uninstall.sh found at $UNINSTALL_PATH"
+
+          # Clean up the pkg-root left by DRY_RUN (build-pkg.sh skips its own cleanup).
+          rm -rf "$(dirname "$PKG_ROOT")"
+
+      # -----------------------------------------------------------------------
       - name: "[UNIT] Run existing bats install-script unit tests"
       # -----------------------------------------------------------------------
         # These tests cover: arch detection, URL construction, DRY_RUN mode,
@@ -793,61 +842,24 @@ jobs:
           Write-Host "PASS: /health returned 200"
 
       # -----------------------------------------------------------------------
-      - name: "[LIFECYCLE] UNINSTALL — run Uninstall.exe in silent mode"
+      - name: "[ASSERT] Uninstall.exe present in $INSTDIR (#1831)"
       # -----------------------------------------------------------------------
-        # First stop the scheduled task so the binary is not locked by the
-        # running daemon process when the uninstaller tries to delete it.
+        # Verify the NSIS installer wrote Uninstall.exe to $INSTDIR.
+        # Ray Q3 (#1831 plan review): assert existence only — Uninstall.exe is
+        # NOT executed in CI. Execution is out-of-scope per plan-review Q3.
         shell: pwsh
         run: |
-          Write-Host "=== Stopping VaultMTG-Daemon before uninstall ==="
-          & schtasks /End /TN "VaultMTG-Daemon" 2>&1
-          Start-Sleep -Seconds 2
-
           $uninstaller = Join-Path $Env:LOCALAPPDATA "VaultMTG\Uninstall.exe"
+          Write-Host "Checking for Uninstall.exe at: $uninstaller"
           if (-not (Test-Path $uninstaller)) {
-            Write-Error "FAIL: Uninstall.exe not found at $uninstaller"
+            Write-Error "FAIL: Uninstall.exe not found at $uninstaller — NSIS WriteUninstaller may have failed"
+            Write-Host "--- contents of $Env:LOCALAPPDATA\VaultMTG ---"
+            if (Test-Path (Join-Path $Env:LOCALAPPDATA "VaultMTG")) {
+              Get-ChildItem (Join-Path $Env:LOCALAPPDATA "VaultMTG")
+            } else {
+              Write-Host "(directory does not exist)"
+            }
             exit 1
           }
-          Write-Host "=== Running: $uninstaller /S ==="
-          $proc = Start-Process -FilePath $uninstaller -ArgumentList "/S" -Wait -PassThru -NoNewWindow
-          Write-Host "Uninstaller exit code: $($proc.ExitCode)"
-          # NSIS uninstallers spawn a copy of themselves and the parent returns
-          # before the spawn fully cleans up. Wait a moment for the .exe and
-          # uninstaller to be released.
-          Start-Sleep -Seconds 3
-          if ($proc.ExitCode -ne 0) {
-            Write-Error "FAIL: uninstaller exited with code $($proc.ExitCode)"
-            exit 1
-          }
-          Write-Host "PASS: uninstaller completed with exit code 0"
-
-      # -----------------------------------------------------------------------
-      - name: "[ASSERT] VaultMTG-Daemon scheduled task removed after uninstall"
-      # -----------------------------------------------------------------------
-        shell: pwsh
-        run: |
-          Write-Host "=== Confirming VaultMTG-Daemon task is gone ==="
-          & schtasks /Query /TN "VaultMTG-Daemon" 2>&1 | Out-Null
-          $rc = $LASTEXITCODE
-          if ($rc -eq 0) {
-            Write-Error "FAIL: VaultMTG-Daemon task still registered after uninstall"
-            exit 1
-          }
-          Write-Host "PASS: VaultMTG-Daemon task removed (schtasks /Query exit=$rc)"
-          # GitHub Actions inspects $LASTEXITCODE on step exit; the schtasks
-          # /Query call above sets $LASTEXITCODE=1 (task not found), so we
-          # must reset it explicitly or the step will be marked failed
-          # despite the assertion passing.
-          exit 0
-
-      # -----------------------------------------------------------------------
-      - name: "[ASSERT] Daemon binary removed from %LOCALAPPDATA%\\VaultMTG"
-      # -----------------------------------------------------------------------
-        shell: pwsh
-        run: |
-          $expected = Join-Path $Env:LOCALAPPDATA "VaultMTG\vaultmtg-daemon.exe"
-          if (Test-Path $expected) {
-            Write-Error "FAIL: daemon binary still present at $expected after uninstall"
-            exit 1
-          }
-          Write-Host "PASS: daemon binary removed from $expected"
+          $size = (Get-Item $uninstaller).Length
+          Write-Host "PASS: Uninstall.exe present at $uninstaller ($size bytes)"
