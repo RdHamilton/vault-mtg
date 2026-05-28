@@ -113,6 +113,15 @@ type Service struct {
 	// at least one parse error occurred since the last heartbeat reset.
 	failedEventTypes map[string]struct{}
 
+	// authPaused is true when the daemon has reached the max PKCE attempt cap
+	// (#2133 consent loop guard). It is set via WithAuthPaused (called from
+	// main.go after loading daemon-state.json) and guards computeAuthStatus.
+	// Only cleared when the user explicitly triggers a successful auth or
+	// clicks "Retry Setup" (RC3: no timer-based reset). Read-only after Run()
+	// starts; never written from goroutines spawned inside Run(). Protected
+	// by atomic.Bool to allow safe concurrent reads from the heartbeat ticker.
+	authPaused atomic.Bool
+
 	// reauthFunc is the in-process PKCE re-auth callback set via WithReauthFunc.
 	// When non-nil and a 401 is received in keychain mode, keychainRefresherAdapter
 	// calls this function to trigger an in-process PKCE re-auth flow rather than
@@ -219,20 +228,25 @@ func New(cfg *config.Config) *Service {
 	return svc
 }
 
-// computeAuthStatus derives the auth_status string from config and the current
-// keychain error sentinel. It is a pure function (no receiver) so it can be
-// tested independently without constructing a full Service.
+// computeAuthStatus derives the auth_status string from config, the current
+// keychain error sentinel, and the auth-paused flag (#2133). It is a pure
+// function (no receiver) so it can be tested independently.
 //
-// Precedence rules (error outranks authenticated):
-//  1. keychainErr != nil → keychain_error, regardless of Keychain or AccountID.
-//  2. cfg.AccountID == "" OR cfg.Keychain == false → setup_required.
-//  3. cfg.Keychain == true AND cfg.AccountID != "" AND keychainErr == nil → authenticated.
+// Precedence rules (highest priority first):
+//  1. authPaused == true → auth_paused, regardless of any other state.
+//     auth_paused OUTRANKS keychain_error (RC5, #2133).
+//  2. keychainErr != nil → keychain_error, regardless of Keychain or AccountID.
+//  3. cfg.AccountID == "" OR cfg.Keychain == false → setup_required.
+//  4. cfg.Keychain == true AND cfg.AccountID != "" AND keychainErr == nil → authenticated.
 //
 // NOTE: s.keychainErr is the single source of truth for the keychain-error
 // state. Do NOT introduce a parallel boolean; when #2136 lands its graceful-
 // degradation state machine it must continue to set/clear s.keychainErr so this
 // derivation picks up the transition automatically on the next heartbeat tick.
-func computeAuthStatus(cfg *config.Config, keychainErr error) string {
+func computeAuthStatus(cfg *config.Config, keychainErr error, authPaused bool) string {
+	if authPaused {
+		return localapi.AuthStatusAuthPaused
+	}
 	if keychainErr != nil {
 		return localapi.AuthStatusKeychainError
 	}
@@ -303,10 +317,26 @@ func (s *Service) getKeychainErr() error {
 // On failure fn should return a non-nil error; ErrReauthFailed will be set on
 // s.keychainErr so computeAuthStatus routes to "keychain_error" at the next
 // heartbeat tick. The keychain is NOT cleared on failure (Ray Q5).
-//
-// TODO(#2133): integrate attempt cap once the retry-guard ADR is settled.
 func (s *Service) WithReauthFunc(fn func(ctx context.Context) error) {
 	s.reauthFunc = fn
+}
+
+// WithAuthPaused sets the auth-paused flag from daemon-state.json before
+// Run() starts (#2133 consent loop guard). When true, the daemon does not
+// open a browser or attempt PKCE on startup; computeAuthStatus returns
+// AuthStatusAuthPaused until the user explicitly clicks "Retry Setup".
+//
+// Call this after New() and before Run(), from main.go after loading
+// daemon-state.json (RC2: state file is read BEFORE NeedsFirstRunAuth).
+func (s *Service) WithAuthPaused(paused bool) {
+	s.authPaused.Store(paused)
+}
+
+// ClearAuthPaused clears the auth-paused flag. Called after a successful
+// PKCE completion or after the user explicitly clicks "Retry Setup" (RC3).
+// Callers are responsible for persisting the cleared state to daemon-state.json.
+func (s *Service) ClearAuthPaused() {
+	s.authPaused.Store(false)
 }
 
 // Refresh implements dispatch.Refresher. It is called by the dispatcher when
@@ -340,8 +370,6 @@ func (s *Service) KeychainReauthRequired(reason string) error {
 //
 // When s.reauthFunc is nil (no WithReauthFunc call), the original behavior is
 // preserved: fire the tray hook and return ErrReauthRequired immediately.
-//
-// TODO(#2133): integrate attempt cap once the retry-guard ADR is settled.
 func (s *Service) keychainRefresherAdapter() dispatch.Refresher {
 	return refresherFunc(func(ctx context.Context) (string, error) {
 		if s.reauthFunc == nil {
@@ -637,7 +665,7 @@ func (s *Service) Run(ctx context.Context) error {
 		AccountID:    s.cfg.AccountID,
 		CloudAPIURL:  s.cfg.CloudAPIURL,
 		BFFReachable: true, // optimistic — flips when a dispatch fails
-		AuthStatus:   computeAuthStatus(s.cfg, s.getKeychainErr()),
+		AuthStatus:   computeAuthStatus(s.cfg, s.getKeychainErr(), s.authPaused.Load()),
 	})
 	// Hand the localapi server a read view of the live draft state so
 	// /api/v1/drafts/{id}/current-pack, /grade-pick, and /win-probability
@@ -725,7 +753,7 @@ func (s *Service) Run(ctx context.Context) error {
 				BFFReachable:    true,
 				DispatchDropped: s.eventBuffer.Dropped(),
 				LastDispatchAt:  &now,
-				AuthStatus:      computeAuthStatus(s.cfg, s.getKeychainErr()),
+				AuthStatus:      computeAuthStatus(s.cfg, s.getKeychainErr(), s.authPaused.Load()),
 			})
 
 			// Skip when AccountID is not yet set (daemon not authenticated).
