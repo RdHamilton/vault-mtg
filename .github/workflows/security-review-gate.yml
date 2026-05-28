@@ -126,6 +126,12 @@ jobs:
             ".github/workflows/release.yml"
             ".github/workflows/rollback.yml"
             ".github/workflows/staging-deploy.yml"
+            # daemon-release.yml: pushes GitHub Releases, uses SENTRY_DSN_DAEMON_PRODUCTION,
+            # APPLE_* signing secrets, and GH_VARIABLES_PAT. (#98)
+            ".github/workflows/daemon-release.yml"
+            # frontend.yml: production SPA deploy — AWS_DEPLOY_ROLE_ARN, DEPLOY_BUCKET,
+            # EC2_INSTANCE_ID (SSM Run Command against production instance). (#98)
+            ".github/workflows/frontend.yml"
             "services/bff/cmd/"
             "services/daemon/cmd/"
             "scripts/deploy/"
