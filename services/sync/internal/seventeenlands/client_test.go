@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -67,30 +68,39 @@ func TestFetchCardRatings(t *testing.T) {
 }
 
 func TestFetchColorRatings(t *testing.T) {
+	const (
+		testStart = "2023-01-01"
+		testEnd   = "2025-01-01"
+	)
+
 	t.Run("returns color ratings on 200", func(t *testing.T) {
 		fixture := []seventeenlands.ColorRating{
-			{ColorCombination: "WU", WinRate: 0.58, GamesPlayed: 5000},
-			{ColorCombination: "BG", WinRate: 0.52, GamesPlayed: 3200},
-			{ColorCombination: "R", WinRate: 0.49, GamesPlayed: 2100},
+			{ColorName: "Azorius", ShortName: "WU", Wins: 2900, Games: 5000, IsSummary: false},
+			{ColorName: "Golgari", ShortName: "BG", Wins: 1664, Games: 3200, IsSummary: false},
+			{ColorName: "Mono-Red", ShortName: "R", Wins: 1029, Games: 2100, IsSummary: false},
 		}
 
 		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			assert.Equal(t, "/color_ratings/data", r.URL.Path)
 			assert.Equal(t, "FDN", r.URL.Query().Get("expansion"))
 			assert.Equal(t, "PremierDraft", r.URL.Query().Get("format"))
+			assert.Equal(t, "PremierDraft", r.URL.Query().Get("event_type"))
+			assert.Equal(t, testStart, r.URL.Query().Get("start_date"))
+			assert.Equal(t, testEnd, r.URL.Query().Get("end_date"))
 			w.Header().Set("Content-Type", "application/json")
 			json.NewEncoder(w).Encode(fixture)
 		}))
 		defer srv.Close()
 
 		client := seventeenlands.NewClientWithBase(srv.URL, srv.Client())
-		ratings, err := client.FetchColorRatings(context.Background(), "FDN", "PremierDraft")
+		ratings, err := client.FetchColorRatings(context.Background(), "FDN", "PremierDraft", testStart, testEnd)
 
 		require.NoError(t, err)
 		require.Len(t, ratings, 3)
-		assert.Equal(t, "WU", ratings[0].ColorCombination)
-		assert.InDelta(t, 0.58, ratings[0].WinRate, 0.001)
-		assert.Equal(t, 5000, ratings[0].GamesPlayed)
+		assert.Equal(t, "WU", ratings[0].ShortName)
+		assert.Equal(t, 2900, ratings[0].Wins)
+		assert.Equal(t, 5000, ratings[0].Games)
+		assert.InDelta(t, 0.58, ratings[0].WinRate(), 0.001)
 	})
 
 	t.Run("returns error on non-200", func(t *testing.T) {
@@ -100,7 +110,7 @@ func TestFetchColorRatings(t *testing.T) {
 		defer srv.Close()
 
 		client := seventeenlands.NewClientWithBase(srv.URL, srv.Client())
-		_, err := client.FetchColorRatings(context.Background(), "FDN", "PremierDraft")
+		_, err := client.FetchColorRatings(context.Background(), "FDN", "PremierDraft", testStart, testEnd)
 
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "404")
@@ -113,7 +123,7 @@ func TestFetchColorRatings(t *testing.T) {
 		defer srv.Close()
 
 		client := seventeenlands.NewClientWithBase(srv.URL, srv.Client())
-		_, err := client.FetchColorRatings(context.Background(), "FDN", "PremierDraft")
+		_, err := client.FetchColorRatings(context.Background(), "FDN", "PremierDraft", testStart, testEnd)
 
 		require.Error(t, err)
 	})
@@ -126,11 +136,56 @@ func TestFetchColorRatings(t *testing.T) {
 		defer srv.Close()
 
 		client := seventeenlands.NewClientWithBase(srv.URL, srv.Client())
-		ratings, err := client.FetchColorRatings(context.Background(), "FDN", "PremierDraft")
+		ratings, err := client.FetchColorRatings(context.Background(), "FDN", "PremierDraft", testStart, testEnd)
 
 		require.NoError(t, err)
 		assert.Empty(t, ratings)
 	})
+}
+
+// TestFetchColorRatings_RequestContainsRequiredParams verifies that all five required
+// query parameters (expansion, format, event_type, start_date, end_date) are present
+// on the HTTP request sent to the 17Lands API.
+func TestFetchColorRatings_RequestContainsRequiredParams(t *testing.T) {
+	var capturedQuery url.Values
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		capturedQuery = r.URL.Query()
+		w.Header().Set("Content-Type", "application/json")
+		w.Write([]byte("[]"))
+	}))
+	defer srv.Close()
+
+	client := seventeenlands.NewClientWithBase(srv.URL, srv.Client())
+	_, err := client.FetchColorRatings(context.Background(), "WOE", "PremierDraft", "2023-09-01", "2025-09-01")
+
+	require.NoError(t, err)
+	assert.Equal(t, "WOE", capturedQuery.Get("expansion"), "expansion param must be set")
+	assert.Equal(t, "PremierDraft", capturedQuery.Get("format"), "format param must be set")
+	assert.Equal(t, "PremierDraft", capturedQuery.Get("event_type"), "event_type param must be set (same as format)")
+	assert.Equal(t, "2023-09-01", capturedQuery.Get("start_date"), "start_date param must be set")
+	assert.Equal(t, "2025-09-01", capturedQuery.Get("end_date"), "end_date param must be set")
+}
+
+// TestFetchColorRatings_StartDateEndDateForwarded verifies that the startDate and
+// endDate strings passed by the caller appear verbatim in the query string.
+func TestFetchColorRatings_StartDateEndDateForwarded(t *testing.T) {
+	const wantStart = "2022-03-15"
+	const wantEnd = "2024-03-15"
+
+	var capturedQuery url.Values
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		capturedQuery = r.URL.Query()
+		w.Header().Set("Content-Type", "application/json")
+		w.Write([]byte("[]"))
+	}))
+	defer srv.Close()
+
+	client := seventeenlands.NewClientWithBase(srv.URL, srv.Client())
+	_, err := client.FetchColorRatings(context.Background(), "FDN", "QuickDraft", wantStart, wantEnd)
+
+	require.NoError(t, err)
+	assert.Equal(t, wantStart, capturedQuery.Get("start_date"))
+	assert.Equal(t, wantEnd, capturedQuery.Get("end_date"))
 }
 
 // --- AC2/AC3: retry + backoff tests using NewClientWithOptions ---
@@ -270,7 +325,7 @@ func TestFetchCardRatings_BackoffTiming(t *testing.T) {
 // /color_ratings/data endpoint.
 func TestFetchColorRatings_RetryOn429(t *testing.T) {
 	fixture := []seventeenlands.ColorRating{
-		{ColorCombination: "WU", WinRate: 0.58, GamesPlayed: 5000},
+		{ShortName: "WU", Wins: 2900, Games: 5000, IsSummary: false},
 	}
 
 	var callCount atomic.Int32
@@ -286,9 +341,10 @@ func TestFetchColorRatings_RetryOn429(t *testing.T) {
 	defer srv.Close()
 
 	client := seventeenlands.NewClientWithOptions(srv.URL, srv.Client(), 2, 1*time.Millisecond)
-	ratings, err := client.FetchColorRatings(context.Background(), "FDN", "PremierDraft")
+	ratings, err := client.FetchColorRatings(context.Background(), "FDN", "PremierDraft", "2023-01-01", "2025-01-01")
 
 	require.NoError(t, err)
 	require.Len(t, ratings, 1)
+	assert.Equal(t, "WU", ratings[0].ShortName)
 	assert.Equal(t, int32(2), callCount.Load())
 }

@@ -145,25 +145,25 @@ func TestMockStore_UpsertColorRatings(t *testing.T) {
 	ctx := context.Background()
 
 	first := []seventeenlands.ColorRating{
-		{ColorCombination: "WU", WinRate: 0.58, GamesPlayed: 5000},
-		{ColorCombination: "BG", WinRate: 0.52, GamesPlayed: 3200},
+		{ShortName: "WU", ColorName: "Azorius", Wins: 2900, Games: 5000, IsSummary: false},
+		{ShortName: "BG", ColorName: "Golgari", Wins: 1664, Games: 3200, IsSummary: false},
 	}
 	require.NoError(t, store.UpsertColorRatings(ctx, "FDN", "PremierDraft", first))
 
 	got := store.colorRatings["FDN/PremierDraft"]
 	require.Len(t, got, 2)
-	assert.Equal(t, "WU", got[0].ColorCombination)
-	assert.InDelta(t, 0.58, got[0].WinRate, 0.001)
+	assert.Equal(t, "WU", got[0].ShortName)
+	assert.InDelta(t, 0.58, got[0].WinRate(), 0.001)
 
 	// Second upsert must replace the first batch.
 	second := []seventeenlands.ColorRating{
-		{ColorCombination: "RG", WinRate: 0.61, GamesPlayed: 6000},
+		{ShortName: "RG", ColorName: "Gruul", Wins: 3660, Games: 6000, IsSummary: false},
 	}
 	require.NoError(t, store.UpsertColorRatings(ctx, "FDN", "PremierDraft", second))
 
 	got2 := store.colorRatings["FDN/PremierDraft"]
 	require.Len(t, got2, 1, "second upsert must replace all color ratings")
-	assert.Equal(t, "RG", got2[0].ColorCombination)
+	assert.Equal(t, "RG", got2[0].ShortName)
 }
 
 // TestMockStore_ZeroFetchedAt_AcceptedByMock documents that the mock store accepts a

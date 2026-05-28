@@ -167,7 +167,11 @@ func (c *Client) FetchCardRatings(ctx context.Context, setCode, format string) (
 
 // FetchColorRatings retrieves per-color-combination win-rate data for the given
 // set and draft format from the 17Lands /color_ratings/data endpoint.
-func (c *Client) FetchColorRatings(ctx context.Context, setCode, format string) ([]ColorRating, error) {
+//
+// startDate and endDate are ISO 8601 date strings (YYYY-MM-DD) that define the
+// data window. The endpoint requires all three of event_type, start_date, and
+// end_date or it returns HTTP 400 — see vault-mtg-tickets#46 for details.
+func (c *Client) FetchColorRatings(ctx context.Context, setCode, format, startDate, endDate string) ([]ColorRating, error) {
 	u, err := url.Parse(c.baseURL)
 	if err != nil {
 		return nil, fmt.Errorf("parse base URL: %w", err)
@@ -176,6 +180,9 @@ func (c *Client) FetchColorRatings(ctx context.Context, setCode, format string) 
 	q := u.Query()
 	q.Set("expansion", setCode)
 	q.Set("format", format)
+	q.Set("event_type", format)
+	q.Set("start_date", startDate)
+	q.Set("end_date", endDate)
 	u.RawQuery = q.Encode()
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, u.String(), nil)

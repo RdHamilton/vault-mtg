@@ -23,7 +23,7 @@ var defaultFormats = []string{"PremierDraft", "QuickDraft"}
 // Fetcher retrieves card and color ratings from an external source.
 type Fetcher interface {
 	FetchCardRatings(ctx context.Context, setCode, format string) ([]seventeenlands.CardRating, error)
-	FetchColorRatings(ctx context.Context, setCode, format string) ([]seventeenlands.ColorRating, error)
+	FetchColorRatings(ctx context.Context, setCode, format, startDate, endDate string) ([]seventeenlands.ColorRating, error)
 }
 
 // SetFetcher retrieves active standard set metadata from an external source.
@@ -197,23 +197,35 @@ func (s *Scheduler) runFetch(ctx context.Context) {
 				return
 			}
 
-			colorRatings, err := s.fetcher.FetchColorRatings(ctx, setCode, format)
+			// Rolling 2-year date window — mirrors the Lambda handler approach.
+			now := time.Now().UTC()
+			startDate := now.AddDate(-2, 0, 0).Format("2006-01-02")
+			endDate := now.Format("2006-01-02")
+
+			colorRatings, err := s.fetcher.FetchColorRatings(ctx, setCode, format, startDate, endDate)
 			if err != nil {
 				log.Printf("[sync] fetch color ratings %s/%s: %v", setCode, format, err)
 				continue
 			}
 
-			if len(colorRatings) == 0 {
+			var filtered []seventeenlands.ColorRating
+			for _, cr := range colorRatings {
+				if !cr.IsSummary {
+					filtered = append(filtered, cr)
+				}
+			}
+
+			if len(filtered) == 0 {
 				log.Printf("[sync] no color ratings returned for %s/%s", setCode, format)
 				continue
 			}
 
-			if err := s.store.UpsertColorRatings(ctx, setCode, format, colorRatings); err != nil {
+			if err := s.store.UpsertColorRatings(ctx, setCode, format, filtered); err != nil {
 				log.Printf("[sync] upsert color ratings %s/%s: %v", setCode, format, err)
 				continue
 			}
 
-			log.Printf("[sync] refreshed color ratings %s/%s: %d combinations", setCode, format, len(colorRatings))
+			log.Printf("[sync] refreshed color ratings %s/%s: %d combinations", setCode, format, len(filtered))
 		}
 	}
 }
