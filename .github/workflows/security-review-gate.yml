@@ -43,6 +43,22 @@
 # issue_comment trigger re-runs this workflow immediately and picks up the
 # APPROVED comment. No separate workflow_dispatch step is required.
 #
+# COMMENT-INDEXING RACE (ticket #2608)
+# ------------------------------------
+# A pull_request "synchronize" (push) event can fire within seconds of a valid
+# verdict comment. GitHub's issue-comments API is eventually consistent, so a
+# verdict that was already posted may not yet be returned by the comments
+# endpoint when the synchronize run evaluates -- producing a false-negative
+# BLOCK that previously required a manual label-toggle to clear.
+#
+# The verdict scan therefore retries the comments fetch up to S07_VERDICT_FETCH_
+# MAX_ATTEMPTS times with S07_VERDICT_FETCH_SLEEP_SECONDS between attempts,
+# breaking early the instant a matching APPROVED comment appears. This tolerates
+# comment-availability lag without weakening the gate: a PR with NO verdict still
+# exhausts all attempts and BLOCKS (true-negative preserved). The retry runs
+# before -- and is independent of -- the SHA-delta staleness logic (#119), which
+# is left untouched.
+#
 # STALENESS: SHA-DELTA CHECK (ticket #119)
 # -----------------------------------------
 # When an APPROVED comment exists but predates the current HEAD (e.g., because
@@ -209,6 +225,14 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           REPO: ${{ github.repository }}
           PR_NUMBER: ${{ steps.pr_info.outputs.pr_number }}
+          # Comment-indexing race tolerance (ticket #2608). Bounds the retry loop
+          # around the verdict-comment fetch so a synchronize event arriving within
+          # seconds of a valid verdict still finds the (eventually-consistent)
+          # comment instead of false-negative-blocking. 4 attempts x 5s sleep =>
+          # tolerates ~15s of API lag, comfortably covering the AC1 5s window while
+          # staying well inside the 5-minute job timeout.
+          S07_VERDICT_FETCH_MAX_ATTEMPTS: "4"
+          S07_VERDICT_FETCH_SLEEP_SECONDS: "5"
         run: |
           set -euo pipefail
 
@@ -239,19 +263,44 @@ jobs:
           #         CR/spaces) OR the bolded variant "**VERDICT: APPROVED**"
           #    Output format: "<comment_id> <author_login> <created_at>"
           #    Newlines in bodies are safe -- jq handles JSON string escaping.
+          #
+          #    RETRY (ticket #2608): the comments API is eventually consistent, so
+          #    a verdict posted moments before a synchronize event may not yet be
+          #    returned. Retry the fetch up to S07_VERDICT_FETCH_MAX_ATTEMPTS times
+          #    with S07_VERDICT_FETCH_SLEEP_SECONDS between attempts, breaking the
+          #    instant a match appears. If no match is ever found the loop exits
+          #    with an empty MATCH and the gate BLOCKS (true-negative preserved).
           # ------------------------------------------------------------------
-          MATCH=$(gh api "repos/${REPO}/issues/${PR_NUMBER}/comments" \
-            --paginate \
-            --jq '.[] |
-              select(
-                (.body | contains("## S-07 Security Review")) and
-                (.body | split("\n") |
-                  map(ltrimstr("\r") | ltrimstr(" ") | rtrimstr(" ") |
-                      ltrimstr("**") | rtrimstr("**")) |
-                  any(. == "VERDICT: APPROVED"))
-              ) |
-              "\(.id) \(.user.login) \(.created_at)"' \
-            2>/dev/null | tail -1 || echo "")
+          MATCH=""
+          ATTEMPT=1
+          while [ "${ATTEMPT}" -le "${S07_VERDICT_FETCH_MAX_ATTEMPTS}" ]; do
+            MATCH=$(gh api "repos/${REPO}/issues/${PR_NUMBER}/comments" \
+              --paginate \
+              --jq '.[] |
+                select(
+                  (.body | contains("## S-07 Security Review")) and
+                  (.body | split("\n") |
+                    map(ltrimstr("\r") | ltrimstr(" ") | rtrimstr(" ") |
+                        ltrimstr("**") | rtrimstr("**")) |
+                    any(. == "VERDICT: APPROVED"))
+                ) |
+                "\(.id) \(.user.login) \(.created_at)"' \
+              2>/dev/null | tail -1 || echo "")
+
+            if [ -n "${MATCH}" ]; then
+              echo "Verdict comment found on attempt ${ATTEMPT}/${S07_VERDICT_FETCH_MAX_ATTEMPTS}."
+              break
+            fi
+
+            if [ "${ATTEMPT}" -lt "${S07_VERDICT_FETCH_MAX_ATTEMPTS}" ]; then
+              echo "No verdict comment on attempt ${ATTEMPT}/${S07_VERDICT_FETCH_MAX_ATTEMPTS}; the comments API may not yet have indexed a recent verdict. Retrying in ${S07_VERDICT_FETCH_SLEEP_SECONDS}s..."
+              sleep "${S07_VERDICT_FETCH_SLEEP_SECONDS}"
+            else
+              echo "No verdict comment after ${S07_VERDICT_FETCH_MAX_ATTEMPTS} attempts."
+            fi
+
+            ATTEMPT=$((ATTEMPT + 1))
+          done
 
           echo "Match result: ${MATCH}"
 
