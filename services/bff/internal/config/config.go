@@ -100,13 +100,24 @@ type Config struct {
 	// server-side analytics events from the BFF.
 	//
 	// Sourced from POSTHOG_API_KEY.  The actual value is stored in AWS SSM
-	// Parameter Store at /vaultmtg/prod/posthog-api-key and injected as an
-	// environment variable at deploy time.
+	// Parameter Store at /vaultmtg/app/production/posthog-api-key and injected
+	// as an environment variable at deploy time.
 	//
 	// When empty (e.g. local development), PostHog is disabled and a no-op
 	// client is used.  This value must NEVER be logged or included in any
 	// error response body.
 	PostHogAPIKey string
+
+	// PostHogHost is the PostHog ingest endpoint URL passed to the SDK's
+	// Config.Endpoint field.
+	//
+	// Sourced from POSTHOG_HOST.  Defaults to "https://us.i.posthog.com" when
+	// unset so the BFF targets the US PostHog cloud region without requiring
+	// explicit configuration.  Override to "https://eu.i.posthog.com" for EU
+	// data-residency or to a self-hosted URL for on-prem deployments.
+	//
+	// This value is not sensitive and may be logged.
+	PostHogHost string
 
 	// GitCommit is the Git SHA of the deployed revision.  Sourced from the
 	// GIT_COMMIT environment variable, which the deploy pipeline writes into
@@ -196,6 +207,11 @@ func Load() (*Config, error) {
 		daemonLatestVersion = "0.1.0"
 	}
 
+	postHogHost := strings.TrimSpace(os.Getenv("POSTHOG_HOST"))
+	if postHogHost == "" {
+		postHogHost = "https://us.i.posthog.com"
+	}
+
 	cfg := &Config{
 		Env:                                 env,
 		DatabaseURL:                         dbURL,
@@ -208,6 +224,7 @@ func Load() (*Config, error) {
 		ClerkFrontendAPI:                    strings.TrimSpace(os.Getenv("CLERK_FRONTEND_API")),
 		SentryDSN:                           strings.TrimSpace(os.Getenv("SENTRY_DSN")),
 		PostHogAPIKey:                       strings.TrimSpace(os.Getenv("POSTHOG_API_KEY")),
+		PostHogHost:                         postHogHost,
 		GitCommit:                           strings.TrimSpace(os.Getenv("GIT_COMMIT")),
 		BFFAdminToken:                       strings.TrimSpace(os.Getenv("BFF_ADMIN_TOKEN")),
 		MailchimpAPIKey:                     strings.TrimSpace(os.Getenv("MAILCHIMP_API_KEY")),

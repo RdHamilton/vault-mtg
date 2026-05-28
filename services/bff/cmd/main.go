@@ -148,13 +148,13 @@ func main() {
 	fmt.Printf("port: %d\n\n", *port)
 
 	// Initialise PostHog server-side analytics.  The API key is read from
-	// POSTHOG_API_KEY (sourced from SSM /vaultmtg/prod/posthog-api-key at
-	// deploy time).  When empty, PostHog is disabled — a no-op client is used
+	// POSTHOG_API_KEY (sourced from SSM /vaultmtg/app/production/posthog-api-key
+	// at deploy time).  When empty, PostHog is disabled — a no-op client is used
 	// so all handler code paths are always exercised.  The key is never logged.
 	var postHogClient handlers.PostHogClient
 	if cfg.PostHogAPIKey != "" {
 		phClient, err := posthoglib.NewWithConfig(cfg.PostHogAPIKey, posthoglib.Config{
-			Endpoint: "https://app.posthog.com",
+			Endpoint: cfg.PostHogHost,
 		})
 		if err != nil {
 			log.Fatalf("posthog.NewWithConfig: %v", err)
