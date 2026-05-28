@@ -27,7 +27,7 @@ func (f *stubFetcher) FetchCardRatings(_ context.Context, _, _ string) ([]sevent
 	return f.cards, nil
 }
 
-func (f *stubFetcher) FetchColorRatings(_ context.Context, _, _ string) ([]seventeenlands.ColorRating, error) {
+func (f *stubFetcher) FetchColorRatings(_ context.Context, _, _, _, _ string) ([]seventeenlands.ColorRating, error) {
 	f.colorsCalled++
 	return f.colors, nil
 }
@@ -257,8 +257,8 @@ func TestScheduler_ColorRatingsFetchedAfterCardRatings(t *testing.T) {
 	fetcher := &stubFetcher{
 		cards: []seventeenlands.CardRating{{Name: "Lightning Bolt", ALSA: 1.5}},
 		colors: []seventeenlands.ColorRating{
-			{ColorCombination: "WU", WinRate: 0.58, GamesPlayed: 5000},
-			{ColorCombination: "BG", WinRate: 0.52, GamesPlayed: 3200},
+			{ShortName: "WU", ColorName: "Azorius", Wins: 2900, Games: 5000, IsSummary: false},
+			{ShortName: "BG", ColorName: "Golgari", Wins: 1664, Games: 3200, IsSummary: false},
 		},
 	}
 	store := &stubStore{}
@@ -286,8 +286,8 @@ func TestScheduler_ColorRatingsFetchedAfterCardRatings(t *testing.T) {
 	assert.Equal(t, "FDN", cr.setCode)
 	assert.Equal(t, "PremierDraft", cr.draftFormat)
 	require.Len(t, cr.ratings, 2)
-	assert.Equal(t, "WU", cr.ratings[0].ColorCombination)
-	assert.InDelta(t, 0.58, cr.ratings[0].WinRate, 0.001)
+	assert.Equal(t, "WU", cr.ratings[0].ShortName)
+	assert.InDelta(t, 0.58, cr.ratings[0].WinRate(), 0.001)
 }
 
 // TestScheduler_ColorRatingsSkippedWhenEmpty verifies that when the fetcher

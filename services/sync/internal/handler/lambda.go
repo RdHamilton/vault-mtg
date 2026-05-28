@@ -51,7 +51,7 @@ const (
 // Fetcher retrieves card and color ratings from an external source.
 type Fetcher interface {
 	FetchCardRatings(ctx context.Context, setCode, format string) ([]seventeenlands.CardRating, error)
-	FetchColorRatings(ctx context.Context, setCode, format string) ([]seventeenlands.ColorRating, error)
+	FetchColorRatings(ctx context.Context, setCode, format, startDate, endDate string) ([]seventeenlands.ColorRating, error)
 }
 
 // SyncHandler is the Lambda handler that fetches card ratings for all active sets
@@ -337,23 +337,38 @@ func (h *SyncHandler) syncFormat(ctx context.Context, setCode, format string) er
 		return ctx.Err()
 	}
 
-	colorRatings, err := h.fetcher.FetchColorRatings(ctx, setCode, format)
+	// Rolling 2-year date window: avoids a Store interface change and covers all
+	// active draft sets (none are older than two years). See vault-mtg-tickets#46.
+	now := time.Now().UTC()
+	startDate := now.AddDate(-2, 0, 0).Format("2006-01-02")
+	endDate := now.Format("2006-01-02")
+
+	colorRatings, err := h.fetcher.FetchColorRatings(ctx, setCode, format, startDate, endDate)
 	if err != nil {
 		log.Printf("[sync] fetch color ratings %s/%s: %v", setCode, format, err)
 		return nil
 	}
 
-	if len(colorRatings) == 0 {
+	// Filter out is_summary rows — these are aggregate rows returned by the API
+	// with integer short_name values that do not represent playable color pairs.
+	var filtered []seventeenlands.ColorRating
+	for _, cr := range colorRatings {
+		if !cr.IsSummary {
+			filtered = append(filtered, cr)
+		}
+	}
+
+	if len(filtered) == 0 {
 		log.Printf("[sync] no color ratings returned for %s/%s", setCode, format)
 		return nil
 	}
 
-	if err := h.store.UpsertColorRatings(ctx, setCode, format, colorRatings); err != nil {
+	if err := h.store.UpsertColorRatings(ctx, setCode, format, filtered); err != nil {
 		log.Printf("[sync] upsert color ratings %s/%s: %v", setCode, format, err)
 		return nil
 	}
 
-	log.Printf("[sync] refreshed color ratings %s/%s: %d combinations", setCode, format, len(colorRatings))
+	log.Printf("[sync] refreshed color ratings %s/%s: %d combinations", setCode, format, len(filtered))
 	return nil
 }
 
