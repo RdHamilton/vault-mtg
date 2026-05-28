@@ -193,6 +193,29 @@ func New(cfg *config.Config) *Service {
 	return svc
 }
 
+// computeAuthStatus derives the auth_status string from config and the current
+// keychain error sentinel. It is a pure function (no receiver) so it can be
+// tested independently without constructing a full Service.
+//
+// Precedence rules (error outranks authenticated):
+//  1. keychainErr != nil → keychain_error, regardless of Keychain or AccountID.
+//  2. cfg.AccountID == "" OR cfg.Keychain == false → setup_required.
+//  3. cfg.Keychain == true AND cfg.AccountID != "" AND keychainErr == nil → authenticated.
+//
+// NOTE: s.keychainErr is the single source of truth for the keychain-error
+// state. Do NOT introduce a parallel boolean; when #2136 lands its graceful-
+// degradation state machine it must continue to set/clear s.keychainErr so this
+// derivation picks up the transition automatically on the next heartbeat tick.
+func computeAuthStatus(cfg *config.Config, keychainErr error) string {
+	if keychainErr != nil {
+		return localapi.AuthStatusKeychainError
+	}
+	if !cfg.Keychain || cfg.AccountID == "" {
+		return localapi.AuthStatusSetupRequired
+	}
+	return localapi.AuthStatusAuthenticated
+}
+
 // flushGREBuffer is the FlushFunc wired into the GRE session manager.
 // It builds a GamePlayPayload from the accumulated entries and dispatches it
 // to the BFF as a "match.game_ended" DaemonEvent with partial=true.
@@ -434,6 +457,7 @@ func (s *Service) Run(ctx context.Context) error {
 		AccountID:    s.cfg.AccountID,
 		CloudAPIURL:  s.cfg.CloudAPIURL,
 		BFFReachable: true, // optimistic — flips when a dispatch fails
+		AuthStatus:   computeAuthStatus(s.cfg, s.keychainErr),
 	})
 	// Hand the localapi server a read view of the live draft state so
 	// /api/v1/drafts/{id}/current-pack, /grade-pick, and /win-probability
@@ -521,6 +545,7 @@ func (s *Service) Run(ctx context.Context) error {
 				BFFReachable:    true,
 				DispatchDropped: s.eventBuffer.Dropped(),
 				LastDispatchAt:  &now,
+				AuthStatus:      computeAuthStatus(s.cfg, s.keychainErr),
 			})
 
 			// Skip when AccountID is not yet set (daemon not authenticated).

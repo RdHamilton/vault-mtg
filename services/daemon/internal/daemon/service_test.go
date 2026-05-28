@@ -1486,3 +1486,57 @@ func TestMultiHeartbeatBuffered(t *testing.T) {
 	count3, _, _ := svc.snapshotAndResetDrift()
 	assert.Equal(t, uint32(0), count3, "window 3 must have count=0 when no failures occurred")
 }
+
+// TestComputeAuthStatus covers the three v0.3.3 enum values and the
+// precedence edge case (error outranks authenticated).
+func TestComputeAuthStatus(t *testing.T) {
+	t.Run("authenticated", func(t *testing.T) {
+		cfg := &config.Config{
+			Keychain:  true,
+			AccountID: "user_abc",
+		}
+		got := computeAuthStatus(cfg, nil)
+		assert.Equal(t, "authenticated", got)
+	})
+
+	t.Run("setup_required when AccountID empty", func(t *testing.T) {
+		cfg := &config.Config{
+			Keychain:  true,
+			AccountID: "",
+		}
+		got := computeAuthStatus(cfg, nil)
+		assert.Equal(t, "setup_required", got)
+	})
+
+	t.Run("setup_required when Keychain false", func(t *testing.T) {
+		cfg := &config.Config{
+			Keychain:  false,
+			AccountID: "user_abc",
+		}
+		got := computeAuthStatus(cfg, nil)
+		assert.Equal(t, "setup_required", got)
+	})
+
+	t.Run("keychain_error when keychainErr non-nil", func(t *testing.T) {
+		cfg := &config.Config{
+			Keychain:  false,
+			AccountID: "",
+		}
+		got := computeAuthStatus(cfg, fmt.Errorf("keychain unavailable"))
+		assert.Equal(t, "keychain_error", got)
+	})
+
+	t.Run("keychain_error outranks authenticated (precedence edge case)", func(t *testing.T) {
+		// Keychain mode + non-empty AccountID would normally yield "authenticated",
+		// but a non-nil keychainErr must take priority. This is the most likely
+		// production failure mode — retryKeychain exhausted but AccountID was
+		// already set from a previous successful session.
+		cfg := &config.Config{
+			Keychain:  true,
+			AccountID: "user_abc",
+		}
+		got := computeAuthStatus(cfg, fmt.Errorf("os keychain error"))
+		assert.Equal(t, "keychain_error", got,
+			"keychainErr must outrank authenticated even when AccountID is set")
+	})
+}

@@ -26,6 +26,26 @@ import (
 // discovery handshake; users do not configure this.
 const DefaultPort = 9001
 
+// Auth status values for State.AuthStatus. The field is derived by
+// computeAuthStatus in services/daemon/internal/daemon and set at both
+// localapi.New construction time and on each heartbeat SetState call.
+//
+// Three values are defined for v0.3.3:
+//   - AuthStatusAuthenticated  — keychain mode, account linked, no keychain error.
+//   - AuthStatusSetupRequired  — account not yet linked (AccountID empty) or
+//     keychain mode not enabled.
+//   - AuthStatusKeychainError  — keychain read failed at startup or after retries.
+//
+// NOTE: auth_paused is deferred to v0.4.0 per Ray plan-review on #2141. It
+// requires a new mu-guarded reauthRequired bool field on daemon.Service (Option A)
+// and a frontend consumer (Frank's downstream ticket). Do not define a constant
+// for a deferred value — it invites premature use.
+const (
+	AuthStatusAuthenticated = "authenticated"
+	AuthStatusSetupRequired = "setup_required"
+	AuthStatusKeychainError = "keychain_error"
+)
+
 // shutdownTimeout caps how long the local API server takes to drain on stop.
 const shutdownTimeout = 5 * time.Second
 
@@ -46,6 +66,12 @@ type State struct {
 	// ring buffer after retry exhaustion. Surfaced on /api/v1/system/health
 	// metrics.dispatchDropped for observability.
 	DispatchDropped int64
+	// AuthStatus is the daemon's authentication state, derived by
+	// computeAuthStatus in services/daemon/internal/daemon. One of the
+	// AuthStatus* constants defined in this package. Always present in the
+	// JSON response — an empty string signals a derivation bug rather than a
+	// valid absent value. Updated on each heartbeat tick (~30s staleness).
+	AuthStatus string
 }
 
 // Server is the loopback HTTP server. Construct with New, then call Start
@@ -212,11 +238,12 @@ func (s *Server) Stop() error {
 
 // healthResponse is the JSON body returned by GET /health.
 type healthResponse struct {
-	Status    string `json:"status"`
-	Version   string `json:"version"`
-	SessionID string `json:"session_id"`
-	StartedAt string `json:"started_at"`
-	AccountID string `json:"account_id,omitempty"`
+	Status     string `json:"status"`
+	Version    string `json:"version"`
+	SessionID  string `json:"session_id"`
+	StartedAt  string `json:"started_at"`
+	AccountID  string `json:"account_id,omitempty"`
+	AuthStatus string `json:"auth_status"`
 }
 
 // handleHealth returns the daemon's liveness snapshot. The "status" field is
@@ -229,11 +256,12 @@ func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {
 
 	st := s.snapshot()
 	resp := healthResponse{
-		Status:    "ok",
-		Version:   st.Version,
-		SessionID: st.SessionID,
-		StartedAt: st.StartedAt.UTC().Format(time.RFC3339),
-		AccountID: st.AccountID,
+		Status:     "ok",
+		Version:    st.Version,
+		SessionID:  st.SessionID,
+		StartedAt:  st.StartedAt.UTC().Format(time.RFC3339),
+		AccountID:  st.AccountID,
+		AuthStatus: st.AuthStatus,
 	}
 	writeJSON(w, r, http.StatusOK, resp)
 }
