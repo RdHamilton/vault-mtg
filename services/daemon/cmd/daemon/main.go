@@ -145,16 +145,27 @@ func main() {
 	// Runs when: no keychain sentinel, no plaintext key, no daemon JWT, OR when
 	// the keychain sentinel is set but the OS keychain entry is missing/empty
 	// (reinstall scenario — OS keychain was wiped after a full reinstall).
+	//
+	// On failure:
+	//   - headless mode: exit immediately (launchd will respawn; PKCE re-runs on boot).
+	//   - tray mode: fall through to systray so the failure can be surfaced in the
+	//     menu bar. The onReady goroutine re-checks NeedsFirstRunAuth and shows
+	//     StatusSetupRequired + "Retry Setup…" so the user can retry without a
+	//     daemon restart (#2132).
 	if cfg.NeedsFirstRunAuth(keychain.Get) && cfg.CloudAPIURL != "" {
 		log.Printf("[mtga-daemon] first-run: no API key detected — starting PKCE auth flow")
 		if err := runPKCEAuth(cfg, *cfgPath); err != nil {
 			fmt.Fprintf(os.Stderr, "auth error: %v\n", err)
-			// Signal launchd that this exit is intentional so KeepAlive=true in
-			// the plist does not respawn the process and trigger PKCE again every
-			// ~10 seconds (ThrottleInterval). os.Exit bypasses defers, so we call
-			// stopLaunchAgent explicitly here before exiting.
-			stopLaunchAgent()
-			os.Exit(1)
+			if config.EnvWithFallback("VAULTMTG_DAEMON_HEADLESS", "MTGA_DAEMON_HEADLESS") == "1" {
+				// Headless: signal launchd the exit is intentional so KeepAlive=true
+				// does not trigger a rapid respawn loop (ThrottleInterval). os.Exit
+				// bypasses defers, so stopLaunchAgent is called explicitly.
+				stopLaunchAgent()
+				os.Exit(1)
+			}
+			// Non-headless: fall through — the tray onReady goroutine handles the
+			// retry flow via NeedsFirstRunAuth + RetrySetup channel (#2132).
+			log.Printf("[mtga-daemon] first-run: PKCE failed — will surface retry option in tray")
 		}
 	}
 
@@ -197,9 +208,11 @@ func main() {
 		SyncNow:            app.SyncNow,
 		GrantAccess:        app.GrantAccess,
 		TryAgain:           app.TryAgain,
+		RetrySetup:         app.RetrySetup,
 		SetHelperInstalled: app.SetHelperInstalled,
 		SetLastSync:        app.SetLastSync,
 		SetKeychainError:   app.SetKeychainError,
+		SetSetupRequired:   app.SetSetupRequired,
 	})
 
 	// Handle OS signals: forward SIGTERM/SIGINT to systray so onQuit fires cleanly.
@@ -218,6 +231,56 @@ func main() {
 	app.Run(func() {
 		app.SetStatus(tray.StatusConnected)
 		go func() {
+			// ── Auth-failure retry loop (#2132) ────────────────────────────────
+			// If Step 3 PKCE failed non-headlessly, cfg.NeedsFirstRunAuth is still
+			// true. Surface StatusSetupRequired in the tray and wait for the user to
+			// click "Retry Setup…". Each click opens https://vaultmtg.app/setup in
+			// the browser and re-runs the PKCE flow (RC3: double behavior).
+			//
+			// Headless mode inside this loop (RC1): if PKCE still fails and the
+			// daemon is headless, flush Sentry (RC2) and exit(1) so the supervisor
+			// respawns — same semantics as the Step 3 headless exit above.
+			for cfg.NeedsFirstRunAuth(keychain.Get) && cfg.CloudAPIURL != "" {
+				app.SetSetupRequired(true)
+
+				if headless {
+					// RC1: headless — no tray to retry from. Log and exit.
+					log.Printf("[mtga-daemon] PKCE auth failed (headless) — exiting so supervisor can respawn")
+					// RC2: flush Sentry before os.Exit; defer on main() does not
+					// fire from a goroutine.
+					sentryhook.Flush()
+					os.Exit(1)
+				}
+
+				// Wait for user to click "Retry Setup…" or for context cancel.
+				select {
+				case <-ctx.Done():
+					return
+				case <-app.RetrySetup:
+				}
+
+				log.Printf("[mtga-daemon] retry setup: user requested re-auth — opening setup page")
+
+				// RC3 double behavior: open the setup page in the browser AND
+				// re-enter the PKCE flow in the same action, so the user sees the
+				// page while the auth redirect proceeds.
+				if err := pkce.OpenBrowser("https://vaultmtg.app/setup"); err != nil {
+					log.Printf("[mtga-daemon] retry setup: could not open browser: %v", err)
+				}
+
+				if err := runPKCEAuth(cfg, *cfgPath); err != nil {
+					log.Printf("[mtga-daemon] retry setup: PKCE failed: %v — showing retry option again", err)
+					// Loop to surface the retry item again.
+					continue
+				}
+
+				// PKCE succeeded: clear the setup-required state and start the
+				// daemon. The loop condition (NeedsFirstRunAuth) will now be false.
+				app.SetSetupRequired(false)
+				log.Printf("[mtga-daemon] retry setup: auth complete — starting daemon service")
+			}
+
+			// ── Normal daemon run loop ─────────────────────────────────────────
 			if err := svc.Run(ctx); err != nil {
 				if headless {
 					// REV-2: headless path — log the canonical FATAL line and exit

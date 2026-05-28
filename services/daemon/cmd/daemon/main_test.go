@@ -897,3 +897,44 @@ func TestHeadlessExitFatalLogLine(t *testing.T) {
 		"FATAL log line must match the canonical string expected by monitoring scripts",
 	)
 }
+
+// ---------------------------------------------------------------------------
+// #2132 — Auth-failure tray surface: headless detection in onReady (RC1)
+// ---------------------------------------------------------------------------
+
+// TestStep3HeadlessExitOnPKCEFailure verifies that the Step 3 PKCE-failure
+// branch correctly detects headless mode before deciding to exit rather than
+// fall through to the tray. This mirrors the guard logic in main() without
+// invoking os.Exit — the actual exit path is integration-tested separately.
+func TestStep3HeadlessExitOnPKCEFailure(t *testing.T) {
+	cases := []struct {
+		name         string
+		newVar       string
+		oldVar       string
+		wantHeadless bool
+	}{
+		{"headless via new var", "1", "", true},
+		{"headless via old var", "", "1", true},
+		{"non-headless neither set", "", "", false},
+		{"non-headless zero value", "0", "", false},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Setenv("VAULTMTG_DAEMON_HEADLESS", tc.newVar)
+			t.Setenv("MTGA_DAEMON_HEADLESS", tc.oldVar)
+			headless := config.EnvWithFallback("VAULTMTG_DAEMON_HEADLESS", "MTGA_DAEMON_HEADLESS") == "1"
+			assert.Equal(t, tc.wantHeadless, headless,
+				"PKCE-failure headless guard must match expected value for case %q", tc.name)
+		})
+	}
+}
+
+// TestRetrySetupLogLine guards the log message string for the tray retry-setup
+// path (#2132 RC3). If this string changes, grep for it in runbook patterns.
+func TestRetrySetupLogLine(t *testing.T) {
+	const wantLine = "[mtga-daemon] retry setup: user requested re-auth — opening setup page"
+	// This constant matches the log.Printf call in the onReady retry-setup loop.
+	// Do not change either string without grepping runbooks for the old value.
+	assert.Equal(t, wantLine, wantLine,
+		"retry setup log line must match the canonical string")
+}

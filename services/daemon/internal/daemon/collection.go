@@ -24,6 +24,11 @@ type TrayHooks struct {
 	// TryAgain is signalled by the tray when the user clicks "Try Again"
 	// (keychain retry). Used by retryKeychain to skip the backoff timer.
 	TryAgain <-chan struct{}
+	// RetrySetup is signalled by the tray when the user clicks "Retry Setup…".
+	// The onReady handler opens https://vaultmtg.app/setup in the browser and
+	// re-runs the PKCE flow. Buffered cap=1; a second click before the first
+	// completes is dropped.
+	RetrySetup <-chan struct{}
 	// SetHelperInstalled updates the tray menu to show Sync Now (true) or
 	// Grant Access (false).
 	SetHelperInstalled func(bool)
@@ -32,6 +37,10 @@ type TrayHooks struct {
 	// SetKeychainError shows or hides the keychain error state (StatusKeychainError
 	// + "Try Again" menu item) in the tray. Call with true when retrying; false when resolved.
 	SetKeychainError func(bool)
+	// SetSetupRequired shows or hides the StatusSetupRequired state + "Retry Setup…"
+	// menu item in the tray. Call with true when PKCE auth fails in onReady; false
+	// once setup completes successfully.
+	SetSetupRequired func(bool)
 	// SetReauthRequired notifies the tray that the daemon received a 401 in
 	// keychain mode and user re-authentication is needed. The reason string is
 	// a human-readable hint shown in the tray tooltip or menu item.

@@ -21,6 +21,7 @@ func TestStatusLabel(t *testing.T) {
 		{StatusWaitingForArena, "◌ Waiting for Arena..."},
 		{StatusError, "✕ Error — check logs"},
 		{StatusKeychainError, "Keychain unavailable — unlock to continue"},
+		{StatusSetupRequired, "⚠ Setup required — auth failed"},
 	}
 	for _, tc := range cases {
 		assert.Equal(t, tc.want, tc.s.label(), "Status(%d)", tc.s)
@@ -116,4 +117,49 @@ func TestAppSetKeychainError_NoopWithoutMenu(t *testing.T) {
 	assert.NotPanics(t, func() { a.SetKeychainError(true) })
 	assert.Equal(t, StatusKeychainError, a.status)
 	assert.NotPanics(t, func() { a.SetKeychainError(false) })
+}
+
+// ---------------------------------------------------------------------------
+// StatusSetupRequired and SetSetupRequired (#2132)
+// ---------------------------------------------------------------------------
+
+func TestStatusLabel_SetupRequired(t *testing.T) {
+	assert.Equal(t, "⚠ Setup required — auth failed", StatusSetupRequired.label())
+}
+
+func TestAppSetStatus_SetupRequired(t *testing.T) {
+	a := newTestApp()
+	a.SetStatus(StatusSetupRequired)
+	assert.Equal(t, StatusSetupRequired, a.status)
+}
+
+// TestAppSetSetupRequired_NoopWithoutMenu verifies that SetSetupRequired does
+// not panic when miRetrySetup is nil (i.e. before setup() has run in tests).
+func TestAppSetSetupRequired_NoopWithoutMenu(t *testing.T) {
+	a := newTestApp()
+	// miRetrySetup is nil — must not panic.
+	assert.NotPanics(t, func() { a.SetSetupRequired(true) })
+	assert.Equal(t, StatusSetupRequired, a.status)
+	assert.NotPanics(t, func() { a.SetSetupRequired(false) })
+}
+
+// TestAppRetrySetupChannel_InitialisedInNew verifies that New() initialises
+// RetrySetup as a buffered channel with cap=1 (RC4).
+func TestAppRetrySetupChannel_InitialisedInNew(t *testing.T) {
+	a := newTestApp()
+	assert.NotNil(t, a.RetrySetup, "RetrySetup channel must not be nil after New()")
+	assert.Equal(t, 1, cap(a.RetrySetup), "RetrySetup must be buffered cap=1")
+}
+
+// TestAppRetrySetupChannel_NonBlocking verifies that sending twice without
+// draining does not block (buffered cap=1 drops the second send).
+func TestAppRetrySetupChannel_NonBlocking(t *testing.T) {
+	a := newTestApp()
+	a.RetrySetup <- struct{}{}
+	select {
+	case a.RetrySetup <- struct{}{}:
+		// dropped — channel full, not a panic
+	default:
+	}
+	assert.Len(t, a.RetrySetup, 1)
 }

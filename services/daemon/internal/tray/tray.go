@@ -27,6 +27,7 @@ const (
 	StatusWaitingForArena
 	StatusError
 	StatusKeychainError
+	StatusSetupRequired
 )
 
 func (s Status) label() string {
@@ -39,6 +40,8 @@ func (s Status) label() string {
 		return "✕ Error — check logs"
 	case StatusKeychainError:
 		return "Keychain unavailable — unlock to continue"
+	case StatusSetupRequired:
+		return "⚠ Setup required — auth failed"
 	default:
 		return "◌ Starting..."
 	}
@@ -60,6 +63,7 @@ type App struct {
 	miSyncNow     *systray.MenuItem
 	miGrantAccess *systray.MenuItem
 	miTryAgain    *systray.MenuItem
+	miRetrySetup  *systray.MenuItem
 	miOpenApp     *systray.MenuItem
 	miQuit        *systray.MenuItem
 
@@ -69,6 +73,10 @@ type App struct {
 	GrantAccess chan struct{}
 	// TryAgain is signalled when the user clicks "Try Again" (keychain retry).
 	TryAgain chan struct{}
+	// RetrySetup is signalled when the user clicks "Retry Setup…". The handler
+	// opens https://vaultmtg.app/setup in the browser and re-runs the PKCE flow.
+	// Buffered cap=1 so a second click before the first is handled is dropped.
+	RetrySetup chan struct{}
 }
 
 // New creates an App. appURL is opened when "Open VaultMTG" is clicked.
@@ -83,6 +91,7 @@ func New(appURL string, openURL func(string) error, onQuit func()) *App {
 		SyncNow:     make(chan struct{}, 1),
 		GrantAccess: make(chan struct{}, 1),
 		TryAgain:    make(chan struct{}, 1),
+		RetrySetup:  make(chan struct{}, 1),
 	}
 }
 
@@ -129,6 +138,22 @@ func (a *App) SetHelperInstalled(installed bool) {
 	} else {
 		a.miGrantAccess.Show()
 		a.miSyncNow.Hide()
+	}
+}
+
+// SetSetupRequired shows or hides the "Retry Setup…" menu item and updates the
+// status label to StatusSetupRequired. Call with true when PKCE auth fails in
+// onReady; false to hide the item once setup completes.
+func (a *App) SetSetupRequired(show bool) {
+	if show {
+		a.SetStatus(StatusSetupRequired)
+		if a.miRetrySetup != nil {
+			a.miRetrySetup.Show()
+		}
+	} else {
+		if a.miRetrySetup != nil {
+			a.miRetrySetup.Hide()
+		}
 	}
 }
 
@@ -184,6 +209,9 @@ func (a *App) setup() {
 	a.miTryAgain = systray.AddMenuItem("Try Again", "Retry reading from macOS keychain")
 	a.miTryAgain.Hide()
 
+	a.miRetrySetup = systray.AddMenuItem("Retry Setup…", "Re-open setup page and retry authentication")
+	a.miRetrySetup.Hide()
+
 	systray.AddSeparator()
 
 	a.miOpenApp = systray.AddMenuItem("Open VaultMTG", "Open the VaultMTG web app")
@@ -209,6 +237,11 @@ func (a *App) loop() {
 		case <-a.miTryAgain.ClickedCh:
 			select {
 			case a.TryAgain <- struct{}{}:
+			default:
+			}
+		case <-a.miRetrySetup.ClickedCh:
+			select {
+			case a.RetrySetup <- struct{}{}:
 			default:
 			}
 		case <-a.miOpenApp.ClickedCh:
