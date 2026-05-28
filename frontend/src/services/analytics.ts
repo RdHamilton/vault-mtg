@@ -394,3 +394,13 @@ export function registerSuperProperties(
   if (!initialized) return;
   posthog.register(properties);
 }
+
+/**
+ * Remove a single super-property so it is no longer sent on subsequent events.
+ * Must be called BEFORE resetIdentity() on sign-out — posthog.reset() clears
+ * the distinct_id and would orphan the super-property.
+ */
+export function unregisterSuperProperty(propertyName: string): void {
+  if (!initialized) return;
+  posthog.unregister(propertyName);
+}
