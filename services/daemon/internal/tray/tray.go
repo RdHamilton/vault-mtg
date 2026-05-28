@@ -172,6 +172,17 @@ func (a *App) SetKeychainError(show bool) {
 	}
 }
 
+// SetWaitingForArena switches the tray status to StatusWaitingForArena (waiting=true)
+// or StatusConnected (waiting=false). Called by the daemon idle loop when MTGA is not
+// installed and the daemon is polling for Player.log.
+func (a *App) SetWaitingForArena(waiting bool) {
+	if waiting {
+		a.SetStatus(StatusWaitingForArena)
+	} else {
+		a.SetStatus(StatusConnected)
+	}
+}
+
 // SetLastSync updates the "last synced" timestamp label. Safe to call from any goroutine.
 func (a *App) SetLastSync(t time.Time) {
 	a.lastSync = t

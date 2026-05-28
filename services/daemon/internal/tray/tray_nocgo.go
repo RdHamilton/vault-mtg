@@ -91,3 +91,4 @@ func (a *App) SetHelperInstalled(_ bool) {}
 func (a *App) SetLastSync(t time.Time)   { a.lastSync = t }
 func (a *App) SetKeychainError(_ bool)   {}
 func (a *App) SetSetupRequired(_ bool)   {}
+func (a *App) SetWaitingForArena(_ bool) {}

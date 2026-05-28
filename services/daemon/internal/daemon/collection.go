@@ -45,6 +45,10 @@ type TrayHooks struct {
 	// keychain mode and user re-authentication is needed. The reason string is
 	// a human-readable hint shown in the tray tooltip or menu item.
 	SetReauthRequired func(reason string)
+	// SetWaitingForArena switches the tray to StatusWaitingForArena (true) or
+	// StatusConnected (false). Called by idleUntilMTGADetected when MTGA is not
+	// installed and the daemon is polling for Player.log.
+	SetWaitingForArena func(bool)
 }
 
 // WithTray attaches tray integration to the service.
