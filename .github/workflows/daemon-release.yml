@@ -199,6 +199,14 @@ jobs:
             -f "tag_name=${PREFIXED_TAG}" \
             --jq '"renamed: \(.tag_name) at \(.html_url)"'
 
+      - name: Delete orphan bare v* git ref
+        if: startsWith(github.ref, 'refs/tags/daemon/v')
+        run: |
+          SEMVER="${{ steps.semver.outputs.tag }}"
+          gh api --method DELETE "repos/${{ github.repository }}/git/refs/tags/${SEMVER}" || true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
       - name: Upload darwin universal binary for sign-macos
         # Share the unsigned darwin binary so sign-macos can sign and notarize it.
         # GoReleaser v2 with format:binary writes the universal binary to a
