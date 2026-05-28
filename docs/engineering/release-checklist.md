@@ -28,6 +28,16 @@ All of these must be green before you tag.
 
 - [ ] GitHub Actions shows all checks passing on the release branch
 - [ ] No open PRs in state "BLOCKED" that touch this release
+- [ ] Infra repo (`mtga-companion-infra`) required status checks are all enabled — verify with:
+  ```bash
+  gh api repos/RdHamilton/mtga-companion-infra/branches/main/protection/required_status_checks \
+    --jq '.contexts[]'
+  # Expected: all four gates present
+  # - Changeset gate — replacement check
+  # - Security Review Gate
+  # - Local Verification heuristic check
+  # - Validate IAM policies (S-10)
+  ```
 - [ ] `go test -race ./...` passes in every touched Go module (run locally if CI was skipped):
   ```bash
   cd services/bff && go test -race ./...
