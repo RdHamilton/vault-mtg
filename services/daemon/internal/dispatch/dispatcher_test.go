@@ -241,6 +241,177 @@ func TestDispatcher401RefreshFailureContinuesRetry(t *testing.T) {
 	assert.EqualValues(t, 3, requestCount.Load())
 }
 
+// TestDispatcher_ErrReauthRequiredBreaksRetryLoop verifies that when a Refresher
+// returns ErrReauthRequired the dispatcher breaks the retry loop immediately
+// after the first BFF hit and surfaces ErrReauthRequired to the caller.
+// The BFF must receive exactly 1 request — no retries.
+func TestDispatcher_ErrReauthRequiredBreaksRetryLoop(t *testing.T) {
+	var requestCount atomic.Int32
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requestCount.Add(1)
+		w.WriteHeader(http.StatusUnauthorized)
+	}))
+	defer srv.Close()
+
+	ref := &mockRefresher{err: dispatch.ErrReauthRequired}
+	d := dispatch.New(srv.URL, "/v1/ingest/events", "old-token").WithRefresher(ref)
+
+	evt, err := dispatch.BuildEvent("test.event", "acc", "sess", map[string]string{})
+	require.NoError(t, err)
+
+	sendErr := d.Send(context.Background(), evt)
+	require.Error(t, sendErr)
+	assert.True(t, errors.Is(sendErr, dispatch.ErrReauthRequired),
+		"error must wrap ErrReauthRequired")
+	// Sentinel breaks after 1 attempt — no retries.
+	assert.EqualValues(t, 1, requestCount.Load(),
+		"BFF must be hit exactly once when refresher returns ErrReauthRequired")
+	// Refresher called exactly once.
+	assert.Equal(t, 1, ref.calls, "Refresh must be called exactly once")
+}
+
+// ---------------------------------------------------------------------------
+// OnBFFFailure callback tests (#2139)
+// ---------------------------------------------------------------------------
+
+// TestDispatcher_OnBFFFailure_FiredOnTerminalFailure verifies that the
+// onBFFFailure callback is invoked exactly once when all retries are exhausted
+// and the event is buffered. The last HTTP status code is passed to the callback.
+func TestDispatcher_OnBFFFailure_FiredOnTerminalFailure(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusServiceUnavailable)
+	}))
+	defer srv.Close()
+
+	buf := dispatch.NewRingBuffer(10)
+	var callbackCount atomic.Int32
+	var capturedStatus int
+
+	d := dispatch.New(srv.URL, "/v1/ingest/events", "tok").
+		WithBuffer(buf).
+		WithOnBFFFailure(func(statusCode int) {
+			callbackCount.Add(1)
+			capturedStatus = statusCode
+		})
+
+	evt, err := dispatch.BuildEvent("test.event", "acc", "sess", map[string]string{})
+	require.NoError(t, err)
+	require.NoError(t, d.SendOrBuffer(context.Background(), evt))
+
+	assert.EqualValues(t, 1, callbackCount.Load(),
+		"onBFFFailure must be called exactly once on terminal failure")
+	assert.Equal(t, http.StatusServiceUnavailable, capturedStatus,
+		"callback must receive the last BFF status code")
+}
+
+// TestDispatcher_OnBFFFailure_NotFiredOnContextCancel verifies that the
+// onBFFFailure callback is NOT invoked when the buffer path is taken due to
+// context cancellation (graceful shutdown) — only terminal retry exhaustion
+// should fire the callback.
+func TestDispatcher_OnBFFFailure_NotFiredOnContextCancel(t *testing.T) {
+	// Slow server — context will cancel before any response.
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		time.Sleep(200 * time.Millisecond)
+		w.WriteHeader(http.StatusAccepted)
+	}))
+	defer srv.Close()
+
+	buf := dispatch.NewRingBuffer(10)
+	var callbackCount atomic.Int32
+
+	d := dispatch.New(srv.URL, "/v1/ingest/events", "tok").
+		WithBuffer(buf).
+		WithOnBFFFailure(func(_ int) {
+			callbackCount.Add(1)
+		})
+
+	evt, err := dispatch.BuildEvent("test.event", "acc", "sess", map[string]string{})
+	require.NoError(t, err)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Millisecond)
+	defer cancel()
+
+	_ = d.SendOrBuffer(ctx, evt)
+
+	assert.EqualValues(t, 0, callbackCount.Load(),
+		"onBFFFailure must NOT be called on context-cancellation buffering")
+}
+
+// TestDispatcher_OnBFFFailure_NotFiredOnSuccess verifies that the failure
+// callback is NOT invoked when SendOrBuffer succeeds on the first attempt.
+func TestDispatcher_OnBFFFailure_NotFiredOnSuccess(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusAccepted)
+	}))
+	defer srv.Close()
+
+	buf := dispatch.NewRingBuffer(10)
+	var callbackCount atomic.Int32
+
+	d := dispatch.New(srv.URL, "/v1/ingest/events", "tok").
+		WithBuffer(buf).
+		WithOnBFFFailure(func(_ int) {
+			callbackCount.Add(1)
+		})
+
+	evt, err := dispatch.BuildEvent("test.event", "acc", "sess", map[string]string{})
+	require.NoError(t, err)
+	require.NoError(t, d.SendOrBuffer(context.Background(), evt))
+
+	assert.EqualValues(t, 0, callbackCount.Load(),
+		"onBFFFailure must NOT be called on success")
+}
+
+// TestDispatcher_OnBFFSuccess_FiredOnSuccess verifies that the success callback
+// is invoked exactly once when SendOrBuffer delivers the event successfully.
+func TestDispatcher_OnBFFSuccess_FiredOnSuccess(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusAccepted)
+	}))
+	defer srv.Close()
+
+	buf := dispatch.NewRingBuffer(10)
+	var successCalls atomic.Int32
+
+	d := dispatch.New(srv.URL, "/v1/ingest/events", "tok").
+		WithBuffer(buf).
+		WithOnBFFSuccess(func() {
+			successCalls.Add(1)
+		})
+
+	evt, err := dispatch.BuildEvent("test.event", "acc", "sess", map[string]string{})
+	require.NoError(t, err)
+	require.NoError(t, d.SendOrBuffer(context.Background(), evt))
+
+	assert.EqualValues(t, 1, successCalls.Load(),
+		"onBFFSuccess must be called exactly once on successful delivery")
+}
+
+// TestDispatcher_OnBFFSuccess_NotFiredOnFailure verifies that the success
+// callback is NOT invoked when SendOrBuffer exhausts retries and buffers.
+func TestDispatcher_OnBFFSuccess_NotFiredOnFailure(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusServiceUnavailable)
+	}))
+	defer srv.Close()
+
+	buf := dispatch.NewRingBuffer(10)
+	var successCalls atomic.Int32
+
+	d := dispatch.New(srv.URL, "/v1/ingest/events", "tok").
+		WithBuffer(buf).
+		WithOnBFFSuccess(func() {
+			successCalls.Add(1)
+		})
+
+	evt, err := dispatch.BuildEvent("test.event", "acc", "sess", map[string]string{})
+	require.NoError(t, err)
+	require.NoError(t, d.SendOrBuffer(context.Background(), evt))
+
+	assert.EqualValues(t, 0, successCalls.Load(),
+		"onBFFSuccess must NOT be called when buffering on terminal failure")
+}
+
 // TestSetToken verifies that SetToken updates the bearer token used on next send.
 func TestSetToken(t *testing.T) {
 	var lastAuth string

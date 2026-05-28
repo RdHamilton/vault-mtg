@@ -1,0 +1,19 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`RouteErrorFallback > matches snapshot 1`] = `
+<div
+  data-testid="route-error-fallback"
+  style="display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 200px; padding: 2rem; gap: 1rem; text-align: center;"
+>
+  <p
+    style="font-size: 1rem; color: var(--color-text-secondary, #9ca3af);"
+  >
+    This page encountered an error.
+  </p>
+  <button
+    style="padding: 0.5rem 1.25rem; border-radius: 6px; border: 1px solid var(--color-border, #374151); background: var(--color-surface, #1f2937); color: var(--color-text, #f9fafb); cursor: pointer; font-size: 0.875rem;"
+  >
+    Reload page
+  </button>
+</div>
+`;

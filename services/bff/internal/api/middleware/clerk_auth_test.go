@@ -12,10 +12,11 @@ import (
 	"testing"
 	"time"
 
+	"github.com/RdHamilton/vault-mtg/services/bff/internal/api/middleware"
+	"github.com/RdHamilton/vault-mtg/services/bff/internal/observability"
 	"github.com/clerk/clerk-sdk-go/v2"
 	"github.com/clerk/clerk-sdk-go/v2/clerktest"
-
-	"github.com/RdHamilton/vault-mtg/services/bff/internal/api/middleware"
+	"github.com/getsentry/sentry-go"
 )
 
 // jwksFromPublicKey serialises an *rsa.PublicKey into a minimal JWKS JSON
@@ -512,5 +513,51 @@ func TestRequireClerkAuthForSSE_CookieIgnoredWhenBearerPresent(t *testing.T) {
 
 	if rr.Body.String() != "user_prefer_bearer" {
 		t.Errorf("subject: want \"user_prefer_bearer\", got %q", rr.Body.String())
+	}
+}
+
+// TestRequireClerkAuth_SentryEventOnRejectedToken verifies that when
+// RequireClerkAuth rejects an invalid token it sends a Sentry event with
+// the component=auth tag.
+func TestRequireClerkAuth_SentryEventOnRejectedToken(t *testing.T) {
+	// Wire up a Sentry mock transport so we can capture events without
+	// making real network calls.
+	transport := &sentry.MockTransport{}
+	if err := sentry.Init(sentry.ClientOptions{
+		Dsn:       "https://key@o0.ingest.sentry.io/0",
+		Transport: transport,
+	}); err != nil {
+		t.Fatalf("sentry.Init: %v", err)
+	}
+	// Reset the rate-limiter and restore global Sentry state in cleanup.
+	observability.ResetRateLimiter()
+	t.Cleanup(func() {
+		_ = sentry.Init(sentry.ClientOptions{})
+		observability.ResetRateLimiter()
+	})
+
+	// No valid key in JWKS so the SDK will reject any token.
+	withClerkBackend(t, "kid-sentry-auth", nil)
+
+	handler := middleware.RequireClerkAuth("sk_test_dummy")(clerkOKHandler)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/events", nil)
+	req.Header.Set("Authorization", "Bearer not.a.valid.jwt")
+	rr := httptest.NewRecorder()
+	handler.ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusUnauthorized {
+		t.Fatalf("want 401, got %d", rr.Code)
+	}
+
+	sentry.Flush(200 * time.Millisecond)
+
+	events := transport.Events()
+	if len(events) == 0 {
+		t.Fatal("expected a Sentry event for rejected Clerk token, got none")
+	}
+	ev := events[0]
+	if ev.Tags["component"] != "auth" {
+		t.Errorf("tag component: want %q, got %q", "auth", ev.Tags["component"])
 	}
 }

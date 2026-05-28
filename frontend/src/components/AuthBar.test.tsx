@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import AuthBar from './AuthBar';
+import * as useFeatureFlagModule from '@/hooks/useFeatureFlag';
 
 // Mock @clerk/react so tests don't need a real Clerk publishable key
 vi.mock('@clerk/react', () => ({
@@ -16,9 +17,16 @@ vi.mock('@clerk/react', () => ({
   UserButton: () => <div data-testid="user-button">UserButton</div>,
 }));
 
+// Mock useFeatureFlag so component tests control flag state without PostHog
+vi.mock('@/hooks/useFeatureFlag', () => ({
+  useFeatureFlag: vi.fn().mockReturnValue({ enabled: true }),
+}));
+
 describe('AuthBar', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    // Default for existing tests: beta_invite_only flag is ON (sign-up visible)
+    vi.mocked(useFeatureFlagModule.useFeatureFlag).mockReturnValue({ enabled: true });
   });
 
   it('renders the auth-bar container', () => {
@@ -40,6 +48,32 @@ describe('AuthBar', () => {
   it('sign-up button has correct text', () => {
     render(<AuthBar />);
     expect(screen.getByTestId('sign-up-btn')).toHaveTextContent('Sign Up');
+  });
+
+  // ---------------------------------------------------------------------------
+  // beta_invite_only flag — three states
+  // ---------------------------------------------------------------------------
+
+  it('beta_invite_only flag OFF — sign-up button is NOT rendered', () => {
+    vi.mocked(useFeatureFlagModule.useFeatureFlag).mockReturnValue({ enabled: false });
+    render(<AuthBar />);
+    // Sign-in must still be present
+    expect(screen.getByTestId('sign-in-btn')).toBeInTheDocument();
+    // Sign-up must be absent when flag is off
+    expect(screen.queryByTestId('sign-up-btn')).not.toBeInTheDocument();
+  });
+
+  it('beta_invite_only flag ON — sign-up button IS rendered', () => {
+    vi.mocked(useFeatureFlagModule.useFeatureFlag).mockReturnValue({ enabled: true });
+    render(<AuthBar />);
+    expect(screen.getByTestId('sign-up-btn')).toBeInTheDocument();
+  });
+
+  it('beta_invite_only flag loading (null) — sign-up button IS rendered (optimistic default)', () => {
+    vi.mocked(useFeatureFlagModule.useFeatureFlag).mockReturnValue({ enabled: null });
+    render(<AuthBar />);
+    // Optimistic: show sign-up while flag is still loading to avoid flash
+    expect(screen.getByTestId('sign-up-btn')).toBeInTheDocument();
   });
 });
 

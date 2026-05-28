@@ -5,8 +5,11 @@ import (
 	"errors"
 	"sync"
 	"testing"
+	"time"
 
+	"github.com/RdHamilton/vault-mtg/services/bff/internal/observability"
 	"github.com/RdHamilton/vault-mtg/services/bff/internal/storage/repository"
+	"github.com/getsentry/sentry-go"
 )
 
 // ---------------------------------------------------------------------------
@@ -280,5 +283,49 @@ func TestAccountRepository_GetAccountIDByUserID_NotFound(t *testing.T) {
 	}
 	if id != 0 {
 		t.Errorf("expected id=0, got %d", id)
+	}
+}
+
+// TestAccountRepository_SentryEventOnDBError verifies that when
+// GetAccountIDByUserID encounters a non-not-found DB error (simulated by
+// closing the DB) it emits a Sentry event tagged with component=db.
+func TestAccountRepository_SentryEventOnDBError(t *testing.T) {
+	// Wire a Sentry mock transport.
+	transport := &sentry.MockTransport{}
+	if err := sentry.Init(sentry.ClientOptions{
+		Dsn:       "https://key@o0.ingest.sentry.io/0",
+		Transport: transport,
+	}); err != nil {
+		t.Fatalf("sentry.Init: %v", err)
+	}
+	observability.ResetRateLimiter()
+	t.Cleanup(func() {
+		_ = sentry.Init(sentry.ClientOptions{})
+		observability.ResetRateLimiter()
+	})
+
+	// Open the DB then immediately close it so the next query fails with a
+	// "sql: database is closed" error — a non-not-found DB error.
+	db := openTestDB(t)
+	if err := db.Close(); err != nil {
+		t.Fatalf("close db: %v", err)
+	}
+
+	repo := repository.NewAccountRepository(db)
+
+	_, _, err := repo.GetAccountIDByUserID(context.Background(), 1)
+	if err == nil {
+		t.Fatal("expected error from closed DB, got nil")
+	}
+
+	sentry.Flush(200 * time.Millisecond)
+
+	events := transport.Events()
+	if len(events) == 0 {
+		t.Fatal("expected a Sentry event for DB error, got none")
+	}
+	ev := events[0]
+	if ev.Tags["component"] != "db" {
+		t.Errorf("tag component: want %q, got %q", "db", ev.Tags["component"])
 	}
 }

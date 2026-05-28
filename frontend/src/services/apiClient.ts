@@ -2,6 +2,8 @@
  * Base API client for REST API communication.
  * Replaces direct Wails function calls with HTTP requests.
  */
+import { trackEvent } from './analytics';
+import { getCurrentPage } from './pageTracker';
 
 export interface ApiConfig {
   baseUrl: string;
@@ -27,6 +29,38 @@ let config: ApiConfig = {
   baseUrl: import.meta.env.VITE_BFF_URL ?? 'http://localhost:8080/api/v1',
   timeout: 30000,
 };
+
+// ---------------------------------------------------------------------------
+// Error analytics throttle
+// ---------------------------------------------------------------------------
+//
+// Prevents volume blowback from background pollers emitting error_data_load_failed
+// on every tick. At most 1 emission per (endpoint, status_code) pair per 10s.
+// Module-level map is intentionally reset by resetErrorThrottle() in tests.
+
+const THROTTLE_WINDOW_MS = 10_000;
+
+/** key: `${endpoint}:${status_code}` → last-emit timestamp (epoch ms) */
+const errorThrottle = new Map<string, number>();
+
+/**
+ * Reset the error throttle state.
+ * Exported for test isolation only — not part of the public API surface.
+ */
+export function resetErrorThrottle(): void {
+  errorThrottle.clear();
+}
+
+function shouldEmitDataLoadError(endpoint: string, statusCode: number): boolean {
+  const key = `${endpoint}:${statusCode}`;
+  const now = Date.now();
+  const last = errorThrottle.get(key);
+  if (last !== undefined && now - last < THROTTLE_WINDOW_MS) {
+    return false;
+  }
+  errorThrottle.set(key, now);
+  return true;
+}
 
 // ---------------------------------------------------------------------------
 // API Key management
@@ -109,6 +143,7 @@ export async function getClerkToken(): Promise<string | null> {
   try {
     return await clerkTokenProvider();
   } catch {
+    trackEvent({ name: 'error_auth_failed', properties: { reason_class: 'network' } });
     return null;
   }
 }
@@ -125,7 +160,8 @@ async function authHeaders(): Promise<Record<string, string>> {
         return { Authorization: `Bearer ${token}` };
       }
     } catch {
-      // Provider failure → fall through to legacy key.
+      // Provider failure → emit analytics event, then fall through to legacy key.
+      trackEvent({ name: 'error_auth_failed', properties: { reason_class: 'network' } });
     }
   }
   const key = getApiKey();
@@ -163,6 +199,16 @@ export class ApiRequestError extends Error {
   }
 }
 
+/** Extended RequestInit that adds per-request analytics control. */
+export interface ApiRequestOptions extends RequestInit {
+  /**
+   * When true, suppresses `error_data_load_failed` analytics emission for
+   * this request. Background pollers (health checks, pairing polls) must set
+   * this to avoid emitting analytics on every tick.
+   */
+  skipErrorAnalytics?: boolean;
+}
+
 /**
  * Make an HTTP request to the API.
  */
@@ -170,8 +216,9 @@ async function request<T>(
   method: string,
   path: string,
   body?: unknown,
-  options: RequestInit = {}
+  options: ApiRequestOptions = {}
 ): Promise<T> {
+  const { skipErrorAnalytics, ...fetchOptions } = options;
   const url = `${config.baseUrl}${path}`;
 
   const controller = new globalThis.AbortController();
@@ -184,11 +231,11 @@ async function request<T>(
       headers: {
         'Content-Type': 'application/json',
         ...headers,
-        ...options.headers,
+        ...fetchOptions.headers,
       },
       body: body ? JSON.stringify(body) : undefined,
       signal: controller.signal,
-      ...options,
+      ...fetchOptions,
     });
 
     clearTimeout(timeoutId);
@@ -202,6 +249,19 @@ async function request<T>(
       }
       // Use message field if available (contains actual error details), otherwise use error field
       const errorMessage = errorData.message || errorData.error;
+
+      // Emit error_data_load_failed unless caller opted out (e.g. background pollers).
+      if (!skipErrorAnalytics && shouldEmitDataLoadError(path, response.status)) {
+        trackEvent({
+          name: 'error_data_load_failed',
+          properties: {
+            page: getCurrentPage(),
+            endpoint: path,
+            status_code: response.status,
+          },
+        });
+      }
+
       throw new ApiRequestError(
         errorMessage,
         response.status,
@@ -238,35 +298,35 @@ async function request<T>(
 /**
  * HTTP GET request.
  */
-export function get<T>(path: string, options?: RequestInit): Promise<T> {
+export function get<T>(path: string, options?: ApiRequestOptions): Promise<T> {
   return request<T>('GET', path, undefined, options);
 }
 
 /**
  * HTTP POST request.
  */
-export function post<T>(path: string, body?: unknown, options?: RequestInit): Promise<T> {
+export function post<T>(path: string, body?: unknown, options?: ApiRequestOptions): Promise<T> {
   return request<T>('POST', path, body, options);
 }
 
 /**
  * HTTP PUT request.
  */
-export function put<T>(path: string, body?: unknown, options?: RequestInit): Promise<T> {
+export function put<T>(path: string, body?: unknown, options?: ApiRequestOptions): Promise<T> {
   return request<T>('PUT', path, body, options);
 }
 
 /**
  * HTTP PATCH request.
  */
-export function patch<T>(path: string, body?: unknown, options?: RequestInit): Promise<T> {
+export function patch<T>(path: string, body?: unknown, options?: ApiRequestOptions): Promise<T> {
   return request<T>('PATCH', path, body, options);
 }
 
 /**
  * HTTP DELETE request.
  */
-export function del<T>(path: string, options?: RequestInit): Promise<T> {
+export function del<T>(path: string, options?: ApiRequestOptions): Promise<T> {
   return request<T>('DELETE', path, undefined, options);
 }
 

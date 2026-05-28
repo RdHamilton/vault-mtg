@@ -27,6 +27,11 @@ INSTALL_DIR="/usr/local/bin"
 BINARY_NAME="vaultmtg-daemon"
 BINARY_PATH="${INSTALL_DIR}/${BINARY_NAME}"
 
+# Share directory constant — must match SHARE_DIR in build-pkg.sh.
+# The uninstall script is installed here by build-pkg.sh; we echo the path to
+# the user at the end of postinstall so they know how to remove the daemon.
+SHARE_DIR="/usr/local/share/vaultmtg"
+
 # ADR-022 Phase 2: new label (production).
 PLIST_LABEL="com.vaultmtg.daemon"
 # Legacy label — detected and unloaded before registering the new one.
@@ -171,7 +176,7 @@ cat > "${PLIST_PATH}" <<PLIST
         <string>${CLERK_PUBLISHABLE_KEY}</string>
         <key>CLERK_OAUTH_CLIENT_ID</key>
         <string>${CLERK_OAUTH_CLIENT_ID}</string>
-        <key>MTGA_DAEMON_CLOUD_API_URL</key>
+        <key>VAULTMTG_DAEMON_CLOUD_API_URL</key>
         <string>${CLOUD_API_URL}</string>
     </dict>
 
@@ -237,3 +242,4 @@ echo "[postinstall] done"
 echo "  Binary : ${BINARY_PATH}"
 echo "  plist  : ${PLIST_PATH}"
 echo "  Logs   : ${LOG_FILE}"
+echo "To uninstall: sudo ${SHARE_DIR}/uninstall.sh"

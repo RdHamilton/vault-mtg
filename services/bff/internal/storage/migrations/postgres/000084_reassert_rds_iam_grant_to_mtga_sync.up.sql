@@ -1,0 +1,26 @@
+-- No-op (rewritten 2026-05-27).
+--
+-- Original migration: GRANT rds_iam TO mtga_sync (an IAM-auth path for the
+-- sync Lambda's Postgres user). It dead-ended in production because the
+-- migrator role (vaultmtg_app / vaultmtg_staging_app) lacks ADMIN OPTION on
+-- rds_iam, so the GRANT raises "must be a member of the role rds_iam WITH
+-- ADMIN OPTION". The IF EXISTS guard only protected against missing role,
+-- not missing privilege.
+--
+-- PR #2651 pivoted the sync Lambda from RDS IAM auth to password auth, which
+-- makes the GRANT entirely vestigial -- the rds_iam role membership is no
+-- longer on the auth path for any service.
+--
+-- We replace the body with a no-op (SELECT 1) instead of deleting the
+-- migration file because the version number is recorded in schema_migrations
+-- on the production instance (manually marked v84 during recovery). Removing
+-- the file would leave a phantom version; rewriting as a no-op keeps version
+-- continuity while neutralizing the failing statement. golang-migrate does
+-- not re-execute already-applied migrations on file-content change, so this
+-- is safe on every existing environment (prod RDS = v84 already; new staging
+-- RDS = empty, will apply this no-op cleanly).
+--
+-- References: ADR-035 (auth pivot), PR #2651 (sync Lambda password auth),
+-- migrations 000057 (mtga_sync role creation), 000060 (original grant
+-- attempt -- also no-op on prod for the same ADMIN OPTION reason).
+SELECT 1;

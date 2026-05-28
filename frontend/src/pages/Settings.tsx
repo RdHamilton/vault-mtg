@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { trackEvent } from '@/services/analytics';
 import {
   DaemonConnectionSection,
   AppPreferencesSection,
@@ -9,6 +10,7 @@ import {
   MLSettingsSection,
   ApiKeySection,
   UserProfileSection,
+  ConnectedDevicesSection,
 } from '../components/settings/sections';
 import { SettingsAccordion } from '../components/settings/SettingsAccordion';
 import type { SettingsAccordionItem } from '../components/settings/SettingsAccordion';
@@ -125,6 +127,10 @@ const Settings = () => {
     if (success) {
       setSaved(true);
       setTimeout(() => setSaved(false), 3000);
+      trackEvent({
+        name: 'feature_settings_changed',
+        properties: { setting_section: 'preferences', setting_key: 'save' },
+      });
     }
   };
 
@@ -156,6 +162,12 @@ const Settings = () => {
         label: 'API Key',
         icon: '🔑',
         content: <ApiKeySection />,
+      },
+      {
+        id: 'connected-devices',
+        label: 'Connected Devices',
+        icon: '🖥️',
+        content: <ConnectedDevicesSection />,
       },
       {
         id: 'preferences',

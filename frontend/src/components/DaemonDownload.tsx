@@ -188,6 +188,19 @@ const DaemonDownload = () => {
             </li>
           ))}
         </ol>
+        <div className="daemon-uninstall" data-testid="daemon-uninstall">
+          <h3 className="daemon-uninstall-title">Need to remove the daemon?</h3>
+          <p className="daemon-uninstall-description">
+            On macOS, run the bundled uninstall script with:
+          </p>
+          <pre className="daemon-uninstall-command" data-testid="daemon-uninstall-command">
+            <code>sudo /usr/local/share/vaultmtg/uninstall.sh</code>
+          </pre>
+          <p className="daemon-uninstall-description">
+            On Windows, open Add/Remove Programs and select VaultMTG Daemon, or run{' '}
+            <code>Uninstall.exe</code> from your install directory.
+          </p>
+        </div>
       </div>
     </section>
   );

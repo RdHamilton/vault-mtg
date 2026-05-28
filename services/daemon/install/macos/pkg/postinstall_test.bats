@@ -124,9 +124,12 @@ setup() {
 }
 
 # ---------------------------------------------------------------------------
-# 1. Plist contains MTGA_DAEMON_CLOUD_API_URL (issue #2127 regression test)
+# 1. Plist contains VAULTMTG_DAEMON_CLOUD_API_URL (issue #2127 + #2564 regression test).
+#    The canonical env var name is VAULTMTG_DAEMON_*; the daemon's EnvWithFallback
+#    shim still reads MTGA_DAEMON_* for existing legacy installs, but new
+#    installs must inject the canonical name (#2564).
 # ---------------------------------------------------------------------------
-@test "plist: MTGA_DAEMON_CLOUD_API_URL key is present with correct value" {
+@test "plist: VAULTMTG_DAEMON_CLOUD_API_URL key is present with correct value" {
   run env \
     PATH="${STUB_DIR}:${PATH}" \
     SUDO_USER="${REAL_USER}" \
@@ -138,8 +141,10 @@ setup() {
   [ "${status}" -eq 0 ]
   [ -f "${PLIST_PATH}" ]
 
-  grep -q "MTGA_DAEMON_CLOUD_API_URL" "${PLIST_PATH}"
+  grep -q "VAULTMTG_DAEMON_CLOUD_API_URL" "${PLIST_PATH}"
   grep -q "staging-api.vaultmtg.app/api/v1" "${PLIST_PATH}"
+  # Guard: must not perpetuate the legacy name in new installs (#2564).
+  ! grep -q "<key>MTGA_DAEMON_CLOUD_API_URL</key>" "${PLIST_PATH}"
 }
 
 # ---------------------------------------------------------------------------
@@ -303,4 +308,20 @@ EOF
   bootout_line=$(grep -n "bootout" "${call_log}" | tail -1 | cut -d: -f1)
   bootstrap_line=$(grep -n "bootstrap" "${call_log}" | tail -1 | cut -d: -f1)
   [ "${bootout_line}" -lt "${bootstrap_line}" ]
+}
+
+# ---------------------------------------------------------------------------
+# 9. Postinstall echoes the uninstall path using the SHARE_DIR constant
+# ---------------------------------------------------------------------------
+@test "postinstall: output contains uninstall echo referencing /usr/local/share/vaultmtg/uninstall.sh" {
+  run env \
+    PATH="${STUB_DIR}:${PATH}" \
+    SUDO_USER="${REAL_USER}" \
+    BATS_TEST_TMPDIR="${BATS_TEST_TMPDIR}" \
+    bash "${TMP_SCRIPT}"
+
+  echo "status: ${status}"
+  echo "output: ${output}"
+  [ "${status}" -eq 0 ]
+  [[ "${output}" == *"To uninstall: sudo /usr/local/share/vaultmtg/uninstall.sh"* ]]
 }

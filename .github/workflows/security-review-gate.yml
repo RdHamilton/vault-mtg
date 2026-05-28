@@ -42,6 +42,23 @@
 # Sarah posts the verdict as a PR comment following the SOP runbook. The
 # issue_comment trigger re-runs this workflow immediately and picks up the
 # APPROVED comment. No separate workflow_dispatch step is required.
+#
+# STALENESS: SHA-DELTA CHECK (ticket #119)
+# -----------------------------------------
+# When an APPROVED comment exists but predates the current HEAD (e.g., because
+# Lee ran update-branch to pull in main), the gate performs a SHA-delta check
+# before marking the verdict stale:
+#
+#   1. Collect all PR commits whose committer date is AFTER the verdict timestamp.
+#   2. Aggregate every file changed in those commits via the GitHub commits API.
+#   3. Test each changed file against the S-07 §1A trigger path globs.
+#   4a. If ZERO §1A-path changes are found -> the commits since the verdict are
+#       inert (merge commits, unrelated fixups); carry the verdict forward as FRESH.
+#   4b. If ANY §1A-path change is found -> new security-sensitive code was pushed
+#       after Sarah's approval; mark stale and require a fresh verdict.
+#
+# This eliminates false-positive staleness on update-branch merge commits while
+# preserving gate integrity for real security changes.
 
 name: Security Review Gate (S-07)
 
@@ -126,6 +143,12 @@ jobs:
             ".github/workflows/release.yml"
             ".github/workflows/rollback.yml"
             ".github/workflows/staging-deploy.yml"
+            # daemon-release.yml: pushes GitHub Releases, uses SENTRY_DSN_DAEMON_PRODUCTION,
+            # APPLE_* signing secrets, and GH_VARIABLES_PAT. (#98)
+            ".github/workflows/daemon-release.yml"
+            # frontend.yml: production SPA deploy — AWS_DEPLOY_ROLE_ARN, DEPLOY_BUCKET,
+            # EC2_INSTANCE_ID (SSM Run Command against production instance). (#98)
+            ".github/workflows/frontend.yml"
             "services/bff/cmd/"
             "services/daemon/cmd/"
             "scripts/deploy/"
@@ -194,10 +217,9 @@ jobs:
           echo ""
 
           # ------------------------------------------------------------------
-          # 1. Resolve last-push timestamp for the PR head commit.
-          #    Using the commit committer date (UTC ISO8601) rather than PR
-          #    updated_at, which changes on label/assignee mutations unrelated
-          #    to a code push.
+          # 1. Resolve current HEAD SHA and its committer timestamp.
+          #    Using commit committer date (UTC ISO8601) -- not PR updated_at,
+          #    which drifts on label/assignee mutations unrelated to code pushes.
           # ------------------------------------------------------------------
           HEAD_SHA=$(gh api "repos/${REPO}/pulls/${PR_NUMBER}" \
             --jq '.head.sha' 2>/dev/null || echo "")
@@ -246,31 +268,140 @@ jobs:
             echo "Comment timestamp: ${COMMENT_TIMESTAMP}"
 
             # ------------------------------------------------------------------
-            # 3. Staleness check: APPROVED comment must post-date last push.
-            #    Both timestamps are UTC ISO8601; compare as UTC epoch via python3
-            #    for cross-platform safety (no GNU date dependency).
-            #    "true"  => comment is stale (predates or equals the last push)
-            #    "false" => comment is fresh (post-dates the last push)
+            # 3. Staleness check: SHA-delta-based (ticket #119).
+            #
+            #    FAST PATH: if the verdict post-dates the last push, it is fresh
+            #    by definition -- skip the delta check entirely.
+            #
+            #    DELTA PATH: if the verdict pre-dates the last push (e.g., an
+            #    update-branch merge commit landed after Sarah approved), collect
+            #    all commits pushed to this PR after the verdict timestamp and
+            #    check whether any of those commits touched an S-07 §1A trigger
+            #    path.  If none did, the verdict is carried forward as FRESH
+            #    (inert merge commits do not invalidate the approval).  If any
+            #    §1A-path change is found the verdict is genuinely stale and
+            #    Sarah must re-review.
             # ------------------------------------------------------------------
-            STALE=$(python3 -c "import sys; from datetime import datetime, timezone; p=lambda t: datetime.fromisoformat((t.strip()[:-1]+'+00:00') if t.strip().endswith('Z') else t.strip()).astimezone(timezone.utc); print('true' if p(\"${COMMENT_TIMESTAMP}\") <= p(\"${LAST_PUSH_TIMESTAMP}\") else 'false')")
 
-            echo "Stale approval: ${STALE}"
+            # Determine temporal ordering (python3 for UTC-safe ISO8601 parsing)
+            VERDICT_AFTER_PUSH=$(python3 -c "
+          from datetime import datetime, timezone
+          def p(t):
+              t = t.strip()
+              if t.endswith('Z'):
+                  t = t[:-1] + '+00:00'
+              return datetime.fromisoformat(t).astimezone(timezone.utc)
+          verdict = p('${COMMENT_TIMESTAMP}')
+          push   = p('${LAST_PUSH_TIMESTAMP}')
+          print('true' if verdict > push else 'false')
+          ")
 
-            if [ "${STALE}" = "true" ]; then
-              echo ""
-              echo "APPROVED comment (ID: ${COMMENT_ID}) was posted BEFORE or AT the"
-              echo "most recent push (${LAST_PUSH_TIMESTAMP}). It is stale and does"
-              echo "not satisfy the gate. Sarah must re-review and re-post the verdict"
-              echo "against the current diff."
-              echo "approved=false" >> "$GITHUB_OUTPUT"
-            else
+            echo "Verdict post-dates last push: ${VERDICT_AFTER_PUSH}"
+
+            if [ "${VERDICT_AFTER_PUSH}" = "true" ]; then
+              # Fast path: verdict is newer than the push -- unambiguously fresh.
+              echo "Verdict is fresh (post-dates last push). Gate passes."
               {
                 echo "approved=true"
                 echo "approver=${APPROVER}"
                 echo "comment_id=${COMMENT_ID}"
                 echo "comment_timestamp=${COMMENT_TIMESTAMP}"
                 echo "last_push_timestamp=${LAST_PUSH_TIMESTAMP}"
+                echo "staleness_check=fresh"
               } >> "$GITHUB_OUTPUT"
+            else
+              # Delta path: verdict pre-dates current HEAD.
+              # Collect commits added to this PR after the verdict timestamp,
+              # then check if any of those commits touched S-07 §1A trigger paths.
+              echo ""
+              echo "Verdict pre-dates last push -- running SHA-delta staleness check..."
+              echo "Collecting PR commits after verdict timestamp (${COMMENT_TIMESTAMP})..."
+
+              # List all commits on the PR; filter to those whose committer date
+              # is strictly after the verdict timestamp.
+              # shellcheck disable=SC2016  # $ts is a jq variable, not a shell variable
+              COMMITS_AFTER=$(gh api "repos/${REPO}/pulls/${PR_NUMBER}/commits" \
+                --paginate \
+                --jq --arg ts "${COMMENT_TIMESTAMP}" '
+                  .[] |
+                  select(
+                    (.commit.committer.date | . > $ts)
+                  ) |
+                  .sha
+                ' 2>/dev/null || echo "")
+
+              if [ -z "${COMMITS_AFTER}" ]; then
+                # No commits registered after the verdict -- likely a race between
+                # comment creation and the push event.  Treat as fresh.
+                echo "No commits found after verdict timestamp. Treating verdict as fresh."
+                {
+                  echo "approved=true"
+                  echo "approver=${APPROVER}"
+                  echo "comment_id=${COMMENT_ID}"
+                  echo "comment_timestamp=${COMMENT_TIMESTAMP}"
+                  echo "last_push_timestamp=${LAST_PUSH_TIMESTAMP}"
+                  echo "staleness_check=delta-no-commits"
+                } >> "$GITHUB_OUTPUT"
+              else
+                echo "Commits after verdict:"
+                echo "${COMMITS_AFTER}"
+                echo ""
+
+                # S-07 §1A trigger path globs (must mirror gate_required step above)
+                TRIGGER_GLOBS=(
+                  ".github/workflows/deploy-bff.yml"
+                  ".github/workflows/deploy-spa.yml"
+                  ".github/workflows/deploy-spa-staging.yml"
+                  ".github/workflows/release.yml"
+                  ".github/workflows/rollback.yml"
+                  ".github/workflows/staging-deploy.yml"
+                  "services/bff/cmd/"
+                  "services/daemon/cmd/"
+                  "scripts/deploy/"
+                )
+
+                S07_DELTA_FOUND=false
+
+                for COMMIT_SHA in ${COMMITS_AFTER}; do
+                  echo "Checking commit ${COMMIT_SHA}..."
+                  COMMIT_FILES=$(gh api "repos/${REPO}/commits/${COMMIT_SHA}" \
+                    --jq '[.files[].filename] | join("\n")' 2>/dev/null || echo "")
+
+                  if [ -z "${COMMIT_FILES}" ]; then
+                    echo "  (no files listed -- merge commit or API error; skipping)"
+                    continue
+                  fi
+
+                  echo "  Changed files: $(echo "${COMMIT_FILES}" | tr '\n' ' ')"
+
+                  for GLOB in "${TRIGGER_GLOBS[@]}"; do
+                    if echo "${COMMIT_FILES}" | grep -qF "${GLOB}"; then
+                      echo "  S-07 §1A path match in commit ${COMMIT_SHA}: ${GLOB}"
+                      S07_DELTA_FOUND=true
+                      break 2
+                    fi
+                  done
+                done
+
+                echo ""
+                if [ "${S07_DELTA_FOUND}" = "true" ]; then
+                  echo "SHA-delta check: STALE -- S-07 §1A path(s) changed after verdict."
+                  echo "Sarah must re-review the new security-sensitive changes."
+                  echo "approved=false" >> "$GITHUB_OUTPUT"
+                else
+                  echo "SHA-delta check: FRESH -- no S-07 §1A path changes since verdict."
+                  echo "All commits after verdict are inert (merge commits / unrelated changes)."
+                  echo "Carrying verdict forward."
+                  {
+                    echo "approved=true"
+                    echo "approver=${APPROVER}"
+                    echo "comment_id=${COMMENT_ID}"
+                    echo "comment_timestamp=${COMMENT_TIMESTAMP}"
+                    echo "last_push_timestamp=${LAST_PUSH_TIMESTAMP}"
+                    echo "staleness_check=delta-clean"
+                  } >> "$GITHUB_OUTPUT"
+                fi
+              fi
             fi
           fi
 
@@ -283,6 +414,7 @@ jobs:
           echo "Comment ID:          ${{ steps.verdict_check.outputs.comment_id }}"
           echo "Approval timestamp:  ${{ steps.verdict_check.outputs.comment_timestamp }}"
           echo "Last push timestamp: ${{ steps.verdict_check.outputs.last_push_timestamp }}"
+          echo "Staleness check:     ${{ steps.verdict_check.outputs.staleness_check }}"
           echo "This PR is cleared for merge (security review requirement satisfied)."
 
       - name: Gate BLOCKED
@@ -304,10 +436,12 @@ jobs:
           echo ""
           echo "  (or VERDICT: BLOCKED -- <reason> to explicitly block the PR)"
           echo ""
-          echo "  The verdict comment must be posted AFTER the most recent push."
-          echo "  A pre-existing APPROVED comment that predates the last push is"
-          echo "  treated as stale and does not satisfy the gate."
+          echo "  If the verdict was posted before an update-branch merge commit,"
+          echo "  the gate will carry it forward automatically provided no S-07"
+          echo "  §1A trigger paths changed in the commits since the verdict."
+          echo "  Re-review is only required when new security-sensitive code"
+          echo "  was pushed after the last approval."
           echo ""
           echo "Runbook: vault_mtg_docs/engineering/runbooks/infra-security-review-gate.md"
-          echo "Ticket:  RdHamilton/vault-mtg#2387"
+          echo "Ticket:  RdHamilton/vault-mtg#2365"
           exit 1

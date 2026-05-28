@@ -2,11 +2,16 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, waitFor, fireEvent } from '@testing-library/react';
 import { mockNotes } from '@/test/mocks/apiMock';
 import type { ImprovementSuggestion } from '@/services/api/notes';
+import * as Sentry from '@sentry/react';
 import ImprovementSuggestionsPanel from './ImprovementSuggestionsPanel';
 
 // Mock the API module
 vi.mock('@/services/api', () => ({
   notes: mockNotes,
+}));
+
+vi.mock('@sentry/react', () => ({
+  captureException: vi.fn(),
 }));
 
 // Helper to create mock suggestions
@@ -348,6 +353,67 @@ describe('ImprovementSuggestionsPanel', () => {
 
       await waitFor(() => {
         expect(screen.queryByText('Generation failed')).not.toBeInTheDocument();
+      });
+    });
+  });
+
+  describe('Sentry error reporting', () => {
+    beforeEach(() => {
+      vi.clearAllMocks();
+    });
+
+    it('calls reportError with load_suggestions on getDeckSuggestions failure', async () => {
+      const sentryCapture = vi.mocked(Sentry.captureException);
+      mockNotes.getDeckSuggestions.mockRejectedValue(new Error('load failed'));
+
+      render(<ImprovementSuggestionsPanel deckId="deck-1" />);
+
+      await waitFor(() => {
+        expect(sentryCapture).toHaveBeenCalledOnce();
+      });
+
+      const callArgs = sentryCapture.mock.calls[0][1] as { tags?: Record<string, string> };
+      expect(callArgs?.tags).toMatchObject({ component: 'ImprovementSuggestionsPanel', action: 'load_suggestions' });
+    });
+
+    it('calls reportError with generate_suggestions on generateSuggestions failure', async () => {
+      const sentryCapture = vi.mocked(Sentry.captureException);
+      mockNotes.getDeckSuggestions.mockResolvedValue([]);
+      mockNotes.generateSuggestions.mockRejectedValue(new Error('generate failed'));
+
+      render(<ImprovementSuggestionsPanel deckId="deck-1" />);
+
+      await waitFor(() => {
+        fireEvent.click(screen.getByTestId('suggestions-generate-button'));
+      });
+
+      await waitFor(() => {
+        const genCall = sentryCapture.mock.calls.find(
+          (c) => (c[1] as { tags?: Record<string, string> })?.tags?.action === 'generate_suggestions'
+        );
+        expect(genCall).toBeDefined();
+      });
+    });
+
+    it('calls reportError with dismiss_suggestion on dismissSuggestion failure', async () => {
+      const sentryCapture = vi.mocked(Sentry.captureException);
+      const suggestions = [createMockSuggestion({ id: 1, title: 'Test' })];
+      mockNotes.getDeckSuggestions.mockResolvedValue(suggestions);
+      mockNotes.dismissSuggestion.mockRejectedValue(new Error('dismiss failed'));
+
+      render(<ImprovementSuggestionsPanel deckId="deck-1" />);
+
+      await waitFor(() => {
+        fireEvent.click(screen.getByText('Test'));
+      });
+
+      fireEvent.click(screen.getByText('Dismiss'));
+
+      await waitFor(() => {
+        const dismissCall = sentryCapture.mock.calls.find(
+          (c) => (c[1] as { tags?: Record<string, string> })?.tags?.action === 'dismiss_suggestion'
+        );
+        expect(dismissCall).toBeDefined();
       });
     });
   });

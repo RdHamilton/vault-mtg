@@ -8,7 +8,8 @@ import App from './App.tsx'
 import { AppProvider } from './context/AppContext'
 import { DownloadProvider } from './context/DownloadContext'
 import { TaskProgressProvider } from './context/TaskProgressContext'
-import { initializeServices } from './services/adapter'
+import { initializeServices, servicesInitMs } from './services/adapter'
+import { trackEvent, initAnalytics } from './services/analytics'
 import StagingErrorBoundary from './components/StagingErrorBoundary'
 import { runLocalStorageMigration } from './utils/localStorageMigration'
 
@@ -29,9 +30,32 @@ runLocalStorageMigration()
 // Initialize Sentry only when VITE_SENTRY_DSN is provided (skip silently in dev/test).
 const sentryDsn = import.meta.env.VITE_SENTRY_DSN
 if (sentryDsn) {
+  // VITE_APP_VERSION is injected at build time by the CI deploy workflow:
+  //   - Production (deploy-spa.yml): resolved from `git describe --tags --match 'app/v*'` → e.g. "0.3.3"
+  //   - Staging (deploy-spa-staging.yml): "staging-<full-git-sha>"
+  //   - Local dev / unset: undefined (Sentry.init is skipped — sentryDsn is empty locally)
+  // If the resolved value is empty (e.g. a manual workflow_dispatch on an untagged ref),
+  // the `release` field is omitted entirely — an empty string groups all untagged builds,
+  // which is worse than no release tag.
+  const appVersion = import.meta.env.VITE_APP_VERSION
+  const release = appVersion || undefined
+
+  // VITE_SENTRY_ENV is set explicitly per deployment context:
+  //   - Production CloudFront: "production"
+  //   - Staging CloudFront: "staging"
+  //   - Vercel preview: "preview" (set in Vercel Dashboard → Preview environment)
+  //   - Local dev: unset → Sentry.init is skipped (sentryDsn is empty)
+  // Falls back to "unknown" — intentionally visible in the Sentry dashboard so that
+  // a missing env var surfaces immediately rather than silently using MODE.
+  const sentryEnv = import.meta.env.VITE_SENTRY_ENV || 'unknown'
+
   Sentry.init({
     dsn: sentryDsn,
-    environment: import.meta.env.MODE,
+    environment: sentryEnv,
+    ...(release ? { release } : {}),
+    // sendDefaultPii: false is the SDK default; set explicitly so the PII stance
+    // is on record in code. This scrubs IP addresses and other automatic PII fields.
+    sendDefaultPii: false,
     integrations: [
       Sentry.browserTracingIntegration(),
       // feedbackIntegration: enables Sentry.getFeedback() in ReportBugButton.
@@ -64,8 +88,17 @@ const renderApp = () => {
   )
 }
 
+const SESSION_STARTED_KEY = 'vaultmtg_ph_app_session_started_fired'
+
 // Initialize services (REST API and WebSocket) before rendering — see #1243 for Vercel BFF smoke-test
+initAnalytics()
 initializeServices().then(() => {
+  // Fire app_session_started once per browser session after services initialize.
+  // Guarded by sessionStorage so page-reloads within the same tab don't double-fire.
+  if (!sessionStorage.getItem(SESSION_STARTED_KEY)) {
+    trackEvent({ name: 'app_session_started', properties: { services_init_ms: servicesInitMs } })
+    sessionStorage.setItem(SESSION_STARTED_KEY, '1')
+  }
   renderApp()
 }).catch((error) => {
   console.error('Failed to initialize services:', error)

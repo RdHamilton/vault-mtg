@@ -9,6 +9,7 @@ import {
   compareDecks,
   compareTimePeriods,
 } from '@/services/api/matches';
+import { reportError } from '@/lib/sentry';
 import './MatchComparisonPanel.css';
 
 interface MatchComparisonPanelProps {
@@ -135,6 +136,7 @@ export default function MatchComparisonPanel({
 
       setResult(comparisonResult);
     } catch (err) {
+      reportError(err, { component: 'MatchComparisonPanel', action: 'compare_matches' });
       setError(err instanceof Error ? err.message : 'Failed to compare matches');
     } finally {
       setLoading(false);

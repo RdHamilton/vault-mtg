@@ -26,13 +26,34 @@ import (
 // discovery handshake; users do not configure this.
 const DefaultPort = 9001
 
+// Auth status values for State.AuthStatus. The field is derived by
+// computeAuthStatus in services/daemon/internal/daemon and set at both
+// localapi.New construction time and on each heartbeat SetState call.
+//
+// Four values are defined:
+//   - AuthStatusAuthenticated  — keychain mode, account linked, no keychain error.
+//   - AuthStatusSetupRequired  — account not yet linked (AccountID empty) or
+//     keychain mode not enabled.
+//   - AuthStatusKeychainError  — keychain read failed at startup or after retries.
+//   - AuthStatusAuthPaused     — PKCE attempt cap reached; daemon will not open
+//     browser again until the user explicitly clicks "Retry Setup". This status
+//     OUTRANKS AuthStatusKeychainError in the computeAuthStatus routing chain
+//     (#2133 consent loop guard).
+const (
+	AuthStatusAuthenticated = "authenticated"
+	AuthStatusSetupRequired = "setup_required"
+	AuthStatusKeychainError = "keychain_error"
+	AuthStatusAuthPaused    = "auth_paused"
+)
+
 // shutdownTimeout caps how long the local API server takes to drain on stop.
 const shutdownTimeout = 5 * time.Second
 
 // State is the subset of daemon state exposed by the local API. Some fields
 // (Version, SessionID, StartedAt, AccountID, CloudAPIURL) are stable for the
-// life of the daemon process; others (LastDispatchAt, BFFReachable) change as
-// the daemon dispatches events. The daemon refreshes them via SetState.
+// life of the daemon process; others (LastDispatchAt, BFFReachable,
+// DispatchDropped) change as the daemon dispatches events. The daemon
+// refreshes them via SetState.
 type State struct {
 	Version        string
 	SessionID      string
@@ -41,6 +62,16 @@ type State struct {
 	CloudAPIURL    string
 	LastDispatchAt *time.Time
 	BFFReachable   bool
+	// DispatchDropped is the cumulative number of events dropped into the
+	// ring buffer after retry exhaustion. Surfaced on /api/v1/system/health
+	// metrics.dispatchDropped for observability.
+	DispatchDropped int64
+	// AuthStatus is the daemon's authentication state, derived by
+	// computeAuthStatus in services/daemon/internal/daemon. One of the
+	// AuthStatus* constants defined in this package. Always present in the
+	// JSON response — an empty string signals a derivation bug rather than a
+	// valid absent value. Updated on each heartbeat tick (~30s staleness).
+	AuthStatus string
 }
 
 // Server is the loopback HTTP server. Construct with New, then call Start
@@ -153,6 +184,11 @@ func (s *Server) Start() error {
 	// trigger a clean uninstall without forcing the user into a Terminal.
 	mux.HandleFunc("/api/v1/system/uninstall", s.handleSystemUninstall)
 
+	// #1832 — support diagnostics bundle. Returns daemon version, OS, uptime,
+	// and the last N lines of the daemon log file (secrets scrubbed) so the
+	// SPA's "Copy diagnostics" button can produce a paste-ready support bundle.
+	mux.HandleFunc("/api/v1/system/diagnostics", s.handleSystemDiagnostics)
+
 	// Phase 2 PR #17b — live draft state. Endpoints answer from the
 	// daemon's in-memory draftstate.Store (populated by the log entry
 	// consumer in services/daemon/internal/daemon). Retire the BFF
@@ -202,11 +238,12 @@ func (s *Server) Stop() error {
 
 // healthResponse is the JSON body returned by GET /health.
 type healthResponse struct {
-	Status    string `json:"status"`
-	Version   string `json:"version"`
-	SessionID string `json:"session_id"`
-	StartedAt string `json:"started_at"`
-	AccountID string `json:"account_id,omitempty"`
+	Status     string `json:"status"`
+	Version    string `json:"version"`
+	SessionID  string `json:"session_id"`
+	StartedAt  string `json:"started_at"`
+	AccountID  string `json:"account_id,omitempty"`
+	AuthStatus string `json:"auth_status"`
 }
 
 // handleHealth returns the daemon's liveness snapshot. The "status" field is
@@ -219,11 +256,12 @@ func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {
 
 	st := s.snapshot()
 	resp := healthResponse{
-		Status:    "ok",
-		Version:   st.Version,
-		SessionID: st.SessionID,
-		StartedAt: st.StartedAt.UTC().Format(time.RFC3339),
-		AccountID: st.AccountID,
+		Status:     "ok",
+		Version:    st.Version,
+		SessionID:  st.SessionID,
+		StartedAt:  st.StartedAt.UTC().Format(time.RFC3339),
+		AccountID:  st.AccountID,
+		AuthStatus: st.AuthStatus,
 	}
 	writeJSON(w, r, http.StatusOK, resp)
 }

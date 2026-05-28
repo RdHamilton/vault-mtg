@@ -74,6 +74,9 @@ export const Events = {
   FUNNEL_FIRST_GAME_PLAYED: 'funnel_first_game_played',
   FUNNEL_FIRST_DATA_LOADED: 'funnel_first_data_loaded',
   FUNNEL_FIRST_FEATURE_USED: 'funnel_first_feature_used',
+  // ADR-027: BFF-only emission — taxonomy declared here for type safety;
+  // the SPA never calls trackEvent with this name.
+  FUNNEL_DAEMON_PAIRED: 'funnel_daemon_paired',
 
   // Page views
   PAGE_VIEWED: 'page_viewed',
@@ -205,6 +208,13 @@ export type AnalyticsEvent =
           | 'quests';
       };
     }
+  // ADR-027: BFF emits this event server-side when the daemon completes its
+  // first pairing handshake. The SPA never calls trackEvent with this name —
+  // this branch exists only so the constant is type-safe if referenced.
+  | {
+      name: 'funnel_daemon_paired';
+      properties?: Record<string, never>;
+    }
   // Page views
   | {
       name: 'page_viewed';
@@ -304,7 +314,11 @@ export type AnalyticsEvent =
     }
   | {
       name: 'error_auth_failed';
-      properties: { context: string };
+      // reason_class replaces the original free-form `context: string` per Ray
+      // Q2 amendment — enum prevents raw error message PII leaking into PostHog.
+      // 'network' is the only value emitted this PR; 'invalid_credentials' and
+      // 'rate_limited' are deferred to a custom Clerk sign-in follow-up ticket.
+      properties: { reason_class: 'network' | 'invalid_credentials' | 'rate_limited' };
     }
   | {
       name: 'error_empty_state_shown';
@@ -317,8 +331,10 @@ export type AnalyticsEvent =
     }
   | {
       name: 'app_user_identified';
+      // NOTE: user_id intentionally omitted — frontend Clerk user_id hashing is
+      // pending a follow-up ticket. Do NOT add user_id here until that lands.
+      // See: vault-mtg-tickets#1836 Ray adj. Q3.
       properties: {
-        user_id: string;
         auth_method: 'email' | 'google' | 'apple' | 'facebook';
       };
     }
@@ -377,4 +393,14 @@ export function registerSuperProperties(
 ): void {
   if (!initialized) return;
   posthog.register(properties);
+}
+
+/**
+ * Remove a single super-property so it is no longer sent on subsequent events.
+ * Must be called BEFORE resetIdentity() on sign-out — posthog.reset() clears
+ * the distinct_id and would orphan the super-property.
+ */
+export function unregisterSuperProperty(propertyName: string): void {
+  if (!initialized) return;
+  posthog.unregister(propertyName);
 }

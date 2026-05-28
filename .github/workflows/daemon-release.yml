@@ -69,17 +69,75 @@ jobs:
           GOPRIVATE: github.com/RdHamilton/vault-mtg
         run: go test -race ./...
 
+      - name: Resolve build-time DefaultCloudAPIURL
+        # Pick the cloud_api_url that goreleaser will bake into the binary via
+        # `-X main.DefaultCloudAPIURL=<url>` (#2560). Pre-release tags (rc/alpha/
+        # beta/pre) ship the staging URL; stable tags ship production; manual
+        # workflow_dispatch on a branch defaults to staging so a snapshot build
+        # is never silently aimed at prod.
+        id: default_url
+        run: |
+          REF="${{ github.ref_name }}"
+          if [[ "$REF" == *"-rc"* || "$REF" == *"-alpha"* || "$REF" == *"-beta"* || "$REF" == *"-pre"* ]]; then
+            echo "url=https://staging-api.vaultmtg.app/api/v1" >> "$GITHUB_OUTPUT"
+          elif [[ "$REF" == daemon/v* ]]; then
+            echo "url=https://api.vaultmtg.app/api/v1" >> "$GITHUB_OUTPUT"
+          else
+            # workflow_dispatch on a branch — never touch prod from a snapshot.
+            echo "url=https://staging-api.vaultmtg.app/api/v1" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Resolve build-time Sentry DSN
+        # Pick the Sentry DSN baked into the binary via `-X main.DefaultSentryDSN`.
+        # Pre-release tags ship the staging DSN; stable tags ship the production
+        # DSN; manual workflow_dispatch on a branch leaves the DSN empty so
+        # snapshot builds never report against a real Sentry project. #1832.
+        id: sentry_dsn
+        env:
+          SENTRY_DSN_DAEMON_PRODUCTION: ${{ secrets.SENTRY_DSN_DAEMON_PRODUCTION }}
+          SENTRY_DSN_DAEMON_STAGING: ${{ secrets.SENTRY_DSN_DAEMON_STAGING }}
+        run: |
+          REF="${{ github.ref_name }}"
+          if [[ "$REF" == *"-rc"* || "$REF" == *"-alpha"* || "$REF" == *"-beta"* || "$REF" == *"-pre"* ]]; then
+            DSN="$SENTRY_DSN_DAEMON_STAGING"
+          elif [[ "$REF" == daemon/v* ]]; then
+            DSN="$SENTRY_DSN_DAEMON_PRODUCTION"
+          else
+            DSN=""
+          fi
+          # Never echo the DSN — write it to a step output via masking. GitHub
+          # Actions automatically masks values registered with add-mask.
+          if [[ -n "$DSN" ]]; then
+            echo "::add-mask::$DSN"
+          fi
+          echo "dsn=$DSN" >> "$GITHUB_OUTPUT"
+
       - name: Resolve semver tag for GoReleaser
-        # Strip the 'daemon/' prefix to get a plain semver string used for:
-        #   - PLAIN_VERSION env var (passed to GoReleaser for binary version embedding)
-        #   - GORELEASER_CURRENT_TAG remains the full daemon/v* tag so the GitHub
-        #     Release is published at the correct namespaced tag, never squatting
-        #     the bare v* namespace that the application release owns.
+        # GoReleaser v2 requires GORELEASER_CURRENT_TAG to be a parseable semver
+        # string -- the prefixed form `daemon/v0.3.2-rc1` fails the internal
+        # semver parser (regression introduced in PR #2185 / commit 5590f1e6;
+        # see workflow run 26437135668 "failed to parse tag 'daemon/v0.3.2-rc1'
+        # as semver").
+        #
+        # Strip the `daemon/` prefix to produce the parseable form:
+        #   - SEMVER (`v0.3.2-rc1`) -> GORELEASER_CURRENT_TAG + PLAIN_VERSION
+        # GoReleaser publishes the GitHub Release at the bare `v*` tag. The
+        # `Rename GitHub Release to daemon/v* tag` step below restores ADR-023
+        # namespacing by PATCHing the release's `tag_name` to `daemon/v*` --
+        # the `release.tag` config field is GoReleaser Pro-only and is rejected
+        # by free-tier (verified against v2.16.0 source).
+        #
+        # The local `git tag -f "${SEMVER}"` aliases the stripped semver to the
+        # same commit as the pushed daemon/v* tag; this satisfies GoReleaser v2's
+        # tag-to-commit alignment validation. The alias is local-only (no push),
+        # so the bare `v*` tag is ephemeral to the CI job and never reaches the
+        # remote, preserving the ADR-023 namespacing guarantee.
         id: semver
         run: |
           RAW="${{ github.ref_name }}"
           SEMVER="${RAW#daemon/}"
           echo "tag=${SEMVER}" >> "$GITHUB_OUTPUT"
+          git tag -f "${SEMVER}"
 
       - name: Run GoReleaser
         uses: goreleaser/goreleaser-action@v7
@@ -92,19 +150,62 @@ jobs:
           GONOSUMDB: github.com/RdHamilton/vault-mtg
           GOPRIVATE: github.com/RdHamilton/vault-mtg
           GITHUB_WORKSPACE: ${{ github.workspace }}
-          # Use the full daemon/v* tag so GoReleaser publishes the GitHub Release
-          # at the correctly-namespaced tag, never squatting the bare v* namespace.
-          GORELEASER_CURRENT_TAG: ${{ github.ref_name }}
+          # Stripped semver (e.g. 'v0.3.2-rc1') so GoReleaser's internal semver
+          # parser succeeds. The release is renamed to the `daemon/v*` form by
+          # the next step (PATCH /repos/.../releases/<id>) to restore the
+          # ADR-023 namespacing.
+          GORELEASER_CURRENT_TAG: ${{ steps.semver.outputs.tag }}
           # Plain semver (e.g. 'v0.3.1') used by .goreleaser.yml ldflags to embed
           # a clean version string in the binary ({{ .Env.PLAIN_VERSION }}).
           PLAIN_VERSION: ${{ steps.semver.outputs.tag }}
+          # cloud_api_url baked into the binary via `-X main.DefaultCloudAPIURL=`
+          # so `handleMissingConfig` never falls back to a hardcoded URL (#2560).
+          DEFAULT_CLOUD_API_URL: ${{ steps.default_url.outputs.url }}
+          # Sentry DSN baked into the binary via `-X main.DefaultSentryDSN=`
+          # for daemon-side crash capture. Empty for snapshot builds — leaves
+          # Sentry disabled at runtime per sentryhook.Init contract. #1832.
+          DEFAULT_SENTRY_DSN: ${{ steps.sentry_dsn.outputs.dsn }}
+
+      - name: Rename GitHub Release to daemon/v* tag (ADR-023)
+        # GoReleaser publishes the release at the bare semver tag (e.g.
+        # `v0.3.2-rc1`) because `ctx.Git.CurrentTag` is what drives both the
+        # semver parser and the published release tag, and the free-tier
+        # `release.tag` override is unavailable.
+        #
+        # Atomically rename `tag_name` to the prefixed `daemon/v*` form via the
+        # GitHub Releases API, restoring ADR-023 namespacing. The PATCH operates
+        # on the existing release ID so there is no delete/recreate race and no
+        # asset re-upload.
+        #
+        # Skipped on workflow_dispatch (no real tag pushed; goreleaser ran in a
+        # snapshot-like mode and no published release exists to rename).
+        if: startsWith(github.ref, 'refs/tags/daemon/v')
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          SEMVER_TAG: ${{ steps.semver.outputs.tag }}
+          PREFIXED_TAG: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          REPO="${{ github.repository }}"
+          RELEASE_ID=$(gh api "repos/${REPO}/releases/tags/${SEMVER_TAG}" --jq .id)
+          if [[ -z "${RELEASE_ID}" || "${RELEASE_ID}" == "null" ]]; then
+            echo "ERROR: GoReleaser did not publish a release at tag '${SEMVER_TAG}'." >&2
+            exit 1
+          fi
+          echo "Renaming release ${RELEASE_ID}: ${SEMVER_TAG} -> ${PREFIXED_TAG}"
+          gh api \
+            --method PATCH \
+            "repos/${REPO}/releases/${RELEASE_ID}" \
+            -f "tag_name=${PREFIXED_TAG}" \
+            --jq '"renamed: \(.tag_name) at \(.html_url)"'
 
       - name: Upload darwin universal binary for sign-macos
         # Share the unsigned darwin binary so sign-macos can sign and notarize it.
         # GoReleaser v2 with format:binary writes the universal binary to a
         # subdirectory named after the universal_binaries id + _darwin_all, so
         # the path is dist/daemon-universal_darwin_all/vaultmtg-daemon.
-        uses: actions/upload-artifact@v4
+        # v6 runs on Node 24 (v4 was Node 20, deprecated Sept 2026 -- issue #2242).
+        uses: actions/upload-artifact@v6
         with:
           name: vaultmtg-daemon-darwin-universal
           path: dist/daemon-universal_darwin_all/vaultmtg-daemon

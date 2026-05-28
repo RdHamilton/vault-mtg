@@ -2,6 +2,11 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import OpponentAnalysisPanel from './OpponentAnalysisPanel';
 import { opponents } from '@/services/api';
+import * as Sentry from '@sentry/react';
+
+vi.mock('@sentry/react', () => ({
+  captureException: vi.fn(),
+}));
 
 // Mock the opponents API
 vi.mock('@/services/api', () => ({
@@ -385,6 +390,36 @@ describe('OpponentAnalysisPanel', () => {
 
     await waitFor(() => {
       expect(screen.getByText('No strategic insights available')).toBeInTheDocument();
+    });
+  });
+
+  describe('Sentry error reporting', () => {
+    beforeEach(() => {
+      vi.clearAllMocks();
+    });
+
+    it('calls reportError with load_opponent_analysis on getOpponentAnalysis failure', async () => {
+      const sentryCapture = vi.mocked(Sentry.captureException);
+      vi.mocked(opponents.getOpponentAnalysis).mockRejectedValue(new Error('analysis error'));
+
+      render(<OpponentAnalysisPanel matchId="test-match-123" isExpanded={true} />);
+
+      await waitFor(() => {
+        expect(sentryCapture).toHaveBeenCalledOnce();
+      });
+
+      const callArgs = sentryCapture.mock.calls[0][1] as { tags?: Record<string, string> };
+      expect(callArgs?.tags).toMatchObject({ component: 'OpponentAnalysisPanel', action: 'load_opponent_analysis' });
+    });
+
+    it('still renders error UI when analysis fails', async () => {
+      vi.mocked(opponents.getOpponentAnalysis).mockRejectedValue(new Error('analysis error'));
+
+      render(<OpponentAnalysisPanel matchId="test-match-123" isExpanded={true} />);
+
+      await waitFor(() => {
+        expect(screen.getByText('analysis error')).toBeInTheDocument();
+      });
     });
   });
 });

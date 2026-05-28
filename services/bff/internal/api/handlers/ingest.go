@@ -13,6 +13,12 @@ import (
 	"github.com/posthog/posthog-go"
 )
 
+// dispatchDegradedThreshold is the minimum number of consecutive BFF dispatch
+// failures (counted by the daemon) that triggers a daemon.dispatch_degraded
+// PostHog event. Defined BFF-side so the threshold can be tuned without a
+// daemon redeploy (per Ray's PLAN_VERDICT §architectural notes point 6).
+const dispatchDegradedThreshold = uint32(3)
+
 // EventBroadcaster is implemented by any type that can broadcast a daemon event
 // to connected clients (e.g. an SSE broker).  userID scopes delivery to the
 // authenticated user's SSE subscribers only — preventing cross-tenant leakage.
@@ -143,6 +149,104 @@ func (h *IngestHandler) IngestEvent(w http.ResponseWriter, r *http.Request) {
 					Set("session_id", event.SessionID).
 					Set("expected_sequence", expected).
 					Set("received_sequence", event.Sequence),
+			})
+		}
+	}
+
+	// Heartbeat: inspect payload for observability signals and emit PostHog
+	// events when thresholds are exceeded. PostHog emission is BFF-only per
+	// ADR-027 §OQ-5. The daemon does not import posthog-go (ADR-027 FF#3).
+	if event.Type == "daemon.heartbeat" {
+		// heartbeatPayload mirrors the daemon-local struct (JSON wire contract
+		// agreed in Ray's PLAN_VERDICT for #2569 and #2139). Both sides use
+		// omitempty on the counter fields; zero values skip PostHog emission.
+		var hb struct {
+			ParseFailureCount      uint32   `json:"parse_failure_count"`
+			SampleLineHash         string   `json:"sample_line_hash,omitempty"`
+			FailedEventTypes       []string `json:"failed_event_types,omitempty"`
+			ConsecutiveBFFFailures uint32   `json:"consecutive_bff_failures,omitempty"`
+			LastBFFStatusCode      int      `json:"last_bff_status_code,omitempty"`
+		}
+		if err := json.Unmarshal(event.Payload, &hb); err == nil {
+			hashedAccountID := hashAccountID(event.AccountID)
+			// daemon.log_format_drift (#2569): emit when parse failures occurred.
+			if hb.ParseFailureCount > 0 {
+				_ = h.postHogClient.Enqueue(posthog.Capture{
+					DistinctId: hashedAccountID,
+					Event:      "daemon.log_format_drift",
+					Properties: posthog.NewProperties().
+						Set("account_id_hash", hashedAccountID).
+						Set("parse_failure_count", hb.ParseFailureCount).
+						Set("sample_line_hash", hb.SampleLineHash).
+						Set("failed_event_types", hb.FailedEventTypes),
+				})
+			}
+			// daemon.dispatch_degraded (#2139): emit when BFF failure count
+			// meets or exceeds the threshold. Threshold is BFF-side so it can
+			// be tuned without a daemon redeploy.
+			if hb.ConsecutiveBFFFailures >= dispatchDegradedThreshold {
+				_ = h.postHogClient.Enqueue(posthog.Capture{
+					DistinctId: hashedAccountID,
+					Event:      "daemon.dispatch_degraded",
+					Properties: posthog.NewProperties().
+						Set("account_id_hash", hashedAccountID).
+						Set("consecutive_failures", hb.ConsecutiveBFFFailures).
+						Set("status_code", hb.LastBFFStatusCode),
+				})
+			}
+		}
+	}
+
+	// daemon.auth_failed (#2139): dedicated dispatch event sent immediately
+	// when ErrReauthRequired fires (BFF 401/403) or PKCE flow fails. The
+	// daemon dispatches this event directly so latency is minimal (no
+	// heartbeat-window delay). distinct_id is always hashAccountID(AccountID)
+	// — the AccountID is the live Clerk session ID (post-auth path only).
+	if event.Type == "daemon.auth_failed" {
+		var p struct {
+			Reason        string `json:"reason"`
+			BFFStatusCode int    `json:"bff_status_code,omitempty"`
+			Platform      string `json:"platform"`
+			DaemonVersion string `json:"daemon_version"`
+		}
+		if err := json.Unmarshal(event.Payload, &p); err == nil {
+			hashedAccountID := hashAccountID(event.AccountID)
+			props := posthog.NewProperties().
+				Set("account_id_hash", hashedAccountID).
+				Set("reason", p.Reason).
+				Set("platform", p.Platform).
+				Set("daemon_version", p.DaemonVersion)
+			if p.BFFStatusCode != 0 {
+				props = props.Set("bff_status_code", p.BFFStatusCode)
+			}
+			_ = h.postHogClient.Enqueue(posthog.Capture{
+				DistinctId: hashedAccountID,
+				Event:      "daemon.auth_failed",
+				Properties: props,
+			})
+		}
+	}
+
+	// daemon.keychain_error (#2139): dedicated dispatch event sent after all
+	// retryKeychain retries are exhausted and AccountID is non-empty (post-auth
+	// case B per Ray's OQ-1). Pre-auth keychain failures are unobservable via
+	// the BFF emission boundary and are not emitted.
+	if event.Type == "daemon.keychain_error" {
+		var p struct {
+			ErrorType     string `json:"error_type"`
+			Platform      string `json:"platform"`
+			DaemonVersion string `json:"daemon_version"`
+		}
+		if err := json.Unmarshal(event.Payload, &p); err == nil {
+			hashedAccountID := hashAccountID(event.AccountID)
+			_ = h.postHogClient.Enqueue(posthog.Capture{
+				DistinctId: hashedAccountID,
+				Event:      "daemon.keychain_error",
+				Properties: posthog.NewProperties().
+					Set("account_id_hash", hashedAccountID).
+					Set("error_type", p.ErrorType).
+					Set("platform", p.Platform).
+					Set("daemon_version", p.DaemonVersion),
 			})
 		}
 	}

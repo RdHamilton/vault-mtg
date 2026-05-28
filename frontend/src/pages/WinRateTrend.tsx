@@ -1,4 +1,5 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
+import { trackEvent } from '@/services/analytics';
 import { LineChart, Line, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
 import { matches } from '@/services/api';
 import { storage } from '@/types/models';
@@ -15,6 +16,15 @@ const WinRateTrend = () => {
   const [analysis, setAnalysis] = useState<storage.TrendAnalysis | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+
+  // Analytics: 300ms trailing debounce for feature_chart_interacted (Ray Q1)
+  const chartInteractedTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const fireChartInteracted = (interaction: 'filter_applied' | 'time_range_changed' | 'format_changed') => {
+    if (chartInteractedTimerRef.current) clearTimeout(chartInteractedTimerRef.current);
+    chartInteractedTimerRef.current = setTimeout(() => {
+      trackEvent({ name: 'feature_chart_interacted', properties: { chart: 'win_rate_trend', interaction } });
+    }, 300);
+  };
 
   useEffect(() => {
     const loadTrendData = async () => {
@@ -94,7 +104,7 @@ const WinRateTrend = () => {
       <div className="filter-row">
         <div className="filter-group">
           <label className="filter-label">Date Range</label>
-          <select value={dateRange} onChange={(e) => updateFilters('winRateTrend', { dateRange: e.target.value })}>
+          <select value={dateRange} onChange={(e) => { updateFilters('winRateTrend', { dateRange: e.target.value }); fireChartInteracted('time_range_changed'); }}>
             <option value="7days">Last 7 Days</option>
             <option value="30days">Last 30 Days</option>
             <option value="90days">Last 90 Days</option>
@@ -104,7 +114,7 @@ const WinRateTrend = () => {
 
         <div className="filter-group">
           <label className="filter-label">Format</label>
-          <select value={format} onChange={(e) => updateFilters('winRateTrend', { format: e.target.value })}>
+          <select value={format} onChange={(e) => { updateFilters('winRateTrend', { format: e.target.value }); fireChartInteracted('format_changed'); }}>
             <option value="all">All Formats</option>
             <option value="constructed">Constructed</option>
             <option value="Ladder">Ranked (Ladder)</option>
@@ -114,7 +124,7 @@ const WinRateTrend = () => {
 
         <div className="filter-group">
           <label className="filter-label">Chart Type</label>
-          <select value={chartType} onChange={(e) => updateFilters('winRateTrend', { chartType: e.target.value as 'line' | 'bar' })}>
+          <select value={chartType} onChange={(e) => { updateFilters('winRateTrend', { chartType: e.target.value as 'line' | 'bar' }); fireChartInteracted('filter_applied'); }}>
             <option value="line">Line Chart</option>
             <option value="bar">Bar Chart</option>
           </select>

@@ -137,7 +137,20 @@ builds:
       - goos: windows
         goarch: arm64
     ldflags:
-      - -s -w -X main.Version={{ .Env.PLAIN_VERSION }}
+      # main.Version embeds the release version for `mtga-daemon -version` output.
+      # main.DefaultCloudAPIURL is the build-time default cloud_api_url written
+      # to daemon.json by handleMissingConfig when no env var is supplied (#2560).
+      # The release workflow picks the env value:
+      #   stable tags (daemon/v0.3.1)      -> https://api.vaultmtg.app/api/v1
+      #   pre-release  (-rc/-alpha/-beta/-pre) -> https://staging-api.vaultmtg.app/api/v1
+      # Local `goreleaser release --snapshot` uses whatever DEFAULT_CLOUD_API_URL
+      # is in the env; if unset, goreleaser substitutes an empty string and the
+      # binary falls back to the package-level localhost default.
+      # main.DefaultSentryDSN is the build-time daemon Sentry DSN (#1832).
+      # Resolved by daemon-release.yml: production tags use the prod DSN, pre-
+      # release tags use the staging DSN, snapshot builds get an empty value
+      # which leaves Sentry disabled at runtime.
+      - -s -w -X main.Version={{ .Env.PLAIN_VERSION }} -X main.DefaultCloudAPIURL={{ .Env.DEFAULT_CLOUD_API_URL }} -X main.DefaultSentryDSN={{ .Env.DEFAULT_SENTRY_DSN }}
     mod_timestamp: "{{ .CommitTimestamp }}"
     # Windows NSIS installer -- compiled after the Windows amd64 binary is built.
     # makensis is available on ubuntu runners via apt; skipped in snapshot mode.
@@ -232,6 +245,26 @@ release:
   github:
     owner: RdHamilton
     name: vault-mtg
+  # Tag handling note (ADR-023 daemon/v* namespacing on free-tier GoReleaser):
+  #
+  # GoReleaser publishes the GitHub Release at `ctx.Git.CurrentTag`, which is
+  # sourced from the `GORELEASER_CURRENT_TAG` env var. That value MUST be a
+  # parseable semver (e.g. `v0.3.2-rc1`) or the internal semver pipe fails with
+  # `failed to parse tag '<tag>' as semver` (see workflow run 26437135668).
+  #
+  # We cannot use `release.tag: "{{ .Env.PREFIXED_TAG }}"` to restore the
+  # `daemon/v*` prefix on publish: the `release.tag` field is GoReleaser Pro-
+  # only and is unmarshal-rejected by free-tier GoReleaser (verified against
+  # v2.15.4 and v2.16.0 source -- `pkg/config/config.go` Release struct has no
+  # `Tag` field, and the private-monorepo-public-release cookbook explicitly
+  # notes "On GoReleaser Pro, {{.Tag}} represents the tag without the prefix").
+  #
+  # Free-tier path: GoReleaser publishes at the bare semver tag (e.g.
+  # `v0.3.2-rc1`); daemon-release.yml then PATCHes the GitHub Release to rename
+  # `tag_name` to the prefixed `daemon/v*` form, atomically restoring the
+  # ADR-023 namespacing guarantee. The bare-`v*` tag is never pushed to the
+  # remote (the `git tag -f` in the workflow is local-only), so no on-remote
+  # squat of the application release namespace ever occurs.
   # Tag format: daemon/v0.3.1 -- strip the "daemon/" prefix for the release name.
   name_template: "Daemon {{ .Tag }}"
   draft: false

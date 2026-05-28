@@ -3,6 +3,7 @@ import { decks } from '@/services/api';
 import type { SuggestDecksApiResponse } from '@/services/api/decks';
 import { downloadTextFile } from '@/utils/download';
 import { gui } from '@/types/models';
+import { reportError } from '@/lib/sentry';
 import DeckSuggestionCard from './DeckSuggestionCard';
 import './SuggestDecksModal.css';
 
@@ -56,6 +57,7 @@ export default function SuggestDecksModal({
         }
       }
     } catch (err) {
+      reportError(err, { component: 'SuggestDecksModal', action: 'load_suggestions' });
       setError(err instanceof Error ? err.message : 'Failed to load suggestions');
     } finally {
       setLoading(false);
@@ -75,6 +77,7 @@ export default function SuggestDecksModal({
       onDeckApplied();
       onClose();
     } catch (err) {
+      reportError(err, { component: 'SuggestDecksModal', action: 'apply_deck' });
       setError(err instanceof Error ? err.message : 'Failed to apply deck');
     } finally {
       setApplying(false);
@@ -87,6 +90,7 @@ export default function SuggestDecksModal({
       const exportName = `${deckName} - ${suggestion.colorCombo.name}`;
       await exportSuggestedDeck(suggestion, exportName);
     } catch (err) {
+      reportError(err, { component: 'SuggestDecksModal', action: 'export_deck' });
       setError(err instanceof Error ? err.message : 'Failed to export deck');
     } finally {
       setExporting(false);

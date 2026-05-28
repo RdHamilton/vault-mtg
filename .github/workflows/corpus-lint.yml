@@ -33,7 +33,7 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Run corpus-lint
         # AGENTS_DIR is not present on CI runners — script exits 0 via --skip-if-missing.

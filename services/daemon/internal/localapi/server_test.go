@@ -125,3 +125,74 @@ func TestStopBeforeStartIsNoop(t *testing.T) {
 		t.Errorf("Stop before Start: %v", err)
 	}
 }
+
+// TestHealthAuthStatusField verifies that auth_status is always present in the
+// /health JSON response and reflects the value set on State.
+func TestHealthAuthStatusField(t *testing.T) {
+	cases := []struct {
+		name       string
+		authStatus string
+	}{
+		{"authenticated", localapi.AuthStatusAuthenticated},
+		{"setup_required", localapi.AuthStatusSetupRequired},
+		{"keychain_error", localapi.AuthStatusKeychainError},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			srv := localapi.New(0, localapi.State{
+				Version:    "test",
+				AuthStatus: tc.authStatus,
+			})
+			if err := srv.Start(); err != nil {
+				t.Fatalf("Start: %v", err)
+			}
+			defer func() { _ = srv.Stop() }()
+
+			resp, err := http.Get("http://" + srv.Addr() + "/health")
+			if err != nil {
+				t.Fatalf("GET /health: %v", err)
+			}
+			defer func() { _ = resp.Body.Close() }()
+
+			if resp.StatusCode != http.StatusOK {
+				t.Fatalf("status: got %d, want 200", resp.StatusCode)
+			}
+
+			var body struct {
+				AuthStatus string `json:"auth_status"`
+			}
+			if err := json.NewDecoder(resp.Body).Decode(&body); err != nil {
+				t.Fatalf("decode: %v", err)
+			}
+			if body.AuthStatus != tc.authStatus {
+				t.Errorf("auth_status: got %q, want %q", body.AuthStatus, tc.authStatus)
+			}
+		})
+	}
+}
+
+// TestHealthAuthStatusAlwaysPresent verifies that auth_status is always
+// serialized (no omitempty), so an empty string is visible as a derivation bug
+// rather than silently absent.
+func TestHealthAuthStatusAlwaysPresent(t *testing.T) {
+	srv := localapi.New(0, localapi.State{Version: "test"}) // AuthStatus intentionally empty
+	if err := srv.Start(); err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+	defer func() { _ = srv.Stop() }()
+
+	resp, err := http.Get("http://" + srv.Addr() + "/health")
+	if err != nil {
+		t.Fatalf("GET /health: %v", err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+
+	var raw map[string]interface{}
+	if err := json.NewDecoder(resp.Body).Decode(&raw); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if _, ok := raw["auth_status"]; !ok {
+		t.Error("auth_status key must always be present in /health response (no omitempty)")
+	}
+}

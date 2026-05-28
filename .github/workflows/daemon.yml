@@ -186,4 +186,5 @@ jobs:
       - name: Run install script tests
         run: |
           bats services/daemon/install/macos/install_test.bats
+          bats services/daemon/install/macos/uninstall_test.bats
           bats services/daemon/install/macos/pkg/postinstall_test.bats

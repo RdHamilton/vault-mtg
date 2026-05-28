@@ -29,14 +29,12 @@ DEPLOY_REGION="us-east-1"
 #   Used by: restart-bff.sh, restart-bff-staging.sh
 #   Mismatch impact: systemctl restart fails; deploy silently does nothing
 # ───────────────────────────────────────────────────────────────────────────
-BFF_SERVICE="mtga-companion"
+BFF_SERVICE="vaultmtg-bff"
 BFF_STAGING_SERVICE="vault-mtg-bff-staging"
 
-# Rename-prep target names (ADR-022 Phase 5c, ticket #1755).  These are
-# defined alongside the legacy names so that PR A in mtga-companion-infra
-# (ec2-bootstrap.sh systemd-unit rename) can switch the active value in a
-# single edit.  No consumer reads these until PR A lands; they are inert
-# constants in this PR.
+# Legacy rename-prep constant retained for callers that may still reference it
+# (ADR-022 Phase 5c, original ticket #1755).  Now equal to BFF_SERVICE since
+# the production unit cutover (Window B PRs #2532, #2536, #2540) is complete.
 BFF_SERVICE_VAULTMTG="vaultmtg-bff"
 
 # ───────────────────────────────────────────────────────────────────────────
@@ -59,16 +57,17 @@ BFF_STAGING_BINARY="mtga-bff-staging"
 #   Mismatch impact: BFF starts without the provisioned env; crashes or
 #                    falls back to insecure defaults
 # ───────────────────────────────────────────────────────────────────────────
-BFF_ENV_DIR="/etc/mtga-companion"
-BFF_ENV_FILE="/etc/mtga-companion/env"
+BFF_ENV_DIR="/etc/vaultmtg"
+BFF_ENV_FILE="/etc/vaultmtg/env"
 BFF_STAGING_ENV_DIR="/etc/mtga-companion-staging"
 BFF_STAGING_ENV_FILE="/etc/mtga-companion-staging/env"
 
-# Rename-prep target paths (ADR-022 Phase 5c, ticket #1755).  PR A in
-# mtga-companion-infra ships ec2-bootstrap.sh with symlink shims:
-#     /etc/mtga-companion -> /etc/vaultmtg
-# so a partial-deploy window cannot 500.  These constants are inert until
-# PR A lands.
+# Legacy rename-prep constants retained for callers that may still reference
+# them (ADR-022 Phase 5c, original ticket #1755).  Now equal to the canonical
+# BFF_ENV_DIR / BFF_ENV_FILE since the production filesystem cutover is
+# complete.  The symlink /etc/mtga-companion -> /etc/vaultmtg remains in
+# place on the EC2 instance for any out-of-band tooling that still references
+# the legacy path.
 BFF_ENV_DIR_VAULTMTG="/etc/vaultmtg"
 BFF_ENV_FILE_VAULTMTG="/etc/vaultmtg/env"
 
@@ -135,6 +134,29 @@ SSM_PROD_CLERK_SECRET_KEY="/vaultmtg/app/production/CLERK_SECRET_KEY"
 SSM_PROD_CLERK_PUBLISHABLE_KEY="/vaultmtg/app/production/CLERK_PUBLISHABLE_KEY"
 SSM_PROD_CLERK_FRONTEND_API="/vaultmtg/app/production/CLERK_FRONTEND_API"
 SSM_PROD_PORT="/vaultmtg/app/production/PORT"
+
+# v0.3.3 observability — Sentry + PostHog (ticket #16 / N1)
+#   SENTRY_DSN_BFF       — Sentry Go project DSN, consumed by BFF at startup
+#                          via /etc/vaultmtg/env (provisioned by provision-env.sh).
+#   SENTRY_DSN_SPA       — Sentry React project DSN, consumed by the SPA Vite
+#                          build at build time. NOT written to /etc/vaultmtg/env;
+#                          the SPA build job in deploy-bff.yml will read it
+#                          directly and inject as VITE_SENTRY_DSN.
+#   POSTHOG_API_KEY      — PostHog project API key, consumed by the SPA Vite
+#                          build at build time (VITE_POSTHOG_KEY). NOT written
+#                          to /etc/vaultmtg/env.
+#   POSTHOG_HOST         — PostHog ingestion host (us.i.posthog.com).
+#                          Plain String — not a secret.
+#   SecureString for all DSN/API-key paths; String for POSTHOG_HOST.
+#   Staging mirror is deliberately deferred: the existing staging
+#   `sentry-bff-dsn` parameter (provision-staging-env.sh line 231)
+#   covers staging BFF observability. PostHog and Sentry SDKs tag events
+#   with `environment: production|staging` at init time, so a single
+#   PostHog API key + single SPA Sentry DSN per surface is workable.
+SSM_PROD_SENTRY_DSN_BFF="/vaultmtg/app/production/sentry-dsn-bff"
+SSM_PROD_SENTRY_DSN_SPA="/vaultmtg/app/production/sentry-dsn-spa"
+SSM_PROD_POSTHOG_API_KEY="/vaultmtg/app/production/posthog-api-key"
+SSM_PROD_POSTHOG_HOST="/vaultmtg/app/production/posthog-host"
 
 # ───────────────────────────────────────────────────────────────────────────
 # SSM PARAMETER PATHS — STAGING

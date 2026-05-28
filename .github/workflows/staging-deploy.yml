@@ -1,5 +1,10 @@
 # Staging BFF deploy — runs on every push to main and on a nightly cadence.
 #
+# Decision record: ADR-038 (vault-mtg-docs/engineering/architecture/adr/2026-05-ADR-038-staging-deploy-cadence.md)
+# ADR-038 summary: push-on-merge fires the same job as workflow_dispatch; the concurrency
+# queue (cancel-in-progress: false) ensures back-to-back merges serialize rather than clobber
+# each other, preventing staging from landing in a partial-migration state between deploys.
+#
 # Path filter removed intentionally (post-mortem action A1): deploy scripts,
 # infra scripts, and migration files can change without touching services/bff/,
 # and those changes must be exercised in staging before they reach production.
@@ -41,6 +46,13 @@ on:
 permissions:
   contents: read
   id-token: write  # passed through to the reusable workflow via secrets: inherit path
+
+# ADR-038: queue mode — back-to-back merges serialize, never clobber.
+# cancel-in-progress: false prevents a partial-migration state if a second
+# push arrives mid-deploy (migration ran, restart cancelled = broken staging).
+concurrency:
+  group: staging-deploy
+  cancel-in-progress: false
 
 jobs:
   # Resolve the deploy ref up front so every downstream job sees the same SHA.

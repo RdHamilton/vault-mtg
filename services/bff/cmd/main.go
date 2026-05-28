@@ -16,6 +16,7 @@ import (
 	bffmiddleware "github.com/RdHamilton/vault-mtg/services/bff/internal/api/middleware"
 	"github.com/RdHamilton/vault-mtg/services/bff/internal/api/sse"
 	"github.com/RdHamilton/vault-mtg/services/bff/internal/config"
+	"github.com/RdHamilton/vault-mtg/services/bff/internal/dbpool"
 	"github.com/RdHamilton/vault-mtg/services/bff/internal/projection"
 	"github.com/RdHamilton/vault-mtg/services/bff/internal/storage"
 	"github.com/RdHamilton/vault-mtg/services/bff/internal/storage/repository"
@@ -28,6 +29,13 @@ import (
 
 	_ "github.com/jackc/pgx/v5/stdlib"
 )
+
+// version is injected at build time via -ldflags "-X main.version=<tag>" by
+// .github/actions/build-bff/action.yml.  It correlates Sentry events to the
+// deployed build tag.  When empty or "dev", cfg.GitCommit is used as the
+// release identifier instead (backward-compat for pre-PR-#2680 deploys and
+// local development).
+var version string
 
 var port = flag.Int("port", 8080, "HTTP server port")
 
@@ -107,10 +115,14 @@ func main() {
 			TracesSampleRate: 0.1,
 		}
 		// Release correlates Sentry events to a specific deployed revision.
-		// The GIT_COMMIT env var is written to the env file by the deploy
-		// pipeline; when absent (local dev or pre-#2363 deploys) Sentry
-		// initialises without a release tag, which is safe.
-		if cfg.GitCommit != "" {
+		// Prefer the build-time ldflag `version` (set by build-bff action.yml
+		// via -ldflags "-X main.version=<tag>").  Fall back to GIT_COMMIT from
+		// the env file (written by the deploy pipeline) for backward compat
+		// with pre-PR-#2680 deployments and local dev builds.
+		switch {
+		case version != "" && version != "dev":
+			sentryOpts.Release = version
+		case cfg.GitCommit != "":
 			sentryOpts.Release = cfg.GitCommit
 		}
 		if err := sentry.Init(sentryOpts); err != nil {
@@ -194,39 +206,52 @@ func main() {
 	}
 
 	// Wire API key handler and auth middleware when a database is available.
+	// sqlDB is declared here so it is in scope for NewHealthzHandler below.
 	var (
-		apiKeysHandler        *handlers.APIKeysHandler
-		apiKeyAuthMiddl       func(http.Handler) http.Handler
-		daemonAPIKeyAuthMiddl func(http.Handler) http.Handler
-		clerkUserResolver     func(http.Handler) http.Handler
-		draftRatingsHandler   *handlers.DraftRatingsHandler
-		historyHandler        *handlers.HistoryHandler
-		listV2Handler         *handlers.ListV2Handler
-		statsHandler          *handlers.StatsHandler
-		daemonHealthHandler   *handlers.DaemonHealthHandler
-		daemonRegisterHandler *handlers.DaemonRegisterHandler
-		matchesHandler        *handlers.MatchesHandler
-		collectionHandler     *handlers.CollectionHandler
-		questsHandler         *handlers.QuestsHandler
-		standardHandler       *handlers.StandardHandler
-		gamePlaysHandler      *handlers.GamePlaysHandler
-		metaHandler           *handlers.MetaHandler
-		opponentsHandler      *handlers.OpponentsHandler
-		notesHandler          *handlers.NotesHandler
-		cardsHandler          *handlers.CardsHandler
-		decksHandler          *handlers.DecksHandler
-		draftsHandler         *handlers.DraftsHandler
-		mlHandler             *handlers.MLHandler
-		settingsHandler       *handlers.SettingsHandler
+		sqlDB                   *sql.DB
+		apiKeysHandler          *handlers.APIKeysHandler
+		apiKeyAuthMiddl         func(http.Handler) http.Handler
+		daemonAPIKeyAuthMiddl   func(http.Handler) http.Handler
+		clerkUserResolver       func(http.Handler) http.Handler
+		draftRatingsHandler     *handlers.DraftRatingsHandler
+		historyHandler          *handlers.HistoryHandler
+		listV2Handler           *handlers.ListV2Handler
+		statsHandler            *handlers.StatsHandler
+		daemonHealthHandler     *handlers.DaemonHealthHandler
+		daemonRegisterHandler   *handlers.DaemonRegisterHandler
+		daemonsListHandler      *handlers.DaemonsListHandler
+		daemonsRevokeHandler    *handlers.DaemonsRevokeHandler
+		adminFleetHealthHandler *handlers.AdminFleetHealthHandler
+		matchesHandler          *handlers.MatchesHandler
+		collectionHandler       *handlers.CollectionHandler
+		questsHandler           *handlers.QuestsHandler
+		standardHandler         *handlers.StandardHandler
+		gamePlaysHandler        *handlers.GamePlaysHandler
+		metaHandler             *handlers.MetaHandler
+		opponentsHandler        *handlers.OpponentsHandler
+		notesHandler            *handlers.NotesHandler
+		cardsHandler            *handlers.CardsHandler
+		decksHandler            *handlers.DecksHandler
+		draftsHandler           *handlers.DraftsHandler
+		mlHandler               *handlers.MLHandler
+		settingsHandler         *handlers.SettingsHandler
+		waitlistHandler         *handlers.WaitlistHandler
 	)
 
 	// projCtx is cancelled on SIGTERM so the projection worker exits cleanly.
 	projCtx, projCancel := context.WithCancel(context.Background())
 
 	if cfg.DatabaseURL != "" {
-		sqlDB, err := sql.Open("pgx", cfg.DatabaseURL)
+		var err error
+		sqlDB, err = sql.Open("pgx", cfg.DatabaseURL)
 		if err != nil {
 			log.Fatalf("open db: %v", err)
+		}
+		dbpool.Configure(sqlDB)
+		pingCtx, pingCancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer pingCancel()
+		if err := sqlDB.PingContext(pingCtx); err != nil {
+			log.Fatalf("db ping: %v", err)
 		}
 
 		apiKeyRepo := repository.NewAPIKeyRepository(sqlDB)
@@ -356,6 +381,17 @@ func main() {
 		// so the standard UserIDFromContext continues to work.
 		daemonAPIKeyAuthMiddl = bffmiddleware.DaemonAPIKeyAuth(daemonAPIKeyRepo, userRepo)
 
+		// ADR-031 §3 + §4: per-device list + soft-revoke endpoints. Both
+		// are Clerk-session-authenticated (NOT daemon-api-key); the SPA's
+		// Devices UI (#2632) is the primary consumer.
+		daemonsListHandler = handlers.NewDaemonsListHandler(daemonAPIKeyRepo)
+		daemonsRevokeHandler = handlers.NewDaemonsRevokeHandler(daemonAPIKeyRepo)
+
+		// #2559 fleet-health admin endpoint — aggregate-only daemon counts
+		// for ops dashboards. Protected by AdminTokenAuth (static Bearer
+		// token from SSM /vaultmtg/app/production/bff-admin-token).
+		adminFleetHealthHandler = handlers.NewAdminFleetHealthHandler(daemonAPIKeyRepo)
+
 		// StatsHandler provides deck performance, win-rate trend, and format
 		// distribution analytics endpoints (issue #1513).
 		statsRepo := repository.NewStatsRepository(sqlDB)
@@ -363,6 +399,27 @@ func main() {
 			WithDraftAnalytics(statsRepo).
 			WithRankProgression(statsRepo).
 			WithResultBreakdown(statsRepo)
+
+		// WaitlistHandler (Phase 1, ticket #121) — public POST /api/v1/waitlist.
+		// Persists the email to the waitlist table and makes a best-effort
+		// Mailchimp signup. No Clerk auth required. Rate limited per-IP at 5 req/h.
+		// SSM parameters provisioned by Ray via ticket #122.
+		waitlistRepo := repository.NewWaitlistRepository(sqlDB)
+		var mailchimpClient handlers.MailchimpClient
+		if cfg.MailchimpAPIKey != "" && cfg.MailchimpListID != "" {
+			mc, mcErr := handlers.NewMailchimpHTTPClient(cfg.MailchimpAPIKey, cfg.MailchimpListID)
+			if mcErr != nil {
+				log.Printf("WARN: mailchimp client init failed: %v — waitlist will persist DB rows only", mcErr)
+			} else {
+				mailchimpClient = mc
+			}
+		} else {
+			log.Println("MAILCHIMP_API_KEY or MAILCHIMP_LIST_ID not set — Mailchimp disabled for waitlist.")
+		}
+		waitlistHandler = handlers.NewWaitlistHandler(waitlistRepo, mailchimpClient)
+		if postHogClient != nil {
+			waitlistHandler = waitlistHandler.WithPostHogClient(postHogClient)
+		}
 
 		// Wire Clerk→DB user ID bridge when both Clerk and a database are available.
 		// userRepo was created above for daemonRegisterHandler/daemonAPIKeyAuthMiddl.
@@ -394,7 +451,15 @@ func main() {
 		log.Printf("WARN: no DATABASE_URL — API key auth unavailable (env=%s); guarded endpoints return 503", cfg.Env)
 	}
 
-	healthzHandler := handlers.NewHealthzHandler(cfg.Env, cfg.DatabaseURL, storage.MigrationStatus)
+	embeddedVersion := "unknown"
+	if v, err := storage.EmbeddedMaxVersion(); err == nil {
+		embeddedVersion = fmt.Sprintf("%d", v)
+	}
+	var healthzPinger handlers.Pinger
+	if sqlDB != nil {
+		healthzPinger = sqlDB
+	}
+	healthzHandler := handlers.NewHealthzHandler(cfg.Env, healthzPinger, embeddedVersion)
 
 	// E2EUnguardedSSE is only honoured in development; in any other env the
 	// flag is silently ignored so a misconfigured staging/prod box stays safe.
@@ -404,37 +469,42 @@ func main() {
 	}
 
 	r := BuildRouter(cfg, RouterDeps{
-		Broker:                broker,
-		IngestHandler:         ingestHandler,
-		APIKeysHandler:        apiKeysHandler,
-		DraftRatingsHandler:   draftRatingsHandler,
-		HistoryHandler:        historyHandler,
-		ListV2Handler:         listV2Handler,
-		StatsHandler:          statsHandler,
-		DaemonHealthHandler:   daemonHealthHandler,
-		DaemonRegisterHandler: daemonRegisterHandler,
-		MatchesHandler:        matchesHandler,
-		CollectionHandler:     collectionHandler,
-		QuestsHandler:         questsHandler,
-		StandardHandler:       standardHandler,
-		GamePlaysHandler:      gamePlaysHandler,
-		MetaHandler:           metaHandler,
-		OpponentsHandler:      opponentsHandler,
-		NotesHandler:          notesHandler,
-		CardsHandler:          cardsHandler,
-		DecksHandler:          decksHandler,
-		DraftsHandler:         draftsHandler,
-		MLHandler:             mlHandler,
-		SettingsHandler:       settingsHandler,
-		HealthzHandler:        healthzHandler,
-		ClerkAuthMiddl:        clerkAuthMiddl,
-		ClerkAuthSSEMiddl:     clerkAuthSSEMiddl,
-		ClerkOAuthMiddl:       clerkOAuthMiddl,
-		ClerkUserResolver:     clerkUserResolver,
-		APIKeyAuthMiddl:       apiKeyAuthMiddl,
-		DaemonAPIKeyAuthMiddl: daemonAPIKeyAuthMiddl,
-		SentryMiddl:           bffmiddleware.NewSentryMiddleware(),
-		E2EUnguardedSSE:       e2eUnguardedSSE,
+		Broker:                  broker,
+		IngestHandler:           ingestHandler,
+		APIKeysHandler:          apiKeysHandler,
+		DraftRatingsHandler:     draftRatingsHandler,
+		HistoryHandler:          historyHandler,
+		ListV2Handler:           listV2Handler,
+		StatsHandler:            statsHandler,
+		DaemonHealthHandler:     daemonHealthHandler,
+		DaemonRegisterHandler:   daemonRegisterHandler,
+		DaemonsListHandler:      daemonsListHandler,
+		DaemonsRevokeHandler:    daemonsRevokeHandler,
+		AdminFleetHealthHandler: adminFleetHealthHandler,
+		MatchesHandler:          matchesHandler,
+		CollectionHandler:       collectionHandler,
+		QuestsHandler:           questsHandler,
+		StandardHandler:         standardHandler,
+		GamePlaysHandler:        gamePlaysHandler,
+		MetaHandler:             metaHandler,
+		OpponentsHandler:        opponentsHandler,
+		NotesHandler:            notesHandler,
+		CardsHandler:            cardsHandler,
+		DecksHandler:            decksHandler,
+		DraftsHandler:           draftsHandler,
+		MLHandler:               mlHandler,
+		SettingsHandler:         settingsHandler,
+		WaitlistHandler:         waitlistHandler,
+		HealthzHandler:          healthzHandler,
+		ClerkAuthMiddl:          clerkAuthMiddl,
+		ClerkAuthSSEMiddl:       clerkAuthSSEMiddl,
+		ClerkOAuthMiddl:         clerkOAuthMiddl,
+		ClerkUserResolver:       clerkUserResolver,
+		APIKeyAuthMiddl:         apiKeyAuthMiddl,
+		DaemonAPIKeyAuthMiddl:   daemonAPIKeyAuthMiddl,
+		AdminTokenMiddl:         bffmiddleware.AdminTokenAuth(cfg.BFFAdminToken),
+		SentryMiddl:             bffmiddleware.NewSentryMiddleware(),
+		E2EUnguardedSSE:         e2eUnguardedSSE,
 	})
 
 	srv := &http.Server{
@@ -486,6 +556,19 @@ type RouterDeps struct {
 	// a per-account API key for the daemon PKCE registration flow (ADR-020).
 	// Protected by RequireClerkAuth — the daemon sends its Clerk session JWT.
 	DaemonRegisterHandler *handlers.DaemonRegisterHandler
+	// DaemonsListHandler serves GET /api/v1/daemons — lists the caller's
+	// active daemon registrations. Protected by Clerk session auth per
+	// ADR-031 §4.
+	DaemonsListHandler *handlers.DaemonsListHandler
+	// DaemonsRevokeHandler serves DELETE /api/v1/daemons/{device_id} — soft-
+	// deletes (revokes) the caller's daemon registration. Protected by
+	// Clerk session auth per ADR-031 §3.
+	DaemonsRevokeHandler *handlers.DaemonsRevokeHandler
+	// AdminFleetHealthHandler serves GET /api/v1/admin/daemons/fleet-health —
+	// aggregate daemon key counts for ops dashboards. Zero PII.
+	// Protected by AdminTokenMiddl (static Bearer token from SSM).
+	// Requires a non-nil DB (daemon_api_keys table).
+	AdminFleetHealthHandler *handlers.AdminFleetHealthHandler
 	// MatchesHandler serves the Phase 2 /api/v1/matches/* surface that the
 	// SPA's daemonClient previously hit. Protected by DaemonAPIKeyAuth.
 	MatchesHandler *handlers.MatchesHandler
@@ -541,6 +624,9 @@ type RouterDeps struct {
 	// surface. Account-scoped JSONB key/value store; backs the SPA's
 	// AppSettings + per-key getters/setters. Protected by DaemonAPIKeyAuth.
 	SettingsHandler *handlers.SettingsHandler
+	// WaitlistHandler serves POST /api/v1/waitlist (Phase 1, ticket #121).
+	// Public endpoint — no Clerk auth required. Rate limited per-IP.
+	WaitlistHandler *handlers.WaitlistHandler
 	// HealthzHandler serves GET /healthz — intentionally public (no auth).
 	HealthzHandler *handlers.HealthzHandler
 	ClerkAuthMiddl func(http.Handler) http.Handler
@@ -561,6 +647,10 @@ type RouterDeps struct {
 	// POST /api/v1/ingest/events. The legacy APIKeyAuth path checks the
 	// api_keys table which is not where daemon_register stores its keys.
 	DaemonAPIKeyAuthMiddl func(http.Handler) http.Handler
+	// AdminTokenMiddl protects GET /api/v1/admin/daemons/fleet-health with a
+	// static high-entropy Bearer token (from SSM bff-admin-token). Uses
+	// crypto/subtle.ConstantTimeCompare — never bcrypt.
+	AdminTokenMiddl func(http.Handler) http.Handler
 	// SentryMiddl is the Sentry panic/error capture middleware.  When non-nil
 	// it is installed as the outermost middleware so it captures panics from
 	// all downstream handlers.  Safe to omit in tests and development.
@@ -630,6 +720,13 @@ func BuildRouter(cfg *config.Config, deps RouterDeps) http.Handler {
 	daemonVersionHandler := handlers.NewDaemonVersionHandler(cfg)
 	r.Get("/api/v1/daemon/version", daemonVersionHandler.GetDaemonVersion)
 
+	// POST /api/v1/waitlist — Phase 1 waitlist signup (ticket #121).
+	// Intentionally public (no Clerk auth). Rate limited at 5 req/h per IP.
+	// 201 Created on new email; 200 OK on duplicate. Body: {"ok":true} both.
+	if deps.WaitlistHandler != nil {
+		r.Post("/api/v1/waitlist", deps.WaitlistHandler.Join)
+	}
+
 	// POST /api/v1/daemon/register — daemon PKCE registration (Clerk OAuth token required).
 	// The daemon calls this immediately after completing the PKCE browser flow,
 	// sending the Clerk OAuth access token as the Bearer token.  The handler
@@ -646,6 +743,52 @@ func BuildRouter(cfg *config.Config, deps RouterDeps) http.Handler {
 		} else {
 			log.Println("WARN: POST /api/v1/daemon/register disabled — CLERK_FRONTEND_API not configured")
 		}
+	}
+
+	// ── /api/v1/daemons surface (ADR-031 §3 + §4) ────────────────────────────
+	// GET /api/v1/daemons              — list caller's active daemons.
+	// DELETE /api/v1/daemons/{device_id} — soft-revoke caller's daemon.
+	// Both are SPA-facing (consumed by the Devices UI #2632), so authn is
+	// the user's Clerk session — NOT the daemon API key. Cross-tenancy is
+	// SQL-enforced by the WHERE account_id = $caller clause inside the repo
+	// methods; the handler simply forwards the authenticated Clerk user_id.
+	if deps.DaemonsListHandler != nil {
+		if deps.ClerkAuthMiddl != nil {
+			auth := composeClerkAuth(deps.ClerkAuthMiddl, deps.ClerkUserResolver)
+			r.With(auth).Get("/api/v1/daemons", deps.DaemonsListHandler.List)
+		} else {
+			log.Println("WARN: GET /api/v1/daemons disabled — Clerk auth middleware not configured")
+		}
+	}
+	if deps.DaemonsRevokeHandler != nil {
+		if deps.ClerkAuthMiddl != nil {
+			auth := composeClerkAuth(deps.ClerkAuthMiddl, deps.ClerkUserResolver)
+			r.With(auth).Delete("/api/v1/daemons/{device_id}", deps.DaemonsRevokeHandler.Revoke)
+		} else {
+			log.Println("WARN: DELETE /api/v1/daemons/{device_id} disabled — Clerk auth middleware not configured")
+		}
+	}
+
+	// ── Admin routes (#2559) ─────────────────────────────────────────────────
+	// GET /api/v1/admin/daemons/fleet-health — aggregate daemon counts for
+	// ops dashboards. Zero PII. Protected by a static Bearer token stored in
+	// SSM /vaultmtg/app/production/bff-admin-token (not Clerk, not daemon
+	// api_key). AdminTokenMiddl uses crypto/subtle.ConstantTimeCompare.
+	//
+	// AdminTokenMiddl is always non-nil (constructed in main with cfg.BFFAdminToken
+	// which may be empty); when the token is not configured the middleware rejects
+	// all requests — the endpoint is mounted but fail-closed.
+	if deps.AdminFleetHealthHandler != nil {
+		adminMiddl := deps.AdminTokenMiddl
+		if adminMiddl == nil {
+			// Safety net: if AdminTokenMiddl was not wired, reject everything.
+			adminMiddl = func(http.Handler) http.Handler {
+				return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+					http.Error(w, "admin token not configured", http.StatusUnauthorized)
+				})
+			}
+		}
+		r.With(adminMiddl).Get("/api/v1/admin/daemons/fleet-health", deps.AdminFleetHealthHandler.ServeHTTP)
 	}
 
 	// ── Phase 2 — /api/v1/matches/* (camelCase API, full filter support) ─────

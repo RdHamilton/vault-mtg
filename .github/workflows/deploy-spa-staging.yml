@@ -40,6 +40,14 @@ jobs:
           VITE_CLERK_PUBLISHABLE_KEY: ${{ vars.VITE_CLERK_PUBLISHABLE_KEY }}
           VITE_POSTHOG_KEY: ${{ vars.VITE_POSTHOG_KEY }}
           VITE_SENTRY_DSN: ${{ vars.VITE_SENTRY_DSN }}
+          # Staging builds use the full git SHA as the Sentry release value so every
+          # merge to main produces a unique, traceable release string. No git tag
+          # exists on staging pushes — do not use git describe here.
+          VITE_APP_VERSION: staging-${{ github.sha }}
+          VITE_SENTRY_ENV: staging
+          SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
+          SENTRY_ORG: ${{ secrets.SENTRY_ORG }}
+          SENTRY_PROJECT: ${{ secrets.SENTRY_PROJECT }}
           # Pins daemon downloads to the latest signed pre-release build.
           # Updated automatically by daemon-release.yml after each successful
           # pre-release signing run. Production omits this var entirely so

@@ -80,6 +80,55 @@ jobs:
           ls -la services/daemon/install/macos/pkg/
 
       # -----------------------------------------------------------------------
+      - name: "[ASSERT] pkg-root layout — uninstall.sh present in share dir"
+      # -----------------------------------------------------------------------
+        # Run build-pkg.sh in DRY_RUN=1 mode to assert that the pkg-root
+        # contains uninstall.sh at the expected share-dir path without needing
+        # pkgbuild or hdiutil.  DRY_RUN exits after populating the pkg-root and
+        # printing "PKG_ROOT=<path>" to stdout — we capture that line and assert
+        # with test -f, avoiding any reliance on find -newer mtime granularity.
+        # Ray Q5: CI does not require a real .pkg artifact — layout assertion only.
+        env:
+          BINARY_PATH: ${{ runner.temp }}/stub-daemon
+          VERSION: ci-test
+        run: |
+          echo "=== [ASSERT] pkg-root uninstall.sh layout ==="
+          # Create a stub binary so build-pkg.sh has something to cp.
+          touch "$BINARY_PATH"
+          chmod +x "$BINARY_PATH"
+
+          # DRY_RUN=1 populates the pkg-root and exits before calling pkgbuild/hdiutil.
+          # build-pkg.sh emits "PKG_ROOT=<path>" on stdout so we can locate the dir
+          # without parsing mktemp output or relying on find -newer mtime resolution.
+          output=$(env \
+            BINARY_PATH="$BINARY_PATH" \
+            VERSION="ci-test" \
+            DRY_RUN=1 \
+            bash services/daemon/install/macos/pkg/build-pkg.sh 2>&1)
+          echo "$output"
+
+          # Extract the PKG_ROOT path emitted by build-pkg.sh.
+          PKG_ROOT=$(echo "$output" | grep '^PKG_ROOT=' | head -1 | cut -d= -f2-)
+          if [[ -z "$PKG_ROOT" ]]; then
+            echo "FAIL: build-pkg.sh did not emit PKG_ROOT= line"
+            exit 1
+          fi
+          echo "PKG_ROOT resolved to: $PKG_ROOT"
+
+          # Assert uninstall.sh is present at the expected share-dir path.
+          UNINSTALL_PATH="${PKG_ROOT}/usr/local/share/vaultmtg/uninstall.sh"
+          if [[ ! -f "$UNINSTALL_PATH" ]]; then
+            echo "FAIL: uninstall.sh not found at $UNINSTALL_PATH"
+            echo "--- PKG_ROOT contents ---"
+            find "$PKG_ROOT" -type f | sort || true
+            exit 1
+          fi
+          echo "PASS: uninstall.sh found at $UNINSTALL_PATH"
+
+          # Clean up the pkg-root left by DRY_RUN (build-pkg.sh skips its own cleanup).
+          rm -rf "$(dirname "$PKG_ROOT")"
+
+      # -----------------------------------------------------------------------
       - name: "[UNIT] Run existing bats install-script unit tests"
       # -----------------------------------------------------------------------
         # These tests cover: arch detection, URL construction, DRY_RUN mode,
@@ -121,17 +170,17 @@ jobs:
           echo "$output" | grep -q "\[DRY_RUN\] would run: launchctl" || \
             { echo "FAIL: expected DRY_RUN launchctl message"; exit 1; }
           echo "PASS: DRY_RUN output contains expected messages"
-          PLIST_PATH="$FAKE_HOME/Library/LaunchAgents/com.mtga-companion.daemon.plist"
+          PLIST_PATH="$FAKE_HOME/Library/LaunchAgents/com.vaultmtg.daemon.plist"
           [ -f "$PLIST_PATH" ] || { echo "FAIL: plist not written to $PLIST_PATH"; exit 1; }
           echo "PASS: plist written at $PLIST_PATH"
-          grep -q "com.mtga-companion.daemon" "$PLIST_PATH" || \
+          grep -q "com.vaultmtg.daemon" "$PLIST_PATH" || \
             { echo "FAIL: plist missing Label"; exit 1; }
           grep -q "RunAtLoad" "$PLIST_PATH" || \
             { echo "FAIL: plist missing RunAtLoad"; exit 1; }
           grep -q "KeepAlive" "$PLIST_PATH" || \
             { echo "FAIL: plist missing KeepAlive"; exit 1; }
           echo "PASS: plist contains required keys (Label, RunAtLoad, KeepAlive)"
-          CONFIG_FILE="$FAKE_HOME/.mtga-companion/daemon.json"
+          CONFIG_FILE="$FAKE_HOME/.vaultmtg/daemon.json"
           [ -f "$CONFIG_FILE" ] || { echo "FAIL: config not written to $CONFIG_FILE"; exit 1; }
           python3 -c "
           import json, sys
@@ -149,7 +198,7 @@ jobs:
           FAKE_HOME: ${{ runner.temp }}/fake-home-install
         run: |
           echo "=== REINSTALL (DRY_RUN) ==="
-          original=$(cat "$FAKE_HOME/.mtga-companion/daemon.json")
+          original=$(cat "$FAKE_HOME/.vaultmtg/daemon.json")
           output=$(env \
             HOME="$FAKE_HOME" \
             RELEASE_TAG="daemon/v0.3.1" \
@@ -161,7 +210,7 @@ jobs:
           echo "$output" | grep -q "Config already exists, skipping" || \
             { echo "FAIL: reinstall should skip existing config"; exit 1; }
           echo "PASS: config was not overwritten on reinstall"
-          after=$(cat "$FAKE_HOME/.mtga-companion/daemon.json")
+          after=$(cat "$FAKE_HOME/.vaultmtg/daemon.json")
           [ "$original" = "$after" ] || \
             { echo "FAIL: config content changed on reinstall"; exit 1; }
           echo "PASS: config content unchanged after reinstall"
@@ -193,7 +242,7 @@ jobs:
             { echo "FAIL: uninstall.sh did not produce expected output"; exit 1; }
           echo "PASS: uninstall.sh completed without errors"
           # Assert plist was cleaned up (script removes it if present)
-          plist_path="$FAKE_HOME/Library/LaunchAgents/com.mtga-companion.daemon.plist"
+          plist_path="$FAKE_HOME/Library/LaunchAgents/com.vaultmtg.daemon.plist"
           if [ -f "$plist_path" ]; then
             echo "FAIL: plist still present after uninstall — uninstall.sh did not remove it"
             exit 1
@@ -509,3 +558,308 @@ jobs:
           echo ""
           echo "This step is intentionally a no-op until the Linux installer exists."
           echo "The gate step above ensures this harness is updated before any Linux installer merges."
+
+  # ---------------------------------------------------------------------------
+  # Windows NSIS installer lifecycle (full regression gate — #2558)
+  # ---------------------------------------------------------------------------
+  # Why this exists:
+  #   The existing `install-lifecycle-windows` job above only DRY_RUN-tests
+  #   install.ps1 (the PowerShell helper for hand-installed local builds). It
+  #   never builds or runs the real shipping artifact — the NSIS .exe — so the
+  #   v0.3.1 regression ("Windows installer registers a scheduled task pointing
+  #   at a binary name the installer never produces") was not caught in CI.
+  #
+  #   This job is the full regression gate: it cross-compiles a real daemon
+  #   binary, installs NSIS via chocolatey, runs makensis to build the actual
+  #   shipping .exe, executes the installer in silent mode against the runner's
+  #   live %LOCALAPPDATA% + Task Scheduler, then runs the uninstaller and
+  #   asserts a clean teardown.
+  #
+  #   The .nsi uses RequestExecutionLevel user + InstallDir=$LOCALAPPDATA\VaultMTG
+  #   so no UAC elevation is needed; the windows-latest runner user can run
+  #   the installer end-to-end without admin.
+  install-lifecycle-windows-nsis:
+    name: "Windows — NSIS Install Lifecycle (real installer build + silent install + uninstall)"
+    runs-on: windows-latest
+    timeout-minutes: 20
+
+    steps:
+      # -----------------------------------------------------------------------
+      - name: "[SETUP] Checkout repository"
+      # -----------------------------------------------------------------------
+        uses: actions/checkout@v6
+
+      # -----------------------------------------------------------------------
+      - name: "[SETUP] Set up Go"
+      # -----------------------------------------------------------------------
+        uses: actions/setup-go@v6
+        with:
+          go-version: '1.25'
+
+      # -----------------------------------------------------------------------
+      - name: "[SETUP] Configure private module access"
+      # -----------------------------------------------------------------------
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        shell: bash
+        run: |
+          git config --global url."https://${GITHUB_TOKEN}@github.com/".insteadOf "https://github.com/"
+
+      # -----------------------------------------------------------------------
+      - name: "[SETUP] Install NSIS (makensis)"
+      # -----------------------------------------------------------------------
+        # chocolatey is pre-installed on windows-latest. We add NSIS to PATH for
+        # subsequent steps so `makensis` is invokable without absolute pathing.
+        shell: pwsh
+        run: |
+          Write-Host "=== Installing NSIS via chocolatey ==="
+          choco install nsis -y --no-progress
+          if ($LASTEXITCODE -ne 0) {
+            Write-Error "choco install nsis failed with exit code $LASTEXITCODE"
+            exit 1
+          }
+          # chocolatey installs NSIS to C:\Program Files (x86)\NSIS by default.
+          $nsisDir = "C:\Program Files (x86)\NSIS"
+          if (-not (Test-Path (Join-Path $nsisDir "makensis.exe"))) {
+            Write-Error "makensis.exe not found at $nsisDir after choco install"
+            exit 1
+          }
+          # Persist on PATH for later steps.
+          "$nsisDir" | Out-File -FilePath $Env:GITHUB_PATH -Append -Encoding utf8
+          Write-Host "PASS: NSIS installed at $nsisDir"
+
+      # -----------------------------------------------------------------------
+      - name: "[BUILD] Download Go module dependencies"
+      # -----------------------------------------------------------------------
+        working-directory: services/daemon
+        env:
+          GONOSUMDB: github.com/RdHamilton/vault-mtg
+          GOPRIVATE: github.com/RdHamilton/vault-mtg
+          GOFLAGS: -mod=mod
+        shell: bash
+        run: go mod download
+
+      # -----------------------------------------------------------------------
+      - name: "[BUILD] Cross-compile daemon for windows/amd64"
+      # -----------------------------------------------------------------------
+        # Match the .goreleaser.yml build: CGO_ENABLED=0, GOOS=windows, GOARCH=amd64.
+        # CGO_ENABLED=0 selects the headless tray_nocgo.go stub so the daemon does
+        # not try to open a systray window when run from a non-interactive
+        # Task Scheduler session.
+        working-directory: services/daemon
+        env:
+          CGO_ENABLED: '0'
+          GOOS: windows
+          GOARCH: amd64
+          GONOSUMDB: github.com/RdHamilton/vault-mtg
+          GOPRIVATE: github.com/RdHamilton/vault-mtg
+        shell: bash
+        run: |
+          set -e
+          mkdir -p bin
+          go build -o bin/vaultmtg-daemon-windows-amd64.exe ./cmd/daemon
+          ls -la bin/
+          echo "PASS: daemon binary built"
+
+      # -----------------------------------------------------------------------
+      - name: "[BUILD] Run makensis to produce the NSIS installer .exe"
+      # -----------------------------------------------------------------------
+        # The .nsi expects /DVERSION= and /DBINARY_PATH= on the makensis command
+        # line (see services/daemon/install/windows/nsis/installer.nsi lines
+        # 21–27 and 70).
+        #
+        # IMPORTANT: NSIS resolves relative paths in `File` directives
+        # *relative to the .nsi script's directory*, NOT relative to the
+        # makensis cwd. Pass an absolute path so the File directive can
+        # locate the binary regardless of where the .nsi sits in the tree.
+        # The matching goreleaser hook (services/daemon/.goreleaser.yml)
+        # uses `{{ .Path }}` which expands to an absolute path for the
+        # same reason.
+        #
+        # OutFile = `vaultmtg-daemon-setup-${VERSION}.exe`, written to the
+        # current working directory of makensis (repo root here).
+        shell: pwsh
+        run: |
+          Write-Host "=== Building NSIS installer ==="
+          $binaryPath = (Resolve-Path "services\daemon\bin\vaultmtg-daemon-windows-amd64.exe").Path
+          Write-Host "BINARY_PATH (absolute): $binaryPath"
+          if (-not (Test-Path $binaryPath)) {
+            Write-Error "FAIL: daemon binary not found at $binaryPath"
+            exit 1
+          }
+          makensis "/DVERSION=ci-test" "/DBINARY_PATH=$binaryPath" services\daemon\install\windows\nsis\installer.nsi
+          if ($LASTEXITCODE -ne 0) {
+            Write-Error "makensis failed with exit code $LASTEXITCODE"
+            exit 1
+          }
+          # NSIS writes OutFile relative paths to the .nsi script's directory,
+          # not the makensis cwd. The installer.nsi declares
+          # OutFile "vaultmtg-daemon-setup-${VERSION}.exe" so the artifact lands
+          # in services\daemon\install\windows\nsis\. Resolve and move it to
+          # the repo root so subsequent steps can find it consistently and
+          # downstream uploads (e.g. artifact glob 'vaultmtg-daemon-setup-*.exe'
+          # from the repo root) keep working when this pattern is reused.
+          $producedPath = "services\daemon\install\windows\nsis\vaultmtg-daemon-setup-ci-test.exe"
+          if (-not (Test-Path $producedPath)) {
+            Write-Error "FAIL: NSIS installer not produced at $producedPath"
+            exit 1
+          }
+          Move-Item -Path $producedPath -Destination "vaultmtg-daemon-setup-ci-test.exe" -Force
+          $installerPath = "vaultmtg-daemon-setup-ci-test.exe"
+          $size = (Get-Item $installerPath).Length
+          Write-Host "PASS: NSIS installer built at $installerPath ($size bytes)"
+
+      # -----------------------------------------------------------------------
+      - name: "[SETUP] Stage MTGA log stub + daemon config so the daemon can start"
+      # -----------------------------------------------------------------------
+        # The daemon's Run() loop calls logreader.DefaultLogPath() which expects
+        # `%USERPROFILE%\AppData\LocalLow\Wizards Of The Coast\MTGA\Player.log`
+        # on Windows. If the file is missing the daemon exits before starting
+        # the local API on 127.0.0.1:9001 and the /health probe will time out.
+        # We create an empty stub so the poller has something to read.
+        #
+        # We also overwrite the daemon.json the NSIS installer will write,
+        # because the .nsi's skeleton has empty cloud_api_url which fails
+        # config.validate() ("cloud_api_url is required"). Providing a fake
+        # api_key short-circuits NeedsFirstRunAuth() so PKCE is skipped, and
+        # sync_enabled=false avoids the BFF register/dispatch attempts.
+        shell: pwsh
+        run: |
+          Write-Host "=== Staging MTGA log stub ==="
+          $mtgaLogDir = Join-Path $Env:USERPROFILE "AppData\LocalLow\Wizards Of The Coast\MTGA"
+          New-Item -ItemType Directory -Path $mtgaLogDir -Force | Out-Null
+          $playerLog = Join-Path $mtgaLogDir "Player.log"
+          Set-Content -Path $playerLog -Value "" -Encoding UTF8 -NoNewline
+          Write-Host "PASS: stub Player.log created at $playerLog"
+
+          # Pre-create the daemon config dir; we overwrite the file after the
+          # installer runs (the .nsi will only write its skeleton if the file
+          # is missing — IfFileExists ... SkipWriteConfig WriteConfig).
+          $configDir = Join-Path $Env:APPDATA "vaultmtg"
+          New-Item -ItemType Directory -Path $configDir -Force | Out-Null
+          $configFile = Join-Path $configDir "daemon.json"
+          $cfg = @{
+            cloud_api_url = "http://127.0.0.1:1/unused-in-ci"
+            api_key = "ci-test-fake-key-not-real"
+            sync_enabled = $false
+            disable_update_check = $true
+          } | ConvertTo-Json
+          Set-Content -Path $configFile -Value $cfg -Encoding UTF8
+          Write-Host "PASS: daemon.json pre-staged at $configFile"
+          Get-Content $configFile
+
+      # -----------------------------------------------------------------------
+      - name: "[LIFECYCLE] FRESH INSTALL — run the NSIS installer in silent mode"
+      # -----------------------------------------------------------------------
+        # NSIS /S = silent mode. The installer is RequestExecutionLevel=user so
+        # no UAC; it installs to $LOCALAPPDATA\VaultMTG (writable by the runner
+        # user) and registers a per-user Scheduled Task `VaultMTG-Daemon`.
+        # The installer also calls `schtasks /Run` so the daemon starts
+        # immediately without waiting for a logoff/logon.
+        shell: pwsh
+        run: |
+          Write-Host "=== FRESH INSTALL (silent mode) ==="
+          $installerPath = (Resolve-Path "vaultmtg-daemon-setup-ci-test.exe").Path
+          Write-Host "Running: $installerPath /S"
+          $proc = Start-Process -FilePath $installerPath -ArgumentList "/S" -Wait -PassThru -NoNewWindow
+          Write-Host "Installer exit code: $($proc.ExitCode)"
+          if ($proc.ExitCode -ne 0) {
+            Write-Error "FAIL: installer exited with code $($proc.ExitCode)"
+            exit 1
+          }
+          Write-Host "PASS: installer completed with exit code 0"
+
+      # -----------------------------------------------------------------------
+      - name: "[ASSERT] Daemon binary placed at %LOCALAPPDATA%\\VaultMTG"
+      # -----------------------------------------------------------------------
+        shell: pwsh
+        run: |
+          $expected = Join-Path $Env:LOCALAPPDATA "VaultMTG\vaultmtg-daemon.exe"
+          Write-Host "Checking for daemon binary at: $expected"
+          if (-not (Test-Path $expected)) {
+            Write-Error "FAIL: daemon binary not found at $expected"
+            Write-Host "--- contents of $Env:LOCALAPPDATA\VaultMTG ---"
+            if (Test-Path (Join-Path $Env:LOCALAPPDATA "VaultMTG")) {
+              Get-ChildItem (Join-Path $Env:LOCALAPPDATA "VaultMTG")
+            } else {
+              Write-Host "(directory does not exist)"
+            }
+            exit 1
+          }
+          $size = (Get-Item $expected).Length
+          Write-Host "PASS: daemon binary at $expected ($size bytes)"
+
+      # -----------------------------------------------------------------------
+      - name: "[ASSERT] VaultMTG-Daemon Scheduled Task registered"
+      # -----------------------------------------------------------------------
+        shell: pwsh
+        run: |
+          Write-Host "=== Querying Task Scheduler for VaultMTG-Daemon ==="
+          $output = & schtasks /Query /TN "VaultMTG-Daemon" /FO LIST /V 2>&1
+          $rc = $LASTEXITCODE
+          Write-Host $output
+          if ($rc -ne 0) {
+            Write-Error "FAIL: schtasks /Query returned exit code $rc (task not registered)"
+            exit 1
+          }
+          Write-Host "PASS: VaultMTG-Daemon scheduled task is registered"
+
+      # -----------------------------------------------------------------------
+      - name: "[ASSERT] Daemon /health endpoint returns 200 on 127.0.0.1:9001"
+      # -----------------------------------------------------------------------
+        # The .nsi calls `schtasks /Run /TN "VaultMTG-Daemon"` immediately after
+        # registration, so the daemon process should be starting already. Poll
+        # /health for up to 30 seconds to allow for cold-start. If it never
+        # responds, dump the Task Scheduler last-run info and any daemon stdout
+        # to aid debugging.
+        shell: pwsh
+        run: |
+          Write-Host "=== Polling http://127.0.0.1:9001/health (up to 30s) ==="
+          $deadline = (Get-Date).AddSeconds(30)
+          $ok = $false
+          while ((Get-Date) -lt $deadline) {
+            try {
+              $resp = Invoke-WebRequest -Uri "http://127.0.0.1:9001/health" -UseBasicParsing -TimeoutSec 2
+              if ($resp.StatusCode -eq 200) {
+                Write-Host "HTTP 200 received:"
+                Write-Host $resp.Content
+                $ok = $true
+                break
+              }
+            } catch {
+              # connection refused / timeout — daemon not up yet
+            }
+            Start-Sleep -Milliseconds 500
+          }
+          if (-not $ok) {
+            Write-Host "--- diagnostic: schtasks last-run info ---"
+            & schtasks /Query /TN "VaultMTG-Daemon" /FO LIST /V
+            Write-Host "--- diagnostic: netstat 9001 ---"
+            & netstat -ano | Select-String "9001"
+            Write-Error "FAIL: /health did not return 200 within 30s"
+            exit 1
+          }
+          Write-Host "PASS: /health returned 200"
+
+      # -----------------------------------------------------------------------
+      - name: "[ASSERT] Uninstall.exe present in $INSTDIR (#1831)"
+      # -----------------------------------------------------------------------
+        # Verify the NSIS installer wrote Uninstall.exe to $INSTDIR.
+        # Ray Q3 (#1831 plan review): assert existence only — Uninstall.exe is
+        # NOT executed in CI. Execution is out-of-scope per plan-review Q3.
+        shell: pwsh
+        run: |
+          $uninstaller = Join-Path $Env:LOCALAPPDATA "VaultMTG\Uninstall.exe"
+          Write-Host "Checking for Uninstall.exe at: $uninstaller"
+          if (-not (Test-Path $uninstaller)) {
+            Write-Error "FAIL: Uninstall.exe not found at $uninstaller — NSIS WriteUninstaller may have failed"
+            Write-Host "--- contents of $Env:LOCALAPPDATA\VaultMTG ---"
+            if (Test-Path (Join-Path $Env:LOCALAPPDATA "VaultMTG")) {
+              Get-ChildItem (Join-Path $Env:LOCALAPPDATA "VaultMTG")
+            } else {
+              Write-Host "(directory does not exist)"
+            }
+            exit 1
+          }
+          $size = (Get-Item $uninstaller).Length
+          Write-Host "PASS: Uninstall.exe present at $uninstaller ($size bytes)"

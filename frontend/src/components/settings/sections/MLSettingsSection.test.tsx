@@ -1,9 +1,14 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { MLSettingsSection } from './MLSettingsSection';
+import * as Sentry from '@sentry/react';
 
 vi.mock('../../../services/api/mlSuggestions', () => ({
   clearLearnedData: vi.fn(),
+}));
+
+vi.mock('@sentry/react', () => ({
+  captureException: vi.fn(),
 }));
 
 import { clearLearnedData } from '../../../services/api/mlSuggestions';
@@ -214,6 +219,42 @@ describe('MLSettingsSection', () => {
     it('renders the about ML recommendations block', () => {
       render(<MLSettingsSection {...defaultProps} mlEnabled={true} />);
       expect(screen.getByText(/About ML Recommendations:/i)).toBeInTheDocument();
+    });
+  });
+
+  describe('Sentry error reporting', () => {
+    beforeEach(() => {
+      vi.clearAllMocks();
+    });
+
+    it('calls reportError with clear_learned_data when clearLearnedData throws', async () => {
+      const sentryCapture = vi.mocked(Sentry.captureException);
+      const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(true);
+      vi.mocked(clearLearnedData).mockRejectedValueOnce(new Error('clear failed'));
+
+      render(<MLSettingsSection {...defaultProps} />);
+      fireEvent.click(screen.getByRole('button', { name: 'Clear All Data' }));
+
+      await waitFor(() => {
+        expect(sentryCapture).toHaveBeenCalledOnce();
+      });
+
+      const callArgs = sentryCapture.mock.calls[0][1] as { tags?: Record<string, string> };
+      expect(callArgs?.tags).toMatchObject({ component: 'MLSettingsSection', action: 'clear_learned_data' });
+      confirmSpy.mockRestore();
+    });
+
+    it('still shows error message UI when clearLearnedData throws', async () => {
+      const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(true);
+      vi.mocked(clearLearnedData).mockRejectedValueOnce(new Error('clear failed'));
+
+      render(<MLSettingsSection {...defaultProps} />);
+      fireEvent.click(screen.getByRole('button', { name: 'Clear All Data' }));
+
+      await waitFor(() => {
+        expect(screen.getByText(/Failed to clear data: clear failed/i)).toBeInTheDocument();
+      });
+      confirmSpy.mockRestore();
     });
   });
 });

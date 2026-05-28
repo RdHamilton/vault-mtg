@@ -12,11 +12,22 @@ import {
   getApiKey,
   setApiKey,
   setClerkTokenProvider,
+  resetErrorThrottle,
 } from '../apiClient';
 
 // Mock fetch globally
 const mockFetch = vi.fn();
 global.fetch = mockFetch;
+
+// Mock analytics module so we can assert on trackEvent calls.
+const mockTrackEvent = vi.fn();
+vi.mock('../analytics', () => ({
+  trackEvent: (...args: unknown[]) => mockTrackEvent(...args),
+  Events: {
+    ERROR_DATA_LOAD_FAILED: 'error_data_load_failed',
+    ERROR_AUTH_FAILED: 'error_auth_failed',
+  },
+}));
 
 describe('apiClient', () => {
   beforeEach(() => {
@@ -28,12 +39,15 @@ describe('apiClient', () => {
     });
     // Clear any stored API key between tests
     localStorage.clear();
+    // Reset throttle state so tests are independent
+    resetErrorThrottle();
   });
 
   afterEach(() => {
     vi.clearAllMocks();
     localStorage.clear();
     setClerkTokenProvider(null);
+    resetErrorThrottle();
   });
 
   describe('configureApi', () => {
@@ -489,5 +503,253 @@ describe('cloudClient alias', () => {
     expect(cloudClient.post).toBe(post);
     expect(cloudClient.put).toBe(put);
     expect(cloudClient.del).toBe(del);
+  });
+});
+
+// ── error_data_load_failed analytics ──────────────────────────────────────────
+
+describe('error_data_load_failed analytics', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    configureApi({ baseUrl: 'http://localhost:8080/api/v1', timeout: 30000 });
+    localStorage.clear();
+    resetErrorThrottle();
+  });
+
+  afterEach(() => {
+    vi.clearAllMocks();
+    localStorage.clear();
+    setClerkTokenProvider(null);
+    resetErrorThrottle();
+  });
+
+  it('fires error_data_load_failed on 500 response', async () => {
+    mockFetch.mockResolvedValueOnce({
+      ok: false,
+      status: 500,
+      statusText: 'Internal Server Error',
+      json: async () => ({ error: 'Server error' }),
+    });
+
+    await expect(get('/matches')).rejects.toThrow(ApiRequestError);
+
+    expect(mockTrackEvent).toHaveBeenCalledWith({
+      name: 'error_data_load_failed',
+      properties: {
+        page: expect.any(String),
+        endpoint: '/matches',
+        status_code: 500,
+      },
+    });
+  });
+
+  it('fires error_data_load_failed on 401 response', async () => {
+    mockFetch.mockResolvedValueOnce({
+      ok: false,
+      status: 401,
+      statusText: 'Unauthorized',
+      json: async () => ({ error: 'Unauthorized' }),
+    });
+
+    await expect(get('/matches')).rejects.toThrow(ApiRequestError);
+
+    expect(mockTrackEvent).toHaveBeenCalledWith(
+      expect.objectContaining({
+        name: 'error_data_load_failed',
+        properties: expect.objectContaining({ status_code: 401 }),
+      }),
+    );
+  });
+
+  it('does NOT fire error_data_load_failed on 200 success', async () => {
+    mockFetch.mockResolvedValueOnce({
+      ok: true,
+      status: 200,
+      json: async () => ({ data: { id: 1 } }),
+    });
+
+    await get('/matches');
+
+    const errorCalls = mockTrackEvent.mock.calls.filter(
+      ([e]: [{ name: string }]) => e.name === 'error_data_load_failed',
+    );
+    expect(errorCalls).toHaveLength(0);
+  });
+
+  it('throttle: suppresses second emission for same (endpoint, status_code) within 10s', async () => {
+    const failResponse = () => ({
+      ok: false,
+      status: 503,
+      statusText: 'Service Unavailable',
+      json: async () => ({ error: 'Unavailable' }),
+    });
+
+    mockFetch.mockResolvedValueOnce(failResponse());
+    await expect(get('/matches')).rejects.toThrow();
+
+    mockFetch.mockResolvedValueOnce(failResponse());
+    await expect(get('/matches')).rejects.toThrow();
+
+    const calls = mockTrackEvent.mock.calls.filter(
+      ([e]: [{ name: string }]) => e.name === 'error_data_load_failed',
+    );
+    expect(calls).toHaveLength(1);
+  });
+
+  it('throttle: allows emission again after resetErrorThrottle (simulates window expiry)', async () => {
+    const failResponse = () => ({
+      ok: false,
+      status: 503,
+      statusText: 'Service Unavailable',
+      json: async () => ({ error: 'Unavailable' }),
+    });
+
+    mockFetch.mockResolvedValueOnce(failResponse());
+    await expect(get('/matches')).rejects.toThrow();
+
+    resetErrorThrottle();
+
+    mockFetch.mockResolvedValueOnce(failResponse());
+    await expect(get('/matches')).rejects.toThrow();
+
+    const calls = mockTrackEvent.mock.calls.filter(
+      ([e]: [{ name: string }]) => e.name === 'error_data_load_failed',
+    );
+    expect(calls).toHaveLength(2);
+  });
+
+  it('skipErrorAnalytics: suppresses emission when flag is true', async () => {
+    mockFetch.mockResolvedValueOnce({
+      ok: false,
+      status: 500,
+      statusText: 'Internal Server Error',
+      json: async () => ({ error: 'Server error' }),
+    });
+
+    await expect(
+      get('/health/daemon', { skipErrorAnalytics: true } as RequestInit & { skipErrorAnalytics?: boolean }),
+    ).rejects.toThrow(ApiRequestError);
+
+    const calls = mockTrackEvent.mock.calls.filter(
+      ([e]: [{ name: string }]) => e.name === 'error_data_load_failed',
+    );
+    expect(calls).toHaveLength(0);
+  });
+
+  it('NEGATIVE: error_data_load_failed payload never contains user_id', async () => {
+    mockFetch.mockResolvedValueOnce({
+      ok: false,
+      status: 404,
+      statusText: 'Not Found',
+      json: async () => ({ error: 'Not found' }),
+    });
+
+    await expect(get('/decks')).rejects.toThrow();
+
+    const calls = mockTrackEvent.mock.calls.filter(
+      ([e]: [{ name: string }]) => e.name === 'error_data_load_failed',
+    );
+    expect(calls).toHaveLength(1);
+    expect(calls[0][0].properties).not.toHaveProperty('user_id');
+  });
+
+  it('different endpoints are throttled independently', async () => {
+    const fail = (status: number) => ({
+      ok: false,
+      status,
+      statusText: 'Error',
+      json: async () => ({ error: 'Error' }),
+    });
+
+    mockFetch.mockResolvedValueOnce(fail(500));
+    await expect(get('/matches')).rejects.toThrow();
+
+    mockFetch.mockResolvedValueOnce(fail(500));
+    await expect(get('/decks')).rejects.toThrow();
+
+    const calls = mockTrackEvent.mock.calls.filter(
+      ([e]: [{ name: string }]) => e.name === 'error_data_load_failed',
+    );
+    expect(calls).toHaveLength(2);
+    expect(calls[0][0].properties.endpoint).toBe('/matches');
+    expect(calls[1][0].properties.endpoint).toBe('/decks');
+  });
+});
+
+// ── error_auth_failed analytics ───────────────────────────────────────────────
+
+describe('error_auth_failed analytics', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    configureApi({ baseUrl: 'http://localhost:8080/api/v1', timeout: 30000 });
+    localStorage.clear();
+    resetErrorThrottle();
+  });
+
+  afterEach(() => {
+    vi.clearAllMocks();
+    localStorage.clear();
+    setClerkTokenProvider(null);
+    resetErrorThrottle();
+  });
+
+  it('fires error_auth_failed with reason_class network when Clerk token provider throws', async () => {
+    setClerkTokenProvider(async () => {
+      throw new Error('network error');
+    });
+    // With a throwing provider and no API key, authHeaders falls back; but
+    // getClerkToken also catches and should emit.
+    // We verify the event was fired after a request that exercises getClerkToken.
+    mockFetch.mockResolvedValueOnce({
+      ok: true,
+      status: 200,
+      json: async () => ({ data: {} }),
+    });
+
+    await get('/test');
+
+    const calls = mockTrackEvent.mock.calls.filter(
+      ([e]: [{ name: string }]) => e.name === 'error_auth_failed',
+    );
+    expect(calls).toHaveLength(1);
+    expect(calls[0][0]).toEqual({
+      name: 'error_auth_failed',
+      properties: { reason_class: 'network' },
+    });
+  });
+
+  it('NEGATIVE: error_auth_failed payload never contains user_id', async () => {
+    setClerkTokenProvider(async () => {
+      throw new Error('network error');
+    });
+    mockFetch.mockResolvedValueOnce({
+      ok: true,
+      status: 200,
+      json: async () => ({ data: {} }),
+    });
+
+    await get('/test');
+
+    const calls = mockTrackEvent.mock.calls.filter(
+      ([e]: [{ name: string }]) => e.name === 'error_auth_failed',
+    );
+    expect(calls).toHaveLength(1);
+    expect(calls[0][0].properties).not.toHaveProperty('user_id');
+  });
+
+  it('does NOT fire error_auth_failed when token provider returns successfully', async () => {
+    setClerkTokenProvider(async () => 'valid-token');
+    mockFetch.mockResolvedValueOnce({
+      ok: true,
+      status: 200,
+      json: async () => ({ data: {} }),
+    });
+
+    await get('/test');
+
+    const calls = mockTrackEvent.mock.calls.filter(
+      ([e]: [{ name: string }]) => e.name === 'error_auth_failed',
+    );
+    expect(calls).toHaveLength(0);
   });
 });

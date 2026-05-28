@@ -1,10 +1,40 @@
 import { defineConfig } from 'vitest/config'
 import react from '@vitejs/plugin-react'
 import path from 'path'
+import { sentryVitePlugin } from '@sentry/vite-plugin'
 
 // https://vite.dev/config/
+//
+// @sentry/vite-plugin: uploads source maps to Sentry during production/staging builds.
+// Gated on SENTRY_AUTH_TOKEN being present so local builds (no secret) are unaffected.
+// SENTRY_ORG and SENTRY_PROJECT are injected from GH Actions secrets; they must not be
+// hardcoded here. The plugin release value matches VITE_APP_VERSION so source maps are
+// tied to the same Sentry release tag as the running application.
+const sentryPlugin = process.env.SENTRY_AUTH_TOKEN
+  ? [
+      sentryVitePlugin({
+        org: process.env.SENTRY_ORG,
+        project: process.env.SENTRY_PROJECT,
+        authToken: process.env.SENTRY_AUTH_TOKEN,
+        release: {
+          name: process.env.VITE_APP_VERSION || undefined,
+        },
+        sourcemaps: {
+          // Upload the Vite-generated source maps and then delete them from the
+          // dist/ directory so they are not served publicly.
+          filesToDeleteAfterUpload: ['./dist/**/*.map'],
+        },
+      }),
+    ]
+  : []
+
 export default defineConfig({
-  plugins: [react()],
+  plugins: [react(), ...sentryPlugin],
+  build: {
+    // Enable source maps for all builds so the Sentry plugin can upload them.
+    // Source map files are deleted from dist/ after upload (see sentryVitePlugin config above).
+    sourcemap: true,
+  },
   resolve: {
     alias: {
       '@': path.resolve(__dirname, './src'),

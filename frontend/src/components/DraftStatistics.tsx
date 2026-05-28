@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { drafts } from '@/services/api';
 import { models } from '@/types/models';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell, PieChart, Pie, Legend } from 'recharts';
+import { reportError } from '@/lib/sentry';
 import './DraftStatistics.css';
 
 interface DraftStatisticsProps {
@@ -38,6 +39,7 @@ const DraftStatistics: React.FC<DraftStatisticsProps> = ({ sessionID, pickCount 
                 const data = await drafts.getDraftDeckMetrics(sessionID);
                 setMetrics(data);
             } catch (err) {
+                reportError(err, { component: 'DraftStatistics', action: 'fetch_draft_metrics' });
                 setError(err instanceof Error ? err.message : 'Failed to load metrics');
                 console.error('Error loading draft metrics:', err);
             } finally {

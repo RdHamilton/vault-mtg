@@ -22,6 +22,14 @@ vi.mock('@/services/api/bffHealth', () => ({
   getDaemonHealth: (...args: unknown[]) => mockGetDaemonHealth(...args),
 }));
 
+// ---------------------------------------------------------------------------
+// Mock analytics
+// ---------------------------------------------------------------------------
+const mockTrackEvent = vi.fn();
+vi.mock('@/services/analytics', () => ({
+  trackEvent: (...args: unknown[]) => mockTrackEvent(...args),
+}));
+
 describe('DaemonHealthIndicator', () => {
   beforeEach(() => {
     vi.useFakeTimers({ shouldAdvanceTime: false });
@@ -202,5 +210,135 @@ describe('DaemonHealthIndicator', () => {
 
     // Adapter should NOT be called when there's no token
     expect(mockGetDaemonHealth).not.toHaveBeenCalled();
+  });
+});
+
+// ── error_daemon_connection_failed analytics ──────────────────────────────────
+
+describe('DaemonHealthIndicator — error_daemon_connection_failed', () => {
+  beforeEach(() => {
+    vi.useFakeTimers({ shouldAdvanceTime: false });
+    vi.clearAllMocks();
+    mockGetToken.mockResolvedValue('clerk-test-token');
+  });
+
+  afterEach(() => {
+    vi.runOnlyPendingTimers();
+    vi.useRealTimers();
+  });
+
+  it('fires error_daemon_connection_failed when transitioning from connected to disconnected', async () => {
+    mockGetDaemonHealth
+      .mockResolvedValueOnce({ status: 'connected' })
+      .mockResolvedValueOnce({ status: 'disconnected' });
+
+    await act(async () => {
+      render(<DaemonHealthIndicator />);
+    });
+
+    // Advance to second poll
+    await act(async () => {
+      vi.advanceTimersByTime(30_000);
+    });
+
+    const calls = mockTrackEvent.mock.calls.filter(
+      ([e]: [{ name: string }]) => e.name === 'error_daemon_connection_failed',
+    );
+    expect(calls).toHaveLength(1);
+    expect(calls[0][0].properties.previous_status).toBe('connected');
+    expect(typeof calls[0][0].properties.duration_connected_seconds).toBe('number');
+    expect(calls[0][0].properties.duration_connected_seconds).toBeGreaterThanOrEqual(0);
+  });
+
+  it('fires error_daemon_connection_failed with previous_status reconnecting when transitioning from reconnecting to disconnected', async () => {
+    mockGetDaemonHealth
+      .mockResolvedValueOnce({ status: 'reconnecting' })
+      .mockResolvedValueOnce({ status: 'disconnected' });
+
+    await act(async () => {
+      render(<DaemonHealthIndicator />);
+    });
+
+    await act(async () => {
+      vi.advanceTimersByTime(30_000);
+    });
+
+    const calls = mockTrackEvent.mock.calls.filter(
+      ([e]: [{ name: string }]) => e.name === 'error_daemon_connection_failed',
+    );
+    expect(calls).toHaveLength(1);
+    expect(calls[0][0].properties.previous_status).toBe('reconnecting');
+  });
+
+  it('does NOT fire error_daemon_connection_failed when daemon is stably disconnected (never connected)', async () => {
+    mockGetDaemonHealth
+      .mockResolvedValueOnce({ status: 'disconnected' })
+      .mockResolvedValueOnce({ status: 'disconnected' });
+
+    await act(async () => {
+      render(<DaemonHealthIndicator />);
+    });
+
+    await act(async () => {
+      vi.advanceTimersByTime(30_000);
+    });
+
+    const calls = mockTrackEvent.mock.calls.filter(
+      ([e]: [{ name: string }]) => e.name === 'error_daemon_connection_failed',
+    );
+    expect(calls).toHaveLength(0);
+  });
+
+  it('does NOT fire error_daemon_connection_failed when transitioning from loading to disconnected (initial state)', async () => {
+    // Initial state is loading; first poll returns disconnected — should not fire
+    mockGetDaemonHealth.mockResolvedValueOnce({ status: 'disconnected' });
+
+    await act(async () => {
+      render(<DaemonHealthIndicator />);
+    });
+
+    const calls = mockTrackEvent.mock.calls.filter(
+      ([e]: [{ name: string }]) => e.name === 'error_daemon_connection_failed',
+    );
+    expect(calls).toHaveLength(0);
+  });
+
+  it('does NOT fire error_daemon_connection_failed when transitioning connected→connected (stable)', async () => {
+    mockGetDaemonHealth
+      .mockResolvedValueOnce({ status: 'connected' })
+      .mockResolvedValueOnce({ status: 'connected' });
+
+    await act(async () => {
+      render(<DaemonHealthIndicator />);
+    });
+
+    await act(async () => {
+      vi.advanceTimersByTime(30_000);
+    });
+
+    const calls = mockTrackEvent.mock.calls.filter(
+      ([e]: [{ name: string }]) => e.name === 'error_daemon_connection_failed',
+    );
+    expect(calls).toHaveLength(0);
+  });
+
+  it('NEGATIVE: error_daemon_connection_failed payload never contains user_id', async () => {
+    mockGetDaemonHealth
+      .mockResolvedValueOnce({ status: 'connected' })
+      .mockResolvedValueOnce({ status: 'disconnected' });
+
+    await act(async () => {
+      render(<DaemonHealthIndicator />);
+    });
+
+    await act(async () => {
+      vi.advanceTimersByTime(30_000);
+    });
+
+    const calls = mockTrackEvent.mock.calls.filter(
+      ([e]: [{ name: string }]) => e.name === 'error_daemon_connection_failed',
+    );
+    expect(calls).toHaveLength(1);
+    expect(calls[0][0].properties).not.toHaveProperty('user_id');
   });
 });

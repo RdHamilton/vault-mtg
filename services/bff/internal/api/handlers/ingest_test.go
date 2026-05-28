@@ -798,3 +798,565 @@ func TestIngestHandler_SequenceReset_NotAGap_NoCapture(t *testing.T) {
 		t.Errorf("sequence reset must not trigger PostHog gap capture, got %d calls", len(phClient.calls))
 	}
 }
+
+// ---------------------------------------------------------------------------
+// Heartbeat drift-detection tests (#2569)
+//
+// These verify the BFF-side PostHog emit logic for daemon.log_format_drift.
+// ---------------------------------------------------------------------------
+
+// buildHeartbeatPayload marshals a heartbeat payload with the given drift
+// fields and returns it as a json.RawMessage, ready to embed in a DaemonEvent.
+func buildHeartbeatPayload(t *testing.T, parseFailureCount uint32, sampleLineHash string, failedEventTypes []string) json.RawMessage {
+	t.Helper()
+	type hb struct {
+		ParseFailureCount uint32   `json:"parse_failure_count"`
+		SampleLineHash    string   `json:"sample_line_hash,omitempty"`
+		FailedEventTypes  []string `json:"failed_event_types,omitempty"`
+	}
+	raw, err := json.Marshal(hb{
+		ParseFailureCount: parseFailureCount,
+		SampleLineHash:    sampleLineHash,
+		FailedEventTypes:  failedEventTypes,
+	})
+	if err != nil {
+		t.Fatalf("marshal heartbeat payload: %v", err)
+	}
+	return raw
+}
+
+// TestIngestHandler_HeartbeatWithDriftEmitsPostHog verifies that a
+// daemon.heartbeat with parse_failure_count > 0 causes the BFF to emit a
+// daemon.log_format_drift event to PostHog with the correct fields.
+func TestIngestHandler_HeartbeatWithDriftEmitsPostHog(t *testing.T) {
+	const token = "hb-drift-token"
+
+	keyRepo := &mockKeyLister{keys: []repository.APIKey{
+		{ID: 50, KeyHash: mustHash(t, token), UserID: 200},
+	}}
+
+	phClient := &mockPostHogClient{}
+	ih := handlers.NewIngestHandler(&mockBroadcaster{}).WithPostHogClient(phClient)
+	handler := middleware.APIKeyAuth(keyRepo)(http.HandlerFunc(ih.IngestEvent))
+
+	payload := buildHeartbeatPayload(t, 3, "abc1234567890abc", []string{"draft.pack", "match.completed"})
+	event := contract.DaemonEvent{
+		Type:       "daemon.heartbeat",
+		AccountID:  "acct_hb_drift",
+		SessionID:  "sess_hb_drift",
+		Sequence:   1,
+		OccurredAt: time.Now().UTC(),
+		Payload:    payload,
+	}
+	req, rr := ingestRequest(t, token, event)
+	handler.ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusAccepted {
+		t.Fatalf("expected 202, got %d: %s", rr.Code, rr.Body.String())
+	}
+
+	// Exactly one PostHog call must have been made.
+	if len(phClient.calls) != 1 {
+		t.Fatalf("expected 1 PostHog call, got %d", len(phClient.calls))
+	}
+
+	capture, ok := phClient.calls[0].(posthog.Capture)
+	if !ok {
+		t.Fatal("PostHog message is not a posthog.Capture")
+	}
+
+	if capture.Event != "daemon.log_format_drift" {
+		t.Errorf("expected PostHog event=%q, got %q", "daemon.log_format_drift", capture.Event)
+	}
+
+	// distinct_id must be the hash of the account ID, not the raw value.
+	if capture.DistinctId == "acct_hb_drift" {
+		t.Error("DistinctId must be hashed, got raw account_id")
+	}
+	if len(capture.DistinctId) != 16 {
+		t.Errorf("DistinctId hash must be 16 chars, got %d: %q", len(capture.DistinctId), capture.DistinctId)
+	}
+
+	// parse_failure_count must be present.
+	if v, ok := capture.Properties["parse_failure_count"]; !ok {
+		t.Error("parse_failure_count property missing")
+	} else if v != uint32(3) {
+		t.Errorf("parse_failure_count=%v, want 3", v)
+	}
+
+	// sample_line_hash must be present.
+	if _, ok := capture.Properties["sample_line_hash"]; !ok {
+		t.Error("sample_line_hash property missing")
+	}
+
+	// failed_event_types must be present.
+	if _, ok := capture.Properties["failed_event_types"]; !ok {
+		t.Error("failed_event_types property missing")
+	}
+}
+
+// TestIngestHandler_HeartbeatZeroDriftNoEmit verifies that a daemon.heartbeat
+// with parse_failure_count == 0 does NOT emit a daemon.log_format_drift event.
+func TestIngestHandler_HeartbeatZeroDriftNoEmit(t *testing.T) {
+	const token = "hb-nodrift-token"
+
+	keyRepo := &mockKeyLister{keys: []repository.APIKey{
+		{ID: 51, KeyHash: mustHash(t, token), UserID: 201},
+	}}
+
+	phClient := &mockPostHogClient{}
+	ih := handlers.NewIngestHandler(&mockBroadcaster{}).WithPostHogClient(phClient)
+	handler := middleware.APIKeyAuth(keyRepo)(http.HandlerFunc(ih.IngestEvent))
+
+	payload := buildHeartbeatPayload(t, 0, "", nil)
+	event := contract.DaemonEvent{
+		Type:       "daemon.heartbeat",
+		AccountID:  "acct_hb_nodrift",
+		SessionID:  "sess_hb_nodrift",
+		Sequence:   1,
+		OccurredAt: time.Now().UTC(),
+		Payload:    payload,
+	}
+	req, rr := ingestRequest(t, token, event)
+	handler.ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusAccepted {
+		t.Fatalf("expected 202, got %d: %s", rr.Code, rr.Body.String())
+	}
+
+	if len(phClient.calls) != 0 {
+		t.Errorf("expected 0 PostHog calls for zero drift, got %d", len(phClient.calls))
+	}
+}
+
+// ---------------------------------------------------------------------------
+// Structured error telemetry tests (#2139)
+// ---------------------------------------------------------------------------
+
+// buildHeartbeatPayloadFull marshals a full heartbeat payload including both
+// #2569 drift fields and #2139 BFF-failure fields.
+func buildHeartbeatPayloadFull(t *testing.T, parseFailureCount uint32, consecutiveBFFFailures uint32, lastBFFStatusCode int) json.RawMessage {
+	t.Helper()
+	type hb struct {
+		ParseFailureCount      uint32 `json:"parse_failure_count"`
+		ConsecutiveBFFFailures uint32 `json:"consecutive_bff_failures,omitempty"`
+		LastBFFStatusCode      int    `json:"last_bff_status_code,omitempty"`
+	}
+	raw, err := json.Marshal(hb{
+		ParseFailureCount:      parseFailureCount,
+		ConsecutiveBFFFailures: consecutiveBFFFailures,
+		LastBFFStatusCode:      lastBFFStatusCode,
+	})
+	if err != nil {
+		t.Fatalf("marshal heartbeat payload: %v", err)
+	}
+	return raw
+}
+
+// TestIngestHandler_HeartbeatWith3ConsecutiveFailures_EmitsDispatchDegraded
+// verifies that a daemon.heartbeat with consecutive_bff_failures >= 3 causes
+// the BFF to emit daemon.dispatch_degraded to PostHog.
+func TestIngestHandler_HeartbeatWith3ConsecutiveFailures_EmitsDispatchDegraded(t *testing.T) {
+	const token = "degraded-token"
+
+	keyRepo := &mockKeyLister{keys: []repository.APIKey{
+		{ID: 60, KeyHash: mustHash(t, token), UserID: 300},
+	}}
+
+	phClient := &mockPostHogClient{}
+	ih := handlers.NewIngestHandler(&mockBroadcaster{}).WithPostHogClient(phClient)
+	handler := middleware.APIKeyAuth(keyRepo)(http.HandlerFunc(ih.IngestEvent))
+
+	payload := buildHeartbeatPayloadFull(t, 0, 3, 503)
+	event := contract.DaemonEvent{
+		Type:       "daemon.heartbeat",
+		AccountID:  "acct_degraded",
+		SessionID:  "sess_degraded",
+		Sequence:   1,
+		OccurredAt: time.Now().UTC(),
+		Payload:    payload,
+	}
+	req, rr := ingestRequest(t, token, event)
+	handler.ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusAccepted {
+		t.Fatalf("expected 202, got %d: %s", rr.Code, rr.Body.String())
+	}
+
+	// Exactly one PostHog call for dispatch_degraded.
+	if len(phClient.calls) != 1 {
+		t.Fatalf("expected 1 PostHog call, got %d", len(phClient.calls))
+	}
+
+	capture, ok := phClient.calls[0].(posthog.Capture)
+	if !ok {
+		t.Fatal("PostHog message is not a posthog.Capture")
+	}
+
+	if capture.Event != "daemon.dispatch_degraded" {
+		t.Errorf("expected event=%q, got %q", "daemon.dispatch_degraded", capture.Event)
+	}
+	if capture.DistinctId == "acct_degraded" {
+		t.Error("distinct_id must be hashed, got raw account_id")
+	}
+	if v, ok := capture.Properties["consecutive_failures"]; !ok {
+		t.Error("consecutive_failures property missing")
+	} else if v != uint32(3) {
+		t.Errorf("consecutive_failures=%v, want 3", v)
+	}
+	if v, ok := capture.Properties["status_code"]; !ok {
+		t.Error("status_code property missing")
+	} else if v != 503 {
+		t.Errorf("status_code=%v, want 503", v)
+	}
+}
+
+// TestIngestHandler_HeartbeatWith2ConsecutiveFailures_NoEmit verifies that a
+// daemon.heartbeat with consecutive_bff_failures < 3 does NOT emit
+// daemon.dispatch_degraded (threshold not yet reached).
+func TestIngestHandler_HeartbeatWith2ConsecutiveFailures_NoEmit(t *testing.T) {
+	const token = "nodegraded-token"
+
+	keyRepo := &mockKeyLister{keys: []repository.APIKey{
+		{ID: 61, KeyHash: mustHash(t, token), UserID: 301},
+	}}
+
+	phClient := &mockPostHogClient{}
+	ih := handlers.NewIngestHandler(&mockBroadcaster{}).WithPostHogClient(phClient)
+	handler := middleware.APIKeyAuth(keyRepo)(http.HandlerFunc(ih.IngestEvent))
+
+	payload := buildHeartbeatPayloadFull(t, 0, 2, 503)
+	event := contract.DaemonEvent{
+		Type:       "daemon.heartbeat",
+		AccountID:  "acct_nodegraded",
+		SessionID:  "sess_nodegraded",
+		Sequence:   1,
+		OccurredAt: time.Now().UTC(),
+		Payload:    payload,
+	}
+	req, rr := ingestRequest(t, token, event)
+	handler.ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusAccepted {
+		t.Fatalf("expected 202, got %d: %s", rr.Code, rr.Body.String())
+	}
+
+	if len(phClient.calls) != 0 {
+		t.Errorf("expected 0 PostHog calls for count<3, got %d", len(phClient.calls))
+	}
+}
+
+// TestIngestHandler_AuthFailedEmitsPostHog verifies that a daemon.auth_failed
+// event causes the BFF to emit daemon.auth_failed to PostHog with the correct
+// properties, and that distinct_id is the hashed account ID.
+func TestIngestHandler_AuthFailedEmitsPostHog(t *testing.T) {
+	const token = "auth-failed-token"
+
+	keyRepo := &mockKeyLister{keys: []repository.APIKey{
+		{ID: 62, KeyHash: mustHash(t, token), UserID: 302},
+	}}
+
+	phClient := &mockPostHogClient{}
+	ih := handlers.NewIngestHandler(&mockBroadcaster{}).WithPostHogClient(phClient)
+	handler := middleware.APIKeyAuth(keyRepo)(http.HandlerFunc(ih.IngestEvent))
+
+	type authFailedPayload struct {
+		Reason        string `json:"reason"`
+		BFFStatusCode int    `json:"bff_status_code,omitempty"`
+		Platform      string `json:"platform"`
+		DaemonVersion string `json:"daemon_version"`
+	}
+	raw, _ := json.Marshal(authFailedPayload{
+		Reason:        "bff_rejected",
+		BFFStatusCode: 401,
+		Platform:      "darwin",
+		DaemonVersion: "0.3.3",
+	})
+
+	event := contract.DaemonEvent{
+		Type:       "daemon.auth_failed",
+		AccountID:  "acct_auth_fail",
+		SessionID:  "sess_auth_fail",
+		Sequence:   1,
+		OccurredAt: time.Now().UTC(),
+		Payload:    json.RawMessage(raw),
+	}
+	req, rr := ingestRequest(t, token, event)
+	handler.ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusAccepted {
+		t.Fatalf("expected 202, got %d: %s", rr.Code, rr.Body.String())
+	}
+
+	if len(phClient.calls) != 1 {
+		t.Fatalf("expected 1 PostHog call, got %d", len(phClient.calls))
+	}
+
+	capture, ok := phClient.calls[0].(posthog.Capture)
+	if !ok {
+		t.Fatal("PostHog message is not a posthog.Capture")
+	}
+
+	if capture.Event != "daemon.auth_failed" {
+		t.Errorf("expected event=%q, got %q", "daemon.auth_failed", capture.Event)
+	}
+	if capture.DistinctId == "acct_auth_fail" {
+		t.Error("distinct_id must be hashed, got raw account_id")
+	}
+	if len(capture.DistinctId) != 16 {
+		t.Errorf("distinct_id must be 16-char hash, got %d", len(capture.DistinctId))
+	}
+	if v, ok := capture.Properties["reason"]; !ok {
+		t.Error("reason property missing")
+	} else if v != "bff_rejected" {
+		t.Errorf("reason=%v, want bff_rejected", v)
+	}
+	if v, ok := capture.Properties["bff_status_code"]; !ok {
+		t.Error("bff_status_code property missing for bff_rejected reason")
+	} else if v != 401 {
+		t.Errorf("bff_status_code=%v, want 401", v)
+	}
+	if v, ok := capture.Properties["platform"]; !ok {
+		t.Error("platform property missing")
+	} else if v != "darwin" {
+		t.Errorf("platform=%v, want darwin", v)
+	}
+}
+
+// TestIngestHandler_KeychainErrorEmitsPostHog verifies that a
+// daemon.keychain_error event causes the BFF to emit daemon.keychain_error to
+// PostHog with the correct properties.
+func TestIngestHandler_KeychainErrorEmitsPostHog(t *testing.T) {
+	const token = "keychain-error-token"
+
+	keyRepo := &mockKeyLister{keys: []repository.APIKey{
+		{ID: 63, KeyHash: mustHash(t, token), UserID: 303},
+	}}
+
+	phClient := &mockPostHogClient{}
+	ih := handlers.NewIngestHandler(&mockBroadcaster{}).WithPostHogClient(phClient)
+	handler := middleware.APIKeyAuth(keyRepo)(http.HandlerFunc(ih.IngestEvent))
+
+	type keychainErrorPayload struct {
+		ErrorType     string `json:"error_type"`
+		Platform      string `json:"platform"`
+		DaemonVersion string `json:"daemon_version"`
+	}
+	raw, _ := json.Marshal(keychainErrorPayload{
+		ErrorType:     "not_found",
+		Platform:      "windows",
+		DaemonVersion: "0.3.3",
+	})
+
+	event := contract.DaemonEvent{
+		Type:       "daemon.keychain_error",
+		AccountID:  "acct_keychain_err",
+		SessionID:  "sess_keychain_err",
+		Sequence:   1,
+		OccurredAt: time.Now().UTC(),
+		Payload:    json.RawMessage(raw),
+	}
+	req, rr := ingestRequest(t, token, event)
+	handler.ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusAccepted {
+		t.Fatalf("expected 202, got %d: %s", rr.Code, rr.Body.String())
+	}
+
+	if len(phClient.calls) != 1 {
+		t.Fatalf("expected 1 PostHog call, got %d", len(phClient.calls))
+	}
+
+	capture, ok := phClient.calls[0].(posthog.Capture)
+	if !ok {
+		t.Fatal("PostHog message is not a posthog.Capture")
+	}
+
+	if capture.Event != "daemon.keychain_error" {
+		t.Errorf("expected event=%q, got %q", "daemon.keychain_error", capture.Event)
+	}
+	if capture.DistinctId == "acct_keychain_err" {
+		t.Error("distinct_id must be hashed, got raw account_id")
+	}
+	if v, ok := capture.Properties["error_type"]; !ok {
+		t.Error("error_type property missing")
+	} else if v != "not_found" {
+		t.Errorf("error_type=%v, want not_found", v)
+	}
+	if v, ok := capture.Properties["platform"]; !ok {
+		t.Error("platform property missing")
+	} else if v != "windows" {
+		t.Errorf("platform=%v, want windows", v)
+	}
+}
+
+// TestIngestHandler_AllEvents_DistinctIdIsHashed verifies that for all three
+// new error telemetry event types, the PostHog distinct_id is always the hashed
+// account ID — never the raw account_id string.
+func TestIngestHandler_AllEvents_DistinctIdIsHashed(t *testing.T) {
+	const rawAccountID = "raw_pii_account_id"
+	const token = "pii-check-token"
+
+	keyRepo := &mockKeyLister{keys: []repository.APIKey{
+		{ID: 64, KeyHash: mustHash(t, token), UserID: 304},
+	}}
+
+	tests := []struct {
+		eventType string
+		payload   json.RawMessage
+	}{
+		{
+			eventType: "daemon.auth_failed",
+			payload: mustMarshal(t, map[string]interface{}{
+				"reason": "pkce_timeout", "platform": "darwin", "daemon_version": "0.3.3",
+			}),
+		},
+		{
+			eventType: "daemon.keychain_error",
+			payload: mustMarshal(t, map[string]interface{}{
+				"error_type": "os_error", "platform": "darwin", "daemon_version": "0.3.3",
+			}),
+		},
+		{
+			eventType: "daemon.heartbeat",
+			payload:   buildHeartbeatPayloadFull(t, 0, 5, 503),
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.eventType, func(t *testing.T) {
+			phClient := &mockPostHogClient{}
+			ih := handlers.NewIngestHandler(&mockBroadcaster{}).WithPostHogClient(phClient)
+			handler := middleware.APIKeyAuth(keyRepo)(http.HandlerFunc(ih.IngestEvent))
+
+			event := contract.DaemonEvent{
+				Type:       tc.eventType,
+				AccountID:  rawAccountID,
+				SessionID:  "sess_pii_check",
+				Sequence:   1,
+				OccurredAt: time.Now().UTC(),
+				Payload:    tc.payload,
+			}
+			req, rr := ingestRequest(t, token, event)
+			handler.ServeHTTP(rr, req)
+
+			if rr.Code != http.StatusAccepted {
+				t.Fatalf("expected 202, got %d", rr.Code)
+			}
+			if len(phClient.calls) == 0 {
+				t.Fatalf("expected at least 1 PostHog call for %s", tc.eventType)
+			}
+			for _, msg := range phClient.calls {
+				capture, ok := msg.(posthog.Capture)
+				if !ok {
+					continue
+				}
+				if capture.DistinctId == rawAccountID {
+					t.Errorf("%s: distinct_id must not be raw account_id", tc.eventType)
+				}
+			}
+		})
+	}
+}
+
+// mustMarshal is a test helper that marshals v to JSON and fatals on error.
+func mustMarshal(t *testing.T, v interface{}) json.RawMessage {
+	t.Helper()
+	raw, err := json.Marshal(v)
+	if err != nil {
+		t.Fatalf("mustMarshal: %v", err)
+	}
+	return json.RawMessage(raw)
+}
+
+// TestIngestHandler_KeychainError_NonEmptyAccountID_HashesDistinctId verifies
+// that a daemon.keychain_error event with a non-empty AccountID uses the hashed
+// account ID as distinct_id (post-auth case B per Ray's OQ-1 verdict).
+func TestIngestHandler_KeychainError_NonEmptyAccountID_HashesDistinctId(t *testing.T) {
+	const token = "kc-hashid-token"
+	const accountID = "post_auth_account_id"
+
+	keyRepo := &mockKeyLister{keys: []repository.APIKey{
+		{ID: 65, KeyHash: mustHash(t, token), UserID: 305},
+	}}
+
+	phClient := &mockPostHogClient{}
+	ih := handlers.NewIngestHandler(&mockBroadcaster{}).WithPostHogClient(phClient)
+	handler := middleware.APIKeyAuth(keyRepo)(http.HandlerFunc(ih.IngestEvent))
+
+	raw, _ := json.Marshal(map[string]string{
+		"error_type": "not_found", "platform": "darwin", "daemon_version": "0.3.3",
+	})
+	event := contract.DaemonEvent{
+		Type:       "daemon.keychain_error",
+		AccountID:  accountID,
+		SessionID:  "sess_kc_hash",
+		Sequence:   1,
+		OccurredAt: time.Now().UTC(),
+		Payload:    json.RawMessage(raw),
+	}
+	req, rr := ingestRequest(t, token, event)
+	handler.ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusAccepted {
+		t.Fatalf("expected 202, got %d", rr.Code)
+	}
+	if len(phClient.calls) != 1 {
+		t.Fatalf("expected 1 PostHog call, got %d", len(phClient.calls))
+	}
+	capture := phClient.calls[0].(posthog.Capture)
+	if capture.DistinctId == accountID {
+		t.Error("distinct_id must not be raw account_id for keychain_error")
+	}
+	if len(capture.DistinctId) != 16 {
+		t.Errorf("distinct_id must be 16-char hash, got %d", len(capture.DistinctId))
+	}
+}
+
+// TestIngestHandler_DriftEvent_DistinctIdIsHashed verifies that the distinct_id
+// in the PostHog drift capture is the hashed account ID, never the raw value.
+func TestIngestHandler_DriftEvent_DistinctIdIsHashed(t *testing.T) {
+	const token = "hb-hashcheck-token"
+	const rawAccountID = "acct_pii_check"
+
+	keyRepo := &mockKeyLister{keys: []repository.APIKey{
+		{ID: 52, KeyHash: mustHash(t, token), UserID: 202},
+	}}
+
+	phClient := &mockPostHogClient{}
+	ih := handlers.NewIngestHandler(&mockBroadcaster{}).WithPostHogClient(phClient)
+	handler := middleware.APIKeyAuth(keyRepo)(http.HandlerFunc(ih.IngestEvent))
+
+	payload := buildHeartbeatPayload(t, 1, "deadbeef12345678", []string{"deck.updated"})
+	event := contract.DaemonEvent{
+		Type:       "daemon.heartbeat",
+		AccountID:  rawAccountID,
+		SessionID:  "sess_hashcheck",
+		Sequence:   1,
+		OccurredAt: time.Now().UTC(),
+		Payload:    payload,
+	}
+	req, rr := ingestRequest(t, token, event)
+	handler.ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusAccepted {
+		t.Fatalf("expected 202, got %d", rr.Code)
+	}
+
+	if len(phClient.calls) != 1 {
+		t.Fatalf("expected 1 PostHog call, got %d", len(phClient.calls))
+	}
+
+	capture, ok := phClient.calls[0].(posthog.Capture)
+	if !ok {
+		t.Fatal("PostHog message is not posthog.Capture")
+	}
+
+	// The raw account ID must never appear as distinct_id.
+	if capture.DistinctId == rawAccountID {
+		t.Errorf("distinct_id must be hashed, got raw %q", rawAccountID)
+	}
+	if len(capture.DistinctId) != 16 {
+		t.Errorf("distinct_id must be 16-char hash, got len=%d", len(capture.DistinctId))
+	}
+}

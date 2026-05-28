@@ -47,6 +47,17 @@ jobs:
         working-directory: frontend
         run: npm ci
 
+      # Resolve the semver string for Sentry release tagging.
+      # Uses `git describe` against `app/v*` tags (ADR-023 namespacing) and strips
+      # the `app/v` prefix so the value matches the BFF ldflag output (e.g. "0.3.3").
+      # Falls back to an empty string on an untagged ref (e.g. manual workflow_dispatch
+      # on a branch commit) — Sentry.init skips the release field when the value is empty.
+      - name: Resolve SPA version from git tag
+        id: version
+        run: |
+          RAW=$(git describe --tags --match 'app/v*' --abbrev=0 2>/dev/null || echo '')
+          echo "version=${RAW#app/v}" >> "$GITHUB_OUTPUT"
+
       - name: Build React SPA
         working-directory: frontend
         run: npm run build
@@ -55,6 +66,11 @@ jobs:
           VITE_CLERK_PUBLISHABLE_KEY: ${{ vars.VITE_CLERK_PUBLISHABLE_KEY }}
           VITE_POSTHOG_KEY: ${{ vars.VITE_POSTHOG_KEY }}
           VITE_SENTRY_DSN: ${{ vars.VITE_SENTRY_DSN }}
+          VITE_APP_VERSION: ${{ steps.version.outputs.version }}
+          VITE_SENTRY_ENV: production
+          SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
+          SENTRY_ORG: ${{ secrets.SENTRY_ORG }}
+          SENTRY_PROJECT: ${{ secrets.SENTRY_PROJECT }}
 
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v6

@@ -74,10 +74,10 @@ Route slug map (BA: confirm these are documented in PostHog descriptions): `matc
 
 | # | Event name | Code status | Trigger | Properties |
 |---|---|---|---|---|
-| 27 | `error_daemon_connection_failed` | NOT INSTRUMENTED (typed) | Daemon transitions to `error`/`disconnected` after being `connected` | `previous_status` (`connected`\|`reconnecting`), `duration_connected_seconds` (number) |
+| 27 | `error_daemon_connection_failed` | INSTRUMENTED in `DaemonHealthIndicator.tsx` (`fetchHealth` transition guard) | Daemon transitions to `error`/`disconnected` after being `connected` or `reconnecting` | `previous_status` (`connected`\|`reconnecting`), `duration_connected_seconds` (number) |
 | 28 | `error_daemon_never_connected` | INSTRUMENTED in `OnboardingModal.tsx` | Signed in >5min, daemon still disconnected | `time_since_signin_seconds` (number, optional), `source` (string, optional) |
-| 29 | `error_data_load_failed` | NOT INSTRUMENTED (typed) | Any non-2xx API response that surfaces an error UI | `page` (slug), `endpoint` (path, no IDs), `status_code` (number) |
-| 30 | `error_auth_failed` | NOT INSTRUMENTED (typed) | Clerk token fetch fails inside an API call | `context` (string) |
+| 29 | `error_data_load_failed` | INSTRUMENTED in `apiClient.ts` (`request()` non-2xx branch); throttled 1 per (endpoint, status\_code) per 10s; skippable via `skipErrorAnalytics: true` for background pollers | Any non-2xx API response that surfaces an error UI | `page` (slug), `endpoint` (path, no IDs), `status_code` (number) |
+| 30 | `error_auth_failed` | INSTRUMENTED in `apiClient.ts` (`getClerkToken` + `authHeaders` catch) | Clerk token provider throws during an API call | `reason_class` (`network`\|`invalid_credentials`\|`rate_limited`) — **NOTE: `context: string` replaced by `reason_class` enum per Ray Q2 amendment in #1839; only `network` emitted this PR** |
 | 31 | `error_empty_state_shown` | INSTRUMENTED in `DaemonEmptyState.tsx` | Empty state component renders (no data, no error) | `page` (slug) |
 
 ### A5. Engagement / lifecycle

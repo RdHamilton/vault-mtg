@@ -135,14 +135,21 @@ func TestGet_NotFound(t *testing.T) {
 	assert.ErrorIs(t, err, keychain.ErrNotFound)
 }
 
-// ── Scenario 4: corrupted / unreadable legacy entry ──────────────────────────
+// ── Scenario 4: neither entry present (via global mock error) ────────────────
 
-// TestGet_CorruptedLegacyEntry verifies that a corrupted or unreadable legacy
-// entry (simulated by MockInitWithError) causes Get() to fall through to
-// ErrNotFound rather than crashing — so normal PKCE re-auth is triggered.
-func TestGet_CorruptedLegacyEntry(t *testing.T) {
-	// go-keyring's MockInitWithError makes ALL keyring operations return the
-	// given error.  We use it to simulate an unreadable / corrupted keychain.
+// TestGet_NeitherEntryPresent_GlobalMockError verifies the neither-entry-present
+// branch when go-keyring's MockInitWithError(ErrNotFound) is used. Because that
+// mock applies the same error to every keyring call, both Get(ServiceNameNew)
+// and Get(ServiceNameLegacy) return ErrNotFound — which routes through the
+// "neither present" branch in keychain.Get() and returns ErrNotFound.
+//
+// This is intentionally distinct from TestGet_NotFound (which uses the
+// in-memory mock and an empty store). It also distinct from
+// TestGet_CorruptedLegacyEntry (in keychain_internal_test.go), which uses a
+// per-service-name seam to truly exercise the corrupted-legacy branch — the
+// branch this test was previously mis-claimed to cover (#2255).
+func TestGet_NeitherEntryPresent_GlobalMockError(t *testing.T) {
+	// MockInitWithError makes ALL keyring operations return the given error.
 	keyring.MockInitWithError(keyring.ErrNotFound)
 	t.Cleanup(func() { keyring.MockInitWithError(nil) })
 
@@ -150,7 +157,7 @@ func TestGet_CorruptedLegacyEntry(t *testing.T) {
 	// Must return ErrNotFound (not a raw keyring error) so callers that check
 	// errors.Is(err, keychain.ErrNotFound) can trigger re-auth cleanly.
 	assert.ErrorIs(t, err, keychain.ErrNotFound,
-		"corrupted legacy entry must fall through to ErrNotFound, not crash")
+		"both keyring ops returning ErrNotFound must yield keychain.ErrNotFound")
 }
 
 // ── Delete tests ──────────────────────────────────────────────────────────────

@@ -23,6 +23,13 @@ import { models, gui } from '@/types/models';
 let isInitialized = false;
 
 /**
+ * Wall-clock milliseconds elapsed during initializeServices().
+ * Set once after the healthCheck resolves. Read by main.tsx to populate
+ * the app_session_started analytics event.
+ */
+export let servicesInitMs = 0;
+
+/**
  * Check if REST API mode is enabled (always true now).
  */
 export function isRestApiEnabled(): boolean {
@@ -55,6 +62,8 @@ export async function initializeServices(options?: {
     configureApi({ baseUrl: options.apiBaseUrl });
   }
 
+  const initStart = performance.now();
+
   // Check if API is available
   const isHealthy = await healthCheck();
   if (!isHealthy) {
@@ -62,6 +71,7 @@ export async function initializeServices(options?: {
     throw new Error('REST API not available');
   }
 
+  servicesInitMs = Math.round(performance.now() - initStart);
   isInitialized = true;
   console.log('[Adapter] REST API mode enabled');
 }

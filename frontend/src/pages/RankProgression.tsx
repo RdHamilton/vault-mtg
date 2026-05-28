@@ -1,4 +1,5 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
+import { trackEvent } from '@/services/analytics';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
 import { matches } from '@/services/api';
 import { storage } from '@/types/models';
@@ -24,6 +25,15 @@ const RankProgression = () => {
   const [timeline, setTimeline] = useState<storage.RankTimelineEntry[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+
+  // Analytics: 300ms trailing debounce for feature_chart_interacted (Ray Q1)
+  const chartInteractedTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const fireChartInteracted = (interaction: 'filter_applied' | 'time_range_changed' | 'format_changed') => {
+    if (chartInteractedTimerRef.current) clearTimeout(chartInteractedTimerRef.current);
+    chartInteractedTimerRef.current = setTimeout(() => {
+      trackEvent({ name: 'feature_chart_interacted', properties: { chart: 'rank_progression', interaction } });
+    }, 300);
+  };
 
   useEffect(() => {
     const loadTimeline = async () => {
@@ -148,14 +158,14 @@ const RankProgression = () => {
         <div className="filter-row">
           <div className="filter-group">
             <label className="filter-label">Format</label>
-            <select value={format} onChange={(e) => updateFilters('rankProgression', { format: e.target.value })}>
+            <select value={format} onChange={(e) => { updateFilters('rankProgression', { format: e.target.value }); fireChartInteracted('format_changed'); }}>
               <option value="constructed">Constructed</option>
               <option value="limited">Limited</option>
             </select>
           </div>
           <div className="filter-group">
             <label className="filter-label">Date Range</label>
-            <select value={dateRange} onChange={(e) => updateFilters('rankProgression', { dateRange: e.target.value })}>
+            <select value={dateRange} onChange={(e) => { updateFilters('rankProgression', { dateRange: e.target.value }); fireChartInteracted('time_range_changed'); }}>
               <option value="7days">Last 7 Days</option>
               <option value="30days">Last 30 Days</option>
               <option value="90days">Last 90 Days</option>

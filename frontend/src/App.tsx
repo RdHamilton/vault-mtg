@@ -28,7 +28,9 @@ import Setup from './pages/Setup';
 import Home from './pages/Home';
 import KeyboardShortcutsHandler from './components/KeyboardShortcutsHandler';
 import ProtectedRoute from './components/ProtectedRoute';
+import { RouteErrorFallback } from './components/RouteErrorFallback';
 import { SseInitializer } from './components/SseInitializer';
+import { PostHogRouteTracker } from './components/PostHogRouteTracker';
 import { EventsOn } from './services/adapter';
 import { setClerkTokenProvider } from './services/apiClient';
 import { updateReplayState } from './utils/replayState';
@@ -57,6 +59,14 @@ function ClerkApiClientSync() {
 
 // Syncs the authenticated Clerk user into Sentry context.
 // Sets user id when signed in; clears it on sign-out.
+//
+// PII decision (AC6 #1841): only { id } is forwarded to Sentry.
+// Clerk user.id is an opaque identifier (e.g. "user_2abc...") — it cannot be
+// used to identify a person without Clerk dashboard access. No email, name, or
+// other PII is included. sendDefaultPii: false in Sentry.init (main.tsx) ensures
+// IP addresses and other automatic fields are also scrubbed.
+// The PostHog hashing rule (ADR-027 §3, hashAccountID) applies to the analytics
+// pipeline only; Sentry crash reports use the raw Clerk ID for event correlation.
 function SentryUserSync() {
   const { user, isSignedIn } = useUser();
 
@@ -195,6 +205,7 @@ function ReplayEventHandler() {
 function App() {
   return (
     <Router>
+      <PostHogRouteTracker />
       <ClerkApiClientSync />
       <SseInitializer />
       <SentryUserSync />
@@ -205,31 +216,189 @@ function App() {
         <Routes>
           {/* Public routes — no auth required */}
           <Route path="/" element={<Navigate to="/home" replace />} />
-          <Route path="/download" element={<Download />} />
-          <Route path="/setup" element={<Setup />} />
+          <Route
+            path="/download"
+            element={
+              <Sentry.ErrorBoundary fallback={<RouteErrorFallback />}>
+                <Download />
+              </Sentry.ErrorBoundary>
+            }
+          />
+          <Route
+            path="/setup"
+            element={
+              <Sentry.ErrorBoundary fallback={<RouteErrorFallback />}>
+                <Setup />
+              </Sentry.ErrorBoundary>
+            }
+          />
 
-          {/* Protected routes — require Clerk authentication */}
+          {/* Protected routes — require Clerk authentication.
+              Each route element is individually wrapped in Sentry.ErrorBoundary so
+              a crash in one route does not blank the entire app. The top-level
+              Sentry.ErrorBoundary in main.tsx remains as a last-resort catch for
+              errors outside the route tree (e.g. ClerkProvider / AppProvider failures). */}
           <Route element={<ProtectedRoute />}>
-            <Route path="/home" element={<Home />} />
-            <Route path="/match-history" element={<BffMatchHistory />} />
-            <Route path="/quests" element={<Quests />} />
-            <Route path="/draft" element={<Draft />} />
-            <Route path="/draft-analytics" element={<DraftAnalytics />} />
-            <Route path="/decks" element={<Decks />} />
-            <Route path="/deck-builder/:deckID" element={<DeckBuilder />} />
-            <Route path="/deck-builder/draft/:draftEventID" element={<DeckBuilder />} />
-            <Route path="/collection" element={<Collection />} />
-            <Route path="/meta" element={<Meta />} />
-            <Route path="/charts/win-rate-trend" element={<WinRateTrend />} />
-            <Route path="/charts/deck-performance" element={<DeckPerformance />} />
-            <Route path="/charts/rank-progression" element={<RankProgression />} />
-            <Route path="/charts/format-distribution" element={<FormatDistribution />} />
-            <Route path="/charts/result-breakdown" element={<ResultBreakdown />} />
-            <Route path="/settings" element={<Settings />} />
-            <Route path="/history/drafts" element={<BffDraftHistory />} />
-            <Route path="/draft/live" element={<DraftLive />} />
-            <Route path="/api-keys" element={<ApiKeysPage />} />
-            <Route path="/profile" element={<Profile />} />
+            <Route
+              path="/home"
+              element={
+                <Sentry.ErrorBoundary fallback={<RouteErrorFallback />}>
+                  <Home />
+                </Sentry.ErrorBoundary>
+              }
+            />
+            <Route
+              path="/match-history"
+              element={
+                <Sentry.ErrorBoundary fallback={<RouteErrorFallback />}>
+                  <BffMatchHistory />
+                </Sentry.ErrorBoundary>
+              }
+            />
+            <Route
+              path="/quests"
+              element={
+                <Sentry.ErrorBoundary fallback={<RouteErrorFallback />}>
+                  <Quests />
+                </Sentry.ErrorBoundary>
+              }
+            />
+            <Route
+              path="/draft"
+              element={
+                <Sentry.ErrorBoundary fallback={<RouteErrorFallback />}>
+                  <Draft />
+                </Sentry.ErrorBoundary>
+              }
+            />
+            <Route
+              path="/draft-analytics"
+              element={
+                <Sentry.ErrorBoundary fallback={<RouteErrorFallback />}>
+                  <DraftAnalytics />
+                </Sentry.ErrorBoundary>
+              }
+            />
+            <Route
+              path="/decks"
+              element={
+                <Sentry.ErrorBoundary fallback={<RouteErrorFallback />}>
+                  <Decks />
+                </Sentry.ErrorBoundary>
+              }
+            />
+            <Route
+              path="/deck-builder/:deckID"
+              element={
+                <Sentry.ErrorBoundary fallback={<RouteErrorFallback />}>
+                  <DeckBuilder />
+                </Sentry.ErrorBoundary>
+              }
+            />
+            <Route
+              path="/deck-builder/draft/:draftEventID"
+              element={
+                <Sentry.ErrorBoundary fallback={<RouteErrorFallback />}>
+                  <DeckBuilder />
+                </Sentry.ErrorBoundary>
+              }
+            />
+            <Route
+              path="/collection"
+              element={
+                <Sentry.ErrorBoundary fallback={<RouteErrorFallback />}>
+                  <Collection />
+                </Sentry.ErrorBoundary>
+              }
+            />
+            <Route
+              path="/meta"
+              element={
+                <Sentry.ErrorBoundary fallback={<RouteErrorFallback />}>
+                  <Meta />
+                </Sentry.ErrorBoundary>
+              }
+            />
+            <Route
+              path="/charts/win-rate-trend"
+              element={
+                <Sentry.ErrorBoundary fallback={<RouteErrorFallback />}>
+                  <WinRateTrend />
+                </Sentry.ErrorBoundary>
+              }
+            />
+            <Route
+              path="/charts/deck-performance"
+              element={
+                <Sentry.ErrorBoundary fallback={<RouteErrorFallback />}>
+                  <DeckPerformance />
+                </Sentry.ErrorBoundary>
+              }
+            />
+            <Route
+              path="/charts/rank-progression"
+              element={
+                <Sentry.ErrorBoundary fallback={<RouteErrorFallback />}>
+                  <RankProgression />
+                </Sentry.ErrorBoundary>
+              }
+            />
+            <Route
+              path="/charts/format-distribution"
+              element={
+                <Sentry.ErrorBoundary fallback={<RouteErrorFallback />}>
+                  <FormatDistribution />
+                </Sentry.ErrorBoundary>
+              }
+            />
+            <Route
+              path="/charts/result-breakdown"
+              element={
+                <Sentry.ErrorBoundary fallback={<RouteErrorFallback />}>
+                  <ResultBreakdown />
+                </Sentry.ErrorBoundary>
+              }
+            />
+            <Route
+              path="/settings"
+              element={
+                <Sentry.ErrorBoundary fallback={<RouteErrorFallback />}>
+                  <Settings />
+                </Sentry.ErrorBoundary>
+              }
+            />
+            <Route
+              path="/history/drafts"
+              element={
+                <Sentry.ErrorBoundary fallback={<RouteErrorFallback />}>
+                  <BffDraftHistory />
+                </Sentry.ErrorBoundary>
+              }
+            />
+            <Route
+              path="/draft/live"
+              element={
+                <Sentry.ErrorBoundary fallback={<RouteErrorFallback />}>
+                  <DraftLive />
+                </Sentry.ErrorBoundary>
+              }
+            />
+            <Route
+              path="/api-keys"
+              element={
+                <Sentry.ErrorBoundary fallback={<RouteErrorFallback />}>
+                  <ApiKeysPage />
+                </Sentry.ErrorBoundary>
+              }
+            />
+            <Route
+              path="/profile"
+              element={
+                <Sentry.ErrorBoundary fallback={<RouteErrorFallback />}>
+                  <Profile />
+                </Sentry.ErrorBoundary>
+              }
+            />
           </Route>
         </Routes>
       </Layout>

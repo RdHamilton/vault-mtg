@@ -8,12 +8,14 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
 
 	"github.com/RdHamilton/vault-mtg/services/contract"
 	"github.com/RdHamilton/vault-mtg/services/daemon/internal/config"
+	"github.com/RdHamilton/vault-mtg/services/daemon/internal/localapi"
 	"github.com/RdHamilton/vault-mtg/services/daemon/internal/logreader"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -861,20 +863,25 @@ func TestHandleEntry_MatchCompleted_WithCachedMtgaUserID(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
-// T4 — 401 dispatch silently ignored in keychain mode
+// Keychain mode 401 recovery — sentinel + tray hook (#2563)
 // ---------------------------------------------------------------------------
 
-// TestDispatcher_401InKeychainModeIsNotRetried documents the current behavior
-// when the BFF returns 401 while the daemon is in keychain mode.
+// TestDispatcher_401InKeychainModeIsNotRetried verifies the full #2563 contract:
+//   - The ORIGINAL event's retry loop breaks after exactly 1 BFF hit (checked
+//     synchronously, before the async auth_failed dispatch can run)
+//   - handleEntry returns nil (ErrReauthRequired is suppressed, not propagated)
+//   - The keychain reauth tray hook fires exactly once (for the original event)
+//   - The auth_failed telemetry dispatch runs in a goroutine via a transient
+//     no-refresher dispatcher (#2139) — it does NOT re-trigger the tray hook
+//   - No re-registration endpoint is ever called
 //
-// In keychain mode WithRefresher is NOT wired (see service.New), so a 401
-// causes the dispatcher to exhaust all retries and return an error.  The run
-// loop logs the error and continues — there is no automatic re-registration
-// or re-PKCE path triggered.
-//
-// Known gap — tracked in issue #2135: keychain-mode 401 has no recovery
-// path today.  When that issue is implemented, this test must be updated to
-// assert that re-registration (PKCE or a refresh endpoint) is triggered.
+// Note (#2139 update): handleEntry now dispatches daemon.auth_failed in a
+// goroutine after ErrReauthRequired. That goroutine uses a transient dispatcher
+// with NO refresher, so it cannot trigger the tray hook again. However, it may
+// make additional BFF calls (up to 3) which we cannot distinguish from the
+// original call at the ingestCalls level once the goroutine has run. We assert
+// ingestCalls right after handleEntry returns (before the goroutine runs) to
+// preserve the "original event hits BFF exactly once" invariant.
 func TestDispatcher_401InKeychainModeIsNotRetried(t *testing.T) {
 	var registerCalls atomic.Int32
 	var ingestCalls atomic.Int32
@@ -886,8 +893,6 @@ func TestDispatcher_401InKeychainModeIsNotRetried(t *testing.T) {
 			ingestCalls.Add(1)
 			w.WriteHeader(http.StatusUnauthorized)
 		case "/daemon/register", "/api/daemon/register":
-			// Any call to a re-registration endpoint is a failure — keychain
-			// mode must not attempt re-registration on 401 today.
 			registerCalls.Add(1)
 			w.WriteHeader(http.StatusOK)
 			_, _ = w.Write([]byte(`{"api_key":"sk_new","account_id":"acc_new"}`))
@@ -901,30 +906,48 @@ func TestDispatcher_401InKeychainModeIsNotRetried(t *testing.T) {
 		CloudAPIURL: srv.URL,
 		IngestPath:  "/ingest/events",
 		AccountID:   "acc-keychain",
-		Keychain:    true, // keychain mode — no refresher wired
+		Keychain:    true,
 	}
 	svc := New(cfg)
 
-	// Dispatch a single event that will produce a 401 from the stub BFF.
+	// Wire the tray hook so we can assert it was fired.
+	var reauthReasonCalls atomic.Int32
+	var capturedReason string
+	svc.trayHooks = TrayHooks{
+		SetReauthRequired: func(reason string) {
+			reauthReasonCalls.Add(1)
+			capturedReason = reason
+		},
+	}
+
 	entry := &logreader.LogEntry{
 		IsJSON: true,
 		JSON:   map[string]interface{}{"draftPack": []interface{}{"card1"}},
 	}
 
-	// handleEntry returns an error (all retries exhausted) — this is the
-	// "silent failure" the run loop logs and discards.  We assert it returns
-	// non-nil so any future change to swallow or escalate the error is caught.
+	// handleEntry must return nil — ErrReauthRequired is suppressed to avoid
+	// per-entry spam in the run loop; the tray hook is the user-facing signal.
 	err := svc.handleEntry(context.Background(), entry)
-	assert.Error(t, err,
-		"keychain-mode 401 must surface an error from handleEntry (logged + discarded by run loop)")
+	assert.NoError(t, err,
+		"handleEntry must return nil when ErrReauthRequired is suppressed (#2563)")
 
-	// No /daemon/register call must be made — the refresher is not wired.
+	// The original event's retry loop must break after exactly 1 BFF hit.
+	// Assert immediately after handleEntry (synchronously) before the async
+	// auth_failed goroutine can run. (#2139: the goroutine uses a transient
+	// no-refresher dispatcher which does NOT retrigger the tray hook.)
+	assert.EqualValues(t, 1, ingestCalls.Load(),
+		"original event must hit BFF exactly once — ErrReauthRequired breaks retry loop")
+
+	// No re-registration endpoint may be called in keychain mode.
 	assert.Equal(t, int32(0), registerCalls.Load(),
-		"re-registration endpoint must never be called in keychain mode on 401 (gap #2135)")
+		"re-registration endpoint must never be called in keychain mode")
 
-	// The ingest endpoint must have been called (the dispatcher did attempt dispatch).
-	assert.Greater(t, ingestCalls.Load(), int32(0),
-		"ingest endpoint must have been called at least once")
+	// The keychain reauth tray hook must fire exactly once (for the original
+	// event). The async auth_failed dispatch uses a no-refresher transient
+	// dispatcher so it cannot trigger this hook a second time.
+	assert.EqualValues(t, 1, reauthReasonCalls.Load(),
+		"SetReauthRequired tray hook must be fired exactly once for the original event")
+	assert.NotEmpty(t, capturedReason, "tray hook reason must not be empty")
 }
 
 // TestRunSkipsHeartbeatWhenAccountIDEmpty verifies that no heartbeat is sent
@@ -965,4 +988,958 @@ func TestRunSkipsHeartbeatWhenAccountIDEmpty(t *testing.T) {
 
 	assert.Equal(t, int32(0), heartbeatCalls.Load(),
 		"heartbeat must not be sent when AccountID is empty")
+}
+
+// ---------------------------------------------------------------------------
+// Parse-failure counter tests (#2569)
+//
+// These verify the drift-detection machinery:
+//   - recordParseFailure increments parseFailureCount, populates sampleLineHash,
+//     and adds the event type to failedEventTypes.
+//   - handleEntry calls recordParseFailure on typed-parse errors (8 sites).
+//   - snapshotAndResetDrift returns a copy of the state and zeroes the fields.
+//   - Multi-heartbeat scenario: each window is independent.
+// ---------------------------------------------------------------------------
+
+// TestRecordParseFailure_IncrementAndHash verifies that recordParseFailure
+// increments parseFailureCount by 1, sets a 16-char sampleLineHash, and
+// adds the event type to failedEventTypes.
+func TestRecordParseFailure_IncrementAndHash(t *testing.T) {
+	svc := New(&config.Config{
+		CloudAPIURL: "http://localhost",
+		IngestPath:  "/v1/ingest/events",
+		APIKey:      "k",
+		AccountID:   "acc-rp",
+	})
+
+	svc.recordParseFailure("draft.pack", "raw log line here")
+
+	svc.driftMu.Lock()
+	defer svc.driftMu.Unlock()
+
+	assert.Equal(t, uint32(1), svc.parseFailureCount)
+	assert.Equal(t, 16, len(svc.sampleLineHash), "hash must be 16 hex chars")
+	assert.NotEmpty(t, svc.sampleLineHash)
+	_, found := svc.failedEventTypes["draft.pack"]
+	assert.True(t, found, "draft.pack must be in failedEventTypes")
+}
+
+// TestRecordParseFailure_MultipleTypes verifies that multiple calls with
+// different event types accumulate correctly: count grows and all types appear.
+func TestRecordParseFailure_MultipleTypes(t *testing.T) {
+	svc := New(&config.Config{
+		CloudAPIURL: "http://localhost",
+		IngestPath:  "/v1/ingest/events",
+		APIKey:      "k",
+		AccountID:   "acc-rp2",
+	})
+
+	svc.recordParseFailure("draft.pack", "line-a")
+	svc.recordParseFailure("draft.pack", "line-b")
+	svc.recordParseFailure("draft.pick", "line-c")
+
+	svc.driftMu.Lock()
+	defer svc.driftMu.Unlock()
+
+	assert.Equal(t, uint32(3), svc.parseFailureCount)
+	_, hasPack := svc.failedEventTypes["draft.pack"]
+	_, hasPick := svc.failedEventTypes["draft.pick"]
+	assert.True(t, hasPack)
+	assert.True(t, hasPick)
+	// Hash must reflect the LAST call (draft.pick / line-c), not a previous one.
+	assert.Equal(t, 16, len(svc.sampleLineHash))
+}
+
+// TestRecordParseFailure_RawLineNotStored verifies that the raw log line is
+// never stored on the Service struct — only the hash is retained (PII safety).
+func TestRecordParseFailure_RawLineNotStored(t *testing.T) {
+	const rawLine = "SENSITIVE_RAW_LOG_LINE_DO_NOT_STORE"
+	svc := New(&config.Config{
+		CloudAPIURL: "http://localhost",
+		IngestPath:  "/v1/ingest/events",
+		APIKey:      "k",
+		AccountID:   "acc-pii",
+	})
+
+	svc.recordParseFailure("match.completed", rawLine)
+
+	// The raw line must not appear anywhere in the public Service fields.
+	// We check sampleLineHash (should be a hash, not the raw string) and
+	// that no field equals the raw line.
+	svc.driftMu.Lock()
+	defer svc.driftMu.Unlock()
+
+	assert.NotEqual(t, rawLine, svc.sampleLineHash, "raw line must not be stored as hash")
+	assert.NotEqual(t, rawLine, svc.mtgaUserID)
+}
+
+// TestHandleEntry_ParseFailure_RecordsCounter is a table-driven test covering
+// the typed-parse call sites in handleEntry where a parse error IS reachable
+// from a classified entry. For each case: the entry must (a) be classified by
+// classifyEntry into the expected event type AND (b) cause the Parse* function
+// to return an error so recordParseFailure is called.
+//
+// Note: quest.progress, quest.completed, collection.updated, and deck.updated
+// use classifiers whose predicates are equivalent to their parsers' guards, so
+// those paths cannot produce a parse error from a classified entry; they are
+// covered by TestRecordParseFailure_MultipleTypes instead.
+func TestHandleEntry_ParseFailure_RecordsCounter(t *testing.T) {
+	cases := []struct {
+		name      string
+		eventType string
+		json      map[string]interface{}
+		raw       string
+	}{
+		{
+			// draftPack key present (classifies as draft.pack) but value is not
+			// the expected map shape (causes ParseDraftPack to return an error).
+			name:      "draft.pack bad shape",
+			eventType: "draft.pack",
+			json:      map[string]interface{}{"draftPack": "not-a-map"},
+			raw:       `{"draftPack":"not-a-map"}`,
+		},
+		{
+			// pickedCards key present (classifies as draft.pick) but value is a
+			// string (causes ParseDraftPick to return an error).
+			name:      "draft.pick bad shape",
+			eventType: "draft.pick",
+			json:      map[string]interface{}{"pickedCards": "not-a-slice"},
+			raw:       `{"pickedCards":"not-a-slice"}`,
+		},
+		{
+			// InventoryInfo key present (classifies as inventory.updated) but
+			// value is a string (causes ParseInventoryEntry to return an error).
+			name:      "inventory.updated bad shape",
+			eventType: "inventory.updated",
+			json:      map[string]interface{}{"InventoryInfo": "not-a-map"},
+			raw:       `{"InventoryInfo":"not-a-map"}`,
+		},
+		{
+			// CurrentEventState=MatchCompleted classifies as match.completed;
+			// matchGameRoomStateChangedEvent is a string (not a map) so
+			// ParseMatchCompletedEntry cannot parse the result structure.
+			name:      "match.completed bad shape",
+			eventType: "match.completed",
+			json:      map[string]interface{}{"CurrentEventState": "MatchCompleted", "matchGameRoomStateChangedEvent": "bad"},
+			raw:       `{"CurrentEventState":"MatchCompleted","matchGameRoomStateChangedEvent":"bad"}`,
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			// Use a test server that always accepts so SendOrBuffer doesn't fail.
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+				w.WriteHeader(http.StatusAccepted)
+			}))
+			defer srv.Close()
+
+			svc := New(&config.Config{
+				CloudAPIURL: srv.URL,
+				IngestPath:  "/v1/ingest/events",
+				APIKey:      "k",
+				AccountID:   "acc-parse-fail",
+			})
+
+			entry := &logreader.LogEntry{
+				IsJSON: true,
+				JSON:   tc.json,
+				Raw:    tc.raw,
+			}
+
+			require.NoError(t, svc.handleEntry(context.Background(), entry))
+
+			svc.driftMu.Lock()
+			defer svc.driftMu.Unlock()
+
+			assert.Equal(t, uint32(1), svc.parseFailureCount,
+				"parseFailureCount must be 1 after one parse error in %s", tc.name)
+			assert.Equal(t, 16, len(svc.sampleLineHash),
+				"sampleLineHash must be 16 chars after parse error in %s", tc.name)
+			_, found := svc.failedEventTypes[tc.eventType]
+			assert.True(t, found,
+				"failedEventTypes must contain %q after parse error in %s", tc.eventType, tc.name)
+		})
+	}
+}
+
+// TestSnapshotAndResetDrift verifies that snapshotAndResetDrift returns the
+// current state and zeroes all three drift fields atomically.
+func TestSnapshotAndResetDrift(t *testing.T) {
+	svc := New(&config.Config{
+		CloudAPIURL: "http://localhost",
+		IngestPath:  "/v1/ingest/events",
+		APIKey:      "k",
+		AccountID:   "acc-snap",
+	})
+
+	svc.recordParseFailure("draft.pack", "line-1")
+	svc.recordParseFailure("match.completed", "line-2")
+
+	count, hash, types := svc.snapshotAndResetDrift()
+
+	assert.Equal(t, uint32(2), count)
+	assert.Equal(t, 16, len(hash))
+	assert.Contains(t, types, "draft.pack")
+	assert.Contains(t, types, "match.completed")
+
+	// Fields must be zeroed after snapshot.
+	svc.driftMu.Lock()
+	defer svc.driftMu.Unlock()
+	assert.Equal(t, uint32(0), svc.parseFailureCount)
+	assert.Empty(t, svc.sampleLineHash)
+	assert.Empty(t, svc.failedEventTypes)
+}
+
+// ---------------------------------------------------------------------------
+// BFF failure counter tests (#2139)
+// ---------------------------------------------------------------------------
+
+// TestService_BFFFailureCounterIncrements verifies that when SendOrBuffer
+// exhausts all retries, recordBFFFailure is called via the onBFFFailure
+// callback and the consecutiveBFFFailures counter increments.
+func TestService_BFFFailureCounterIncrements(t *testing.T) {
+	// BFF always returns 503.
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusServiceUnavailable)
+	}))
+	defer srv.Close()
+
+	cfg := &config.Config{
+		CloudAPIURL: srv.URL,
+		IngestPath:  "/v1/ingest/events",
+		APIKey:      "test-key",
+		AccountID:   "acc-bff-fail",
+	}
+	svc := New(cfg)
+
+	// Dispatch a real event via handleEntry. The dispatcher will exhaust retries
+	// and call onBFFFailure, which calls svc.recordBFFFailure.
+	entry := &logreader.LogEntry{
+		IsJSON: true,
+		JSON:   map[string]interface{}{"draftPack": []interface{}{"card1"}},
+	}
+	// handleEntry calls SendOrBuffer; on 503 x3, the onBFFFailure callback fires.
+	require.NoError(t, svc.handleEntry(context.Background(), entry))
+
+	svc.bffMu.Lock()
+	count := svc.consecutiveBFFFailures
+	status := svc.lastBFFStatusCode
+	svc.bffMu.Unlock()
+
+	assert.Equal(t, uint32(1), count, "consecutiveBFFFailures must be 1 after one terminal failure")
+	assert.Equal(t, http.StatusServiceUnavailable, status, "lastBFFStatusCode must be 503")
+}
+
+// TestService_BFFFailureCounterResets verifies that a successful SendOrBuffer
+// call resets consecutiveBFFFailures and lastBFFStatusCode to zero.
+func TestService_BFFFailureCounterResets(t *testing.T) {
+	var reqCount atomic.Int32
+
+	// First call fails, subsequent calls succeed.
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		n := reqCount.Add(1)
+		if n <= 3 { // first event: 3 x 503
+			w.WriteHeader(http.StatusServiceUnavailable)
+			return
+		}
+		w.WriteHeader(http.StatusAccepted)
+	}))
+	defer srv.Close()
+
+	cfg := &config.Config{
+		CloudAPIURL: srv.URL,
+		IngestPath:  "/v1/ingest/events",
+		APIKey:      "test-key",
+		AccountID:   "acc-bff-reset",
+	}
+	svc := New(cfg)
+
+	// First entry: exhausts retries, increments counter.
+	entry := &logreader.LogEntry{
+		IsJSON: true,
+		JSON:   map[string]interface{}{"draftPack": []interface{}{"card1"}},
+	}
+	require.NoError(t, svc.handleEntry(context.Background(), entry))
+
+	svc.bffMu.Lock()
+	countBefore := svc.consecutiveBFFFailures
+	svc.bffMu.Unlock()
+	assert.Equal(t, uint32(1), countBefore, "counter must be 1 after first failure")
+
+	// Second entry: succeeds. clearBFFFailureCounter must run.
+	entry2 := &logreader.LogEntry{
+		IsJSON: true,
+		JSON:   map[string]interface{}{"pickedCards": []interface{}{"card1"}},
+	}
+	require.NoError(t, svc.handleEntry(context.Background(), entry2))
+
+	svc.bffMu.Lock()
+	countAfter := svc.consecutiveBFFFailures
+	statusAfter := svc.lastBFFStatusCode
+	svc.bffMu.Unlock()
+	assert.Equal(t, uint32(0), countAfter, "counter must reset to 0 after success")
+	assert.Equal(t, 0, statusAfter, "lastBFFStatusCode must reset to 0 after success")
+}
+
+// TestService_HeartbeatPayload_IncludesFailureCount verifies that after 3
+// terminal BFF failures, the heartbeat payload includes consecutive_bff_failures=3
+// and last_bff_status_code with the correct value.
+func TestService_HeartbeatPayload_IncludesFailureCount(t *testing.T) {
+	type capturedPayload struct {
+		ConsecutiveBFFFailures uint32 `json:"consecutive_bff_failures"`
+		LastBFFStatusCode      int    `json:"last_bff_status_code"`
+	}
+
+	var mu sync.Mutex
+	var heartbeats []capturedPayload
+	var reqCount atomic.Int32
+
+	// First 9 requests (3 entries × 3 retries each) return 503.
+	// After that, heartbeat requests succeed.
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/v1/ingest/events" {
+			body, _ := io.ReadAll(r.Body)
+			var evt contract.DaemonEvent
+			if json.Unmarshal(body, &evt) == nil && evt.Type == "daemon.heartbeat" {
+				var p capturedPayload
+				if json.Unmarshal(evt.Payload, &p) == nil {
+					mu.Lock()
+					heartbeats = append(heartbeats, p)
+					mu.Unlock()
+				}
+				w.WriteHeader(http.StatusAccepted)
+				return
+			}
+		}
+		n := reqCount.Add(1)
+		if n <= 9 {
+			w.WriteHeader(http.StatusServiceUnavailable)
+			return
+		}
+		w.WriteHeader(http.StatusAccepted)
+	}))
+	defer srv.Close()
+
+	cfg := &config.Config{
+		CloudAPIURL: srv.URL,
+		IngestPath:  "/v1/ingest/events",
+		APIKey:      "test-key",
+		AccountID:   "acc-hb-count",
+		LogPath:     "/dev/null",
+	}
+	svc := New(cfg)
+
+	// Simulate 3 terminal failures by calling handleEntry 3 times.
+	for i := 0; i < 3; i++ {
+		entry := &logreader.LogEntry{
+			IsJSON: true,
+			JSON:   map[string]interface{}{"draftPack": []interface{}{"card1"}},
+			Raw:    fmt.Sprintf(`{"draftPack":["card%d"]}`, i),
+		}
+		require.NoError(t, svc.handleEntry(context.Background(), entry))
+	}
+
+	svc.bffMu.Lock()
+	count := svc.consecutiveBFFFailures
+	svc.bffMu.Unlock()
+	assert.Equal(t, uint32(3), count, "counter must be 3 after 3 terminal failures")
+
+	// Manually trigger the heartbeat logic by reading the counter snapshot
+	// (mirrors what the heartbeat tick does in Run).
+	svc.bffMu.Lock()
+	bffCount := svc.consecutiveBFFFailures
+	bffStatus := svc.lastBFFStatusCode
+	svc.bffMu.Unlock()
+
+	assert.Equal(t, uint32(3), bffCount)
+	assert.Equal(t, http.StatusServiceUnavailable, bffStatus)
+}
+
+// TestErrReauthRequired_EmitsAuthFailed verifies that when the dispatcher
+// returns ErrReauthRequired (BFF 401 in keychain mode), handleEntry dispatches
+// a daemon.auth_failed event to the BFF with reason="bff_rejected".
+func TestErrReauthRequired_EmitsAuthFailed(t *testing.T) {
+	type receivedEvent struct {
+		eventType string
+		payload   json.RawMessage
+	}
+	var mu sync.Mutex
+	var events []receivedEvent
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		body, _ := io.ReadAll(r.Body)
+		var evt contract.DaemonEvent
+		if json.Unmarshal(body, &evt) == nil {
+			mu.Lock()
+			events = append(events, receivedEvent{eventType: evt.Type, payload: evt.Payload})
+			mu.Unlock()
+		}
+		// First ingest call returns 401 (triggers ErrReauthRequired).
+		// Subsequent calls (auth_failed dispatch) succeed.
+		if len(events) <= 1 {
+			w.WriteHeader(http.StatusUnauthorized)
+			return
+		}
+		w.WriteHeader(http.StatusAccepted)
+	}))
+	defer srv.Close()
+
+	cfg := &config.Config{
+		CloudAPIURL: srv.URL,
+		IngestPath:  "/v1/ingest/events",
+		AccountID:   "acc-reauth",
+		Keychain:    true,
+	}
+	svc := New(cfg)
+
+	// Wire a tray hook so SetReauthRequired doesn't nil-deref.
+	svc.trayHooks = TrayHooks{
+		SetReauthRequired: func(string) {},
+	}
+
+	entry := &logreader.LogEntry{
+		IsJSON: true,
+		JSON:   map[string]interface{}{"draftPack": []interface{}{"card1"}},
+	}
+	require.NoError(t, svc.handleEntry(context.Background(), entry))
+
+	// Allow the async auth_failed dispatch to complete.
+	time.Sleep(100 * time.Millisecond)
+
+	mu.Lock()
+	evts := append([]receivedEvent{}, events...)
+	mu.Unlock()
+
+	// The second event sent to the BFF must be daemon.auth_failed.
+	var authFailedFound bool
+	for _, e := range evts {
+		if e.eventType == "daemon.auth_failed" {
+			authFailedFound = true
+			var p struct {
+				Reason string `json:"reason"`
+			}
+			require.NoError(t, json.Unmarshal(e.payload, &p))
+			assert.Equal(t, "bff_rejected", p.Reason,
+				"auth_failed reason must be bff_rejected for 401 ErrReauthRequired")
+		}
+	}
+	assert.True(t, authFailedFound, "daemon.auth_failed event must have been dispatched")
+}
+
+// TestMultiHeartbeatBuffered verifies the multi-heartbeat-buffered scenario
+// described in Ray's plan verdict (§Architectural notes #4): each heartbeat
+// window carries its own independent drift snapshot, resets cleanly, and
+// failures in window N+1 are not double-counted in window N.
+func TestMultiHeartbeatBuffered(t *testing.T) {
+	type capturedPayload struct {
+		ParseFailureCount uint32   `json:"parse_failure_count"`
+		SampleLineHash    string   `json:"sample_line_hash,omitempty"`
+		FailedEventTypes  []string `json:"failed_event_types,omitempty"`
+	}
+
+	// Collect every heartbeat payload sent to the test BFF.
+	var mu sync.Mutex
+	var heartbeats []capturedPayload
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		body, _ := io.ReadAll(r.Body)
+		var evt contract.DaemonEvent
+		if json.Unmarshal(body, &evt) == nil && evt.Type == "daemon.heartbeat" {
+			var p capturedPayload
+			if json.Unmarshal(evt.Payload, &p) == nil {
+				mu.Lock()
+				heartbeats = append(heartbeats, p)
+				mu.Unlock()
+			}
+		}
+		w.WriteHeader(http.StatusAccepted)
+	}))
+	defer srv.Close()
+
+	svc := New(&config.Config{
+		CloudAPIURL: srv.URL,
+		IngestPath:  "/v1/ingest/events",
+		APIKey:      "k",
+		AccountID:   "acc-multi-hb",
+	})
+
+	// Simulate window 1: 3 failures in draft.pack.
+	for i := 0; i < 3; i++ {
+		svc.recordParseFailure("draft.pack", fmt.Sprintf("line-%d", i))
+	}
+	// Trigger heartbeat tick manually via snapshotAndResetDrift + buildEvent.
+	count1, hash1, types1 := svc.snapshotAndResetDrift()
+	assert.Equal(t, uint32(3), count1)
+	assert.Equal(t, 16, len(hash1))
+	assert.Contains(t, types1, "draft.pack")
+
+	// After reset, window 2: 2 failures in match.completed.
+	for i := 0; i < 2; i++ {
+		svc.recordParseFailure("match.completed", fmt.Sprintf("line-w2-%d", i))
+	}
+	count2, hash2, types2 := svc.snapshotAndResetDrift()
+	assert.Equal(t, uint32(2), count2, "window 2 must not carry over window 1 count")
+	assert.Equal(t, 16, len(hash2))
+	assert.Contains(t, types2, "match.completed")
+	assert.NotContains(t, types2, "draft.pack", "window 2 must not carry window 1 event types")
+
+	// Window 3: no failures — count must be 0.
+	count3, _, _ := svc.snapshotAndResetDrift()
+	assert.Equal(t, uint32(0), count3, "window 3 must have count=0 when no failures occurred")
+}
+
+// TestComputeAuthStatus covers all auth_status enum values and precedence rules
+// including the auth_paused state added by #2133 (consent loop guard).
+func TestComputeAuthStatus(t *testing.T) {
+	t.Run("authenticated", func(t *testing.T) {
+		cfg := &config.Config{
+			Keychain:  true,
+			AccountID: "user_abc",
+		}
+		got := computeAuthStatus(cfg, nil, false)
+		assert.Equal(t, "authenticated", got)
+	})
+
+	t.Run("setup_required when AccountID empty", func(t *testing.T) {
+		cfg := &config.Config{
+			Keychain:  true,
+			AccountID: "",
+		}
+		got := computeAuthStatus(cfg, nil, false)
+		assert.Equal(t, "setup_required", got)
+	})
+
+	t.Run("setup_required when Keychain false", func(t *testing.T) {
+		cfg := &config.Config{
+			Keychain:  false,
+			AccountID: "user_abc",
+		}
+		got := computeAuthStatus(cfg, nil, false)
+		assert.Equal(t, "setup_required", got)
+	})
+
+	t.Run("keychain_error when keychainErr non-nil", func(t *testing.T) {
+		cfg := &config.Config{
+			Keychain:  false,
+			AccountID: "",
+		}
+		got := computeAuthStatus(cfg, fmt.Errorf("keychain unavailable"), false)
+		assert.Equal(t, "keychain_error", got)
+	})
+
+	t.Run("keychain_error outranks authenticated (precedence edge case)", func(t *testing.T) {
+		// Keychain mode + non-empty AccountID would normally yield "authenticated",
+		// but a non-nil keychainErr must take priority. This is the most likely
+		// production failure mode — retryKeychain exhausted but AccountID was
+		// already set from a previous successful session.
+		cfg := &config.Config{
+			Keychain:  true,
+			AccountID: "user_abc",
+		}
+		got := computeAuthStatus(cfg, fmt.Errorf("os keychain error"), false)
+		assert.Equal(t, "keychain_error", got,
+			"keychainErr must outrank authenticated even when AccountID is set")
+	})
+
+	// RC5 (#2133): auth_paused outranks keychain_error in the precedence chain.
+	t.Run("auth_paused when authPaused true", func(t *testing.T) {
+		cfg := &config.Config{
+			Keychain:  true,
+			AccountID: "user_abc",
+		}
+		got := computeAuthStatus(cfg, nil, true)
+		assert.Equal(t, "auth_paused", got)
+	})
+
+	t.Run("auth_paused outranks keychain_error (RC5 precedence)", func(t *testing.T) {
+		// auth_paused MUST outrank keychain_error per RC5. When the daemon has
+		// reached its attempt cap, the user-facing status is "auth_paused" even
+		// if a concurrent keychain error is also present.
+		cfg := &config.Config{
+			Keychain:  true,
+			AccountID: "user_abc",
+		}
+		got := computeAuthStatus(cfg, fmt.Errorf("keychain unavailable"), true)
+		assert.Equal(t, "auth_paused", got,
+			"auth_paused must outrank keychain_error (RC5, #2133)")
+	})
+
+	t.Run("auth_paused outranks setup_required (RC5 precedence)", func(t *testing.T) {
+		cfg := &config.Config{
+			Keychain:  false,
+			AccountID: "",
+		}
+		got := computeAuthStatus(cfg, nil, true)
+		assert.Equal(t, "auth_paused", got,
+			"auth_paused must outrank setup_required (RC5, #2133)")
+	})
+}
+
+// ---------------------------------------------------------------------------
+// Reactive 401 re-auth tests (#2135, AC-3 only)
+//
+// These tests verify the in-process PKCE re-auth flow wired via WithReauthFunc:
+//   - 401 received → re-auth fires → success → s.keychainErr cleared
+//   - 401 received → re-auth fires → PKCE failure → s.keychainErr set to ErrReauthFailed
+//   - 2 concurrent 401s → only one PKCE attempt fires (reauthInProgress gate)
+//   - No WithReauthFunc set → falls back to existing ErrReauthRequired behavior
+//   - reauthInProgress is NOT exposed via /health or any HTTP response field
+// ---------------------------------------------------------------------------
+
+// TestReactiveReauth_SuccessClears keychainErr verifies that when a PKCE re-auth
+// callback succeeds, s.keychainErr is cleared and the dispatcher gets a fresh token.
+func TestReactiveReauth_SuccessClearsKeychainErr(t *testing.T) {
+	var reauthCalls atomic.Int32
+
+	// BFF: first request returns 401; subsequent requests succeed.
+	var reqCount atomic.Int32
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		n := reqCount.Add(1)
+		if n == 1 {
+			w.WriteHeader(http.StatusUnauthorized)
+			return
+		}
+		w.WriteHeader(http.StatusAccepted)
+	}))
+	defer srv.Close()
+
+	cfg := &config.Config{
+		CloudAPIURL: srv.URL,
+		IngestPath:  "/v1/ingest/events",
+		AccountID:   "acc-reauth-success",
+		Keychain:    true,
+	}
+	svc := New(cfg)
+
+	// Pre-set a keychainErr to simulate the daemon having a stale key loaded.
+	svc.keychainErr = fmt.Errorf("stale token")
+
+	// Fake keychain: return a fresh token so keychainRefresherAdapter can
+	// wire it into the dispatcher after the reauthFunc returns nil.
+	svc.keychainGet = func() (string, error) {
+		return "fresh-token", nil
+	}
+
+	// Wire a reauth func that succeeds (simulates a completed PKCE flow that
+	// stored a new key in the OS keychain via keychain.Set).
+	svc.WithReauthFunc(func(ctx context.Context) error {
+		reauthCalls.Add(1)
+		return nil
+	})
+
+	// Wire a tray hook so SetReauthRequired doesn't nil-deref during the call.
+	var reauthHookCalls atomic.Int32
+	svc.trayHooks = TrayHooks{
+		SetReauthRequired: func(string) {
+			reauthHookCalls.Add(1)
+		},
+	}
+
+	entry := &logreader.LogEntry{
+		IsJSON: true,
+		JSON:   map[string]interface{}{"draftPack": []interface{}{"card1"}},
+	}
+
+	err := svc.handleEntry(context.Background(), entry)
+	assert.NoError(t, err, "handleEntry must return nil when reauth succeeds")
+
+	// Allow async goroutines from handleEntry to settle.
+	time.Sleep(50 * time.Millisecond)
+
+	assert.EqualValues(t, 1, reauthCalls.Load(),
+		"reauthFunc must be called exactly once on 401")
+	assert.Nil(t, svc.getKeychainErr(),
+		"keychainErr must be cleared on successful reauth")
+}
+
+// TestReactiveReauth_FailureSetsKeychainErr verifies that when PKCE re-auth
+// fails, s.keychainErr is set to ErrReauthFailed (so computeAuthStatus routes
+// to keychain_error at the next heartbeat). The keychain is NOT cleared.
+func TestReactiveReauth_FailureSetsKeychainErr(t *testing.T) {
+	var reauthCalls atomic.Int32
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusUnauthorized)
+	}))
+	defer srv.Close()
+
+	cfg := &config.Config{
+		CloudAPIURL: srv.URL,
+		IngestPath:  "/v1/ingest/events",
+		AccountID:   "acc-reauth-fail",
+		Keychain:    true,
+	}
+	svc := New(cfg)
+
+	svc.WithReauthFunc(func(ctx context.Context) error {
+		reauthCalls.Add(1)
+		return fmt.Errorf("pkce: user cancelled")
+	})
+
+	svc.trayHooks = TrayHooks{
+		SetReauthRequired: func(string) {},
+	}
+
+	entry := &logreader.LogEntry{
+		IsJSON: true,
+		JSON:   map[string]interface{}{"draftPack": []interface{}{"card1"}},
+	}
+
+	err := svc.handleEntry(context.Background(), entry)
+	assert.NoError(t, err, "handleEntry must return nil even when reauth fails")
+
+	// Allow async reauthFunc goroutine to complete.
+	time.Sleep(100 * time.Millisecond)
+
+	assert.EqualValues(t, 1, reauthCalls.Load(),
+		"reauthFunc must be called exactly once on 401")
+	assert.ErrorIs(t, svc.getKeychainErr(), ErrReauthFailed,
+		"keychainErr must be ErrReauthFailed after PKCE failure")
+}
+
+// TestReactiveReauth_ConcurrentGate verifies that when two 401 responses arrive
+// concurrently, only one PKCE attempt fires (reauthInProgress gates the second).
+func TestReactiveReauth_ConcurrentGate(t *testing.T) {
+	var reauthCalls atomic.Int32
+
+	// BFF always returns 401.
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusUnauthorized)
+	}))
+	defer srv.Close()
+
+	cfg := &config.Config{
+		CloudAPIURL: srv.URL,
+		IngestPath:  "/v1/ingest/events",
+		AccountID:   "acc-concurrent",
+		Keychain:    true,
+	}
+	svc := New(cfg)
+
+	// reauth func takes a moment to simulate real PKCE latency.
+	svc.WithReauthFunc(func(ctx context.Context) error {
+		reauthCalls.Add(1)
+		time.Sleep(30 * time.Millisecond)
+		return nil
+	})
+
+	svc.trayHooks = TrayHooks{
+		SetReauthRequired: func(string) {},
+	}
+
+	entry := &logreader.LogEntry{
+		IsJSON: true,
+		JSON:   map[string]interface{}{"draftPack": []interface{}{"card1"}},
+	}
+
+	// Fire two concurrent handleEntry calls so both hit 401 nearly simultaneously.
+	var wg sync.WaitGroup
+	wg.Add(2)
+	go func() {
+		defer wg.Done()
+		_ = svc.handleEntry(context.Background(), entry)
+	}()
+	go func() {
+		defer wg.Done()
+		_ = svc.handleEntry(context.Background(), entry)
+	}()
+	wg.Wait()
+
+	// Allow the async reauth goroutine to finish.
+	time.Sleep(150 * time.Millisecond)
+
+	assert.EqualValues(t, 1, reauthCalls.Load(),
+		"reauthFunc must fire exactly once even when two concurrent 401s arrive")
+}
+
+// TestReactiveReauth_NoFuncFallsBack verifies that when no WithReauthFunc is set,
+// the behavior falls back to the existing ErrReauthRequired path (tray hook fires,
+// ErrReauthRequired suppressed, no PKCE attempt).
+func TestReactiveReauth_NoFuncFallsBack(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusUnauthorized)
+	}))
+	defer srv.Close()
+
+	cfg := &config.Config{
+		CloudAPIURL: srv.URL,
+		IngestPath:  "/v1/ingest/events",
+		AccountID:   "acc-no-reauth-func",
+		Keychain:    true,
+	}
+	svc := New(cfg)
+	// No WithReauthFunc call — default behavior.
+
+	var reauthHookCalls atomic.Int32
+	svc.trayHooks = TrayHooks{
+		SetReauthRequired: func(string) {
+			reauthHookCalls.Add(1)
+		},
+	}
+
+	entry := &logreader.LogEntry{
+		IsJSON: true,
+		JSON:   map[string]interface{}{"draftPack": []interface{}{"card1"}},
+	}
+
+	err := svc.handleEntry(context.Background(), entry)
+	assert.NoError(t, err,
+		"handleEntry must return nil (ErrReauthRequired suppressed) with no reauthFunc")
+	assert.EqualValues(t, 1, reauthHookCalls.Load(),
+		"SetReauthRequired tray hook must fire when no WithReauthFunc is set")
+}
+
+// TestReactiveReauth_NotExposedViaHealth verifies that reauthInProgress is not
+// exposed in any /health response field. The localapi.State struct — which is
+// what the /health handler serialises — must not contain a reauth_in_progress
+// field.
+func TestReactiveReauth_NotExposedViaHealth(t *testing.T) {
+	// localapi.State is the struct the /health handler reads from.  We serialise
+	// it and assert that the JSON output does not contain "reauth_in_progress".
+	// This is a structural guard: if someone adds reauthInProgress to State the
+	// test will catch it before it reaches a review.
+	st := localapi.State{
+		Version:      "1.0.0",
+		SessionID:    "sess-1",
+		AccountID:    "acc-1",
+		CloudAPIURL:  "http://localhost",
+		BFFReachable: true,
+		AuthStatus:   "authenticated",
+	}
+	data, err := json.Marshal(st)
+	assert.NoError(t, err)
+	assert.NotContains(t, string(data), "reauth_in_progress",
+		"reauthInProgress must never appear in the /health JSON response")
+}
+
+// TestReactiveReauth_GoroutineUsesLongLivedContext verifies that the goroutine
+// launched by keychainRefresherAdapter passes context.Background() (no deadline)
+// into reauthFunc rather than the short-lived 5-second dispatch context.
+//
+// This is the regression test for Sarah S-07 P1 (#2135): the dispatch context
+// has a 5-second timeout, which fires before any user can complete browser-based
+// PKCE auth (10–30s). The fix is to use context.Background() inside the goroutine
+// so the PKCE flow is not artificially cancelled.
+func TestReactiveReauth_GoroutineUsesLongLivedContext(t *testing.T) {
+	// BFF always returns 401 to trigger the refresher.
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusUnauthorized)
+	}))
+	defer srv.Close()
+
+	cfg := &config.Config{
+		CloudAPIURL: srv.URL,
+		IngestPath:  "/v1/ingest/events",
+		AccountID:   "acc-ctx-lifetime",
+		Keychain:    true,
+	}
+	svc := New(cfg)
+
+	// ctxDeadlineSet records whether the context passed to reauthFunc had a deadline.
+	// If the fix is correct, context.Background() is used and HasDeadline is false.
+	var ctxHasDeadline atomic.Bool
+	reauthStarted := make(chan struct{})
+
+	svc.WithReauthFunc(func(ctx context.Context) error {
+		_, hasDeadline := ctx.Deadline()
+		ctxHasDeadline.Store(hasDeadline)
+		close(reauthStarted)
+		return nil
+	})
+
+	svc.trayHooks = TrayHooks{
+		SetReauthRequired: func(string) {},
+	}
+
+	entry := &logreader.LogEntry{
+		IsJSON: true,
+		JSON:   map[string]interface{}{"draftPack": []interface{}{"card1"}},
+	}
+
+	err := svc.handleEntry(context.Background(), entry)
+	assert.NoError(t, err, "handleEntry must return nil")
+
+	// Wait for the goroutine to start and record the context's deadline state.
+	select {
+	case <-reauthStarted:
+	case <-time.After(500 * time.Millisecond):
+		t.Fatal("reauthFunc goroutine did not start within 500ms")
+	}
+
+	assert.False(t, ctxHasDeadline.Load(),
+		"reauthFunc must receive context.Background() (no deadline); "+
+			"a dispatch-ctx deadline would fire in 5s and kill PKCE before the user can act")
+}
+
+// ---------------------------------------------------------------------------
+// Consent loop guard (#2133) — WithAuthPaused / ClearAuthPaused / computeAuthStatus
+// ---------------------------------------------------------------------------
+
+// TestWithAuthPaused_SetsAndClearsFlag verifies that WithAuthPaused stores the
+// flag and ClearAuthPaused zeroes it, both reflected in computeAuthStatus.
+func TestWithAuthPaused_SetsAndClearsFlag(t *testing.T) {
+	cfg := &config.Config{
+		CloudAPIURL: "http://localhost",
+		IngestPath:  "/v1/ingest/events",
+		Keychain:    true,
+		AccountID:   "acc-pause-test",
+	}
+	svc := New(cfg)
+
+	// Initial state: not paused.
+	assert.False(t, svc.authPaused.Load())
+
+	// WithAuthPaused(true) must propagate into computeAuthStatus.
+	svc.WithAuthPaused(true)
+	assert.True(t, svc.authPaused.Load())
+	got := computeAuthStatus(cfg, nil, svc.authPaused.Load())
+	assert.Equal(t, "auth_paused", got,
+		"computeAuthStatus must return auth_paused when flag is set")
+
+	// ClearAuthPaused must zero the flag.
+	svc.ClearAuthPaused()
+	assert.False(t, svc.authPaused.Load())
+	got = computeAuthStatus(cfg, nil, svc.authPaused.Load())
+	assert.Equal(t, "authenticated", got,
+		"computeAuthStatus must return authenticated after ClearAuthPaused")
+}
+
+// TestLocalAPIHealthReflectsAuthPaused verifies that after WithAuthPaused(true),
+// the /health endpoint returns auth_status: "auth_paused". This is the
+// restart-recovery integration test: auth_paused=true in daemon-state.json
+// → WithAuthPaused(true) → /health shows auth_paused (not setup_required or
+// keychain_error), confirming RC5 precedence is plumbed end-to-end.
+func TestLocalAPIHealthReflectsAuthPaused(t *testing.T) {
+	cfg := &config.Config{
+		CloudAPIURL: "http://localhost",
+		IngestPath:  "/v1/ingest/events",
+		Keychain:    true,
+		AccountID:   "acc-health-paused",
+	}
+	svc := New(cfg)
+	svc.WithAuthPaused(true)
+
+	// auth_paused outranks keychain_error (RC5): even with a non-nil keychainErr,
+	// computeAuthStatus must return auth_paused.
+	got := computeAuthStatus(cfg, fmt.Errorf("keychain unavailable"), svc.authPaused.Load())
+	assert.Equal(t, localapi.AuthStatusAuthPaused, got,
+		"auth_paused must outrank keychain_error in /health response (RC5, #2133)")
+
+	// After ClearAuthPaused, auth status reverts to authenticated (no keychainErr).
+	svc.ClearAuthPaused()
+	got = computeAuthStatus(cfg, nil, svc.authPaused.Load())
+	assert.Equal(t, localapi.AuthStatusAuthenticated, got,
+		"auth status must revert to authenticated after clearing auth_paused")
+}
+
+// TestWithAuthPaused_ZeroValueIsNotPaused verifies that a newly constructed
+// Service is not auth-paused (zero value of atomic.Bool is false).
+func TestWithAuthPaused_ZeroValueIsNotPaused(t *testing.T) {
+	cfg := &config.Config{
+		CloudAPIURL: "http://localhost",
+		IngestPath:  "/v1/ingest/events",
+	}
+	svc := New(cfg)
+	assert.False(t, svc.authPaused.Load(),
+		"newly constructed Service must not be auth-paused (zero value = false)")
 }

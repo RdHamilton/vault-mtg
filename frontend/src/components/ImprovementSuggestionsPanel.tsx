@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { notes as notesApi } from '@/services/api';
 import type { ImprovementSuggestion, SuggestionType, SuggestionPriority } from '@/services/api/notes';
 import { getSuggestionTypeLabel, getPriorityLabel, getPriorityColor } from '@/services/api/notes';
+import { reportError } from '@/lib/sentry';
 import HelpIcon from './HelpIcon';
 import Tooltip from './Tooltip';
 import './ImprovementSuggestionsPanel.css';
@@ -39,6 +40,7 @@ export default function ImprovementSuggestionsPanel({
       const data = await notesApi.getDeckSuggestions(deckId, !showDismissed);
       setSuggestions(data || []);
     } catch (err) {
+      reportError(err, { component: 'ImprovementSuggestionsPanel', action: 'load_suggestions' });
       setError(err instanceof Error ? err.message : 'Failed to load suggestions');
       console.error('Failed to load suggestions:', err);
     } finally {
@@ -57,6 +59,7 @@ export default function ImprovementSuggestionsPanel({
       const newSuggestions = await notesApi.generateSuggestions(deckId);
       setSuggestions(newSuggestions || []);
     } catch (err) {
+      reportError(err, { component: 'ImprovementSuggestionsPanel', action: 'generate_suggestions' });
       const message = err instanceof Error ? err.message : 'Failed to generate suggestions';
       // Check if it's the "insufficient games" error
       if (message.includes('insufficient games')) {
@@ -76,6 +79,7 @@ export default function ImprovementSuggestionsPanel({
         prev.map((s) => (s.id === suggestionId ? { ...s, isDismissed: true } : s))
       );
     } catch (err) {
+      reportError(err, { component: 'ImprovementSuggestionsPanel', action: 'dismiss_suggestion' });
       setError(err instanceof Error ? err.message : 'Failed to dismiss suggestion');
     }
   };

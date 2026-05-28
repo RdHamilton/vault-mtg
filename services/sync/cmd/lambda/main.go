@@ -1,22 +1,28 @@
 // Command mtga-sync-lambda is the AWS Lambda entrypoint for the mtga-sync service.
 // AWS EventBridge Scheduler invokes this function on a configurable cron schedule.
 //
-// # Production (IAM auth — Lambda execution role)
+// # Production (password auth)
 //
-// The Lambda connects to RDS using AWS IAM authentication as mandated by ADR-003.
-// No static password is stored.  The execution role must have rds-db:connect
-// permission for the mtga_sync DB user.  Required environment variables:
+// The Lambda connects to RDS PostgreSQL using a static password supplied via
+// the DB_PASSWORD environment variable. CloudFormation resolves the password
+// from SSM Parameter Store at stack-update time (see sync-lambda.yml's
+// DbPasswordSsmPath parameter) and injects it into the Lambda's environment.
+// The mtga_sync DB role is M2M-only — there is no human path through this
+// credential and no PII flows through it. Required environment variables:
 //
-//	DB_HOST    RDS endpoint hostname
-//	DB_NAME    PostgreSQL database name
-//	DB_USER    PostgreSQL role name (mtga_sync)
-//	DB_PORT    PostgreSQL port (default: 5432)
-//	AWS_REGION AWS region of the RDS instance (e.g. us-east-1)
+//	DB_HOST     RDS endpoint hostname
+//	DB_NAME     PostgreSQL database name
+//	DB_USER     PostgreSQL role name (mtga_sync)
+//	DB_PORT     PostgreSQL port (default: 5432)
+//	DB_PASSWORD PostgreSQL password for the DB_USER role
 //
-// # Local development (direct DSN — bypasses IAM)
+// (PR #2650 is the forensic record of the IAM-auth attempt that preceded
+// this design; left open for any future re-attempt.)
 //
-// Set LAMBDA_LOCAL_DSN to a full PostgreSQL connection string.  When this
-// variable is present the IAM token flow is skipped entirely.  Never set
+// # Local development (direct DSN — bypasses env-var assembly)
+//
+// Set LAMBDA_LOCAL_DSN to a full PostgreSQL connection string. When this
+// variable is present the env-var path is skipped entirely. Never set
 // this in production Lambda environment variables.
 //
 //	LAMBDA_LOCAL_DSN  PostgreSQL DSN for local dev (e.g. postgres://user:pass@localhost/mtga)
@@ -38,15 +44,13 @@ import (
 	"github.com/RdHamilton/vault-mtg/services/sync/internal/handler"
 	"github.com/RdHamilton/vault-mtg/services/sync/internal/seventeenlands"
 	awslambda "github.com/aws/aws-lambda-go/lambda"
-	"github.com/aws/aws-sdk-go-v2/config"
-	"github.com/aws/aws-sdk-go-v2/feature/rds/auth"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
 func main() {
 	ctx := context.Background()
 
-	dsn, err := resolveDSN(ctx)
+	dsn, err := resolveDSN()
 	if err != nil {
 		log.Fatalf("resolve DB connection: %v", err)
 	}
@@ -71,31 +75,24 @@ func main() {
 // resolveDSN returns the PostgreSQL DSN to use for this invocation.
 //
 //   - If LAMBDA_LOCAL_DSN is set, it is returned as-is (local dev only).
-//   - Otherwise, a DSN is assembled from DB_HOST / DB_NAME / DB_USER / DB_PORT
-//     plus a fresh RDS IAM auth token generated from the Lambda execution role.
-//
-// IAM tokens expire after 15 minutes.  Fetching once per invocation is safe:
-// Lambda invocations are short-lived and the pool is not reused across invocations.
-func resolveDSN(ctx context.Context) (string, error) {
+//   - Otherwise, a DSN is assembled from DB_HOST / DB_NAME / DB_USER / DB_PORT /
+//     DB_PASSWORD. DB_PASSWORD is supplied by CFN at stack-update time from
+//     SSM Parameter Store.
+func resolveDSN() (string, error) {
 	if localDSN := os.Getenv("LAMBDA_LOCAL_DSN"); localDSN != "" {
-		log.Println("[sync] LAMBDA_LOCAL_DSN set — skipping IAM auth (local dev mode)")
+		log.Println("[sync] LAMBDA_LOCAL_DSN set — using local DSN (local dev mode)")
 		return localDSN, nil
 	}
 
 	cfg := dbconn.Config{
-		Host:   os.Getenv("DB_HOST"),
-		Port:   os.Getenv("DB_PORT"),
-		DBName: os.Getenv("DB_NAME"),
-		User:   os.Getenv("DB_USER"),
-		Region: os.Getenv("AWS_REGION"),
+		Host:     os.Getenv("DB_HOST"),
+		Port:     os.Getenv("DB_PORT"),
+		DBName:   os.Getenv("DB_NAME"),
+		User:     os.Getenv("DB_USER"),
+		Password: os.Getenv("DB_PASSWORD"),
 	}
 
-	awsCfg, err := config.LoadDefaultConfig(ctx)
-	if err != nil {
-		return "", err
-	}
-
-	return dbconn.BuildDSN(ctx, cfg, awsCfg.Credentials, auth.BuildAuthToken)
+	return dbconn.BuildPasswordDSN(cfg)
 }
 
 // activeSets parses SYNC_ACTIVE_SETS and returns a non-nil slice when the env

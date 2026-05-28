@@ -1,4 +1,5 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
+import { trackEvent } from '@/services/analytics';
 import { PieChart, Pie, BarChart, Bar, Cell, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
 import { matches } from '@/services/api';
 import { models } from '@/types/models';
@@ -72,6 +73,15 @@ const FormatDistribution = () => {
   const [formatStats, setFormatStats] = useState<FormatStats[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+
+  // Analytics: 300ms trailing debounce for feature_chart_interacted (Ray Q1)
+  const chartInteractedTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const fireChartInteracted = (interaction: 'filter_applied' | 'time_range_changed' | 'format_changed') => {
+    if (chartInteractedTimerRef.current) clearTimeout(chartInteractedTimerRef.current);
+    chartInteractedTimerRef.current = setTimeout(() => {
+      trackEvent({ name: 'feature_chart_interacted', properties: { chart: 'format_distribution', interaction } });
+    }, 300);
+  };
 
   useEffect(() => {
     const loadFormatStats = async () => {
@@ -198,7 +208,7 @@ const FormatDistribution = () => {
         <div className="filter-row">
           <div className="filter-group">
             <label className="filter-label">Date Range</label>
-            <select value={dateRange} onChange={(e) => updateFilters('formatDistribution', { dateRange: e.target.value })}>
+            <select value={dateRange} onChange={(e) => { updateFilters('formatDistribution', { dateRange: e.target.value }); fireChartInteracted('time_range_changed'); }}>
               <option value="7days">Last 7 Days</option>
               <option value="30days">Last 30 Days</option>
               <option value="90days">Last 90 Days</option>
@@ -234,7 +244,7 @@ const FormatDistribution = () => {
 
           <div className="filter-group">
             <label className="filter-label">Chart Type</label>
-            <select value={chartType} onChange={(e) => updateFilters('formatDistribution', { chartType: e.target.value as 'pie' | 'bar' })}>
+            <select value={chartType} onChange={(e) => { updateFilters('formatDistribution', { chartType: e.target.value as 'pie' | 'bar' }); fireChartInteracted('filter_applied'); }}>
               <option value="bar">Bar Chart</option>
               <option value="pie">Pie Chart</option>
             </select>
@@ -242,7 +252,7 @@ const FormatDistribution = () => {
 
           <div className="filter-group">
             <label className="filter-label">Sort By</label>
-            <select value={sortBy} onChange={(e) => updateFilters('formatDistribution', { sortBy: e.target.value as 'matches' | 'winRate' | 'name' })}>
+            <select value={sortBy} onChange={(e) => { updateFilters('formatDistribution', { sortBy: e.target.value as 'matches' | 'winRate' | 'name' }); fireChartInteracted('filter_applied'); }}>
               <option value="matches">Match Count</option>
               <option value="winRate">Win Rate</option>
               <option value="name">Format Name</option>
@@ -251,7 +261,7 @@ const FormatDistribution = () => {
 
           <div className="filter-group">
             <label className="filter-label">Sort Order</label>
-            <select value={sortDirection} onChange={(e) => updateFilters('formatDistribution', { sortDirection: e.target.value as 'asc' | 'desc' })}>
+            <select value={sortDirection} onChange={(e) => { updateFilters('formatDistribution', { sortDirection: e.target.value as 'asc' | 'desc' }); fireChartInteracted('filter_applied'); }}>
               <option value="desc">Descending</option>
               <option value="asc">Ascending</option>
             </select>
