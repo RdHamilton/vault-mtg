@@ -168,6 +168,55 @@ test.describe('Setup Page — PKCE pairing flow', () => {
   });
 });
 
+test.describe('Setup Page — auth status states (#2142)', () => {
+  test('@smoke shows "Connected" when daemon returns auth_status: authenticated', async ({
+    page,
+  }) => {
+    await page.route('http://localhost:9001/health', async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ status: 'ok', auth_status: 'authenticated' }),
+      });
+    });
+
+    await page.goto('/setup');
+    await expect(page.locator('[data-testid="app-container"]')).toBeVisible();
+
+    await expect(page.locator('[data-testid="auth-status-panel"]')).toBeVisible({
+      timeout: 10_000,
+    });
+    await expect(page.locator('[data-testid="auth-status-panel"]')).toContainText('Connected');
+    await expect(page.locator('[data-testid="auth-status-authenticated"]')).toBeVisible();
+  });
+
+  test('@smoke shows "Setup required" + CTA when daemon returns auth_status: setup_required', async ({
+    page,
+  }) => {
+    await page.route('http://localhost:9001/health', async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ status: 'ok', auth_status: 'setup_required' }),
+      });
+    });
+
+    await page.goto('/setup');
+    await expect(page.locator('[data-testid="app-container"]')).toBeVisible();
+
+    await expect(page.locator('[data-testid="auth-status-panel"]')).toBeVisible({
+      timeout: 10_000,
+    });
+    await expect(page.locator('[data-testid="auth-status-panel"]')).toContainText(
+      'Setup required'
+    );
+    await expect(page.locator('[data-testid="auth-status-cta"]')).toBeVisible();
+    await expect(page.locator('[data-testid="auth-status-cta"]')).toContainText(
+      'Complete setup'
+    );
+  });
+});
+
 test.describe('Setup Page — navigation', () => {
   test('setup page is accessible at /setup (HTTP 200)', async ({ page }) => {
     await page.route('http://localhost:9001/health', async (route) => {
