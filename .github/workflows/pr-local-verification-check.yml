@@ -172,9 +172,15 @@ jobs:
           BODY_FILE=/tmp/pr_body.txt
 
           fail() {
+            local msg="$1"
+            local hint="${2:-}"
             echo ""
             echo "permissionDecision: BLOCKED"
-            echo "ERROR: Local Verification gate — $1"
+            echo "ERROR: Local Verification gate — ${msg}"
+            if [ -n "${hint}" ]; then
+              echo ""
+              echo "HINT: ${hint}"
+            fi
             echo ""
             echo "Required structure (see PR template):"
             echo ""
@@ -223,6 +229,26 @@ jobs:
           # section needs at least one opener AND one closer => fence count >=2.
           FENCE_COUNT=$(grep -cE '^[[:space:]]*```' /tmp/lv_section.txt || true)
           if [ "${FENCE_COUNT:-0}" -lt 2 ]; then
+            echo ""
+            echo "Parser expected: lines matching regex  ^[[:space:]]*\`\`\`  (raw triple-backtick at line start)"
+            echo "Expected form (opening and closing fence on their own lines):"
+            echo "  \`\`\`"
+            echo "  \$ your-command"
+            echo "  actual output"
+            echo "  PASS"
+            echo "  \`\`\`"
+            echo ""
+            # AC3: Hex-dump any line that looks like an escaped fence so the author
+            # can see the invisible bytes (e.g. backslash-escaped ``` from LLM output).
+            # Search for lines containing a backslash immediately before a backtick.
+            ESCAPED_FENCE=$(grep -E "\\\\[\`]" /tmp/lv_section.txt | head -3 || true)
+            if [ -n "${ESCAPED_FENCE}" ]; then
+              echo "Possible escaped-fence lines detected (showing hex via cat -A):"
+              printf '%s\n' "${ESCAPED_FENCE}" | head -3 | cat -A
+              echo ""
+              echo "Those backslash-escaped backticks are NOT recognized as fences."
+              echo "Replace them with three raw backtick characters on their own line."
+            fi
             fail "No fenced code block found in Local Verification (need an opening and closing \`\`\`)."
           fi
 
@@ -245,6 +271,12 @@ jobs:
           #   ^\s*PS>     PowerShell explicit
           #   ^\s*>>\s    secondary prompt (continuation)
           if ! grep -qE '(^[[:space:]]*\$ )|(^[[:space:]]*> )|(^[[:space:]]*# )|(^\[[^]]+\]\$)|(^[[:space:]]*PS> )|(^[[:space:]]*>> )' /tmp/lv_code.txt; then
+            echo ""
+            echo "Parser expected: at least one line inside a fenced block matching regex:"
+            echo "  (^\$ )|(^> )|(^# )|(^\[[^]]+\]\$)|(^PS> )|(^>> )"
+            echo "  (leading whitespace is allowed)"
+            echo "Accepted prompt styles: \`\$ \`  \`> \`  \`# \`  \`[user@host]\$\`  \`PS> \`  \`>> \`"
+            echo ""
             fail "No shell-prompt indicator found inside any code block. A real transcript starts lines with \`\$ \`, \`> \`, \`# \`, or \`[user@host]\$ \`."
           fi
 
@@ -252,12 +284,22 @@ jobs:
           # Word-boundary match to avoid matching things like "passport" or
           # "OKAY-NOTHING". Allow bare "ok" (go test format) too.
           if ! grep -qiE '(\bPASS\b)|(\bOK\b)|(\bSUCCESS\b)' /tmp/lv_section.txt; then
+            echo ""
+            echo "Parser expected: at least one line in the section matching regex (case-insensitive, word-boundary):"
+            printf '  (\\bPASS\\b)|(\\bOK\\b)|(\\bSUCCESS\\b)\n'
+            echo "Accepted markers: PASS  OK  SUCCESS  (any case; must be a whole word)"
+            echo ""
             fail "No PASS / OK / SUCCESS marker found in Local Verification section."
           fi
 
           # ---- 5. Shell-script PRs require --dry-run / dry-run ----
           if [ "${SHELL_TOUCHED}" = "yes" ]; then
             if ! grep -qE '(--dry-run|dry-run)' /tmp/lv_section.txt; then
+              echo ""
+              echo "Parser expected: at least one occurrence of regex  (--dry-run|dry-run)  in the section"
+              echo "This PR touches a *.sh file or scripts/deploy/ — the transcript must show"
+              echo "the script was invoked with --dry-run (or dry-run) to exercise the actual code path."
+              echo ""
               fail "Shell-script PR (touches *.sh or scripts/deploy/): Local Verification must include a --dry-run transcript that exercised the actual code path."
             fi
           fi
