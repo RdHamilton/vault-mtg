@@ -61,6 +61,10 @@ function toFirstFeature(pathname: string): FirstFeature | null {
   if (pathname === '/decks' || pathname.startsWith('/deck-builder')) return 'decks';
   if (pathname === '/collection') return 'collection';
   if (pathname === '/meta') return 'meta';
+  // Note: bare `/charts` (no trailing slash) is intentionally NOT matched.
+  // App.tsx registers no route at exactly `/charts`; Layout.tsx always navigates
+  // to `/charts/win-rate-trend`. If a /charts index route is added in future,
+  // update this line to: pathname === '/charts' || pathname.startsWith('/charts/')
   if (pathname.startsWith('/charts/')) return 'charts';
   if (pathname === '/quests') return 'quests';
   return null;
@@ -78,6 +82,7 @@ function toPageSlug(pathname: string): string {
   if (pathname === '/decks') return 'decks';
   if (pathname === '/collection') return 'collection';
   if (pathname === '/meta') return 'meta';
+  // Bare `/charts` is not a registered route — no case needed here. See toFirstFeature() comment.
   if (pathname === '/charts/win-rate-trend') return 'chart_win_rate';
   if (pathname === '/charts/deck-performance') return 'chart_deck_performance';
   if (pathname === '/charts/rank-progression') return 'chart_rank_progression';
