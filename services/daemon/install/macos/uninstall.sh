@@ -2,7 +2,13 @@
 # uninstall.sh — removes the VaultMTG daemon from macOS.
 #
 # Usage:
-#   bash uninstall.sh
+#   bash uninstall.sh [--purge]
+#
+# Options:
+#   --purge   Also delete the daemon's API key from the macOS Keychain.
+#             By default the keychain entry (service: com.vaultmtg.daemon,
+#             account: api-key) is retained for downgrade safety so that a
+#             reinstall does not require re-authenticating.
 #
 # Steps (ADR-022 Phase 2):
 #   1. Unloads and disables the new launchd job (com.vaultmtg.daemon).
@@ -10,8 +16,20 @@
 #      if still present — handles the upgrade-then-uninstall scenario.
 #   3. Removes both plists from ~/Library/LaunchAgents/.
 #   4. Removes the binary from /usr/local/bin/.
+#   5. (--purge only) Deletes the API key from the macOS Keychain.
 
 set -euo pipefail
+
+# ---------------------------------------------------------------------------
+# Parse arguments.
+# ---------------------------------------------------------------------------
+PURGE=0
+for arg in "$@"; do
+  case "${arg}" in
+    --purge) PURGE=1 ;;
+    *) echo "Unknown argument: ${arg}" >&2; exit 1 ;;
+  esac
+done
 
 INSTALL_DIR="${INSTALL_DIR:-/usr/local/bin}"
 BINARY_NAME="vaultmtg-daemon"
@@ -71,8 +89,29 @@ else
   echo "Binary not found (${BINARY_PATH}), skipping."
 fi
 
+# ---------------------------------------------------------------------------
+# Keychain entry (com.vaultmtg.daemon / api-key).
+# Default behaviour: RETAIN the entry for downgrade safety — a user who
+# reinstalls the daemon will not need to re-authenticate.
+# --purge: delete the entry via security(1) so no credential remains on disk.
+# Failure (entry already absent) is non-fatal — security exits 44 in that case.
+# ---------------------------------------------------------------------------
+KEYCHAIN_SERVICE="com.vaultmtg.daemon"
+KEYCHAIN_ACCOUNT="api-key"
+
+if [[ "${PURGE}" -eq 1 ]]; then
+  echo "Removing keychain entry (${KEYCHAIN_SERVICE} / ${KEYCHAIN_ACCOUNT})..."
+  security delete-generic-password \
+    -s "${KEYCHAIN_SERVICE}" \
+    -a "${KEYCHAIN_ACCOUNT}" 2>/dev/null || true
+  echo "Keychain entry removed (or was already absent)."
+fi
+
 echo ""
 echo "VaultMTG daemon uninstalled."
 echo "Log file (${HOME}/Library/Logs/vaultmtg-daemon.log) was NOT removed."
 echo "Config file (~/.vaultmtg/daemon.json) was NOT removed."
 echo "Remove those manually if desired."
+if [[ "${PURGE}" -eq 0 ]]; then
+  echo "API key retained in keychain for downgrade safety. Run with --purge to remove all data."
+fi

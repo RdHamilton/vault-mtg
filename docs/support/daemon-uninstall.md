@@ -149,6 +149,7 @@ Right-click the Recycle Bin on your Desktop and choose **Empty Recycle Bin**.
 | Config file (`daemon.json`) | Yes — Step 4 | Contains auth token and settings |
 | Locally cached data | Yes — Step 4 | Temporary files only |
 | Startup entry | Yes — Step 3 | Prevents auto-start after reboot |
+| API key in macOS Keychain / Windows Credential Manager | **No (retained by default)** | Retained for downgrade safety — see below |
 | Your VaultMTG account | No | Account and cloud data are not affected |
 | Match history in VaultMTG | No | Stored on VaultMTG servers, not your machine |
 | MTG Arena | No | VaultMTG does not modify Arena |
@@ -156,9 +157,35 @@ Right-click the Recycle Bin on your Desktop and choose **Empty Recycle Bin**.
 
 ---
 
+## Keychain / Credential Retention Behavior
+
+By default, the daemon's API key is **retained** in the macOS Keychain (or Windows Credential Manager) after uninstall. This is intentional: if you reinstall the daemon, it can read the stored key automatically and you will not need to re-authenticate.
+
+If you are on a shared Mac or want a complete removal with no credentials left behind, run the uninstaller with `--purge` (macOS) or `-Purge` (Windows):
+
+**macOS:**
+
+```bash
+bash uninstall.sh --purge
+```
+
+This deletes the Keychain entry (service: `com.vaultmtg.daemon`, account: `api-key`) in addition to the standard uninstall steps. If the entry was already absent the command exits cleanly — it is safe to run more than once.
+
+**Windows:**
+
+```powershell
+.\uninstall.ps1 -Purge
+```
+
+This removes the Windows Credential Manager entry (target: `com.vaultmtg.daemon:api-key`).
+
+---
+
 ## Reinstalling After Uninstall
 
 If you want to reinstall in the future, follow the [installation guide](daemon-installation.md). Your VaultMTG account and match history will still be there — just sign in after reinstalling.
+
+If you ran `--purge` / `-Purge`, you will be prompted to authenticate again on first launch after reinstall.
 
 ---
 

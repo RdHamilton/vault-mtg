@@ -16,6 +16,9 @@
 #   6. Defensive: log file is NOT removed (covers sibling #2144)
 #   7. Defensive: config dir is NOT removed (covers sibling #2145)
 #   8. INSTALL_DIR env override (#2143 plan — single-source-of-truth, ADR-036 I-4)
+#   9. Default (no --purge): keychain entry is retained and warn message is shown (#2567)
+#  10. --purge flag: keychain entry is deleted via security(1) (#2567)
+#  11. --purge flag: security(1) delete is a no-op when entry is already absent (#2567)
 #
 # All tests stub `sudo` and `launchctl` so they never require privileges or
 # touch real launchd state. HOME is pointed at a per-test temp dir so plist
@@ -70,6 +73,28 @@ fi
 exit 0
 EOF
   chmod +x "${stub_dir}/launchctl"
+
+  # security — record invocations so tests can assert the purge path.
+  # By default, `delete-generic-password` exits 0 (entry present + deleted).
+  # Tests that need "entry absent" behavior set SECURITY_NOT_FOUND=1 before
+  # running the script.
+  cat > "${stub_dir}/security" <<'EOF'
+#!/usr/bin/env bash
+echo "stub-security: $*" >&2
+if [[ -n "${BATS_TEST_TMPDIR:-}" ]]; then
+  echo "$*" >> "${BATS_TEST_TMPDIR}/security_calls"
+fi
+if [[ "$1" == "delete-generic-password" ]]; then
+  if [[ "${SECURITY_NOT_FOUND:-0}" == "1" ]]; then
+    # Simulate "entry not found" — security(1) exits 44 when the item does not exist.
+    echo "security: SecKeychainSearchCopyNext: The specified item could not be found in the keychain." >&2
+    exit 44
+  fi
+  exit 0
+fi
+exit 0
+EOF
+  chmod +x "${stub_dir}/security"
 
   echo "${stub_dir}"
 }
@@ -348,4 +373,90 @@ _make_fake_home() {
   # The output must reference the custom path, not /usr/local/bin.
   [[ "${output}" == *"${custom_install_dir}/vaultmtg-daemon"* ]]
   [[ "${output}" != *"/usr/local/bin/vaultmtg-daemon"* ]]
+}
+
+# ---------------------------------------------------------------------------
+# 9. Default (no --purge): keychain entry is retained and warn message shown (#2567)
+# ---------------------------------------------------------------------------
+@test "keychain retention: default uninstall does NOT call security delete-generic-password" {
+  local stub_dir; stub_dir="$(_make_stub_dir)"
+  local install_dir; install_dir="$(mktemp -d)"
+  local fake_home; fake_home="$(_make_fake_home "${install_dir}" \
+    with-binary with-current-plist no-legacy-plist no-log no-config)"
+
+  run env \
+    PATH="${stub_dir}:${PATH}" \
+    HOME="${fake_home}" \
+    INSTALL_DIR="${install_dir}" \
+    BATS_TEST_TMPDIR="${BATS_TEST_TMPDIR}" \
+    bash "${UNINSTALL_SH}"
+
+  echo "output: ${output}"
+  [ "${status}" -eq 0 ]
+
+  # security delete-generic-password must NOT have been called.
+  if [[ -f "${BATS_TEST_TMPDIR}/security_calls" ]]; then
+    run grep "delete-generic-password" "${BATS_TEST_TMPDIR}/security_calls"
+    [ "${status}" -ne 0 ]
+  fi
+
+  # Output must include the keychain-retention warning (#2567 AC).
+  [[ "${output}" == *"API key retained in keychain"* ]]
+  [[ "${output}" == *"--purge"* ]]
+}
+
+# ---------------------------------------------------------------------------
+# 10. --purge flag: keychain entry is deleted via security(1) (#2567)
+# ---------------------------------------------------------------------------
+@test "purge flag: security delete-generic-password is called for com.vaultmtg.daemon/api-key" {
+  local stub_dir; stub_dir="$(_make_stub_dir)"
+  local install_dir; install_dir="$(mktemp -d)"
+  local fake_home; fake_home="$(_make_fake_home "${install_dir}" \
+    with-binary with-current-plist no-legacy-plist no-log no-config)"
+
+  run env \
+    PATH="${stub_dir}:${PATH}" \
+    HOME="${fake_home}" \
+    INSTALL_DIR="${install_dir}" \
+    BATS_TEST_TMPDIR="${BATS_TEST_TMPDIR}" \
+    bash "${UNINSTALL_SH}" --purge
+
+  echo "output: ${output}"
+  [ "${status}" -eq 0 ]
+  # Save script output before second `run` resets ${output}.
+  local script_output="${output}"
+
+  # security delete-generic-password must have been called with the right args.
+  [ -f "${BATS_TEST_TMPDIR}/security_calls" ]
+  run grep "delete-generic-password" "${BATS_TEST_TMPDIR}/security_calls"
+  [ "${status}" -eq 0 ]
+  # Must target the correct service and account names (ADR-022 Phase 2 / keychain.go).
+  [[ "${output}" == *"com.vaultmtg.daemon"* ]]
+  [[ "${output}" == *"api-key"* ]]
+
+  # Script output must confirm keychain removal.
+  [[ "${script_output}" == *"Keychain entry removed"* ]]
+}
+
+# ---------------------------------------------------------------------------
+# 11. --purge flag: security(1) no-op when keychain entry is already absent (#2567)
+# ---------------------------------------------------------------------------
+@test "purge flag: exits 0 cleanly when keychain entry is already absent" {
+  local stub_dir; stub_dir="$(_make_stub_dir)"
+  local install_dir; install_dir="$(mktemp -d)"
+  local fake_home; fake_home="$(_make_fake_home "${install_dir}" \
+    no-binary no-current-plist no-legacy-plist no-log no-config)"
+
+  run env \
+    PATH="${stub_dir}:${PATH}" \
+    HOME="${fake_home}" \
+    INSTALL_DIR="${install_dir}" \
+    BATS_TEST_TMPDIR="${BATS_TEST_TMPDIR}" \
+    SECURITY_NOT_FOUND=1 \
+    bash "${UNINSTALL_SH}" --purge
+
+  echo "output: ${output}"
+  # Must exit 0 — idempotent even when entry is absent.
+  [ "${status}" -eq 0 ]
+  [[ "${output}" == *"VaultMTG daemon uninstalled"* ]]
 }
