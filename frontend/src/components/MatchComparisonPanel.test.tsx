@@ -3,11 +3,16 @@ import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import MatchComparisonPanel from './MatchComparisonPanel';
 import type { ComparisonResult, StatsFilter } from '@/services/api/matches';
 import * as matchesApi from '@/services/api/matches';
+import * as Sentry from '@sentry/react';
 
 vi.mock('@/services/api/matches', () => ({
   compareFormats: vi.fn(),
   compareDecks: vi.fn(),
   compareTimePeriods: vi.fn(),
+}));
+
+vi.mock('@sentry/react', () => ({
+  captureException: vi.fn(),
 }));
 
 const mockCompareFormats = vi.mocked(matchesApi.compareFormats);
@@ -467,6 +472,38 @@ describe('MatchComparisonPanel', () => {
 
         const highlightSpans = container.querySelectorAll('.comparison-insight .highlight');
         expect(highlightSpans.length).toBeGreaterThan(0);
+      });
+    });
+  });
+
+  describe('Sentry error reporting', () => {
+    beforeEach(() => {
+      vi.clearAllMocks();
+    });
+
+    it('calls reportError with compare_matches when compareFormats throws', async () => {
+      const sentryCapture = vi.mocked(Sentry.captureException);
+      mockCompareFormats.mockRejectedValue(new Error('comparison failed'));
+
+      render(
+        <MatchComparisonPanel
+          formats={['Standard', 'Historic']}
+          deckIds={[]}
+        />
+      );
+
+      // Select 2 formats
+      fireEvent.click(screen.getByTestId('format-checkbox-Standard'));
+      fireEvent.click(screen.getByTestId('format-checkbox-Historic'));
+      fireEvent.click(screen.getByTestId('compare-button'));
+
+      await waitFor(() => {
+        const compCall = sentryCapture.mock.calls.find(
+          (c) => (c[1] as { tags?: Record<string, string> })?.tags?.action === 'compare_matches'
+        );
+        expect(compCall).toBeDefined();
+        const callArgs = compCall![1] as { tags?: Record<string, string> };
+        expect(callArgs?.tags).toMatchObject({ component: 'MatchComparisonPanel', action: 'compare_matches' });
       });
     });
   });

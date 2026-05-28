@@ -2,11 +2,16 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, waitFor, fireEvent } from '@testing-library/react';
 import CardPerformancePanel from './CardPerformancePanel';
 import * as decksApi from '@/services/api/decks';
+import * as Sentry from '@sentry/react';
 
 // Mock the API module
 vi.mock('@/services/api/decks', () => ({
   getCardPerformance: vi.fn(),
   getAllPerformanceRecommendations: vi.fn(),
+}));
+
+vi.mock('@sentry/react', () => ({
+  captureException: vi.fn(),
 }));
 
 const mockAnalysis: decksApi.DeckPerformanceAnalysis = {
@@ -310,6 +315,47 @@ describe('CardPerformancePanel', () => {
       expect(screen.getByText('Current Win Rate')).toBeInTheDocument();
       expect(screen.getByText('Projected Win Rate')).toBeInTheDocument();
       expect(screen.getByText('65.0%')).toBeInTheDocument(); // projected win rate
+    });
+  });
+
+  describe('Sentry error reporting', () => {
+    beforeEach(() => {
+      vi.clearAllMocks();
+    });
+
+    it('calls reportError with fetch_card_performance when getCardPerformance throws', async () => {
+      const sentryCapture = vi.mocked(Sentry.captureException);
+      vi.mocked(decksApi.getCardPerformance).mockRejectedValue(new Error('perf error'));
+      vi.mocked(decksApi.getAllPerformanceRecommendations).mockResolvedValue(mockRecommendations);
+
+      render(<CardPerformancePanel deckId="deck-1" deckName="Test Deck" onClose={() => {}} />);
+
+      await waitFor(() => {
+        expect(sentryCapture).toHaveBeenCalled();
+      });
+
+      const perfCall = sentryCapture.mock.calls.find(
+        (c) => (c[1] as { tags?: Record<string, string> })?.tags?.action === 'fetch_card_performance'
+      );
+      expect(perfCall).toBeDefined();
+    });
+
+    it('calls reportError with fetch_recommendations when getAllPerformanceRecommendations throws, and still returns null (swallow preserved)', async () => {
+      const sentryCapture = vi.mocked(Sentry.captureException);
+      vi.mocked(decksApi.getCardPerformance).mockResolvedValue(mockAnalysis);
+      vi.mocked(decksApi.getAllPerformanceRecommendations).mockRejectedValue(new Error('recs error'));
+
+      render(<CardPerformancePanel deckId="deck-1" deckName="Test Deck" onClose={() => {}} />);
+
+      // Card performance data should still load (swallow preserved — recommendations failure doesn't block)
+      await waitFor(() => {
+        expect(screen.getByText('Lightning Bolt')).toBeInTheDocument();
+      });
+
+      const recsCall = sentryCapture.mock.calls.find(
+        (c) => (c[1] as { tags?: Record<string, string> })?.tags?.action === 'fetch_recommendations'
+      );
+      expect(recsCall).toBeDefined();
     });
   });
 });

@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import * as gameplays from '@/services/api/gameplays';
 import type { PlayTimelineEntry, GamePlay, GameStateSnapshot } from '@/services/api/gameplays';
+import { reportError } from '@/lib/sentry';
 import LoadingSpinner from './LoadingSpinner';
 import './GamePlayTimelinePanel.css';
 
@@ -50,6 +51,7 @@ const GamePlayTimelinePanel = ({
         }
       } catch (err) {
         if (!isMountedRef.current) return;
+        reportError(err, { component: 'GamePlayTimelinePanel', action: 'load_game_timeline' });
         setError(err instanceof Error ? err.message : 'Failed to load game timeline');
         console.error('Error loading game timeline:', err);
       } finally {

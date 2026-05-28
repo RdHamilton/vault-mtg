@@ -2,10 +2,15 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, waitFor, fireEvent } from '@testing-library/react';
 import GamePlayTimelinePanel from './GamePlayTimelinePanel';
 import type { PlayTimelineEntry, GamePlay, GameStateSnapshot } from '@/services/api/gameplays';
+import * as Sentry from '@sentry/react';
 
 // Mock the gameplays API module
 vi.mock('@/services/api/gameplays', () => ({
   getMatchTimeline: vi.fn(),
+}));
+
+vi.mock('@sentry/react', () => ({
+  captureException: vi.fn(),
 }));
 
 import * as gameplays from '@/services/api/gameplays';
@@ -407,6 +412,36 @@ describe('GamePlayTimelinePanel', () => {
       resolveTimeline!(mockTimeline);
 
       // No warnings or errors should occur
+    });
+  });
+
+  describe('Sentry error reporting', () => {
+    beforeEach(() => {
+      vi.clearAllMocks();
+    });
+
+    it('calls reportError with load_game_timeline when getMatchTimeline throws', async () => {
+      const sentryCapture = vi.mocked(Sentry.captureException);
+      mockGetMatchTimeline.mockRejectedValue(new Error('timeline error'));
+
+      render(<GamePlayTimelinePanel matchId="match-123" isExpanded={true} onToggle={() => {}} />);
+
+      await waitFor(() => {
+        expect(sentryCapture).toHaveBeenCalledOnce();
+      });
+
+      const callArgs = sentryCapture.mock.calls[0][1] as { tags?: Record<string, string> };
+      expect(callArgs?.tags).toMatchObject({ component: 'GamePlayTimelinePanel', action: 'load_game_timeline' });
+    });
+
+    it('still renders error UI when timeline load fails', async () => {
+      mockGetMatchTimeline.mockRejectedValue(new Error('timeline error'));
+
+      render(<GamePlayTimelinePanel matchId="match-123" isExpanded={true} onToggle={() => {}} />);
+
+      await waitFor(() => {
+        expect(screen.getByText('timeline error')).toBeInTheDocument();
+      });
     });
   });
 });

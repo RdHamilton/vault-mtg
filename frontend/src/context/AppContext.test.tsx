@@ -1,6 +1,11 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { render, screen, act } from '@testing-library/react';
 import { AppProvider, useAppContext } from './AppContext';
+import * as Sentry from '@sentry/react';
+
+vi.mock('@sentry/react', () => ({
+  captureException: vi.fn(),
+}));
 
 // Test component to access context
 function TestConsumer({ onMount }: { onMount?: (context: ReturnType<typeof useAppContext>) => void }) {
@@ -418,6 +423,60 @@ describe('AppContext', () => {
       const resultBreakdown = capturedContext!.filters.resultBreakdown;
       expect(resultBreakdown.dateRange).toBe('7days');
       expect(resultBreakdown.format).toBe('all');
+    });
+  });
+
+  describe('Sentry error reporting', () => {
+    beforeEach(() => {
+      vi.clearAllMocks();
+      localStorage.clear();
+    });
+
+    it('calls reportError with load_filters_from_storage when localStorage.getItem throws', () => {
+      const sentryCapture = vi.mocked(Sentry.captureException);
+      // Put invalid JSON in localStorage so JSON.parse throws
+      localStorage.setItem('vaultmtg-filters', 'INVALID{{{JSON');
+
+      render(
+        <AppProvider>
+          <TestConsumer />
+        </AppProvider>
+      );
+
+      // The component should still render with defaults (error is caught and swallowed)
+      expect(screen.getByTestId('date-range')).toHaveTextContent('7days');
+      expect(sentryCapture).toHaveBeenCalledOnce();
+      const callArgs = sentryCapture.mock.calls[0][1] as { tags?: Record<string, string> };
+      expect(callArgs?.tags).toMatchObject({ component: 'AppContext', action: 'load_filters_from_storage' });
+    });
+
+    it('calls reportError with save_filters_to_storage when localStorage.setItem throws', async () => {
+      const sentryCapture = vi.mocked(Sentry.captureException);
+      // Simulate QuotaExceededError by stubbing localStorage.setItem
+      const originalSetItem = localStorage.setItem.bind(localStorage);
+      vi.spyOn(Storage.prototype, 'setItem').mockImplementationOnce(() => {
+        throw new DOMException('QuotaExceededError', 'QuotaExceededError');
+      });
+
+      render(
+        <AppProvider>
+          <TestUpdater />
+        </AppProvider>
+      );
+
+      // Trigger a filter update to cause localStorage.setItem to be called
+      await act(async () => {
+        screen.getByTestId('update-date-range').click();
+      });
+
+      expect(sentryCapture).toHaveBeenCalled();
+      const saveCall = sentryCapture.mock.calls.find(
+        (c) => (c[1] as { tags?: Record<string, string> })?.tags?.action === 'save_filters_to_storage'
+      );
+      expect(saveCall).toBeDefined();
+
+      // Restore
+      vi.spyOn(Storage.prototype, 'setItem').mockImplementation(originalSetItem);
     });
   });
 });

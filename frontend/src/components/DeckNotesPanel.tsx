@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { notes as notesApi } from '@/services/api';
 import type { DeckNote, NoteCategory } from '@/services/api/notes';
+import { reportError } from '@/lib/sentry';
 import './DeckNotesPanel.css';
 
 interface DeckNotesPanelProps {
@@ -39,6 +40,8 @@ export default function DeckNotesPanel({ deckId, onClose }: DeckNotesPanelProps)
       const data = await notesApi.getDeckNotes(deckId, category);
       setNotesList(data || []);
     } catch (err) {
+      // PII safeguard: do NOT pass newNoteContent or editContent in extra
+      reportError(err, { component: 'DeckNotesPanel', action: 'load_notes' });
       setError(err instanceof Error ? err.message : 'Failed to load notes');
       console.error('Failed to load notes:', err);
     } finally {
@@ -62,6 +65,8 @@ export default function DeckNotesPanel({ deckId, onClose }: DeckNotesPanelProps)
       setNewNoteContent('');
       setIsAddingNote(false);
     } catch (err) {
+      // PII safeguard: do NOT pass newNoteContent or editContent in extra
+      reportError(err, { component: 'DeckNotesPanel', action: 'add_note' });
       setError(err instanceof Error ? err.message : 'Failed to add note');
     }
   };
@@ -79,6 +84,8 @@ export default function DeckNotesPanel({ deckId, onClose }: DeckNotesPanelProps)
       );
       setEditingNoteId(null);
     } catch (err) {
+      // PII safeguard: do NOT pass newNoteContent or editContent in extra
+      reportError(err, { component: 'DeckNotesPanel', action: 'update_note' });
       setError(err instanceof Error ? err.message : 'Failed to update note');
     }
   };
@@ -88,6 +95,8 @@ export default function DeckNotesPanel({ deckId, onClose }: DeckNotesPanelProps)
       await notesApi.deleteDeckNote(deckId, noteId);
       setNotesList((prev) => prev.filter((note) => note.id !== noteId));
     } catch (err) {
+      // PII safeguard: do NOT pass newNoteContent or editContent in extra
+      reportError(err, { component: 'DeckNotesPanel', action: 'delete_note' });
       setError(err instanceof Error ? err.message : 'Failed to delete note');
     }
   };

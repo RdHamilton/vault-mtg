@@ -3,6 +3,11 @@ import { render, screen, waitFor } from '../test/utils/testUtils';
 import userEvent from '@testing-library/user-event';
 import FormatInsights from './FormatInsights';
 import { mockMeta } from '@/test/mocks/apiMock';
+import * as Sentry from '@sentry/react';
+
+vi.mock('@sentry/react', () => ({
+  captureException: vi.fn(),
+}));
 
 describe('FormatInsights', () => {
   beforeEach(() => {
@@ -391,5 +396,109 @@ describe('FormatInsights', () => {
       },
       { timeout: 2000 }
     );
+  });
+
+  describe('Sentry error reporting', () => {
+    beforeEach(() => {
+      vi.clearAllMocks();
+    });
+
+    it('calls reportError with fetch_format_insights on initial load failure', async () => {
+      const user = userEvent.setup();
+      const sentryCapture = vi.mocked(Sentry.captureException);
+      mockMeta.getFormatInsights.mockRejectedValue(new Error('API error'));
+
+      render(<FormatInsights setCode="BLB" draftFormat="PremierDraft" />);
+      await user.click(screen.getByText(/Archetype Performance Dashboard/));
+
+      await waitFor(() => {
+        expect(sentryCapture).toHaveBeenCalledOnce();
+      });
+
+      const callArgs = sentryCapture.mock.calls[0][1] as { tags?: Record<string, string> };
+      expect(callArgs?.tags).toMatchObject({ component: 'FormatInsights', action: 'fetch_format_insights' });
+    });
+
+    it('still renders error UI when fetch_format_insights fails', async () => {
+      const user = userEvent.setup();
+      mockMeta.getFormatInsights.mockRejectedValue(new Error('API error'));
+
+      render(<FormatInsights setCode="BLB" draftFormat="PremierDraft" />);
+      await user.click(screen.getByText(/Archetype Performance Dashboard/));
+
+      await waitFor(() => {
+        expect(screen.getByText('API error')).toBeInTheDocument();
+      });
+    });
+
+    it('calls reportError with refresh_format_insights on refresh failure', async () => {
+      const user = userEvent.setup();
+      const sentryCapture = vi.mocked(Sentry.captureException);
+      // First call succeeds to allow component to expand and show refresh button
+      mockMeta.getFormatInsights
+        .mockResolvedValueOnce({
+          color_rankings: [],
+          format_speed: null,
+          color_analysis: null,
+          top_bombs: [],
+          top_removal: [],
+          top_creatures: [],
+          top_commons: [],
+        })
+        .mockRejectedValue(new Error('refresh failed'));
+
+      render(<FormatInsights setCode="BLB" draftFormat="PremierDraft" />);
+      await user.click(screen.getByText(/Archetype Performance Dashboard/));
+
+      await waitFor(() => {
+        expect(screen.getByText('Refresh')).toBeInTheDocument();
+      });
+
+      await user.click(screen.getByText('Refresh'));
+
+      await waitFor(() => {
+        expect(sentryCapture).toHaveBeenCalled();
+      });
+
+      const refreshCall = sentryCapture.mock.calls.find(
+        (c) => (c[1] as { tags?: Record<string, string> })?.tags?.action === 'refresh_format_insights'
+      );
+      expect(refreshCall).toBeDefined();
+    });
+
+    it('calls reportError with fetch_archetype_cards on archetype load failure', async () => {
+      const user = userEvent.setup();
+      const sentryCapture = vi.mocked(Sentry.captureException);
+      mockMeta.getFormatInsights.mockResolvedValue({
+        color_rankings: [{ color: 'WU', win_rate: 58, popularity: 10, games_played: 1000, rating: 'A' }],
+        format_speed: null,
+        color_analysis: null,
+        top_bombs: [],
+        top_removal: [],
+        top_creatures: [],
+        top_commons: [],
+      });
+      mockMeta.getArchetypeCards.mockRejectedValue(new Error('archetype failed'));
+
+      render(<FormatInsights setCode="BLB" draftFormat="PremierDraft" />);
+      await user.click(screen.getByText(/Archetype Performance Dashboard/));
+
+      await waitFor(() => {
+        expect(screen.getByText('Archetype Rankings')).toBeInTheDocument();
+      });
+
+      const colorRankItems = document.querySelectorAll('.color-rank-item');
+      const wuItem = Array.from(colorRankItems).find((el) => el.textContent?.includes('WU'));
+      if (wuItem) {
+        await user.click(wuItem as HTMLElement);
+      }
+
+      await waitFor(() => {
+        const archetypeCall = sentryCapture.mock.calls.find(
+          (c) => (c[1] as { tags?: Record<string, string> })?.tags?.action === 'fetch_archetype_cards'
+        );
+        expect(archetypeCall).toBeDefined();
+      });
+    });
   });
 });

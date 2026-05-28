@@ -4,6 +4,11 @@ import { render } from '../test/utils/testUtils';
 import DraftStatistics from './DraftStatistics';
 import { mockDrafts } from '@/test/mocks/apiMock';
 import { models } from '@/types/models';
+import * as Sentry from '@sentry/react';
+
+vi.mock('@sentry/react', () => ({
+  captureException: vi.fn(),
+}));
 
 function createMockDeckMetrics(overrides: Partial<models.DeckMetrics> = {}): models.DeckMetrics {
   return new models.DeckMetrics({
@@ -361,6 +366,36 @@ describe('DraftStatistics Component', () => {
         expect(screen.getByText('Creatures vs Spells by CMC')).toBeInTheDocument();
         expect(screen.getByText('Color Distribution')).toBeInTheDocument();
         expect(screen.getByText('Card Types')).toBeInTheDocument();
+      });
+    });
+  });
+
+  describe('Sentry error reporting', () => {
+    beforeEach(() => {
+      vi.clearAllMocks();
+    });
+
+    it('calls reportError with fetch_draft_metrics when getDraftDeckMetrics throws', async () => {
+      const sentryCapture = vi.mocked(Sentry.captureException);
+      mockDrafts.getDraftDeckMetrics.mockRejectedValue(new Error('metrics error'));
+
+      render(<DraftStatistics sessionID="test-session" pickCount={0} />);
+
+      await waitFor(() => {
+        expect(sentryCapture).toHaveBeenCalledOnce();
+      });
+
+      const callArgs = sentryCapture.mock.calls[0][1] as { tags?: Record<string, string> };
+      expect(callArgs?.tags).toMatchObject({ component: 'DraftStatistics', action: 'fetch_draft_metrics' });
+    });
+
+    it('still renders error UI when metrics load fails', async () => {
+      mockDrafts.getDraftDeckMetrics.mockRejectedValue(new Error('metrics error'));
+
+      render(<DraftStatistics sessionID="test-session" pickCount={0} />);
+
+      await waitFor(() => {
+        expect(screen.getByText(/metrics error/)).toBeInTheDocument();
       });
     });
   });

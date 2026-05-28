@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { meta } from '@/services/api';
 import { insights } from '@/types/models';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell } from 'recharts';
+import { reportError } from '@/lib/sentry';
 import './FormatInsights.css';
 
 interface FormatInsightsProps {
@@ -43,6 +44,7 @@ const FormatInsights: React.FC<FormatInsightsProps> = ({
                 const insights = await meta.getFormatInsights(draftFormat, setCode);
                 setData(insights);
             } catch (err) {
+                reportError(err, { component: 'FormatInsights', action: 'fetch_format_insights' });
                 console.error('Error loading format insights:', err);
                 setError(err instanceof Error ? err.message : 'Failed to load insights');
             } finally {
@@ -74,6 +76,7 @@ const FormatInsights: React.FC<FormatInsightsProps> = ({
             const insights = await meta.getFormatInsights(draftFormat, setCode);
             setData(insights);
         } catch (err) {
+            reportError(err, { component: 'FormatInsights', action: 'refresh_format_insights' });
             console.error('Error loading format insights:', err);
             setError(err instanceof Error ? err.message : 'Failed to load insights');
         } finally {
@@ -92,6 +95,7 @@ const FormatInsights: React.FC<FormatInsightsProps> = ({
             setArchetypeCards(cards);
             setSelectedArchetype(colors);
         } catch (err) {
+            reportError(err, { component: 'FormatInsights', action: 'fetch_archetype_cards' });
             console.error('Error loading archetype cards:', err);
             setArchetypeCards(null);
         } finally {

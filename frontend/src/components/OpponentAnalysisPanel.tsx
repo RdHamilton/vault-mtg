@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { opponents } from '@/services/api';
 import type { OpponentAnalysis, ObservedCard, ExpectedCard, StrategicInsight } from '@/services/api';
+import { reportError } from '@/lib/sentry';
 import LoadingSpinner from './LoadingSpinner';
 import './OpponentAnalysisPanel.css';
 
@@ -23,6 +24,7 @@ const OpponentAnalysisPanel = ({ matchId, isExpanded = false, onToggle }: Oppone
       const data = await opponents.getOpponentAnalysis(matchId);
       setAnalysis(data);
     } catch (err) {
+      reportError(err, { component: 'OpponentAnalysisPanel', action: 'load_opponent_analysis' });
       setError(err instanceof Error ? err.message : 'Failed to load opponent analysis');
       console.error('Error loading opponent analysis:', err);
     } finally {
