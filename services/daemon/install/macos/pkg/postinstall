@@ -238,6 +238,60 @@ else
   echo "[postinstall] The daemon is registered with RunAtLoad=true and will start automatically at next login."
 fi
 
+# ---------------------------------------------------------------------------
+# 7. Post-install health check — poll /health until daemon is connected.
+#
+#    Poll GET http://127.0.0.1:9001/health for up to 15 s (5 attempts × 3 s).
+#    A successful response has HTTP 200 and a non-empty "account_id" field,
+#    which confirms the daemon started AND completed authentication.
+#
+#    Exit non-zero if the daemon never comes up so macOS Installer surfaces
+#    a failure dialog instead of falsely reporting "Installation complete".
+#
+#    curl and python3 are both available on macOS 11+.
+# ---------------------------------------------------------------------------
+HEALTH_URL="http://127.0.0.1:9001/health"
+HEALTH_MAX_ATTEMPTS=5
+HEALTH_DELAY=3
+
+poll_daemon_health() {
+  local attempt=1
+  while [[ "${attempt}" -le "${HEALTH_MAX_ATTEMPTS}" ]]; do
+    echo "[postinstall] health check attempt ${attempt}/${HEALTH_MAX_ATTEMPTS}..."
+    local body
+    body=$(curl -fsS --max-time 2 "${HEALTH_URL}" 2>/dev/null) || true
+    if [[ -n "${body}" ]]; then
+      local account_id
+      account_id=$(python3 -c "
+import json, sys
+try:
+    d = json.loads(sys.stdin.read())
+    print(d.get('account_id', ''))
+except Exception:
+    print('')
+" <<< "${body}" 2>/dev/null) || true
+      if [[ -n "${account_id}" ]]; then
+        echo "[postinstall] daemon healthy — account_id present"
+        return 0
+      fi
+    fi
+    if [[ "${attempt}" -lt "${HEALTH_MAX_ATTEMPTS}" ]]; then
+      sleep "${HEALTH_DELAY}"
+    fi
+    attempt=$(( attempt + 1 ))
+  done
+  return 1
+}
+
+if poll_daemon_health; then
+  echo "[postinstall] post-install health check passed"
+else
+  echo "[postinstall] ERROR: daemon did not respond with a healthy account_id within $(( HEALTH_MAX_ATTEMPTS * HEALTH_DELAY ))s." >&2
+  echo "[postinstall] The daemon may have failed to start or has not yet authenticated." >&2
+  echo "[postinstall] Check logs at: ${LOG_FILE}" >&2
+  exit 1
+fi
+
 echo "[postinstall] done"
 echo "  Binary : ${BINARY_PATH}"
 echo "  plist  : ${PLIST_PATH}"
