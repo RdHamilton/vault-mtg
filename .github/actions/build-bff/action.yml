@@ -24,10 +24,31 @@ inputs:
   output-path:
     description: 'Path (relative to repo root) where the compiled binary is written, e.g. bin/mtga-bff.'
     required: true
+  version:
+    description: >
+      Build-time version string injected into main.version via -ldflags.
+      Callers should pass the app tag with the "app/v" prefix stripped
+      (e.g. "0.3.3"). Defaults to "dev" when not provided.
+    required: false
+    default: 'dev'
 
 runs:
   using: composite
   steps:
+    - name: Resolve BFF version from git tag
+      id: resolve-version
+      shell: bash
+      run: |
+        if [ "${{ inputs.version }}" != "dev" ]; then
+          echo "version=${{ inputs.version }}" >> "$GITHUB_OUTPUT"
+        else
+          RAW=$(git describe --tags --match 'app/v*' --abbrev=0 2>/dev/null || true)
+          if [ -n "$RAW" ]; then
+            echo "version=${RAW#app/v}" >> "$GITHUB_OUTPUT"
+          else
+            echo "version=dev" >> "$GITHUB_OUTPUT"
+          fi
+        fi
     - name: Build BFF binary
       shell: bash
       env:
@@ -37,4 +58,4 @@ runs:
         GOARCH: ${{ inputs.goarch }}
       run: |
         cd services/bff
-        go build -o "../../${{ inputs.output-path }}" ./cmd
+        go build -ldflags="-X main.version=${{ steps.resolve-version.outputs.version }}" -o "../../${{ inputs.output-path }}" ./cmd
