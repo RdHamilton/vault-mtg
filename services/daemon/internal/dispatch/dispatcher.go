@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"sync"
 	"sync/atomic"
 	"time"
 
@@ -40,9 +41,13 @@ type Refresher interface {
 type Dispatcher struct {
 	cloudAPIURL string
 	ingestPath  string
-	apiKey      string
-	client      *http.Client
-	refresher   Refresher
+	// apiKey is the current bearer token. Protected by apiKeyMu so that
+	// SetToken (called from the re-auth goroutine in AC-3, #2135) and Token /
+	// doSend (called from concurrent Send goroutines) do not race.
+	apiKeyMu  sync.RWMutex
+	apiKey    string
+	client    *http.Client
+	refresher Refresher
 	// buffer is the optional ring buffer wired via WithBuffer. When non-nil,
 	// SendOrBuffer enqueues pre-marshaled bytes after retry exhaustion rather
 	// than returning an error to the caller.
@@ -114,14 +119,20 @@ func (d *Dispatcher) WithOnBFFSuccess(cb func()) *Dispatcher {
 }
 
 // SetToken updates the bearer token used for subsequent requests.
-// Called after successful re-registration to swap in the new JWT.
+// Safe to call concurrently with Send, SendOrBuffer, and Token.
+// Called after successful re-registration or in-process re-auth (AC-3, #2135).
 func (d *Dispatcher) SetToken(token string) {
+	d.apiKeyMu.Lock()
 	d.apiKey = token
+	d.apiKeyMu.Unlock()
 }
 
-// Token returns the current bearer token. Used when building a transient
-// dispatcher that needs the same credentials as the primary dispatcher.
+// Token returns the current bearer token. Safe to call concurrently.
+// Used when building a transient dispatcher that needs the same credentials
+// as the primary dispatcher.
 func (d *Dispatcher) Token() string {
+	d.apiKeyMu.RLock()
+	defer d.apiKeyMu.RUnlock()
 	return d.apiKey
 }
 
@@ -283,8 +294,8 @@ func (d *Dispatcher) doSend(ctx context.Context, body []byte) (int, error) {
 		return 0, fmt.Errorf("create request: %w", err)
 	}
 	req.Header.Set("Content-Type", "application/json")
-	if d.apiKey != "" {
-		req.Header.Set("Authorization", "Bearer "+d.apiKey)
+	if tok := d.Token(); tok != "" {
+		req.Header.Set("Authorization", "Bearer "+tok)
 	}
 
 	resp, err := d.client.Do(req)

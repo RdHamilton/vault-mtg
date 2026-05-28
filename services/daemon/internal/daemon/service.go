@@ -13,6 +13,7 @@ import (
 	"runtime"
 	"sort"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/RdHamilton/vault-mtg/services/contract"
@@ -78,9 +79,15 @@ type Service struct {
 	// trayHooks connects the tray icon to the daemon event loop.
 	// All fields are optional — nil channels block forever in select (safe no-op).
 	trayHooks TrayHooks
+	// keychainErrMu guards keychainErr so the goroutine spawned by
+	// keychainRefresherAdapter (AC-3, #2135) can write to it safely while the
+	// heartbeat ticker reads it on the main run-loop goroutine.
+	keychainErrMu sync.Mutex
 	// keychainErr is set in New() if keychain.Get() fails at startup.
 	// Cleared on retry success inside retryKeychain. When non-nil, Run()
 	// calls retryKeychain before starting the event loop.
+	// Must be accessed under keychainErrMu after New() returns (the goroutine
+	// spawned by keychainRefresherAdapter writes from a different goroutine).
 	keychainErr error
 	// keychainGet is the function used to read the API key from the OS keychain.
 	// Defaults to keychain.Get; overridden in tests for deterministic behaviour.
@@ -105,6 +112,25 @@ type Service struct {
 	// failedEventTypes accumulates the distinct event-type strings for which
 	// at least one parse error occurred since the last heartbeat reset.
 	failedEventTypes map[string]struct{}
+
+	// reauthFunc is the in-process PKCE re-auth callback set via WithReauthFunc.
+	// When non-nil and a 401 is received in keychain mode, keychainRefresherAdapter
+	// calls this function to trigger an in-process PKCE re-auth flow rather than
+	// immediately surfacing ErrReauthRequired to the tray. The function is
+	// responsible for updating the dispatcher token on success (via SetToken).
+	// Set once before Run() via WithReauthFunc; never mutated after that.
+	reauthFunc func(ctx context.Context) error
+
+	// reauthInProgress is a concurrency gate: only ONE PKCE attempt runs at a
+	// time, even if multiple 401 responses arrive concurrently (e.g. events
+	// processed in rapid succession). The second caller sees reauthInProgress=true
+	// and returns ErrReauthRequired immediately without triggering a second PKCE
+	// flow — the first flow will update the token for both.
+	//
+	// CONCURRENCY PRIMITIVE ONLY. Must NEVER appear in computeAuthStatus,
+	// any localapi.State field, or any /health response — per Ray Q2 (#2135).
+	// Reading or setting this field from application state logic is a bug.
+	reauthInProgress atomic.Bool
 
 	// bffMu guards the two BFF-failure tracking fields below.
 	// recordBFFFailure and clearBFFFailureCounter acquire this lock.
@@ -252,6 +278,37 @@ func (s *Service) WithVersion(v string) {
 	}
 }
 
+// setKeychainErr sets s.keychainErr under the mutex. Use this wherever
+// keychainErr is written after New() returns (i.e., in any goroutine).
+func (s *Service) setKeychainErr(err error) {
+	s.keychainErrMu.Lock()
+	s.keychainErr = err
+	s.keychainErrMu.Unlock()
+}
+
+// getKeychainErr returns s.keychainErr under the mutex. Use this wherever
+// keychainErr is read concurrently with keychainRefresherAdapter goroutines.
+func (s *Service) getKeychainErr() error {
+	s.keychainErrMu.Lock()
+	defer s.keychainErrMu.Unlock()
+	return s.keychainErr
+}
+
+// WithReauthFunc wires an in-process PKCE re-auth callback into the service.
+// Call this after New() and before Run(). When set, a BFF 401 in keychain mode
+// triggers an in-process PKCE re-auth via fn rather than immediately surfacing
+// ErrReauthRequired to the tray. The daemon stays running throughout (Ray Q1).
+//
+// fn must update the dispatcher token on success (via s.dispatcher.SetToken).
+// On failure fn should return a non-nil error; ErrReauthFailed will be set on
+// s.keychainErr so computeAuthStatus routes to "keychain_error" at the next
+// heartbeat tick. The keychain is NOT cleared on failure (Ray Q5).
+//
+// TODO(#2133): integrate attempt cap once the retry-guard ADR is settled.
+func (s *Service) WithReauthFunc(fn func(ctx context.Context) error) {
+	s.reauthFunc = fn
+}
+
 // Refresh implements dispatch.Refresher. It is called by the dispatcher when
 // the BFF returns 401 so a new JWT can be obtained before the next retry.
 func (s *Service) Refresh(ctx context.Context) (string, error) {
@@ -269,12 +326,91 @@ func (s *Service) KeychainReauthRequired(reason string) error {
 	return dispatch.ErrReauthRequired
 }
 
-// keychainRefresherAdapter wraps KeychainReauthRequired as a dispatch.Refresher.
-// The Refresh signature requires (ctx, token) but keychain reauth does not need
-// them — it unconditionally fires the tray hook and returns ErrReauthRequired.
+// keychainRefresherAdapter wraps the keychain 401 recovery as a dispatch.Refresher.
+//
+// When s.reauthFunc is set (wired via WithReauthFunc from cmd/daemon/main.go),
+// it attempts an in-process PKCE re-auth:
+//   - The reauthInProgress gate (atomic.Bool) ensures only one PKCE attempt runs
+//     at a time; a concurrent caller returns ErrReauthRequired immediately so the
+//     first PKCE flow can complete and update the token for both.
+//   - A Sentry breadcrumb is added on trigger and outcome (zero-PII payload).
+//   - On success: s.keychainErr is cleared so the next heartbeat reports "authenticated".
+//   - On failure: s.keychainErr is set to ErrReauthFailed so computeAuthStatus
+//     routes to "keychain_error". The keychain is NOT cleared (Ray Q5).
+//
+// When s.reauthFunc is nil (no WithReauthFunc call), the original behavior is
+// preserved: fire the tray hook and return ErrReauthRequired immediately.
+//
+// TODO(#2133): integrate attempt cap once the retry-guard ADR is settled.
 func (s *Service) keychainRefresherAdapter() dispatch.Refresher {
-	return refresherFunc(func(_ context.Context) (string, error) {
-		return "", s.KeychainReauthRequired("BFF returned 401")
+	return refresherFunc(func(ctx context.Context) (string, error) {
+		if s.reauthFunc == nil {
+			// No in-process reauth wired — fall back to tray-hook only.
+			return "", s.KeychainReauthRequired("BFF returned 401")
+		}
+
+		// Concurrency gate: if a PKCE attempt is already in flight, let it
+		// complete and return ErrReauthRequired so this caller waits for the
+		// next dispatcher retry cycle with the refreshed token.
+		if !s.reauthInProgress.CompareAndSwap(false, true) {
+			log.Printf("[daemon] reauth: PKCE already in progress — skipping duplicate attempt")
+			return "", dispatch.ErrReauthRequired
+		}
+
+		// Run the PKCE flow in a goroutine so the dispatcher's Refresh call
+		// returns promptly. ErrReauthRequired breaks the current retry loop;
+		// the next inbound event will retry with the fresh token if PKCE succeeds.
+		go func() {
+			defer s.reauthInProgress.Store(false)
+
+			sentry.AddBreadcrumb(&sentry.Breadcrumb{
+				Category: "reauth",
+				Message:  "reactive 401 re-auth triggered",
+				Level:    sentry.LevelInfo,
+			})
+
+			log.Printf("[daemon] reauth: starting in-process PKCE re-auth (BFF returned 401)")
+
+			if err := s.reauthFunc(ctx); err != nil {
+				log.Printf("[daemon] reauth: PKCE re-auth failed: %v", err)
+				// Set sentinel so computeAuthStatus routes to "keychain_error"
+				// at the next heartbeat tick. Do NOT clear the keychain (Ray Q5).
+				s.setKeychainErr(ErrReauthFailed)
+
+				sentry.AddBreadcrumb(&sentry.Breadcrumb{
+					Category: "reauth",
+					Message:  "reactive 401 re-auth failed",
+					Level:    sentry.LevelError,
+				})
+				return
+			}
+
+			log.Printf("[daemon] reauth: in-process PKCE re-auth succeeded")
+			// Read the fresh token from keychain and wire it into the dispatcher
+			// so subsequent events use the new API key immediately.
+			// reauthFunc is responsible for storing the new key in the OS keychain
+			// before returning nil; we read it back here to keep token management
+			// in one place (the keychain is the source of truth in keychain mode).
+			if freshKey, kcErr := s.keychainGet(); kcErr == nil && freshKey != "" {
+				s.dispatcher.SetToken(freshKey)
+				if s.ratings != nil {
+					s.ratings.SetToken(freshKey)
+				}
+			} else {
+				log.Printf("[daemon] reauth: warn: could not read fresh key from keychain after reauth: %v", kcErr)
+			}
+			// Clear keychainErr so computeAuthStatus reports "authenticated"
+			// at the next heartbeat tick.
+			s.setKeychainErr(nil)
+
+			sentry.AddBreadcrumb(&sentry.Breadcrumb{
+				Category: "reauth",
+				Message:  "reactive 401 re-auth succeeded",
+				Level:    sentry.LevelInfo,
+			})
+		}()
+
+		return "", dispatch.ErrReauthRequired
 	})
 }
 
@@ -321,6 +457,14 @@ func (s *Service) register(ctx context.Context) (string, error) {
 // error type rather than string comparison.
 var ErrSetupRequired = errors.New("keychain: api key not found — setup required")
 
+// ErrReauthFailed is set on s.keychainErr when a PKCE re-auth callback
+// (WithReauthFunc) returns an error. It signals computeAuthStatus to route to
+// "keychain_error" at the next heartbeat tick, making the failure visible via
+// the /health endpoint. The TryAgain tray channel (#2136) can clear this state.
+//
+// The keychain is NOT cleared on PKCE failure — per Ray's Q5 answer (#2135).
+var ErrReauthFailed = errors.New("reauth: PKCE flow failed")
+
 // keychainMaxRetries is the number of keychain retry attempts before the daemon
 // gives up and exits. Exposed as a var so tests can override it.
 var keychainMaxRetries = 3
@@ -349,8 +493,8 @@ func (s *Service) retryKeychain(ctx context.Context) error {
 	// "setup_required" rather than "keychain_error", then return the sentinel
 	// without touching tray state. Launchd respawn + NeedsFirstRunAuth handles
 	// PKCE re-auth on the next boot.
-	if errors.Is(s.keychainErr, keychain.ErrNotFound) {
-		s.keychainErr = nil
+	if errors.Is(s.getKeychainErr(), keychain.ErrNotFound) {
+		s.setKeychainErr(nil)
 		return ErrSetupRequired
 	}
 
@@ -381,7 +525,7 @@ func (s *Service) retryKeychain(ctx context.Context) error {
 		key, err := s.keychainGet()
 		if err == nil && key != "" {
 			log.Printf("[daemon] keychain retry %d/%d succeeded", attempt, keychainMaxRetries)
-			s.keychainErr = nil
+			s.setKeychainErr(nil)
 			s.dispatcher.SetToken(key)
 			if s.ratings != nil {
 				s.ratings.SetToken(key)
@@ -417,7 +561,7 @@ func (s *Service) Run(ctx context.Context) error {
 	// Phase 0: if the keychain was unavailable at startup, retry before
 	// starting the event loop. Returns an error if all retries fail —
 	// the caller (main.go) will quit cleanly.
-	if s.keychainErr != nil {
+	if s.getKeychainErr() != nil {
 		if err := s.retryKeychain(ctx); err != nil {
 			return fmt.Errorf("keychain unavailable after retries: %w", err)
 		}
@@ -484,7 +628,7 @@ func (s *Service) Run(ctx context.Context) error {
 		AccountID:    s.cfg.AccountID,
 		CloudAPIURL:  s.cfg.CloudAPIURL,
 		BFFReachable: true, // optimistic — flips when a dispatch fails
-		AuthStatus:   computeAuthStatus(s.cfg, s.keychainErr),
+		AuthStatus:   computeAuthStatus(s.cfg, s.getKeychainErr()),
 	})
 	// Hand the localapi server a read view of the live draft state so
 	// /api/v1/drafts/{id}/current-pack, /grade-pick, and /win-probability
@@ -572,7 +716,7 @@ func (s *Service) Run(ctx context.Context) error {
 				BFFReachable:    true,
 				DispatchDropped: s.eventBuffer.Dropped(),
 				LastDispatchAt:  &now,
-				AuthStatus:      computeAuthStatus(s.cfg, s.keychainErr),
+				AuthStatus:      computeAuthStatus(s.cfg, s.getKeychainErr()),
 			})
 
 			// Skip when AccountID is not yet set (daemon not authenticated).

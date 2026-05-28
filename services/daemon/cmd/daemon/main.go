@@ -168,6 +168,19 @@ func main() {
 
 	svc := daemon.New(cfg)
 	svc.WithVersion(Version)
+
+	// Wire the in-process PKCE re-auth callback (AC-3, #2135).
+	// When the daemon receives a 401 from the BFF in keychain mode, it runs this
+	// callback in a goroutine rather than surfacing ErrReauthRequired immediately.
+	// The callback re-runs the full PKCE flow and stores the new API key in the OS
+	// keychain so the daemon can resume dispatching without a restart.
+	//
+	// We capture cfgPath from the outer scope (set via -config flag) so the
+	// callback can persist the refreshed account_id / daemon_id if they change.
+	svc.WithReauthFunc(func(ctx context.Context) error {
+		return runInProcessReauth(ctx, cfg, *cfgPath)
+	})
+
 	log.Printf("[mtga-daemon] starting, cloud_api=%s", cfg.CloudAPIURL)
 
 	// systray.Run must own the main OS thread (macOS Cocoa requirement).
@@ -535,6 +548,82 @@ func revokeFromBFF(ctx context.Context, bffBaseURL, clerkJWT, deviceID string) e
 
 	body, _ := io.ReadAll(resp.Body)
 	return fmt.Errorf("BFF returned %d: %s", resp.StatusCode, string(body))
+}
+
+// runInProcessReauth executes an in-process PKCE re-auth when the daemon
+// receives a 401 from the BFF in keychain mode (AC-3, #2135). Unlike the
+// first-run flow (runPKCEAuth), this function:
+//
+//  1. Runs a PKCE flow to obtain a fresh Clerk JWT.
+//  2. Calls POST /daemon/register with the fresh JWT.
+//  3. Stores the returned API key in the OS keychain (fresh registration only).
+//  4. Writes daemon.json with the updated account_id / device_id.
+//
+// On success the daemon's keychainRefresherAdapter reads the new key from the
+// OS keychain and wires it into the dispatcher via SetToken — no daemon restart
+// required (Ray Q1, #2135).
+//
+// This is NOT a first-run path: cfg must already have CloudAPIURL, AccountID,
+// DaemonID, and Keychain=true. If CLERK_FRONTEND_API or CLERK_OAUTH_CLIENT_ID
+// are not set, the call returns an error and the daemon's keychainErr is set to
+// ErrReauthFailed so the user sees "Keychain unavailable" in the tray.
+func runInProcessReauth(ctx context.Context, cfg *config.Config, cfgPath string) error {
+	clerkFrontendAPI := os.Getenv("CLERK_FRONTEND_API")
+	clientID := os.Getenv("CLERK_OAUTH_CLIENT_ID")
+	if clerkFrontendAPI == "" || clientID == "" {
+		return fmt.Errorf("in-process reauth: CLERK_FRONTEND_API and CLERK_OAUTH_CLIENT_ID must be set")
+	}
+
+	headless := config.EnvWithFallback("VAULTMTG_DAEMON_HEADLESS", "MTGA_DAEMON_HEADLESS") == "1"
+	tokenEndpoint := strings.TrimRight(clerkFrontendAPI, "/") + "/oauth/token"
+
+	pkceCfg := pkce.Config{
+		ClerkFrontendAPI: clerkFrontendAPI,
+		ClientID:         clientID,
+		TokenEndpoint:    tokenEndpoint,
+	}
+
+	log.Printf("[mtga-daemon] in-process reauth: starting PKCE flow")
+	tok, err := pkce.Run(ctx, pkceCfg, headless)
+	if err != nil {
+		return fmt.Errorf("in-process reauth: pkce flow: %w", err)
+	}
+
+	apiKey, accountID, serverDeviceID, alreadyRegistered, err := registerWithBFF(
+		ctx, cfg.CloudAPIURL, tok.AccessToken, cfg.DaemonID, runtime.GOOS, Version,
+	)
+	if err != nil {
+		return fmt.Errorf("in-process reauth: BFF registration: %w", err)
+	}
+
+	if alreadyRegistered {
+		// BFF returned 200 + empty api_key: the device is already registered.
+		// The API key should already be in the keychain (the 401 may have been
+		// a transient BFF hiccup). Nothing to store; daemon.json stays as-is.
+		log.Printf("[mtga-daemon] in-process reauth: device still registered — no new key issued")
+		cfg.AccountID = accountID
+		cfg.DaemonID = serverDeviceID
+		return cfg.SaveTo(cfgPath)
+	}
+
+	// Fresh key issued: store in keychain and update daemon.json.
+	log.Printf("[mtga-daemon] in-process reauth: new API key issued; storing in keychain")
+	if err := keychain.Set(apiKey); err != nil {
+		return fmt.Errorf("in-process reauth: store API key in keychain: %w", err)
+	}
+
+	cfg.Keychain = true
+	cfg.APIKey = ""
+	cfg.AccountID = accountID
+	cfg.DaemonID = serverDeviceID
+
+	if err := cfg.SaveTo(cfgPath); err != nil {
+		return fmt.Errorf("in-process reauth: write daemon.json: %w", err)
+	}
+
+	sentryhook.SetUser(accountID)
+	log.Printf("[mtga-daemon] in-process reauth: complete — new device_id=%s", serverDeviceID)
+	return nil
 }
 
 // fileExists returns true when path exists and is readable.

@@ -15,6 +15,7 @@ import (
 
 	"github.com/RdHamilton/vault-mtg/services/contract"
 	"github.com/RdHamilton/vault-mtg/services/daemon/internal/config"
+	"github.com/RdHamilton/vault-mtg/services/daemon/internal/localapi"
 	"github.com/RdHamilton/vault-mtg/services/daemon/internal/logreader"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -1539,4 +1540,241 @@ func TestComputeAuthStatus(t *testing.T) {
 		assert.Equal(t, "keychain_error", got,
 			"keychainErr must outrank authenticated even when AccountID is set")
 	})
+}
+
+// ---------------------------------------------------------------------------
+// Reactive 401 re-auth tests (#2135, AC-3 only)
+//
+// These tests verify the in-process PKCE re-auth flow wired via WithReauthFunc:
+//   - 401 received → re-auth fires → success → s.keychainErr cleared
+//   - 401 received → re-auth fires → PKCE failure → s.keychainErr set to ErrReauthFailed
+//   - 2 concurrent 401s → only one PKCE attempt fires (reauthInProgress gate)
+//   - No WithReauthFunc set → falls back to existing ErrReauthRequired behavior
+//   - reauthInProgress is NOT exposed via /health or any HTTP response field
+// ---------------------------------------------------------------------------
+
+// TestReactiveReauth_SuccessClears keychainErr verifies that when a PKCE re-auth
+// callback succeeds, s.keychainErr is cleared and the dispatcher gets a fresh token.
+func TestReactiveReauth_SuccessClearsKeychainErr(t *testing.T) {
+	var reauthCalls atomic.Int32
+
+	// BFF: first request returns 401; subsequent requests succeed.
+	var reqCount atomic.Int32
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		n := reqCount.Add(1)
+		if n == 1 {
+			w.WriteHeader(http.StatusUnauthorized)
+			return
+		}
+		w.WriteHeader(http.StatusAccepted)
+	}))
+	defer srv.Close()
+
+	cfg := &config.Config{
+		CloudAPIURL: srv.URL,
+		IngestPath:  "/v1/ingest/events",
+		AccountID:   "acc-reauth-success",
+		Keychain:    true,
+	}
+	svc := New(cfg)
+
+	// Pre-set a keychainErr to simulate the daemon having a stale key loaded.
+	svc.keychainErr = fmt.Errorf("stale token")
+
+	// Fake keychain: return a fresh token so keychainRefresherAdapter can
+	// wire it into the dispatcher after the reauthFunc returns nil.
+	svc.keychainGet = func() (string, error) {
+		return "fresh-token", nil
+	}
+
+	// Wire a reauth func that succeeds (simulates a completed PKCE flow that
+	// stored a new key in the OS keychain via keychain.Set).
+	svc.WithReauthFunc(func(ctx context.Context) error {
+		reauthCalls.Add(1)
+		return nil
+	})
+
+	// Wire a tray hook so SetReauthRequired doesn't nil-deref during the call.
+	var reauthHookCalls atomic.Int32
+	svc.trayHooks = TrayHooks{
+		SetReauthRequired: func(string) {
+			reauthHookCalls.Add(1)
+		},
+	}
+
+	entry := &logreader.LogEntry{
+		IsJSON: true,
+		JSON:   map[string]interface{}{"draftPack": []interface{}{"card1"}},
+	}
+
+	err := svc.handleEntry(context.Background(), entry)
+	assert.NoError(t, err, "handleEntry must return nil when reauth succeeds")
+
+	// Allow async goroutines from handleEntry to settle.
+	time.Sleep(50 * time.Millisecond)
+
+	assert.EqualValues(t, 1, reauthCalls.Load(),
+		"reauthFunc must be called exactly once on 401")
+	assert.Nil(t, svc.getKeychainErr(),
+		"keychainErr must be cleared on successful reauth")
+}
+
+// TestReactiveReauth_FailureSetsKeychainErr verifies that when PKCE re-auth
+// fails, s.keychainErr is set to ErrReauthFailed (so computeAuthStatus routes
+// to keychain_error at the next heartbeat). The keychain is NOT cleared.
+func TestReactiveReauth_FailureSetsKeychainErr(t *testing.T) {
+	var reauthCalls atomic.Int32
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusUnauthorized)
+	}))
+	defer srv.Close()
+
+	cfg := &config.Config{
+		CloudAPIURL: srv.URL,
+		IngestPath:  "/v1/ingest/events",
+		AccountID:   "acc-reauth-fail",
+		Keychain:    true,
+	}
+	svc := New(cfg)
+
+	svc.WithReauthFunc(func(ctx context.Context) error {
+		reauthCalls.Add(1)
+		return fmt.Errorf("pkce: user cancelled")
+	})
+
+	svc.trayHooks = TrayHooks{
+		SetReauthRequired: func(string) {},
+	}
+
+	entry := &logreader.LogEntry{
+		IsJSON: true,
+		JSON:   map[string]interface{}{"draftPack": []interface{}{"card1"}},
+	}
+
+	err := svc.handleEntry(context.Background(), entry)
+	assert.NoError(t, err, "handleEntry must return nil even when reauth fails")
+
+	// Allow async reauthFunc goroutine to complete.
+	time.Sleep(100 * time.Millisecond)
+
+	assert.EqualValues(t, 1, reauthCalls.Load(),
+		"reauthFunc must be called exactly once on 401")
+	assert.ErrorIs(t, svc.getKeychainErr(), ErrReauthFailed,
+		"keychainErr must be ErrReauthFailed after PKCE failure")
+}
+
+// TestReactiveReauth_ConcurrentGate verifies that when two 401 responses arrive
+// concurrently, only one PKCE attempt fires (reauthInProgress gates the second).
+func TestReactiveReauth_ConcurrentGate(t *testing.T) {
+	var reauthCalls atomic.Int32
+
+	// BFF always returns 401.
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusUnauthorized)
+	}))
+	defer srv.Close()
+
+	cfg := &config.Config{
+		CloudAPIURL: srv.URL,
+		IngestPath:  "/v1/ingest/events",
+		AccountID:   "acc-concurrent",
+		Keychain:    true,
+	}
+	svc := New(cfg)
+
+	// reauth func takes a moment to simulate real PKCE latency.
+	svc.WithReauthFunc(func(ctx context.Context) error {
+		reauthCalls.Add(1)
+		time.Sleep(30 * time.Millisecond)
+		return nil
+	})
+
+	svc.trayHooks = TrayHooks{
+		SetReauthRequired: func(string) {},
+	}
+
+	entry := &logreader.LogEntry{
+		IsJSON: true,
+		JSON:   map[string]interface{}{"draftPack": []interface{}{"card1"}},
+	}
+
+	// Fire two concurrent handleEntry calls so both hit 401 nearly simultaneously.
+	var wg sync.WaitGroup
+	wg.Add(2)
+	go func() {
+		defer wg.Done()
+		_ = svc.handleEntry(context.Background(), entry)
+	}()
+	go func() {
+		defer wg.Done()
+		_ = svc.handleEntry(context.Background(), entry)
+	}()
+	wg.Wait()
+
+	// Allow the async reauth goroutine to finish.
+	time.Sleep(150 * time.Millisecond)
+
+	assert.EqualValues(t, 1, reauthCalls.Load(),
+		"reauthFunc must fire exactly once even when two concurrent 401s arrive")
+}
+
+// TestReactiveReauth_NoFuncFallsBack verifies that when no WithReauthFunc is set,
+// the behavior falls back to the existing ErrReauthRequired path (tray hook fires,
+// ErrReauthRequired suppressed, no PKCE attempt).
+func TestReactiveReauth_NoFuncFallsBack(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusUnauthorized)
+	}))
+	defer srv.Close()
+
+	cfg := &config.Config{
+		CloudAPIURL: srv.URL,
+		IngestPath:  "/v1/ingest/events",
+		AccountID:   "acc-no-reauth-func",
+		Keychain:    true,
+	}
+	svc := New(cfg)
+	// No WithReauthFunc call — default behavior.
+
+	var reauthHookCalls atomic.Int32
+	svc.trayHooks = TrayHooks{
+		SetReauthRequired: func(string) {
+			reauthHookCalls.Add(1)
+		},
+	}
+
+	entry := &logreader.LogEntry{
+		IsJSON: true,
+		JSON:   map[string]interface{}{"draftPack": []interface{}{"card1"}},
+	}
+
+	err := svc.handleEntry(context.Background(), entry)
+	assert.NoError(t, err,
+		"handleEntry must return nil (ErrReauthRequired suppressed) with no reauthFunc")
+	assert.EqualValues(t, 1, reauthHookCalls.Load(),
+		"SetReauthRequired tray hook must fire when no WithReauthFunc is set")
+}
+
+// TestReactiveReauth_NotExposedViaHealth verifies that reauthInProgress is not
+// exposed in any /health response field. The localapi.State struct — which is
+// what the /health handler serialises — must not contain a reauth_in_progress
+// field.
+func TestReactiveReauth_NotExposedViaHealth(t *testing.T) {
+	// localapi.State is the struct the /health handler reads from.  We serialise
+	// it and assert that the JSON output does not contain "reauth_in_progress".
+	// This is a structural guard: if someone adds reauthInProgress to State the
+	// test will catch it before it reaches a review.
+	st := localapi.State{
+		Version:      "1.0.0",
+		SessionID:    "sess-1",
+		AccountID:    "acc-1",
+		CloudAPIURL:  "http://localhost",
+		BFFReachable: true,
+		AuthStatus:   "authenticated",
+	}
+	data, err := json.Marshal(st)
+	assert.NoError(t, err)
+	assert.NotContains(t, string(data), "reauth_in_progress",
+		"reauthInProgress must never appear in the /health JSON response")
 }
