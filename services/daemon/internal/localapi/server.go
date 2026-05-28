@@ -30,20 +30,20 @@ const DefaultPort = 9001
 // computeAuthStatus in services/daemon/internal/daemon and set at both
 // localapi.New construction time and on each heartbeat SetState call.
 //
-// Three values are defined for v0.3.3:
+// Four values are defined:
 //   - AuthStatusAuthenticated  — keychain mode, account linked, no keychain error.
 //   - AuthStatusSetupRequired  — account not yet linked (AccountID empty) or
 //     keychain mode not enabled.
 //   - AuthStatusKeychainError  — keychain read failed at startup or after retries.
-//
-// NOTE: auth_paused is deferred to v0.4.0 per Ray plan-review on #2141. It
-// requires a new mu-guarded reauthRequired bool field on daemon.Service (Option A)
-// and a frontend consumer (Frank's downstream ticket). Do not define a constant
-// for a deferred value — it invites premature use.
+//   - AuthStatusAuthPaused     — PKCE attempt cap reached; daemon will not open
+//     browser again until the user explicitly clicks "Retry Setup". This status
+//     OUTRANKS AuthStatusKeychainError in the computeAuthStatus routing chain
+//     (#2133 consent loop guard).
 const (
 	AuthStatusAuthenticated = "authenticated"
 	AuthStatusSetupRequired = "setup_required"
 	AuthStatusKeychainError = "keychain_error"
+	AuthStatusAuthPaused    = "auth_paused"
 )
 
 // shutdownTimeout caps how long the local API server takes to drain on stop.
