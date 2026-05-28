@@ -311,6 +311,16 @@ func (s *Service) register(ctx context.Context) (string, error) {
 	return resp.Token, nil
 }
 
+// ErrSetupRequired is returned by retryKeychain when s.keychainErr is
+// keychain.ErrNotFound. ErrNotFound is permanent (the api key was never stored
+// or the keychain was wiped), so retries are pointless. The caller (Run /
+// main.go) must exit immediately; launchd respawn + NeedsFirstRunAuth handles
+// the PKCE re-auth on the next boot.
+//
+// Distinct from the generic "retries exhausted" error so callers can branch on
+// error type rather than string comparison.
+var ErrSetupRequired = errors.New("keychain: api key not found — setup required")
+
 // keychainMaxRetries is the number of keychain retry attempts before the daemon
 // gives up and exits. Exposed as a var so tests can override it.
 var keychainMaxRetries = 3
@@ -318,12 +328,33 @@ var keychainMaxRetries = 3
 // keychainRetryBase is the base backoff duration for keychain retries. The
 // actual wait for attempt N is keychainRetryBase * N (2s, 4s, 8s). Exposed as
 // a var so tests can use shorter durations.
+//
+// NOTE: The ticket AC specified 500ms/1s/2s backoff. Per Ray's plan-review
+// (#2136#issuecomment-4566034474), the existing 2s/4s/8s linear schedule is
+// correct — the AC was written before retryKeychain existed; code wins.
 var keychainRetryBase = 2 * time.Second
 
-// retryKeychain retries keychain.Get with exponential backoff, surfacing the
-// error state in the tray. Returns nil on success, an error after all retries
-// are exhausted or the context is cancelled.
+// retryKeychain retries keychain.Get with linear backoff (2s/4s/8s), surfacing
+// the error state in the tray. Returns nil on success, ErrSetupRequired if the
+// error is permanent (ErrNotFound), or a generic error after all retries are
+// exhausted or the context is cancelled.
+//
+// REV-1: ErrNotFound short-circuit is the FIRST statement — before any tray
+// state change. This ensures computeAuthStatus returns "setup_required" (not
+// "keychain_error") on the next heartbeat tick.
 func (s *Service) retryKeychain(ctx context.Context) error {
+	// ── REV-1: ErrNotFound short-circuit ──────────────────────────────────────
+	// ErrNotFound is permanent (key never stored / keychain wiped). Retrying
+	// would loop forever. Clear keychainErr so computeAuthStatus routes to
+	// "setup_required" rather than "keychain_error", then return the sentinel
+	// without touching tray state. Launchd respawn + NeedsFirstRunAuth handles
+	// PKCE re-auth on the next boot.
+	if errors.Is(s.keychainErr, keychain.ErrNotFound) {
+		s.keychainErr = nil
+		return ErrSetupRequired
+	}
+
+	// ── Transient error: surface tray state and retry ─────────────────────────
 	if s.trayHooks.SetKeychainError != nil {
 		s.trayHooks.SetKeychainError(true)
 	}
@@ -365,11 +396,7 @@ func (s *Service) retryKeychain(ctx context.Context) error {
 	// via the BFF emission boundary — the event would have no api_key and never
 	// reach the BFF. The correct signal for the pre-auth case is heartbeat-absence.
 	if s.cfg.AccountID != "" {
-		errorType := "os_error"
-		if errors.Is(s.keychainErr, keychain.ErrNotFound) {
-			errorType = "not_found"
-		}
-		go s.dispatchKeychainError(ctx, errorType)
+		go s.dispatchKeychainError(ctx, "os_error")
 	}
 
 	return fmt.Errorf("keychain unavailable after %d retries", keychainMaxRetries)

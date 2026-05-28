@@ -197,13 +197,25 @@ func main() {
 		app.Quit()
 	}()
 
+	// headless is true when the daemon is running without a display / tray
+	// (e.g. CI, server, or a user-invoked terminal session with VAULTMTG_DAEMON_HEADLESS=1).
+	// Evaluated once here so the Run error handler can branch without re-reading the env.
+	headless := config.EnvWithFallback("VAULTMTG_DAEMON_HEADLESS", "MTGA_DAEMON_HEADLESS") == "1"
+
 	app.Run(func() {
 		app.SetStatus(tray.StatusConnected)
 		go func() {
 			if err := svc.Run(ctx); err != nil {
+				if headless {
+					// REV-2: headless path — log the canonical FATAL line and exit
+					// non-zero so the supervisor (launchd / systemd) respawns.
+					// NeedsFirstRunAuth will trigger PKCE on the next boot.
+					log.Println("[daemon] FATAL: keychain unavailable after retries — exiting")
+					os.Exit(1)
+				}
 				log.Printf("[mtga-daemon] fatal: %v", err)
+				app.Quit()
 			}
-			app.Quit()
 		}()
 	})
 }

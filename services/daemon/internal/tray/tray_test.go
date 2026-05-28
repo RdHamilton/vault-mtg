@@ -20,7 +20,7 @@ func TestStatusLabel(t *testing.T) {
 		{StatusConnected, "● Connected"},
 		{StatusWaitingForArena, "◌ Waiting for Arena..."},
 		{StatusError, "✕ Error — check logs"},
-		{StatusKeychainError, "⚠ Keychain unavailable — click Try Again"},
+		{StatusKeychainError, "Keychain unavailable — unlock to continue"},
 	}
 	for _, tc := range cases {
 		assert.Equal(t, tc.want, tc.s.label(), "Status(%d)", tc.s)

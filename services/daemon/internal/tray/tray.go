@@ -38,7 +38,7 @@ func (s Status) label() string {
 	case StatusError:
 		return "✕ Error — check logs"
 	case StatusKeychainError:
-		return "⚠ Keychain unavailable — click Try Again"
+		return "Keychain unavailable — unlock to continue"
 	default:
 		return "◌ Starting..."
 	}

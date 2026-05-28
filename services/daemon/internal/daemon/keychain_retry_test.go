@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/RdHamilton/vault-mtg/services/daemon/internal/config"
+	"github.com/RdHamilton/vault-mtg/services/daemon/internal/keychain"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -156,4 +157,101 @@ func TestRetryKeychain_ContextCancelledExitsEarly(t *testing.T) {
 	require.Error(t, err)
 	assert.ErrorIs(t, err, context.Canceled)
 	assert.Equal(t, int32(0), calls.Load(), "no keychainGet call expected when context cancelled before backoff")
+}
+
+// ---------------------------------------------------------------------------
+// #2136: Keychain unavailable handling — graceful degradation
+// ---------------------------------------------------------------------------
+
+// TestRetryKeychain_ErrNotFound_ShortCircuits verifies that when s.keychainErr
+// is keychain.ErrNotFound, retryKeychain:
+//   - Returns ErrSetupRequired immediately (no loop entered)
+//   - Does NOT call SetKeychainError (tray must not enter error state)
+//   - Clears s.keychainErr (so computeAuthStatus → "setup_required", not "keychain_error")
+//   - Makes zero calls to the keychainGet function
+func TestRetryKeychain_ErrNotFound_ShortCircuits(t *testing.T) {
+	origBase := keychainRetryBase
+	keychainRetryBase = 10 * time.Second // would hang if loop is entered
+	t.Cleanup(func() { keychainRetryBase = origBase })
+
+	var getCalls atomic.Int32
+	svc := keychainTestService(func() (string, error) {
+		getCalls.Add(1)
+		return "", errors.New("unexpected keychainGet call — should have short-circuited")
+	})
+
+	// Override the pre-set error with the permanent ErrNotFound sentinel.
+	svc.keychainErr = keychain.ErrNotFound
+
+	keychainErrorSet := false
+	svc.trayHooks = TrayHooks{
+		SetKeychainError: func(show bool) {
+			if show {
+				keychainErrorSet = true
+			}
+		},
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 500*time.Millisecond)
+	defer cancel()
+
+	err := svc.retryKeychain(ctx)
+
+	require.ErrorIs(t, err, ErrSetupRequired, "must return ErrSetupRequired for ErrNotFound")
+	assert.Equal(t, int32(0), getCalls.Load(), "keychainGet must not be called for ErrNotFound")
+	assert.False(t, keychainErrorSet, "SetKeychainError(true) must not be called for ErrNotFound")
+	assert.Nil(t, svc.keychainErr, "keychainErr must be cleared so computeAuthStatus → setup_required")
+}
+
+// TestRetryKeychain_TransientError_FullRetries verifies that a transient
+// (non-ErrNotFound) keychain error exhausts all keychainMaxRetries attempts.
+// Uses a shortened keychainRetryBase to keep the test fast.
+func TestRetryKeychain_TransientError_FullRetries(t *testing.T) {
+	origBase := keychainRetryBase
+	origMax := keychainMaxRetries
+	keychainRetryBase = 5 * time.Millisecond
+	keychainMaxRetries = 3
+	t.Cleanup(func() {
+		keychainRetryBase = origBase
+		keychainMaxRetries = origMax
+	})
+
+	var getCalls atomic.Int32
+	svc := keychainTestService(func() (string, error) {
+		getCalls.Add(1)
+		return "", errors.New("keychain transient OS error")
+	})
+
+	ctx := context.Background()
+	err := svc.retryKeychain(ctx)
+
+	require.Error(t, err, "expected error after exhausting all retries")
+	assert.NotErrorIs(t, err, ErrSetupRequired, "transient error must not return ErrSetupRequired")
+	assert.Equal(t, int32(keychainMaxRetries), getCalls.Load(),
+		"keychainGet must be called exactly keychainMaxRetries times for transient errors")
+}
+
+// TestRetryKeychain_TransientThenSuccess_ClearsErr verifies that when the
+// keychain fails transiently then succeeds, s.keychainErr is cleared to nil
+// on the successful attempt.
+func TestRetryKeychain_TransientThenSuccess_ClearsErr(t *testing.T) {
+	origBase := keychainRetryBase
+	keychainRetryBase = 5 * time.Millisecond
+	t.Cleanup(func() { keychainRetryBase = origBase })
+
+	var getCalls atomic.Int32
+	svc := keychainTestService(func() (string, error) {
+		n := getCalls.Add(1)
+		if n < 3 {
+			return "", errors.New("transient lock")
+		}
+		return "my-api-key", nil
+	})
+
+	ctx := context.Background()
+	err := svc.retryKeychain(ctx)
+
+	require.NoError(t, err, "expected success on third attempt")
+	assert.Nil(t, svc.keychainErr, "keychainErr must be cleared after successful retry")
+	assert.Equal(t, int32(3), getCalls.Load(), "expected 3 keychainGet calls (fail, fail, succeed)")
 }
