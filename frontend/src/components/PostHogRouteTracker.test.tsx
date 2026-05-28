@@ -307,6 +307,17 @@ describe('PostHogRouteTracker — funnel_first_feature_used', () => {
     expect(calls).toHaveLength(1);
     expect(calls[0][0].properties.feature).toBe('quests');
   });
+
+  it('does NOT fire funnel_first_feature_used for bare /charts (intentionally excluded — no registered route)', async () => {
+    // App.tsx registers no route at exactly `/charts`; Layout.tsx always navigates
+    // to `/charts/win-rate-trend`. Bare /charts is unreachable via any UI path.
+    const { navigate } = renderTracker('/home');
+    await navigate('/charts');
+    const calls = mockTrackEvent.mock.calls.filter(
+      ([e]: [{ name: string }]) => e.name === 'funnel_first_feature_used',
+    );
+    expect(calls).toHaveLength(0);
+  });
 });
 
 // ── setCurrentPage / getCurrentPage ──────────────────────────────────────────

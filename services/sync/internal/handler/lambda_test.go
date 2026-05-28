@@ -34,7 +34,7 @@ func (f *stubFetcher) FetchCardRatings(_ context.Context, _, _ string) ([]sevent
 	return f.cards, f.err
 }
 
-func (f *stubFetcher) FetchColorRatings(_ context.Context, _, _ string) ([]seventeenlands.ColorRating, error) {
+func (f *stubFetcher) FetchColorRatings(_ context.Context, _, _, _, _ string) ([]seventeenlands.ColorRating, error) {
 	f.colorsCalled++
 	return f.colors, f.colorsErr
 }
@@ -273,7 +273,7 @@ func TestHandle_ColorRatingsFetchedAndStored(t *testing.T) {
 	fetcher := &stubFetcher{
 		cards: []seventeenlands.CardRating{{Name: "Lightning Bolt", ALSA: 1.5}},
 		colors: []seventeenlands.ColorRating{
-			{ColorCombination: "WU", WinRate: 0.58, GamesPlayed: 5000},
+			{ShortName: "WU", ColorName: "Azorius", Wins: 2900, Games: 5000, IsSummary: false},
 		},
 	}
 	store := &stubStore{}
@@ -292,8 +292,65 @@ func TestHandle_ColorRatingsFetchedAndStored(t *testing.T) {
 	for _, cr := range store.upsertedColorRatings {
 		assert.Equal(t, "FDN", cr.setCode)
 		require.Len(t, cr.ratings, 1)
-		assert.Equal(t, "WU", cr.ratings[0].ColorCombination)
+		assert.Equal(t, "WU", cr.ratings[0].ShortName)
 	}
+}
+
+// TestHandle_ColorRatings_SummaryRowsFiltered verifies that is_summary=true rows are
+// filtered out before UpsertColorRatings is called.
+func TestHandle_ColorRatings_SummaryRowsFiltered(t *testing.T) {
+	fetcher := &stubFetcher{
+		cards: []seventeenlands.CardRating{{Name: "Plains", ALSA: 9.0}},
+		colors: []seventeenlands.ColorRating{
+			// Summary row — must be filtered out.
+			{ShortName: "", ColorName: "All Colors", Wins: 50000, Games: 90000, IsSummary: true},
+			// Real rows — must be persisted.
+			{ShortName: "W", ColorName: "Mono-White", Wins: 1200, Games: 2000, IsSummary: false},
+			{ShortName: "WU", ColorName: "Azorius", Wins: 2900, Games: 5000, IsSummary: false},
+		},
+	}
+	store := &stubStore{}
+
+	h := handler.NewWithFormats(fetcher, store, []string{"FDN"}, []string{"PremierDraft"})
+	err := h.Handle(context.Background(), nil)
+
+	require.NoError(t, err)
+	require.Len(t, store.upsertedColorRatings, 1)
+	// Only the 2 non-summary rows should be stored.
+	assert.Len(t, store.upsertedColorRatings[0].ratings, 2,
+		"summary row must be filtered before upsert")
+	for _, r := range store.upsertedColorRatings[0].ratings {
+		assert.False(t, r.IsSummary, "no summary rows should reach the store")
+	}
+}
+
+// TestHandle_ColorRatings_WinRateComputedCorrectly verifies that the win rate stored
+// is computed as Wins/Games, not taken from a non-existent API field.
+func TestHandle_ColorRatings_WinRateComputedCorrectly(t *testing.T) {
+	fetcher := &stubFetcher{
+		cards: []seventeenlands.CardRating{{Name: "Island", ALSA: 8.0}},
+		colors: []seventeenlands.ColorRating{
+			{ShortName: "WU", Wins: 58, Games: 100, IsSummary: false},
+		},
+	}
+	store := &stubStore{}
+
+	h := handler.NewWithFormats(fetcher, store, []string{"FDN"}, []string{"PremierDraft"})
+	err := h.Handle(context.Background(), nil)
+
+	require.NoError(t, err)
+	require.Len(t, store.upsertedColorRatings, 1)
+	require.Len(t, store.upsertedColorRatings[0].ratings, 1)
+	r := store.upsertedColorRatings[0].ratings[0]
+	assert.InDelta(t, 0.58, r.WinRate(), 0.001,
+		"win rate must be computed as Wins/Games")
+}
+
+// TestHandle_ColorRatings_ZeroGamesHandled verifies that a ColorRating with
+// Games == 0 does not panic and returns WinRate() == 0.0.
+func TestHandle_ColorRatings_ZeroGamesHandled(t *testing.T) {
+	cr := seventeenlands.ColorRating{ShortName: "W", Wins: 0, Games: 0, IsSummary: false}
+	assert.InDelta(t, 0.0, cr.WinRate(), 0.0001, "WinRate() must return 0 when Games == 0")
 }
 
 // TestHandle_ColorRatingsEmptySkipsUpsert verifies that when the fetcher returns
@@ -771,7 +828,7 @@ func (f *formatTrackingFetcher) FetchCardRatings(_ context.Context, setCode, for
 	return f.cards, nil
 }
 
-func (f *formatTrackingFetcher) FetchColorRatings(_ context.Context, _, _ string) ([]seventeenlands.ColorRating, error) {
+func (f *formatTrackingFetcher) FetchColorRatings(_ context.Context, _, _, _, _ string) ([]seventeenlands.ColorRating, error) {
 	return nil, nil
 }
 
@@ -793,7 +850,7 @@ func (c *countingFetcher) FetchCardRatings(_ context.Context, setCode, _ string)
 	return nil, nil
 }
 
-func (c *countingFetcher) FetchColorRatings(_ context.Context, _, _ string) ([]seventeenlands.ColorRating, error) {
+func (c *countingFetcher) FetchColorRatings(_ context.Context, _, _, _, _ string) ([]seventeenlands.ColorRating, error) {
 	return nil, nil
 }
 
@@ -812,7 +869,7 @@ func (f *retryFetcher) FetchCardRatings(_ context.Context, _, _ string) ([]seven
 	return f.cards, nil
 }
 
-func (f *retryFetcher) FetchColorRatings(_ context.Context, _, _ string) ([]seventeenlands.ColorRating, error) {
+func (f *retryFetcher) FetchColorRatings(_ context.Context, _, _, _, _ string) ([]seventeenlands.ColorRating, error) {
 	return nil, nil
 }
 
@@ -832,7 +889,7 @@ func (f *toggleFetcher) FetchCardRatings(_ context.Context, _, _ string) ([]seve
 	return nil, nil
 }
 
-func (f *toggleFetcher) FetchColorRatings(_ context.Context, _, _ string) ([]seventeenlands.ColorRating, error) {
+func (f *toggleFetcher) FetchColorRatings(_ context.Context, _, _, _, _ string) ([]seventeenlands.ColorRating, error) {
 	return nil, nil
 }
 

@@ -178,7 +178,7 @@ func (s *PostgresStore) UpsertColorRatings(ctx context.Context, setCode, draftFo
 	`
 
 	for _, r := range ratings {
-		if r.ColorCombination == "" {
+		if r.ShortName == "" {
 			continue
 		}
 
@@ -186,11 +186,11 @@ func (s *PostgresStore) UpsertColorRatings(ctx context.Context, setCode, draftFo
 			ctx, insertQuery,
 			setCode,
 			draftFormat,
-			r.ColorCombination,
-			r.WinRate,
-			r.GamesPlayed,
+			r.ShortName,
+			r.WinRate(),
+			r.Games,
 		); err != nil {
-			return fmt.Errorf("insert color rating %q: %w", r.ColorCombination, err)
+			return fmt.Errorf("insert color rating %q: %w", r.ShortName, err)
 		}
 	}
 
