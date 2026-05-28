@@ -21,6 +21,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/RdHamilton/vault-mtg/services/bff/internal/observability"
 	"github.com/clerk/clerk-sdk-go/v2"
 )
 
@@ -89,6 +90,8 @@ func fetchUserInfo(ctx context.Context, client *http.Client, url, token string) 
 		return "", fmt.Errorf("read userinfo body: %w", err)
 	}
 	if resp.StatusCode != http.StatusOK {
+		outErr := fmt.Errorf("outbound clerk-oauth: status %d", resp.StatusCode)
+		observability.ReportError(ctx, outErr, map[string]string{"component": "outbound", "target": "clerk-oauth"})
 		return "", fmt.Errorf("userinfo status %d: %s", resp.StatusCode, string(body))
 	}
 

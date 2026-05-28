@@ -30,6 +30,13 @@ import (
 	_ "github.com/jackc/pgx/v5/stdlib"
 )
 
+// version is injected at build time via -ldflags "-X main.version=<tag>" by
+// .github/actions/build-bff/action.yml.  It correlates Sentry events to the
+// deployed build tag.  When empty or "dev", cfg.GitCommit is used as the
+// release identifier instead (backward-compat for pre-PR-#2680 deploys and
+// local development).
+var version string
+
 var port = flag.Int("port", 8080, "HTTP server port")
 
 func runMigrationsWithRetry(dsn string, timeout time.Duration) error {
@@ -108,10 +115,14 @@ func main() {
 			TracesSampleRate: 0.1,
 		}
 		// Release correlates Sentry events to a specific deployed revision.
-		// The GIT_COMMIT env var is written to the env file by the deploy
-		// pipeline; when absent (local dev or pre-#2363 deploys) Sentry
-		// initialises without a release tag, which is safe.
-		if cfg.GitCommit != "" {
+		// Prefer the build-time ldflag `version` (set by build-bff action.yml
+		// via -ldflags "-X main.version=<tag>").  Fall back to GIT_COMMIT from
+		// the env file (written by the deploy pipeline) for backward compat
+		// with pre-PR-#2680 deployments and local dev builds.
+		switch {
+		case version != "" && version != "dev":
+			sentryOpts.Release = version
+		case cfg.GitCommit != "":
 			sentryOpts.Release = cfg.GitCommit
 		}
 		if err := sentry.Init(sentryOpts); err != nil {

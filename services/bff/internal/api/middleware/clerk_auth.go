@@ -3,9 +3,11 @@ package middleware
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"strings"
 
+	"github.com/RdHamilton/vault-mtg/services/bff/internal/observability"
 	"github.com/clerk/clerk-sdk-go/v2"
 	clerkhttp "github.com/clerk/clerk-sdk-go/v2/http"
 )
@@ -51,6 +53,11 @@ func RequireClerkAuth(secretKey string) func(http.Handler) http.Handler {
 
 			// Rewrite 403 → 401 for the "no valid token" case.
 			if rw.status == http.StatusForbidden {
+				observability.ReportError(
+					r.Context(),
+					fmt.Errorf("clerk auth rejected: status %d", rw.status),
+					map[string]string{"component": "auth"},
+				)
 				w.Header().Set("Content-Type", "application/json")
 				w.WriteHeader(http.StatusUnauthorized)
 				body, _ := json.Marshal(map[string]string{"error": "unauthorized"})
@@ -129,6 +136,11 @@ func RequireClerkAuthForSSE(secretKey string) func(http.Handler) http.Handler {
 
 			// Rewrite 403 → 401 for the "no valid token" case.
 			if rw.status == http.StatusForbidden {
+				observability.ReportError(
+					r.Context(),
+					fmt.Errorf("clerk auth rejected: status %d", rw.status),
+					map[string]string{"component": "auth"},
+				)
 				w.Header().Set("Content-Type", "application/json")
 				w.WriteHeader(http.StatusUnauthorized)
 				body, _ := json.Marshal(map[string]string{"error": "unauthorized"})

@@ -5,6 +5,8 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+
+	"github.com/RdHamilton/vault-mtg/services/bff/internal/observability"
 )
 
 // ErrCrosstenantAccount is returned by GetOrCreateByClientID when the supplied
@@ -35,7 +37,7 @@ func (r *AccountRepository) GetAccountIDByUserID(ctx context.Context, userID int
 		if errors.Is(err, sql.ErrNoRows) {
 			return 0, false, nil
 		}
-
+		observability.ReportError(ctx, err, map[string]string{"component": "db", "table": "accounts"})
 		return 0, false, err
 	}
 
@@ -73,6 +75,7 @@ func (r *AccountRepository) GetOrCreateByClientID(ctx context.Context, clientID 
 		// Account does not exist yet — fall through to INSERT.
 
 	default:
+		observability.ReportError(ctx, err, map[string]string{"component": "db", "table": "accounts"})
 		return 0, err
 	}
 
@@ -90,6 +93,7 @@ func (r *AccountRepository) GetOrCreateByClientID(ctx context.Context, clientID 
 			// Re-read with user_id check.
 			retryRow := r.db.QueryRowContext(ctx, selectQ, clientID)
 			if err2 := retryRow.Scan(&accountID, &ownerUserID); err2 != nil {
+				observability.ReportError(ctx, err2, map[string]string{"component": "db", "table": "accounts"})
 				return 0, err2
 			}
 
@@ -101,6 +105,7 @@ func (r *AccountRepository) GetOrCreateByClientID(ctx context.Context, clientID 
 			return accountID, nil
 		}
 
+		observability.ReportError(ctx, err, map[string]string{"component": "db", "table": "accounts"})
 		return 0, err
 	}
 

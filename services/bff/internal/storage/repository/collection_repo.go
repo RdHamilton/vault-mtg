@@ -5,6 +5,8 @@ import (
 	"database/sql"
 	"strconv"
 	"strings"
+
+	"github.com/RdHamilton/vault-mtg/services/bff/internal/observability"
 )
 
 // CollectionRepository serves the Phase 2 /api/v1/collection/* read paths.
@@ -147,6 +149,7 @@ func (r *CollectionRepository) ListCollection(ctx context.Context, accountID int
 
 	rows, err := r.db.QueryContext(ctx, q, args...)
 	if err != nil {
+		observability.ReportError(ctx, err, map[string]string{"component": "db", "table": "card_inventory"})
 		return nil, err
 	}
 	defer func() { _ = rows.Close() }()
