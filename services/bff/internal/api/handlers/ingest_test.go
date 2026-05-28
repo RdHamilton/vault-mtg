@@ -1360,3 +1360,157 @@ func TestIngestHandler_DriftEvent_DistinctIdIsHashed(t *testing.T) {
 		t.Errorf("distinct_id must be 16-char hash, got len=%d", len(capture.DistinctId))
 	}
 }
+
+// TestIngestHandler_AuthFailed_PKCETimeout_EmitsPostHog verifies that a
+// daemon.auth_failed event with reason="pkce_timeout" is emitted to PostHog
+// with the correct properties, account_id_hash is hashed (PII guard), and
+// bff_status_code is absent (zero value, omitempty).
+func TestIngestHandler_AuthFailed_PKCETimeout_EmitsPostHog(t *testing.T) {
+	const token = "pkce-timeout-token"
+	const rawAccountID = "acct_pkce_timeout"
+
+	keyRepo := &mockKeyLister{keys: []repository.APIKey{
+		{ID: 65, KeyHash: mustHash(t, token), UserID: 305},
+	}}
+
+	phClient := &mockPostHogClient{}
+	ih := handlers.NewIngestHandler(&mockBroadcaster{}).WithPostHogClient(phClient)
+	handler := middleware.APIKeyAuth(keyRepo)(http.HandlerFunc(ih.IngestEvent))
+
+	type authFailedPayload struct {
+		Reason        string `json:"reason"`
+		BFFStatusCode int    `json:"bff_status_code,omitempty"`
+		Platform      string `json:"platform"`
+		DaemonVersion string `json:"daemon_version"`
+	}
+	raw, _ := json.Marshal(authFailedPayload{
+		Reason:        "pkce_timeout",
+		Platform:      "darwin",
+		DaemonVersion: "0.3.3",
+	})
+
+	event := contract.DaemonEvent{
+		Type:       "daemon.auth_failed",
+		AccountID:  rawAccountID,
+		SessionID:  "sess_pkce_timeout",
+		Sequence:   1,
+		OccurredAt: time.Now().UTC(),
+		Payload:    json.RawMessage(raw),
+	}
+	req, rr := ingestRequest(t, token, event)
+	handler.ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusAccepted {
+		t.Fatalf("expected 202, got %d: %s", rr.Code, rr.Body.String())
+	}
+	if len(phClient.calls) != 1 {
+		t.Fatalf("expected 1 PostHog call, got %d", len(phClient.calls))
+	}
+
+	capture, ok := phClient.calls[0].(posthog.Capture)
+	if !ok {
+		t.Fatal("PostHog message is not a posthog.Capture")
+	}
+
+	if capture.Event != "daemon.auth_failed" {
+		t.Errorf("expected event=%q, got %q", "daemon.auth_failed", capture.Event)
+	}
+	// PII guard: distinct_id must be hashed, never the raw account_id.
+	if capture.DistinctId == rawAccountID {
+		t.Error("distinct_id must be hashed, got raw account_id")
+	}
+	if len(capture.DistinctId) != 16 {
+		t.Errorf("distinct_id must be 16-char hash, got %d", len(capture.DistinctId))
+	}
+	if v, ok := capture.Properties["reason"]; !ok {
+		t.Error("reason property missing")
+	} else if v != "pkce_timeout" {
+		t.Errorf("reason=%v, want pkce_timeout", v)
+	}
+	// bff_status_code must be absent for non-bff_rejected reasons (omitempty, zero value).
+	if v, ok := capture.Properties["bff_status_code"]; ok && v != nil {
+		t.Errorf("bff_status_code must be absent for pkce_timeout reason, got %v", v)
+	}
+	if v, ok := capture.Properties["platform"]; !ok {
+		t.Error("platform property missing")
+	} else if v != "darwin" {
+		t.Errorf("platform=%v, want darwin", v)
+	}
+}
+
+// TestIngestHandler_AuthFailed_PKCECancelled_EmitsPostHog verifies that a
+// daemon.auth_failed event with reason="pkce_cancelled" is emitted to PostHog
+// with the correct properties, account_id_hash is hashed (PII guard), and
+// bff_status_code is absent (zero value, omitempty).
+func TestIngestHandler_AuthFailed_PKCECancelled_EmitsPostHog(t *testing.T) {
+	const token = "pkce-cancelled-token"
+	const rawAccountID = "acct_pkce_cancelled"
+
+	keyRepo := &mockKeyLister{keys: []repository.APIKey{
+		{ID: 66, KeyHash: mustHash(t, token), UserID: 306},
+	}}
+
+	phClient := &mockPostHogClient{}
+	ih := handlers.NewIngestHandler(&mockBroadcaster{}).WithPostHogClient(phClient)
+	handler := middleware.APIKeyAuth(keyRepo)(http.HandlerFunc(ih.IngestEvent))
+
+	type authFailedPayload struct {
+		Reason        string `json:"reason"`
+		BFFStatusCode int    `json:"bff_status_code,omitempty"`
+		Platform      string `json:"platform"`
+		DaemonVersion string `json:"daemon_version"`
+	}
+	raw, _ := json.Marshal(authFailedPayload{
+		Reason:        "pkce_cancelled",
+		Platform:      "windows",
+		DaemonVersion: "0.3.3",
+	})
+
+	event := contract.DaemonEvent{
+		Type:       "daemon.auth_failed",
+		AccountID:  rawAccountID,
+		SessionID:  "sess_pkce_cancelled",
+		Sequence:   1,
+		OccurredAt: time.Now().UTC(),
+		Payload:    json.RawMessage(raw),
+	}
+	req, rr := ingestRequest(t, token, event)
+	handler.ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusAccepted {
+		t.Fatalf("expected 202, got %d: %s", rr.Code, rr.Body.String())
+	}
+	if len(phClient.calls) != 1 {
+		t.Fatalf("expected 1 PostHog call, got %d", len(phClient.calls))
+	}
+
+	capture, ok := phClient.calls[0].(posthog.Capture)
+	if !ok {
+		t.Fatal("PostHog message is not a posthog.Capture")
+	}
+
+	if capture.Event != "daemon.auth_failed" {
+		t.Errorf("expected event=%q, got %q", "daemon.auth_failed", capture.Event)
+	}
+	// PII guard: distinct_id must be hashed, never the raw account_id.
+	if capture.DistinctId == rawAccountID {
+		t.Error("distinct_id must be hashed, got raw account_id")
+	}
+	if len(capture.DistinctId) != 16 {
+		t.Errorf("distinct_id must be 16-char hash, got %d", len(capture.DistinctId))
+	}
+	if v, ok := capture.Properties["reason"]; !ok {
+		t.Error("reason property missing")
+	} else if v != "pkce_cancelled" {
+		t.Errorf("reason=%v, want pkce_cancelled", v)
+	}
+	// bff_status_code must be absent for non-bff_rejected reasons (omitempty, zero value).
+	if v, ok := capture.Properties["bff_status_code"]; ok && v != nil {
+		t.Errorf("bff_status_code must be absent for pkce_cancelled reason, got %v", v)
+	}
+	if v, ok := capture.Properties["platform"]; !ok {
+		t.Error("platform property missing")
+	} else if v != "windows" {
+		t.Errorf("platform=%v, want windows", v)
+	}
+}
