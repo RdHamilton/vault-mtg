@@ -535,6 +535,44 @@ func TestLoad_PostHogAPIKey_FromEnv(t *testing.T) {
 	}
 }
 
+// TestLoad_PostHogHost_DefaultWhenUnset verifies that when POSTHOG_HOST is not
+// set Config.PostHogHost falls back to the canonical US ingest URL so the SDK
+// always has a non-empty endpoint without requiring explicit configuration.
+func TestLoad_PostHogHost_DefaultWhenUnset(t *testing.T) {
+	t.Setenv("MTGA_ENV", "development")
+	t.Setenv("DATABASE_URL", "")
+	t.Setenv("POSTHOG_HOST", "")
+
+	cfg, err := config.Load()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	const want = "https://us.i.posthog.com"
+	if cfg.PostHogHost != want {
+		t.Errorf("expected default PostHogHost %q, got %q", want, cfg.PostHogHost)
+	}
+}
+
+// TestLoad_PostHogHost_FromEnv verifies that POSTHOG_HOST is surfaced as
+// Config.PostHogHost with leading/trailing whitespace trimmed, overriding the
+// default.
+func TestLoad_PostHogHost_FromEnv(t *testing.T) {
+	t.Setenv("MTGA_ENV", "development")
+	t.Setenv("DATABASE_URL", "")
+	t.Setenv("POSTHOG_HOST", "  https://eu.i.posthog.com  ")
+
+	cfg, err := config.Load()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	const want = "https://eu.i.posthog.com"
+	if cfg.PostHogHost != want {
+		t.Errorf("expected PostHogHost %q, got %q", want, cfg.PostHogHost)
+	}
+}
+
 // TestLoad_GitCommit_EmptyWhenUnset verifies that when GIT_COMMIT is not set
 // Config.GitCommit is an empty string (Sentry Release omitted).
 func TestLoad_GitCommit_EmptyWhenUnset(t *testing.T) {
