@@ -2,6 +2,7 @@ import { useState } from 'react';
 import LoadingButton from '../../LoadingButton';
 import { SettingItem, SettingToggle, SettingSelect } from '../';
 import { clearLearnedData } from '../../../services/api/mlSuggestions';
+import { reportError } from '@/lib/sentry';
 
 export interface MLSettingsSectionProps {
   mlEnabled: boolean;
@@ -81,6 +82,7 @@ export function MLSettingsSection(props: MLSettingsSectionProps) {
       await clearLearnedData();
       setClearDataMessage('All learned data has been cleared successfully.');
     } catch (error) {
+      reportError(error, { component: 'MLSettingsSection', action: 'clear_learned_data' });
       setClearDataMessage(`Failed to clear data: ${error instanceof Error ? error.message : 'Unknown error'}`);
     } finally {
       setIsClearingData(false);

@@ -1,4 +1,5 @@
 import { createContext, useContext, useState, useEffect, type ReactNode } from 'react';
+import { reportError } from '@/lib/sentry';
 
 // Filter state types
 interface FilterState {
@@ -120,6 +121,7 @@ export const AppProvider = ({ children }: AppProviderProps) => {
         return { ...defaultFilters, ...JSON.parse(savedFilters) };
       }
     } catch (error) {
+      reportError(error, { component: 'AppContext', action: 'load_filters_from_storage' });
       console.error('Failed to load filters from localStorage:', error);
     }
     return defaultFilters;
@@ -130,6 +132,7 @@ export const AppProvider = ({ children }: AppProviderProps) => {
     try {
       localStorage.setItem(STORAGE_KEY, JSON.stringify(filters));
     } catch (error) {
+      reportError(error, { component: 'AppContext', action: 'save_filters_to_storage' });
       console.error('Failed to save filters to localStorage:', error);
     }
   }, [filters]);

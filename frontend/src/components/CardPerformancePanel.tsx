@@ -8,6 +8,7 @@ import type {
   DeckRecommendationsResponse,
   PerformanceCardRecommendation,
 } from '@/services/api/decks';
+import { reportError } from '@/lib/sentry';
 import './CardPerformancePanel.css';
 
 interface CardPerformancePanelProps {
@@ -40,11 +41,12 @@ export const CardPerformancePanel = ({
       try {
         const [perfData, recsData] = await Promise.all([
           getCardPerformance(deckId),
-          getAllPerformanceRecommendations(deckId).catch(() => null),
+          getAllPerformanceRecommendations(deckId).catch((err) => { reportError(err, { component: 'CardPerformancePanel', action: 'fetch_recommendations' }); return null; }),
         ]);
         setAnalysis(perfData);
         setRecommendations(recsData);
       } catch (err) {
+        reportError(err, { component: 'CardPerformancePanel', action: 'fetch_card_performance' });
         setError(err instanceof Error ? err.message : 'Failed to load performance data');
       } finally {
         setLoading(false);
