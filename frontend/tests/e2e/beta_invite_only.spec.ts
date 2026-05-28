@@ -66,6 +66,19 @@ async function mockPostHogFlag(
   });
 }
 
+/**
+ * Simulate PostHog /decide being unreachable (network failure or key absent).
+ * Aborting the request prevents posthog.onFeatureFlags() from firing, leaving
+ * useFeatureFlag in its initial null/loading state. AuthBar treats null as
+ * "show sign-up" (optimistic default — signUpEnabled !== false).
+ * Must be called before page.goto().
+ */
+async function abortPostHogDecide(page: Page): Promise<void> {
+  await page.route('**/decide**', async (route) => {
+    await route.abort();
+  });
+}
+
 // ---------------------------------------------------------------------------
 // Tests: flag OFF path (primary E2E coverage per ticket requirement)
 // ---------------------------------------------------------------------------
@@ -138,7 +151,9 @@ test.describe('Feature: beta_invite_only flag — flag ON (both buttons visible)
 
 test.describe('Feature: beta_invite_only flag — PostHog absent (key not configured)', () => {
   test.beforeEach(async ({ page }) => {
-    // No /decide interception — simulates PostHog not being initialized (no key)
+    // Abort /decide to simulate PostHog unavailable. useFeatureFlag stays in its
+    // null/loading state → AuthBar optimistically shows sign-up (signUpEnabled !== false).
+    await abortPostHogDecide(page);
     await setClerkSignedOut(page);
   });
 
