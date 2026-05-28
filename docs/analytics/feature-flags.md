@@ -29,7 +29,7 @@ Gates the beta invite flow. Controls which users see and can access the beta sig
 
 ### Related Documentation
 - Event taxonomy: `docs/analytics/event-taxonomy.md`
-- Implementation: PR #2680 (feat/1840-posthog-flag-eval)
+- Implementation: PR #2681 (feat/1840-posthog-flag-eval)
 
 ---
 
