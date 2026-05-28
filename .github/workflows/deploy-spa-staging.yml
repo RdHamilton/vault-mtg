@@ -32,34 +32,14 @@ jobs:
         working-directory: frontend
         run: npm ci
 
-      - name: Build React SPA (staging)
-        working-directory: frontend
-        run: npm run build
-        env:
-          VITE_BFF_URL: ${{ vars.VITE_BFF_URL }}
-          VITE_CLERK_PUBLISHABLE_KEY: ${{ vars.VITE_CLERK_PUBLISHABLE_KEY }}
-          VITE_POSTHOG_KEY: ${{ vars.VITE_POSTHOG_KEY }}
-          VITE_SENTRY_DSN: ${{ vars.VITE_SENTRY_DSN }}
-          # Staging builds use the full git SHA as the Sentry release value so every
-          # merge to main produces a unique, traceable release string. No git tag
-          # exists on staging pushes — do not use git describe here.
-          VITE_APP_VERSION: staging-${{ github.sha }}
-          VITE_SENTRY_ENV: staging
-          SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
-          SENTRY_ORG: ${{ secrets.SENTRY_ORG }}
-          SENTRY_PROJECT: ${{ secrets.SENTRY_PROJECT }}
-          # Pins daemon downloads to the latest signed pre-release build.
-          # Updated automatically by daemon-release.yml after each successful
-          # pre-release signing run. Production omits this var entirely so
-          # downloads resolve via /releases/latest/download/.
-          VITE_DAEMON_VERSION: ${{ vars.VITE_DAEMON_VERSION }}
-
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v6
         with:
           role-to-assume: ${{ secrets.AWS_DEPLOY_ROLE_ARN }}
           aws-region: us-east-1
 
+      # Read S3 bucket name, CloudFront distribution ID, and Sentry DSN from SSM at deploy
+      # time. Canonical SSM-as-source-of-truth pattern (vault-mtg-tickets#16).
       - name: Read SSM parameters
         id: ssm
         run: |
@@ -73,8 +53,38 @@ jobs:
             --region us-east-1 \
             --query Parameter.Value \
             --output text)
-          echo "bucket=$BUCKET" >> "$GITHUB_OUTPUT"
-          echo "dist_id=$DIST_ID" >> "$GITHUB_OUTPUT"
+          SENTRY_DSN=$(aws ssm get-parameter \
+            --name /vaultmtg/staging/sentry-spa-dsn \
+            --region us-east-1 \
+            --query Parameter.Value \
+            --output text)
+          {
+            echo "bucket=$BUCKET"
+            echo "dist_id=$DIST_ID"
+            echo "sentry_dsn=$SENTRY_DSN"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Build React SPA (staging)
+        working-directory: frontend
+        run: npm run build
+        env:
+          VITE_BFF_URL: ${{ vars.VITE_BFF_URL }}
+          VITE_CLERK_PUBLISHABLE_KEY: ${{ vars.VITE_CLERK_PUBLISHABLE_KEY }}
+          VITE_POSTHOG_KEY: ${{ vars.VITE_POSTHOG_KEY }}
+          VITE_SENTRY_DSN: ${{ steps.ssm.outputs.sentry_dsn }}
+          # Staging builds use the full git SHA as the Sentry release value so every
+          # merge to main produces a unique, traceable release string. No git tag
+          # exists on staging pushes — do not use git describe here.
+          VITE_APP_VERSION: staging-${{ github.sha }}
+          VITE_SENTRY_ENV: staging
+          SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
+          SENTRY_ORG: ${{ secrets.SENTRY_ORG }}
+          SENTRY_PROJECT: ${{ secrets.SENTRY_PROJECT }}
+          # Pins daemon downloads to the latest signed pre-release build.
+          # Updated automatically by daemon-release.yml after each successful
+          # pre-release signing run. Production omits this var entirely so
+          # downloads resolve via /releases/latest/download/.
+          VITE_DAEMON_VERSION: ${{ vars.VITE_DAEMON_VERSION }}
 
       - name: Sync build output to S3 (staging)
         run: |
