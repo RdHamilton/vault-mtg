@@ -6,19 +6,21 @@
 // Environment variables (ADR-022 Phase 2 dual-read shim: VAULTMTG_DAEMON_* wins
 // when both are set; MTGA_DAEMON_* is the legacy fallback for existing service installs):
 //
-//	VAULTMTG_DAEMON_CLOUD_API_URL  Base URL of the cloud API / BFF (required if not in config file)
-//	MTGA_DAEMON_CLOUD_API_URL      Legacy alias (fallback)
-//	VAULTMTG_DAEMON_API_KEY        Bearer token for BFF authentication (legacy plaintext — migrated to keychain)
-//	MTGA_DAEMON_API_KEY            Legacy alias (fallback)
-//	VAULTMTG_DAEMON_LOG_PATH       Override MTGA log file path (auto-detected by default)
-//	MTGA_DAEMON_LOG_PATH           Legacy alias (fallback)
-//	VAULTMTG_DAEMON_ACCOUNT_ID     MTGA account ID to tag events
-//	MTGA_DAEMON_ACCOUNT_ID         Legacy alias (fallback)
-//	VAULTMTG_DAEMON_HEADLESS       Set to "1" to skip browser open and print the auth URL instead
-//	MTGA_DAEMON_HEADLESS           Legacy alias (fallback)
-//	MTGA_COLLECTION_HELPER_DIR     Directory containing collection-helper binary and install/ subdir (dev override)
-//	CLERK_PUBLISHABLE_KEY          Clerk publishable key (pk_live_* / pk_test_*) used for PKCE OAuth
-//	CLERK_FRONTEND_API             Clerk frontend API base URL (e.g. https://accounts.clerk.dev)
+//	VAULTMTG_DAEMON_CLOUD_API_URL        Base URL of the cloud API / BFF (required if not in config file)
+//	MTGA_DAEMON_CLOUD_API_URL            Legacy alias (fallback)
+//	VAULTMTG_DAEMON_API_KEY              Bearer token for BFF authentication (legacy plaintext — migrated to keychain)
+//	MTGA_DAEMON_API_KEY                  Legacy alias (fallback)
+//	VAULTMTG_DAEMON_LOG_PATH             Override MTGA log file path (auto-detected by default)
+//	MTGA_DAEMON_LOG_PATH                 Legacy alias (fallback)
+//	VAULTMTG_DAEMON_ACCOUNT_ID           MTGA account ID to tag events
+//	MTGA_DAEMON_ACCOUNT_ID               Legacy alias (fallback)
+//	VAULTMTG_DAEMON_HEADLESS             Set to "1" to skip browser open and print the auth URL instead
+//	MTGA_DAEMON_HEADLESS                 Legacy alias (fallback)
+//	VAULTMTG_DAEMON_MAX_AUTH_ATTEMPTS    Max consecutive failed PKCE attempts before auth_paused (#2133)
+//	MTGA_DAEMON_MAX_AUTH_ATTEMPTS        Legacy alias (fallback)
+//	MTGA_COLLECTION_HELPER_DIR           Directory containing collection-helper binary and install/ subdir (dev override)
+//	CLERK_PUBLISHABLE_KEY                Clerk publishable key (pk_live_* / pk_test_*) used for PKCE OAuth
+//	CLERK_FRONTEND_API                   Clerk frontend API base URL (e.g. https://accounts.clerk.dev)
 //
 // Flags:
 //
@@ -39,12 +41,14 @@ import (
 	"os/signal"
 	"path/filepath"
 	"runtime"
+	"strconv"
 	"strings"
 	"syscall"
 	"time"
 
 	"github.com/RdHamilton/vault-mtg/services/daemon/internal/config"
 	"github.com/RdHamilton/vault-mtg/services/daemon/internal/daemon"
+	"github.com/RdHamilton/vault-mtg/services/daemon/internal/daemonstate"
 	"github.com/RdHamilton/vault-mtg/services/daemon/internal/keychain"
 	"github.com/RdHamilton/vault-mtg/services/daemon/internal/migrate"
 	"github.com/RdHamilton/vault-mtg/services/daemon/internal/pkce"
@@ -141,10 +145,36 @@ func main() {
 		log.Printf("[mtga-daemon] warn: keychain migration failed: %v", err)
 	}
 
+	// ── Step 2b: load daemon-state.json (#2133 — RC2 load order) ──────────────
+	// Runtime state (auth_paused, auth_attempts) is read BEFORE NeedsFirstRunAuth
+	// so the consent loop guard is consulted before any browser open attempt.
+	// Loading after NeedsFirstRunAuth would break the guard: the browser could
+	// open before auth_paused is checked, defeating the entire feature.
+	statePath := daemonstate.StateFilePath(*cfgPath)
+	dState, stateErr := daemonstate.Load(statePath)
+	if stateErr != nil {
+		// Corrupt state file is non-fatal: treat as zero state (not paused, 0 attempts).
+		// Log and continue — a bad write should not permanently brick the daemon.
+		log.Printf("[mtga-daemon] warn: daemon-state.json load error (%v); treating as zero state", stateErr)
+		dState = daemonstate.State{}
+	}
+
+	// maxAuthAttempts is the cap for consecutive failed PKCE attempts before
+	// auth_paused is set. Configurable via dual-read env knob (RC2, Ray Q2 answer):
+	//   VAULTMTG_DAEMON_MAX_AUTH_ATTEMPTS (canonical) → MTGA_DAEMON_MAX_AUTH_ATTEMPTS (fallback).
+	// Default: 3. Values ≤ 0 revert to default (guard against misconfiguration).
+	maxAuthAttempts := 3
+	if v := config.EnvWithFallback("VAULTMTG_DAEMON_MAX_AUTH_ATTEMPTS", "MTGA_DAEMON_MAX_AUTH_ATTEMPTS"); v != "" {
+		if n, err := strconv.Atoi(v); err == nil && n > 0 {
+			maxAuthAttempts = n
+		}
+	}
+
 	// ── Step 3: PKCE auth flow if no valid credentials ─────────────────────────
-	// Runs when: no keychain sentinel, no plaintext key, no daemon JWT, OR when
-	// the keychain sentinel is set but the OS keychain entry is missing/empty
-	// (reinstall scenario — OS keychain was wiped after a full reinstall).
+	// RC2 (CRITICAL CORRECTNESS): auth_paused is checked BEFORE NeedsFirstRunAuth.
+	// If auth_paused is true, skip the initial PKCE attempt entirely — the daemon
+	// enters paused state without opening the browser. The onReady goroutine will
+	// surface the paused state in the tray (StatusSetupRequired + "Retry Setup").
 	//
 	// On failure:
 	//   - headless mode: exit immediately (launchd will respawn; PKCE re-runs on boot).
@@ -152,10 +182,22 @@ func main() {
 	//     menu bar. The onReady goroutine re-checks NeedsFirstRunAuth and shows
 	//     StatusSetupRequired + "Retry Setup…" so the user can retry without a
 	//     daemon restart (#2132).
-	if cfg.NeedsFirstRunAuth(keychain.Get) && cfg.CloudAPIURL != "" {
+	if !dState.AuthPaused && cfg.NeedsFirstRunAuth(keychain.Get) && cfg.CloudAPIURL != "" {
 		log.Printf("[mtga-daemon] first-run: no API key detected — starting PKCE auth flow")
 		if err := runPKCEAuth(cfg, *cfgPath); err != nil {
 			fmt.Fprintf(os.Stderr, "auth error: %v\n", err)
+
+			// Increment attempt counter and check cap (RC3: no timer reset).
+			dState.AuthAttempts++
+			if dState.AuthAttempts >= maxAuthAttempts {
+				dState.AuthPaused = true
+				log.Printf("[mtga-daemon] auth attempt cap reached (%d/%d) — setting auth_paused=true",
+					dState.AuthAttempts, maxAuthAttempts)
+			}
+			if saveErr := daemonstate.Save(statePath, dState); saveErr != nil {
+				log.Printf("[mtga-daemon] warn: could not persist daemon-state.json: %v", saveErr)
+			}
+
 			if config.EnvWithFallback("VAULTMTG_DAEMON_HEADLESS", "MTGA_DAEMON_HEADLESS") == "1" {
 				// Headless: signal launchd the exit is intentional so KeepAlive=true
 				// does not trigger a rapid respawn loop (ThrottleInterval). os.Exit
@@ -166,7 +208,16 @@ func main() {
 			// Non-headless: fall through — the tray onReady goroutine handles the
 			// retry flow via NeedsFirstRunAuth + RetrySetup channel (#2132).
 			log.Printf("[mtga-daemon] first-run: PKCE failed — will surface retry option in tray")
+		} else {
+			// PKCE succeeded on startup: reset the counter (RC3).
+			dState.AuthAttempts = 0
+			dState.AuthPaused = false
+			if saveErr := daemonstate.Save(statePath, dState); saveErr != nil {
+				log.Printf("[mtga-daemon] warn: could not persist daemon-state.json: %v", saveErr)
+			}
 		}
+	} else if dState.AuthPaused {
+		log.Printf("[mtga-daemon] auth_paused=true — skipping PKCE on startup, awaiting user retry")
 	}
 
 	// Attach the cached account_id as Sentry user context on every boot. On
@@ -179,6 +230,11 @@ func main() {
 
 	svc := daemon.New(cfg)
 	svc.WithVersion(Version)
+
+	// Wire the auth-paused flag from daemon-state.json (#2133, RC2).
+	// Must be called before Run() so the initial /health response reflects the
+	// paused state immediately rather than waiting for the first heartbeat tick.
+	svc.WithAuthPaused(dState.AuthPaused)
 
 	// Wire the in-process PKCE re-auth callback (AC-3, #2135).
 	// When the daemon receives a 401 from the BFF in keychain mode, it runs this
@@ -231,51 +287,77 @@ func main() {
 	app.Run(func() {
 		app.SetStatus(tray.StatusConnected)
 		go func() {
-			// ── Auth-failure retry loop (#2132) ────────────────────────────────
-			// If Step 3 PKCE failed non-headlessly, cfg.NeedsFirstRunAuth is still
-			// true. Surface StatusSetupRequired in the tray and wait for the user to
-			// click "Retry Setup…". Each click opens https://vaultmtg.app/setup in
-			// the browser and re-runs the PKCE flow (RC3: double behavior).
+			// ── Auth-failure / auth-paused retry loop (#2132, #2133) ──────────────
+			// Cases handled here:
+			//  (A) Step 3 PKCE failed non-headlessly → NeedsFirstRunAuth still true,
+			//      auth_paused possibly just set.
+			//  (B) Daemon restarted with auth_paused=true in daemon-state.json →
+			//      NeedsFirstRunAuth may or may not be true; we check auth_paused
+			//      directly via dState and svc.WithAuthPaused (RC2).
 			//
-			// Headless mode inside this loop (RC1): if PKCE still fails and the
-			// daemon is headless, flush Sentry (RC2) and exit(1) so the supervisor
-			// respawns — same semantics as the Step 3 headless exit above.
-			for cfg.NeedsFirstRunAuth(keychain.Get) && cfg.CloudAPIURL != "" {
+			// RC6: we block on app.RetrySetup (the RetrySetup channel from tray.App)
+			// which mirrors the existing TryAgain pattern — NOT SetReauthRequired.
+			for (cfg.NeedsFirstRunAuth(keychain.Get) || dState.AuthPaused) && cfg.CloudAPIURL != "" {
 				app.SetSetupRequired(true)
 
 				if headless {
-					// RC1: headless — no tray to retry from. Log and exit.
-					log.Printf("[mtga-daemon] PKCE auth failed (headless) — exiting so supervisor can respawn")
-					// RC2: flush Sentry before os.Exit; defer on main() does not
-					// fire from a goroutine.
+					// Headless — no tray to retry from. Log and exit.
+					log.Printf("[mtga-daemon] PKCE auth failed or paused (headless) — exiting so supervisor can respawn")
+					// Flush Sentry before os.Exit; defer on main() does not fire from a goroutine.
 					sentryhook.Flush()
 					os.Exit(1)
 				}
 
-				// Wait for user to click "Retry Setup…" or for context cancel.
+				// Wait for user to click "Retry Setup…" (RC6: RetrySetup channel,
+				// same pattern as TryAgain in the keychain retry loop) or context cancel.
 				select {
 				case <-ctx.Done():
 					return
 				case <-app.RetrySetup:
 				}
 
-				log.Printf("[mtga-daemon] retry setup: user requested re-auth — opening setup page")
+				log.Printf("[mtga-daemon] retry setup: user requested re-auth — resetting attempt counter and opening setup page")
 
-				// RC3 double behavior: open the setup page in the browser AND
-				// re-enter the PKCE flow in the same action, so the user sees the
-				// page while the auth redirect proceeds.
+				// RC3: counter resets ONLY on explicit user Retry Setup action.
+				// No timer-based reset.
+				dState.AuthAttempts = 0
+				dState.AuthPaused = false
+				if saveErr := daemonstate.Save(statePath, dState); saveErr != nil {
+					log.Printf("[mtga-daemon] warn: could not persist daemon-state.json on retry: %v", saveErr)
+				}
+				svc.ClearAuthPaused()
+
+				// Open the setup page in the browser.
 				if err := pkce.OpenBrowser("https://vaultmtg.app/setup"); err != nil {
 					log.Printf("[mtga-daemon] retry setup: could not open browser: %v", err)
 				}
 
 				if err := runPKCEAuth(cfg, *cfgPath); err != nil {
-					log.Printf("[mtga-daemon] retry setup: PKCE failed: %v — showing retry option again", err)
+					log.Printf("[mtga-daemon] retry setup: PKCE failed: %v — incrementing counter", err)
+
+					// Increment attempt counter and check cap again (RC3).
+					dState.AuthAttempts++
+					if dState.AuthAttempts >= maxAuthAttempts {
+						dState.AuthPaused = true
+						svc.WithAuthPaused(true)
+						log.Printf("[mtga-daemon] auth attempt cap reached (%d/%d) after retry — setting auth_paused=true",
+							dState.AuthAttempts, maxAuthAttempts)
+					}
+					if saveErr := daemonstate.Save(statePath, dState); saveErr != nil {
+						log.Printf("[mtga-daemon] warn: could not persist daemon-state.json: %v", saveErr)
+					}
 					// Loop to surface the retry item again.
 					continue
 				}
 
-				// PKCE succeeded: clear the setup-required state and start the
-				// daemon. The loop condition (NeedsFirstRunAuth) will now be false.
+				// PKCE succeeded: clear the paused state and start the daemon.
+				// The loop condition will now be false.
+				dState.AuthAttempts = 0
+				dState.AuthPaused = false
+				if saveErr := daemonstate.Save(statePath, dState); saveErr != nil {
+					log.Printf("[mtga-daemon] warn: could not persist daemon-state.json on success: %v", saveErr)
+				}
+				svc.ClearAuthPaused()
 				app.SetSetupRequired(false)
 				log.Printf("[mtga-daemon] retry setup: auth complete — starting daemon service")
 			}
@@ -283,7 +365,7 @@ func main() {
 			// ── Normal daemon run loop ─────────────────────────────────────────
 			if err := svc.Run(ctx); err != nil {
 				if headless {
-					// REV-2: headless path — log the canonical FATAL line and exit
+					// Headless path — log the canonical FATAL line and exit
 					// non-zero so the supervisor (launchd / systemd) respawns.
 					// NeedsFirstRunAuth will trigger PKCE on the next boot.
 					log.Println("[daemon] FATAL: keychain unavailable after retries — exiting")

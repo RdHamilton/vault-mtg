@@ -1488,15 +1488,15 @@ func TestMultiHeartbeatBuffered(t *testing.T) {
 	assert.Equal(t, uint32(0), count3, "window 3 must have count=0 when no failures occurred")
 }
 
-// TestComputeAuthStatus covers the three v0.3.3 enum values and the
-// precedence edge case (error outranks authenticated).
+// TestComputeAuthStatus covers all auth_status enum values and precedence rules
+// including the auth_paused state added by #2133 (consent loop guard).
 func TestComputeAuthStatus(t *testing.T) {
 	t.Run("authenticated", func(t *testing.T) {
 		cfg := &config.Config{
 			Keychain:  true,
 			AccountID: "user_abc",
 		}
-		got := computeAuthStatus(cfg, nil)
+		got := computeAuthStatus(cfg, nil, false)
 		assert.Equal(t, "authenticated", got)
 	})
 
@@ -1505,7 +1505,7 @@ func TestComputeAuthStatus(t *testing.T) {
 			Keychain:  true,
 			AccountID: "",
 		}
-		got := computeAuthStatus(cfg, nil)
+		got := computeAuthStatus(cfg, nil, false)
 		assert.Equal(t, "setup_required", got)
 	})
 
@@ -1514,7 +1514,7 @@ func TestComputeAuthStatus(t *testing.T) {
 			Keychain:  false,
 			AccountID: "user_abc",
 		}
-		got := computeAuthStatus(cfg, nil)
+		got := computeAuthStatus(cfg, nil, false)
 		assert.Equal(t, "setup_required", got)
 	})
 
@@ -1523,7 +1523,7 @@ func TestComputeAuthStatus(t *testing.T) {
 			Keychain:  false,
 			AccountID: "",
 		}
-		got := computeAuthStatus(cfg, fmt.Errorf("keychain unavailable"))
+		got := computeAuthStatus(cfg, fmt.Errorf("keychain unavailable"), false)
 		assert.Equal(t, "keychain_error", got)
 	})
 
@@ -1536,9 +1536,42 @@ func TestComputeAuthStatus(t *testing.T) {
 			Keychain:  true,
 			AccountID: "user_abc",
 		}
-		got := computeAuthStatus(cfg, fmt.Errorf("os keychain error"))
+		got := computeAuthStatus(cfg, fmt.Errorf("os keychain error"), false)
 		assert.Equal(t, "keychain_error", got,
 			"keychainErr must outrank authenticated even when AccountID is set")
+	})
+
+	// RC5 (#2133): auth_paused outranks keychain_error in the precedence chain.
+	t.Run("auth_paused when authPaused true", func(t *testing.T) {
+		cfg := &config.Config{
+			Keychain:  true,
+			AccountID: "user_abc",
+		}
+		got := computeAuthStatus(cfg, nil, true)
+		assert.Equal(t, "auth_paused", got)
+	})
+
+	t.Run("auth_paused outranks keychain_error (RC5 precedence)", func(t *testing.T) {
+		// auth_paused MUST outrank keychain_error per RC5. When the daemon has
+		// reached its attempt cap, the user-facing status is "auth_paused" even
+		// if a concurrent keychain error is also present.
+		cfg := &config.Config{
+			Keychain:  true,
+			AccountID: "user_abc",
+		}
+		got := computeAuthStatus(cfg, fmt.Errorf("keychain unavailable"), true)
+		assert.Equal(t, "auth_paused", got,
+			"auth_paused must outrank keychain_error (RC5, #2133)")
+	})
+
+	t.Run("auth_paused outranks setup_required (RC5 precedence)", func(t *testing.T) {
+		cfg := &config.Config{
+			Keychain:  false,
+			AccountID: "",
+		}
+		got := computeAuthStatus(cfg, nil, true)
+		assert.Equal(t, "auth_paused", got,
+			"auth_paused must outrank setup_required (RC5, #2133)")
 	})
 }
 
@@ -1836,4 +1869,77 @@ func TestReactiveReauth_GoroutineUsesLongLivedContext(t *testing.T) {
 	assert.False(t, ctxHasDeadline.Load(),
 		"reauthFunc must receive context.Background() (no deadline); "+
 			"a dispatch-ctx deadline would fire in 5s and kill PKCE before the user can act")
+}
+
+// ---------------------------------------------------------------------------
+// Consent loop guard (#2133) — WithAuthPaused / ClearAuthPaused / computeAuthStatus
+// ---------------------------------------------------------------------------
+
+// TestWithAuthPaused_SetsAndClearsFlag verifies that WithAuthPaused stores the
+// flag and ClearAuthPaused zeroes it, both reflected in computeAuthStatus.
+func TestWithAuthPaused_SetsAndClearsFlag(t *testing.T) {
+	cfg := &config.Config{
+		CloudAPIURL: "http://localhost",
+		IngestPath:  "/v1/ingest/events",
+		Keychain:    true,
+		AccountID:   "acc-pause-test",
+	}
+	svc := New(cfg)
+
+	// Initial state: not paused.
+	assert.False(t, svc.authPaused.Load())
+
+	// WithAuthPaused(true) must propagate into computeAuthStatus.
+	svc.WithAuthPaused(true)
+	assert.True(t, svc.authPaused.Load())
+	got := computeAuthStatus(cfg, nil, svc.authPaused.Load())
+	assert.Equal(t, "auth_paused", got,
+		"computeAuthStatus must return auth_paused when flag is set")
+
+	// ClearAuthPaused must zero the flag.
+	svc.ClearAuthPaused()
+	assert.False(t, svc.authPaused.Load())
+	got = computeAuthStatus(cfg, nil, svc.authPaused.Load())
+	assert.Equal(t, "authenticated", got,
+		"computeAuthStatus must return authenticated after ClearAuthPaused")
+}
+
+// TestLocalAPIHealthReflectsAuthPaused verifies that after WithAuthPaused(true),
+// the /health endpoint returns auth_status: "auth_paused". This is the
+// restart-recovery integration test: auth_paused=true in daemon-state.json
+// → WithAuthPaused(true) → /health shows auth_paused (not setup_required or
+// keychain_error), confirming RC5 precedence is plumbed end-to-end.
+func TestLocalAPIHealthReflectsAuthPaused(t *testing.T) {
+	cfg := &config.Config{
+		CloudAPIURL: "http://localhost",
+		IngestPath:  "/v1/ingest/events",
+		Keychain:    true,
+		AccountID:   "acc-health-paused",
+	}
+	svc := New(cfg)
+	svc.WithAuthPaused(true)
+
+	// auth_paused outranks keychain_error (RC5): even with a non-nil keychainErr,
+	// computeAuthStatus must return auth_paused.
+	got := computeAuthStatus(cfg, fmt.Errorf("keychain unavailable"), svc.authPaused.Load())
+	assert.Equal(t, localapi.AuthStatusAuthPaused, got,
+		"auth_paused must outrank keychain_error in /health response (RC5, #2133)")
+
+	// After ClearAuthPaused, auth status reverts to authenticated (no keychainErr).
+	svc.ClearAuthPaused()
+	got = computeAuthStatus(cfg, nil, svc.authPaused.Load())
+	assert.Equal(t, localapi.AuthStatusAuthenticated, got,
+		"auth status must revert to authenticated after clearing auth_paused")
+}
+
+// TestWithAuthPaused_ZeroValueIsNotPaused verifies that a newly constructed
+// Service is not auth-paused (zero value of atomic.Bool is false).
+func TestWithAuthPaused_ZeroValueIsNotPaused(t *testing.T) {
+	cfg := &config.Config{
+		CloudAPIURL: "http://localhost",
+		IngestPath:  "/v1/ingest/events",
+	}
+	svc := New(cfg)
+	assert.False(t, svc.authPaused.Load(),
+		"newly constructed Service must not be auth-paused (zero value = false)")
 }
