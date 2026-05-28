@@ -338,10 +338,61 @@ describe('DaemonDownload', () => {
       expect(h2).toBeInTheDocument();
     });
 
-    it('should render step titles as h3', () => {
+    it('should render step titles and uninstall heading as h3', () => {
       render(<DaemonDownload />);
       const h3s = screen.getAllByRole('heading', { level: 3 });
-      expect(h3s.length).toBe(4);
+      // 4 getting-started step titles + 1 uninstall subsection heading = 5
+      expect(h3s.length).toBe(5);
+    });
+  });
+
+  /**
+   * Uninstall subsection (#1831)
+   *
+   * Verifies the uninstall command block is rendered below the getting-started
+   * <ol> and contains the expected macOS uninstall command path. The subsection
+   * must not introduce a new step number (per Ray Q2 plan review).
+   */
+  describe('Uninstall subsection (#1831)', () => {
+    beforeEach(() => {
+      mockUseFeatureFlag.mockReturnValue({ enabled: true });
+      setDownloadBase();
+    });
+
+    it('should render the uninstall subsection', () => {
+      render(<DaemonDownload />);
+      expect(screen.getByTestId('daemon-uninstall')).toBeInTheDocument();
+    });
+
+    it('should render the macOS uninstall command', () => {
+      render(<DaemonDownload />);
+      const command = screen.getByTestId('daemon-uninstall-command');
+      expect(command).toBeInTheDocument();
+      expect(command).toHaveTextContent('sudo /usr/local/share/vaultmtg/uninstall.sh');
+    });
+
+    it('should render the uninstall subsection inside the getting-started container', () => {
+      render(<DaemonDownload />);
+      const gettingStarted = screen.getByTestId('daemon-getting-started');
+      const uninstall = screen.getByTestId('daemon-uninstall');
+      expect(gettingStarted).toContainElement(uninstall);
+    });
+
+    it('should still render all 4 getting-started steps (no new step number added)', () => {
+      render(<DaemonDownload />);
+      for (let i = 1; i <= 4; i++) {
+        expect(screen.getByTestId(`getting-started-step-${i}`)).toBeInTheDocument();
+      }
+      expect(screen.queryByTestId('getting-started-step-5')).not.toBeInTheDocument();
+    });
+
+    it('should render uninstall subsection even when download flag is disabled', () => {
+      mockUseFeatureFlag.mockReturnValue({ enabled: false });
+      render(<DaemonDownload />);
+      expect(screen.getByTestId('daemon-uninstall')).toBeInTheDocument();
+      expect(screen.getByTestId('daemon-uninstall-command')).toHaveTextContent(
+        'sudo /usr/local/share/vaultmtg/uninstall.sh'
+      );
     });
   });
 

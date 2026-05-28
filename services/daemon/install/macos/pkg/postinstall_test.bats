@@ -309,3 +309,19 @@ EOF
   bootstrap_line=$(grep -n "bootstrap" "${call_log}" | tail -1 | cut -d: -f1)
   [ "${bootout_line}" -lt "${bootstrap_line}" ]
 }
+
+# ---------------------------------------------------------------------------
+# 9. Postinstall echoes the uninstall path using the SHARE_DIR constant
+# ---------------------------------------------------------------------------
+@test "postinstall: output contains uninstall echo referencing /usr/local/share/vaultmtg/uninstall.sh" {
+  run env \
+    PATH="${STUB_DIR}:${PATH}" \
+    SUDO_USER="${REAL_USER}" \
+    BATS_TEST_TMPDIR="${BATS_TEST_TMPDIR}" \
+    bash "${TMP_SCRIPT}"
+
+  echo "status: ${status}"
+  echo "output: ${output}"
+  [ "${status}" -eq 0 ]
+  [[ "${output}" == *"To uninstall: sudo /usr/local/share/vaultmtg/uninstall.sh"* ]]
+}

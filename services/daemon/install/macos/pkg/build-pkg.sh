@@ -21,6 +21,12 @@
 
 set -euo pipefail
 
+# DRY_RUN=1 — print what would be done and exit 0.  Used by CI to assert the
+# pkg-root layout and by developers to preview actions without needing pkgbuild
+# or hdiutil installed.  Pass --dry-run as the first argument for the same effect.
+if [[ "${1:-}" == "--dry-run" ]]; then DRY_RUN=1; fi
+DRY_RUN="${DRY_RUN:-0}"
+
 BINARY_PATH="${BINARY_PATH:?BINARY_PATH is required}"
 VERSION="${VERSION:?VERSION is required}"
 TEAM_ID="${TEAM_ID:-}"
@@ -30,11 +36,18 @@ PKG_ID="com.vaultmtg.daemon"
 PKG_NAME="vaultmtg-daemon-darwin-universal.pkg"
 DMG_NAME="vaultmtg-daemon-darwin-universal.dmg"
 
+# Share directory — where the uninstall script is installed on the target system.
+# Referenced here (to populate the package root) and in postinstall (echo to user).
+# Single constant — never copy-paste this path.
+SHARE_DIR="/usr/local/share/vaultmtg"
+
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PKG_ROOT="$(mktemp -d)/pkg-root"
 DMG_STAGING="$(mktemp -d)/dmg-staging"
 
 echo "[build-pkg] building .pkg version ${VERSION}"
+# Always emit PKG_ROOT so callers can inspect the layout without parsing mktemp output.
+echo "PKG_ROOT=${PKG_ROOT}"
 
 # ---------------------------------------------------------------------------
 # Populate the package root.
@@ -44,6 +57,22 @@ echo "[build-pkg] building .pkg version ${VERSION}"
 mkdir -p "${PKG_ROOT}/usr/local/bin"
 cp "${BINARY_PATH}" "${PKG_ROOT}/usr/local/bin/${BINARY_NAME}"
 chmod 755 "${PKG_ROOT}/usr/local/bin/${BINARY_NAME}"
+
+# Install the uninstall script to the share directory so users have a clean
+# removal path after install. The path is echoed by postinstall so users see
+# it immediately after installation completes.
+mkdir -p "${PKG_ROOT}${SHARE_DIR}"
+cp "${SCRIPT_DIR}/../uninstall.sh" "${PKG_ROOT}${SHARE_DIR}/uninstall.sh"
+chmod 755 "${PKG_ROOT}${SHARE_DIR}/uninstall.sh"
+
+# DRY_RUN: pkg-root is now populated — print layout and exit without
+# calling pkgbuild or hdiutil (neither is required for layout assertions).
+if [[ "${DRY_RUN}" == "1" ]]; then
+  echo "[build-pkg] DRY_RUN — pkg-root layout (no .pkg or .dmg produced):"
+  find "${PKG_ROOT}" -type f | sort
+  echo "[build-pkg] DRY_RUN complete — Result: PASS"
+  exit 0
+fi
 
 # ---------------------------------------------------------------------------
 # Build the .pkg using the postinstall script for LaunchAgent setup.
