@@ -410,6 +410,13 @@ func (s *Service) keychainRefresherAdapter() dispatch.Refresher {
 
 			if err := s.reauthFunc(context.Background()); err != nil {
 				log.Printf("[daemon] reauth: PKCE re-auth failed: %v", err)
+				// Emit daemon.auth_failed with the classified reason code so
+				// operators can distinguish user-cancellation from wall-clock
+				// timeout in PostHog. Fire-and-forget in a goroutine so the
+				// reauthInProgress goroutine is not blocked by the 5-second
+				// dispatch timeout. Matches the existing bff_rejected pattern
+				// at service.go:1166.
+				go s.dispatchAuthFailed(context.Background(), classifyPKCEError(err))
 				// Set sentinel so computeAuthStatus routes to "keychain_error"
 				// at the next heartbeat tick. Do NOT clear the keychain (Ray Q5).
 				s.setKeychainErr(ErrReauthFailed)
@@ -1002,6 +1009,22 @@ func (s *Service) dispatchAuthFailed(ctx context.Context, reason string) {
 	if err := d.SendOrBuffer(dispatchCtx, evt); err != nil {
 		log.Printf("[daemon] warn: dispatch auth_failed event: %v", err)
 	}
+}
+
+// classifyPKCEError maps a PKCE error to the appropriate daemon.auth_failed
+// reason code. context.Canceled (bare or wrapped) means the user dismissed the
+// browser window → "pkce_cancelled". All other errors — wall-clock timeout,
+// port-bind failure, token-exchange failure — map to "pkce_timeout".
+//
+// This is correct because pkce.waitForCode returns bare context.Canceled for
+// user-cancel and a non-wrapping formatted string for wall-clock expiry; both
+// callers (runPKCEAuth, runInProcessReauth) wrap with fmt.Errorf("pkce flow: %w"),
+// so errors.Is traverses the chain for cancel and is false for timeout.
+func classifyPKCEError(err error) string {
+	if errors.Is(err, context.Canceled) {
+		return "pkce_cancelled"
+	}
+	return "pkce_timeout"
 }
 
 // dispatchKeychainError sends a daemon.keychain_error event to the BFF via a
