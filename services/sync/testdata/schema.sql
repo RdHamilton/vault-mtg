@@ -4,20 +4,22 @@
 --   000054_initial_schema (sets, draft_card_ratings, draft_color_ratings)
 --   000062_add_is_draft_active (is_draft_active column on sets)
 --   000065_add_sync_hashes (sync_hashes)
+--   000088_add_sets_seventeenlands_code (seventeenlands_code column on sets)
 
 -- Sets: card set metadata from Scryfall
 CREATE TABLE IF NOT EXISTS sets (
-    code              TEXT PRIMARY KEY,
-    name              TEXT NOT NULL,
-    released_at       TEXT,
-    card_count        INTEGER,
-    set_type          TEXT,
-    icon_svg_uri      TEXT,
-    is_standard_legal BOOLEAN NOT NULL DEFAULT FALSE,
-    is_draft_active   BOOLEAN NOT NULL DEFAULT FALSE,
-    rotation_date     TEXT,
-    cached_at         TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    last_updated      TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    code                TEXT PRIMARY KEY,
+    name                TEXT NOT NULL,
+    released_at         TEXT,
+    card_count          INTEGER,
+    set_type            TEXT,
+    icon_svg_uri        TEXT,
+    is_standard_legal   BOOLEAN NOT NULL DEFAULT FALSE,
+    is_draft_active     BOOLEAN NOT NULL DEFAULT FALSE,
+    seventeenlands_code TEXT,
+    rotation_date       TEXT,
+    cached_at           TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    last_updated        TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
 CREATE INDEX IF NOT EXISTS idx_sets_released_at   ON sets(released_at);

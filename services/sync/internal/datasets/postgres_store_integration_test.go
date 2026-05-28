@@ -111,6 +111,91 @@ func TestPostgresStore_UpsertSets_Integration(t *testing.T) {
 	_, _ = pool.Exec(ctx, "DELETE FROM sets WHERE code IN ('tst', 'ts2')")
 }
 
+// TestGetActiveSets_ReturnsSeventeenlandsCode_Integration verifies that when a set has
+// seventeenlands_code populated, GetActiveSets returns a SyncSet with
+// Code = Scryfall code and ExpansionCode = seventeenlands_code value.
+func TestGetActiveSets_ReturnsSeventeenlandsCode_Integration(t *testing.T) {
+	dbURL := os.Getenv("TEST_DATABASE_URL")
+	if dbURL == "" {
+		t.Skip("TEST_DATABASE_URL not set; skipping integration test")
+	}
+
+	ctx := context.Background()
+	pool, err := pgxpool.New(ctx, dbURL)
+	require.NoError(t, err)
+	defer pool.Close()
+
+	// Seed a test set with a distinct seventeenlands_code.
+	_, err = pool.Exec(ctx, `
+		INSERT INTO sets (code, name, released_at, set_type, card_count, is_draft_active, seventeenlands_code, last_updated)
+		VALUES ('_t1', 'Integration Test Set 1', '2024-01-01', 'expansion', 250, TRUE, 'T1X', NOW())
+		ON CONFLICT (code) DO UPDATE SET
+			is_draft_active      = TRUE,
+			seventeenlands_code  = 'T1X',
+			last_updated         = NOW()
+	`)
+	require.NoError(t, err)
+	t.Cleanup(func() { _, _ = pool.Exec(ctx, "DELETE FROM sets WHERE code = '_t1'") })
+
+	store := datasets.NewPostgresStore(pool)
+	sets, err := store.GetActiveSets(ctx)
+	require.NoError(t, err)
+
+	var found *datasets.SyncSet
+	for i := range sets {
+		if sets[i].Code == "_t1" {
+			found = &sets[i]
+			break
+		}
+	}
+	require.NotNil(t, found, "seeded set _t1 must appear in GetActiveSets result")
+	assert.Equal(t, "_t1", found.Code, "Code must be the Scryfall code")
+	assert.Equal(t, "T1X", found.ExpansionCode, "ExpansionCode must be the seventeenlands_code value")
+}
+
+// TestGetActiveSets_FallsBackToCodeWhenNull_Integration verifies that when
+// seventeenlands_code IS NULL, GetActiveSets returns ExpansionCode == Code
+// (COALESCE fallback).
+func TestGetActiveSets_FallsBackToCodeWhenNull_Integration(t *testing.T) {
+	dbURL := os.Getenv("TEST_DATABASE_URL")
+	if dbURL == "" {
+		t.Skip("TEST_DATABASE_URL not set; skipping integration test")
+	}
+
+	ctx := context.Background()
+	pool, err := pgxpool.New(ctx, dbURL)
+	require.NoError(t, err)
+	defer pool.Close()
+
+	// Seed a test set with NULL seventeenlands_code.
+	_, err = pool.Exec(ctx, `
+		INSERT INTO sets (code, name, released_at, set_type, card_count, is_draft_active, seventeenlands_code, last_updated)
+		VALUES ('_t2', 'Integration Test Set 2', '2024-01-01', 'expansion', 100, TRUE, NULL, NOW())
+		ON CONFLICT (code) DO UPDATE SET
+			is_draft_active     = TRUE,
+			seventeenlands_code = NULL,
+			last_updated        = NOW()
+	`)
+	require.NoError(t, err)
+	t.Cleanup(func() { _, _ = pool.Exec(ctx, "DELETE FROM sets WHERE code = '_t2'") })
+
+	store := datasets.NewPostgresStore(pool)
+	sets, err := store.GetActiveSets(ctx)
+	require.NoError(t, err)
+
+	var found *datasets.SyncSet
+	for i := range sets {
+		if sets[i].Code == "_t2" {
+			found = &sets[i]
+			break
+		}
+	}
+	require.NotNil(t, found, "seeded set _t2 must appear in GetActiveSets result")
+	assert.Equal(t, "_t2", found.Code, "Code must be the Scryfall code")
+	assert.Equal(t, "_t2", found.ExpansionCode,
+		"ExpansionCode must fall back to Code when seventeenlands_code IS NULL")
+}
+
 // TestPostgresStore_UpsertRatings_ZeroFetchedAt_Integration verifies the defensive fallback:
 // when FetchedAt is zero, UpsertRatings must substitute time.Now() so that cached_at in
 // Postgres is never 0001-01-01 (which would make the BFF staleness check always fire

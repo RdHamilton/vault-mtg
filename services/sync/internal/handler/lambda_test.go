@@ -41,7 +41,7 @@ func (f *stubFetcher) FetchColorRatings(_ context.Context, _, _, _, _ string) ([
 
 // stubStore is a test double for the datasets.Store interface.
 type stubStore struct {
-	dbSets               []string
+	dbSets               []datasets.SyncSet
 	dbErr                error
 	upserted             []draftdata.SetRatings
 	upsertFn             func(setCode string) error
@@ -67,7 +67,7 @@ type stubSetHashCall struct {
 	hash string
 }
 
-func (s *stubStore) GetActiveSets(_ context.Context) ([]string, error) {
+func (s *stubStore) GetActiveSets(_ context.Context) ([]datasets.SyncSet, error) {
 	return s.dbSets, s.dbErr
 }
 
@@ -139,7 +139,7 @@ func TestHandle_WithDBSets(t *testing.T) {
 	fetcher := &stubFetcher{
 		cards: []seventeenlands.CardRating{{Name: "Forest", ALSA: 9.0}},
 	}
-	store := &stubStore{dbSets: []string{"DSK"}}
+	store := &stubStore{dbSets: []datasets.SyncSet{{Code: "DSK", ExpansionCode: "DSK"}}}
 
 	h := handler.NewWithFormats(fetcher, store, nil, []string{"PremierDraft"})
 	err := h.Handle(context.Background(), nil)
@@ -811,6 +811,109 @@ func TestSyncSet_InterRequestSleep(t *testing.T) {
 	// Wall-clock must include at least (numFormats-1) inter-request pauses.
 	assert.GreaterOrEqual(t, elapsed, minElapsed,
 		"elapsed %v must be >= %v — inter-request sleep must fire between format calls", elapsed, minElapsed)
+}
+
+// --- seventeenlands_code / SyncSet tests (vault-mtg-tickets#47) ---
+
+// expansionTrackingFetcher records the expansion code (first arg) passed to
+// FetchCardRatings and FetchColorRatings so tests can assert the 17Lands
+// expansion code is used for API calls while the Scryfall code is used for
+// DB writes.
+type expansionTrackingFetcher struct {
+	cardExpansions  []string
+	colorExpansions []string
+	cards           []seventeenlands.CardRating
+	colors          []seventeenlands.ColorRating
+}
+
+func (f *expansionTrackingFetcher) FetchCardRatings(_ context.Context, expansion, _ string) ([]seventeenlands.CardRating, error) {
+	f.cardExpansions = append(f.cardExpansions, expansion)
+	return f.cards, nil
+}
+
+func (f *expansionTrackingFetcher) FetchColorRatings(_ context.Context, expansion, _, _, _ string) ([]seventeenlands.ColorRating, error) {
+	f.colorExpansions = append(f.colorExpansions, expansion)
+	return f.colors, nil
+}
+
+// TestHandle_SyncSet_UsesDifferentExpansionCode verifies that when a SyncSet has a
+// different ExpansionCode (e.g. AED→DFT), the fetcher receives the ExpansionCode
+// while the store receives the Scryfall Code as the set_code.
+func TestHandle_SyncSet_UsesDifferentExpansionCode(t *testing.T) {
+	fetcher := &expansionTrackingFetcher{
+		cards: []seventeenlands.CardRating{{MtgaID: 1, Name: "Aether Revolt Card", ALSA: 4.0}},
+	}
+	store := &stubStore{}
+
+	// AED is the Scryfall code; DFT is 17Lands' actual expansion code.
+	h := handler.NewWithFormats(fetcher, store, []string{}, []string{"PremierDraft"})
+	// Directly seed the override via NewWithSyncSets — but we don't have that constructor.
+	// Use the DB path instead by setting dbSets on the store.
+	store.dbSets = []datasets.SyncSet{{Code: "AED", ExpansionCode: "DFT"}}
+	h = handler.NewWithFormats(fetcher, store, nil, []string{"PremierDraft"})
+
+	err := h.Handle(context.Background(), nil)
+	require.NoError(t, err)
+
+	// Fetcher must have been called with the 17Lands expansion code "DFT".
+	require.Len(t, fetcher.cardExpansions, 1)
+	assert.Equal(t, "DFT", fetcher.cardExpansions[0],
+		"FetchCardRatings must use ExpansionCode (DFT), not Scryfall code (AED)")
+
+	// DB write must use the Scryfall code "AED".
+	require.Len(t, store.upserted, 1)
+	assert.Equal(t, "AED", store.upserted[0].SetCode,
+		"UpsertRatings must be keyed on Scryfall code (AED), not 17Lands expansion code (DFT)")
+}
+
+// TestHandle_SyncSet_FallsBackToCodeWhenExpansionCodeMatches verifies that when
+// ExpansionCode == Code (the normal case), the fetcher receives the same code and
+// everything works exactly as before.
+func TestHandle_SyncSet_FallsBackToCodeWhenExpansionCodeMatches(t *testing.T) {
+	fetcher := &expansionTrackingFetcher{
+		cards: []seventeenlands.CardRating{{MtgaID: 2, Name: "Forest", ALSA: 9.0}},
+	}
+	store := &stubStore{
+		dbSets: []datasets.SyncSet{{Code: "FDN", ExpansionCode: "FDN"}},
+	}
+
+	h := handler.NewWithFormats(fetcher, store, nil, []string{"PremierDraft"})
+	err := h.Handle(context.Background(), nil)
+
+	require.NoError(t, err)
+	require.Len(t, fetcher.cardExpansions, 1)
+	assert.Equal(t, "FDN", fetcher.cardExpansions[0],
+		"when ExpansionCode == Code, fetcher receives the Scryfall code unchanged")
+	require.Len(t, store.upserted, 1)
+	assert.Equal(t, "FDN", store.upserted[0].SetCode)
+}
+
+// TestHandle_SkipGuardKey_UsesScryfall Code verifies that when 0 cards are returned
+// for a set with a different expansion code, the skip guard key is the Scryfall
+// code ("skip_count:AED"), not the 17Lands expansion code ("skip_count:DFT").
+// This ensures the skip counter key is stable even if the expansion code changes.
+func TestHandle_SkipGuardKey_UsesScryfallCode(t *testing.T) {
+	// Fetcher always returns 0 cards — will trip the skip guard after threshold.
+	fetcher := &expansionTrackingFetcher{cards: []seventeenlands.CardRating{}}
+	store := newPersistentHashStore()
+	store.dbSets = []datasets.SyncSet{{Code: "AED", ExpansionCode: "DFT"}}
+
+	// Threshold = 1 so the guard trips on the first miss.
+	h := handler.NewWithOptions(fetcher, store, nil, []string{"PremierDraft"}, 0, 1, 0, noBackoff)
+	err := h.Handle(context.Background(), nil)
+
+	require.Error(t, err, "skip guard must fire after 1 miss with threshold=1")
+
+	// The SetHash call for the skip counter must use the Scryfall code "AED".
+	var skipKeys []string
+	for _, call := range store.setHashCalls {
+		if len(call.key) > len("skip_count:") && call.key[:len("skip_count:")] == "skip_count:" {
+			skipKeys = append(skipKeys, call.key)
+		}
+	}
+	require.Len(t, skipKeys, 1)
+	assert.Equal(t, "skip_count:AED", skipKeys[0],
+		"skip guard key must use Scryfall code (AED), not 17Lands expansion code (DFT)")
 }
 
 // --- helpers ---

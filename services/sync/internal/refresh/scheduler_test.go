@@ -46,7 +46,7 @@ var _ refresh.SetFetcher = (*stubSetFetcher)(nil)
 
 // stubStore records upserted ratings and returns a configurable set list from the DB.
 type stubStore struct {
-	dbSets               []string
+	dbSets               []datasets.SyncSet
 	upserted             []draftdata.SetRatings
 	upsertedSets         []scryfall.ScryfallSet
 	upsertedColorRatings []stubColorUpsert
@@ -58,7 +58,7 @@ type stubColorUpsert struct {
 	ratings     []seventeenlands.ColorRating
 }
 
-func (s *stubStore) GetActiveSets(_ context.Context) ([]string, error) {
+func (s *stubStore) GetActiveSets(_ context.Context) ([]datasets.SyncSet, error) {
 	return s.dbSets, nil
 }
 
@@ -129,7 +129,7 @@ func TestScheduler_FetchesFromDB_WhenNoOverride(t *testing.T) {
 	fetcher := &stubFetcher{
 		cards: []seventeenlands.CardRating{{Name: "Forest", ALSA: 9.0}},
 	}
-	store := &stubStore{dbSets: []string{"BLB", "DSK"}}
+	store := &stubStore{dbSets: []datasets.SyncSet{{Code: "BLB", ExpansionCode: "BLB"}, {Code: "DSK", ExpansionCode: "DSK"}}}
 	setFetcher := &stubSetFetcher{}
 
 	sched := refresh.New(setFetcher, fetcher, store)

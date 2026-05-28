@@ -24,27 +24,33 @@ func NewPostgresStore(pool *pgxpool.Pool) *PostgresStore {
 	return &PostgresStore{pool: pool}
 }
 
-// GetActiveSets returns set codes where is_draft_active = TRUE.
-// This includes all Arena-draftable sets regardless of Standard legality
-// (e.g. masters, alchemy, and draft_innovation sets that Scryfall classifies
-// outside "expansion"/"core" but which appear in Arena draft queues).
-func (s *PostgresStore) GetActiveSets(ctx context.Context) ([]string, error) {
-	rows, err := s.pool.Query(ctx, `SELECT code FROM sets WHERE is_draft_active = TRUE ORDER BY code`)
+// GetActiveSets returns sets where is_draft_active = TRUE.
+// Each SyncSet carries the Scryfall Code (used as the DB key for all writes)
+// and the ExpansionCode to send to 17Lands API requests.
+// COALESCE(seventeenlands_code, code) means a NULL seventeenlands_code falls
+// back to the Scryfall code — correct for the majority of sets.
+func (s *PostgresStore) GetActiveSets(ctx context.Context) ([]SyncSet, error) {
+	rows, err := s.pool.Query(ctx, `
+		SELECT code, COALESCE(seventeenlands_code, code) AS expansion_code
+		FROM sets
+		WHERE is_draft_active = TRUE
+		ORDER BY code
+	`)
 	if err != nil {
 		return nil, fmt.Errorf("query active sets: %w", err)
 	}
 	defer rows.Close()
 
-	var codes []string
+	var sets []SyncSet
 	for rows.Next() {
-		var code string
-		if err := rows.Scan(&code); err != nil {
-			return nil, fmt.Errorf("scan code: %w", err)
+		var ss SyncSet
+		if err := rows.Scan(&ss.Code, &ss.ExpansionCode); err != nil {
+			return nil, fmt.Errorf("scan set: %w", err)
 		}
-		codes = append(codes, code)
+		sets = append(sets, ss)
 	}
 
-	return codes, rows.Err()
+	return sets, rows.Err()
 }
 
 // UpsertRatings replaces all card ratings for the given set/format in draft_card_ratings.

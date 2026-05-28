@@ -128,9 +128,15 @@ func (s *Scheduler) Start(ctx context.Context) {
 	}
 }
 
-func (s *Scheduler) activeSets(ctx context.Context) ([]string, error) {
+// activeSets returns the SyncSets to process for this run.
+// Override sets (SYNC_ACTIVE_SETS) default to ExpansionCode == Code.
+func (s *Scheduler) activeSets(ctx context.Context) ([]datasets.SyncSet, error) {
 	if len(s.overrideSets) > 0 {
-		return s.overrideSets, nil
+		sets := make([]datasets.SyncSet, len(s.overrideSets))
+		for i, code := range s.overrideSets {
+			sets[i] = datasets.SyncSet{Code: code, ExpansionCode: code}
+		}
+		return sets, nil
 	}
 	return s.store.GetActiveSets(ctx)
 }
@@ -158,38 +164,45 @@ func (s *Scheduler) runFetch(ctx context.Context) {
 		return
 	}
 
-	log.Printf("[sync] fetching ratings for %d sets x %d formats: sets=%v formats=%v", len(sets), len(s.formats), sets, s.formats)
+	codes := make([]string, len(sets))
+	for i, ss := range sets {
+		codes[i] = ss.Code
+	}
+	log.Printf("[sync] fetching ratings for %d sets x %d formats: sets=%v formats=%v", len(sets), len(s.formats), codes, s.formats)
 
-	for _, setCode := range sets {
+	for _, set := range sets {
 		for _, format := range s.formats {
 			if ctx.Err() != nil {
 				return
 			}
 
-			ratings, err := s.fetcher.FetchCardRatings(ctx, setCode, format)
+			// Use the 17Lands expansion code for the API request.
+			ratings, err := s.fetcher.FetchCardRatings(ctx, set.ExpansionCode, format)
 			if err != nil {
-				log.Printf("[sync] fetch %s/%s: %v", setCode, format, err)
+				log.Printf("[sync] fetch %s/%s: %v", set.Code, format, err)
 				continue
 			}
 
 			if len(ratings) == 0 {
-				log.Printf("[sync] WARNING: 0 cards returned for %s/%s — set code may not match 17Lands expansion code", setCode, format)
+				log.Printf("[sync] WARNING: 0 cards returned for %s/%s (17Lands expansion=%s) — check expansion code or upstream outage",
+					set.Code, format, set.ExpansionCode)
 				continue
 			}
 
+			// DB write keyed on Scryfall Code.
 			sr := draftdata.SetRatings{
-				SetCode:     setCode,
+				SetCode:     set.Code,
 				DraftFormat: format,
 				FetchedAt:   time.Now().UTC(),
 				Cards:       ratings,
 			}
 
 			if err := s.store.UpsertRatings(ctx, sr); err != nil {
-				log.Printf("[sync] upsert %s/%s: %v", setCode, format, err)
+				log.Printf("[sync] upsert %s/%s: %v", set.Code, format, err)
 				continue
 			}
 
-			log.Printf("[sync] refreshed %s/%s: %d cards", setCode, format, len(ratings))
+			log.Printf("[sync] refreshed %s/%s: %d cards", set.Code, format, len(ratings))
 
 			// Fetch and persist per-color-combination win rates. A failure here is
 			// non-fatal — card ratings are already stored and color data is best-effort.
@@ -202,9 +215,10 @@ func (s *Scheduler) runFetch(ctx context.Context) {
 			startDate := now.AddDate(-2, 0, 0).Format("2006-01-02")
 			endDate := now.Format("2006-01-02")
 
-			colorRatings, err := s.fetcher.FetchColorRatings(ctx, setCode, format, startDate, endDate)
+			// Use the 17Lands expansion code for the color ratings request.
+			colorRatings, err := s.fetcher.FetchColorRatings(ctx, set.ExpansionCode, format, startDate, endDate)
 			if err != nil {
-				log.Printf("[sync] fetch color ratings %s/%s: %v", setCode, format, err)
+				log.Printf("[sync] fetch color ratings %s/%s: %v", set.Code, format, err)
 				continue
 			}
 
@@ -216,16 +230,17 @@ func (s *Scheduler) runFetch(ctx context.Context) {
 			}
 
 			if len(filtered) == 0 {
-				log.Printf("[sync] no color ratings returned for %s/%s", setCode, format)
+				log.Printf("[sync] no color ratings returned for %s/%s", set.Code, format)
 				continue
 			}
 
-			if err := s.store.UpsertColorRatings(ctx, setCode, format, filtered); err != nil {
-				log.Printf("[sync] upsert color ratings %s/%s: %v", setCode, format, err)
+			// DB write for color ratings keyed on Scryfall Code.
+			if err := s.store.UpsertColorRatings(ctx, set.Code, format, filtered); err != nil {
+				log.Printf("[sync] upsert color ratings %s/%s: %v", set.Code, format, err)
 				continue
 			}
 
-			log.Printf("[sync] refreshed color ratings %s/%s: %d combinations", setCode, format, len(filtered))
+			log.Printf("[sync] refreshed color ratings %s/%s: %d combinations", set.Code, format, len(filtered))
 		}
 	}
 }
