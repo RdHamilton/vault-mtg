@@ -114,6 +114,19 @@ Section "Install" SecInstall
   ; Start the daemon immediately without requiring a logoff/logon.
   ExecWait 'schtasks /Run /TN "VaultMTG-Daemon"'
 
+  ; Post-install health check (issue #2131).
+  ; Poll GET http://127.0.0.1:9001/health for up to 15 s (5 attempts x 3 s delay).
+  ; A healthy response has HTTP 200 with a non-empty "account_id" field, confirming
+  ; the daemon started and authenticated.  Exit code 1 from the PowerShell script
+  ; causes the installer to report a failure so the user sees an error dialog rather
+  ; than a false "Installation complete" screen.
+  ExecWait 'powershell.exe -NoProfile -NonInteractive -Command "$maxAttempts=5; $delay=3; $healthy=$false; for($i=1; $i -le $maxAttempts; $i++){try{$r=Invoke-WebRequest -Uri http://127.0.0.1:9001/health -UseBasicParsing -TimeoutSec 2 -ErrorAction Stop; if($r.StatusCode -eq 200){$j=$r.Content|ConvertFrom-Json; if($j.account_id){$healthy=$true; break}}}catch{}; if($i -lt $maxAttempts){Start-Sleep -Seconds $delay}}; if(-not $healthy){Write-Error ''VaultMTG daemon did not start or authenticate within 15s. Check %APPDATA%\vaultmtg\ for logs.''; exit 1}"' $0
+  IntCmp $0 0 HealthOK HealthFail HealthFail
+  HealthFail:
+    MessageBox MB_OK|MB_ICONSTOP "VaultMTG daemon did not start correctly.$\n$\nThe daemon may have failed to start or has not yet authenticated.$\nCheck $APPDATA\vaultmtg\ for log files and try reinstalling."
+    Abort "Daemon health check failed — installation incomplete."
+  HealthOK:
+
 SectionEnd
 
 ;----------------------------------------------------------------------

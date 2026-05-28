@@ -223,6 +223,44 @@ Register-ScheduledTask `
 Write-Host "Starting daemon..."
 Start-ScheduledTask -TaskName $TaskName
 
+# ---------------------------------------------------------------------------
+# Post-install health check (issue #2131).
+#
+# Poll GET http://127.0.0.1:9001/health for up to 15 s (5 attempts x 3 s delay).
+# A successful response has HTTP 200 with a non-empty account_id field, confirming
+# the daemon started and completed authentication.
+# ---------------------------------------------------------------------------
+Write-Host "Waiting for daemon to become healthy..."
+$HealthURL    = 'http://127.0.0.1:9001/health'
+$MaxAttempts  = 5
+$DelaySeconds = 3
+$DaemonHealthy = $false
+
+for ($attempt = 1; $attempt -le $MaxAttempts; $attempt++) {
+    Write-Host "  Health check attempt $attempt/$MaxAttempts..."
+    try {
+        $resp = Invoke-WebRequest -Uri $HealthURL -UseBasicParsing -TimeoutSec 2 -ErrorAction Stop
+        if ($resp.StatusCode -eq 200) {
+            $body = $resp.Content | ConvertFrom-Json
+            if ($body.account_id) {
+                $DaemonHealthy = $true
+                break
+            }
+        }
+    } catch {
+        # Connection refused or timeout — daemon not up yet.
+    }
+    if ($attempt -lt $MaxAttempts) {
+        Start-Sleep -Seconds $DelaySeconds
+    }
+}
+
+if (-not $DaemonHealthy) {
+    Write-Error "VaultMTG daemon did not start or authenticate within $($MaxAttempts * $DelaySeconds)s."
+    Write-Error "Check $ConfigDir for log files and try reinstalling."
+    exit 1
+}
+
 Write-Host ''
 Write-Host 'VaultMTG daemon installed and running.'
 Write-Host "  Binary : $BinaryPath"
