@@ -120,7 +120,37 @@ Section "Install" SecInstall
   ; the daemon started and authenticated.  Exit code 1 from the PowerShell script
   ; causes the installer to report a failure so the user sees an error dialog rather
   ; than a false "Installation complete" screen.
-  ExecWait 'powershell.exe -NoProfile -NonInteractive -Command "$maxAttempts=5; $delay=3; $healthy=$false; for($i=1; $i -le $maxAttempts; $i++){try{$r=Invoke-WebRequest -Uri http://127.0.0.1:9001/health -UseBasicParsing -TimeoutSec 2 -ErrorAction Stop; if($r.StatusCode -eq 200){$j=$r.Content|ConvertFrom-Json; if($j.account_id){$healthy=$true; break}}}catch{}; if($i -lt $maxAttempts){Start-Sleep -Seconds $delay}}; if(-not $healthy){Write-Error ''VaultMTG daemon did not start or authenticate within 15s. Check %APPDATA%\vaultmtg\ for logs.''; exit 1}"' $0
+  ;
+  ; The health-check logic is written to a temporary .ps1 file rather than passed
+  ; inline via -Command, because NSIS single-quoted strings terminate at the next
+  ; literal single-quote character — so any PowerShell string literal containing
+  ; a single-quote (e.g. Write-Error 'msg') would split the NSIS token and cause
+  ; "ExecWait expects 1-2 parameters, got N" at compile time (issue #147 / PR #2131
+  ; regression fix).  Writing to a file sidesteps NSIS/PowerShell quote-nesting
+  ; entirely and keeps the script readable.
+  ; Note: $$ is the NSIS escape for a literal dollar sign — necessary so NSIS does
+  ; not attempt to interpolate the PowerShell variable names written into the .ps1.
+  FileOpen  $1 "$TEMP\vaultmtg-health-check.ps1" w
+  FileWrite $1 '$$maxAttempts = 5$\n'
+  FileWrite $1 '$$delay = 3$\n'
+  FileWrite $1 '$$healthy = $$false$\n'
+  FileWrite $1 'for ($$i = 1; $$i -le $$maxAttempts; $$i++) {$\n'
+  FileWrite $1 '    try {$\n'
+  FileWrite $1 '        $$r = Invoke-WebRequest -Uri http://127.0.0.1:9001/health -UseBasicParsing -TimeoutSec 2 -ErrorAction Stop$\n'
+  FileWrite $1 '        if ($$r.StatusCode -eq 200) {$\n'
+  FileWrite $1 '            $$j = $$r.Content | ConvertFrom-Json$\n'
+  FileWrite $1 '            if ($$j.account_id) { $$healthy = $$true; break }$\n'
+  FileWrite $1 '        }$\n'
+  FileWrite $1 '    } catch {}$\n'
+  FileWrite $1 '    if ($$i -lt $$maxAttempts) { Start-Sleep -Seconds $$delay }$\n'
+  FileWrite $1 '}$\n'
+  FileWrite $1 'if (-not $$healthy) {$\n'
+  FileWrite $1 '    Write-Error "VaultMTG daemon did not start or authenticate within 15s. Check $$env:APPDATA\vaultmtg\ for logs."$\n'
+  FileWrite $1 '    exit 1$\n'
+  FileWrite $1 '}$\n'
+  FileClose $1
+  ExecWait 'powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "$TEMP\vaultmtg-health-check.ps1"' $0
+  Delete "$TEMP\vaultmtg-health-check.ps1"
   IntCmp $0 0 HealthOK HealthFail HealthFail
   HealthFail:
     MessageBox MB_OK|MB_ICONSTOP "VaultMTG daemon did not start correctly.$\n$\nThe daemon may have failed to start or has not yet authenticated.$\nCheck $APPDATA\vaultmtg\ for log files and try reinstalling."

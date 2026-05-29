@@ -107,6 +107,10 @@ func (s *stubStore) SetHash(_ context.Context, key, hash string) error {
 	return s.setHashErr
 }
 
+func (s *stubStore) UpsertSetCards(_ context.Context, _ []scryfall.ScryfallCard) error {
+	return nil
+}
+
 // Compile-time check that stubStore satisfies datasets.Store.
 var _ datasets.Store = (*stubStore)(nil)
 
@@ -158,7 +162,7 @@ func TestHandle_NoSets(t *testing.T) {
 	fetcher := &stubFetcher{}
 	store := &stubStore{} // empty dbSets
 
-	h := handler.New(fetcher, store, nil)
+	h := handler.New(fetcher, nil, store, nil)
 	err := h.Handle(context.Background(), nil)
 
 	require.NoError(t, err)
@@ -171,7 +175,7 @@ func TestHandle_GetActiveSetsError(t *testing.T) {
 	fetcher := &stubFetcher{}
 	store := &stubStore{dbErr: errors.New("connection refused")}
 
-	h := handler.New(fetcher, store, nil)
+	h := handler.New(fetcher, nil, store, nil)
 	err := h.Handle(context.Background(), nil)
 
 	require.Error(t, err)
@@ -278,7 +282,7 @@ func TestHandle_ColorRatingsFetchedAndStored(t *testing.T) {
 	}
 	store := &stubStore{}
 
-	h := handler.New(fetcher, store, []string{"FDN"})
+	h := handler.New(fetcher, nil, store, []string{"FDN"})
 	err := h.Handle(context.Background(), nil)
 
 	require.NoError(t, err)
@@ -362,7 +366,7 @@ func TestHandle_ColorRatingsEmptySkipsUpsert(t *testing.T) {
 	}
 	store := &stubStore{}
 
-	h := handler.New(fetcher, store, []string{"DSK"})
+	h := handler.New(fetcher, nil, store, []string{"DSK"})
 	err := h.Handle(context.Background(), nil)
 
 	require.NoError(t, err)
@@ -474,7 +478,7 @@ func TestHandle_SyncFormatsEnvVar(t *testing.T) {
 	}
 	store := &stubStore{}
 
-	h := handler.New(fetcher, store, []string{"FDN"})
+	h := handler.New(fetcher, nil, store, []string{"FDN"})
 	err := h.Handle(context.Background(), nil)
 
 	require.NoError(t, err)
@@ -667,7 +671,7 @@ func TestHandle_RetrySucceedsAfterTransientError(t *testing.T) {
 	store := &stubStore{}
 
 	// 1 retry allowed, instant backoff.
-	h := handler.NewWithOptions(f, store, []string{"FDN"}, []string{"PremierDraft"}, 1, 0, 0, noBackoff)
+	h := handler.NewWithOptions(f, nil, store, []string{"FDN"}, []string{"PremierDraft"}, 1, 0, 0, noBackoff)
 	err := h.Handle(context.Background(), nil)
 
 	require.NoError(t, err)
@@ -686,7 +690,7 @@ func TestHandle_RetryExhausted(t *testing.T) {
 	store := &stubStore{}
 
 	// 2 retries = 3 total attempts, all will fail.
-	h := handler.NewWithOptions(f, store, []string{"FDN"}, []string{"PremierDraft"}, 2, 0, 0, noBackoff)
+	h := handler.NewWithOptions(f, nil, store, []string{"FDN"}, []string{"PremierDraft"}, 2, 0, 0, noBackoff)
 	err := h.Handle(context.Background(), nil)
 
 	require.NoError(t, err, "exhausted fetch retries must be non-fatal")
@@ -730,7 +734,7 @@ func TestHandle_ConsecutiveSkipGuard_UnderThreshold(t *testing.T) {
 	store := newPersistentHashStore()
 
 	// Threshold = 3. Call Handle twice — under threshold, no error.
-	h := handler.NewWithOptions(f, store, []string{"FDN"}, []string{"PremierDraft"}, 0, 3, 0, noBackoff)
+	h := handler.NewWithOptions(f, nil, store, []string{"FDN"}, []string{"PremierDraft"}, 0, 3, 0, noBackoff)
 
 	require.NoError(t, h.Handle(context.Background(), nil), "first miss — no error")
 	require.NoError(t, h.Handle(context.Background(), nil), "second miss — still under threshold")
@@ -743,7 +747,7 @@ func TestHandle_ConsecutiveSkipGuard_AtThreshold(t *testing.T) {
 	f := &stubFetcher{cards: []seventeenlands.CardRating{}}
 	store := newPersistentHashStore()
 
-	h := handler.NewWithOptions(f, store, []string{"FDN"}, []string{"PremierDraft"}, 0, 3, 0, noBackoff)
+	h := handler.NewWithOptions(f, nil, store, []string{"FDN"}, []string{"PremierDraft"}, 0, 3, 0, noBackoff)
 
 	require.NoError(t, h.Handle(context.Background(), nil), "1st miss")
 	require.NoError(t, h.Handle(context.Background(), nil), "2nd miss")
@@ -770,7 +774,7 @@ func TestHandle_ConsecutiveSkipGuard_OtherSetsStillSync(t *testing.T) {
 	}
 
 	// threshold=1 so SET1 trips on the very first invocation.
-	h := handler.NewWithOptions(custom, store, nil, []string{"PremierDraft"}, 0, 1, 0, noBackoff)
+	h := handler.NewWithOptions(custom, nil, store, nil, []string{"PremierDraft"}, 0, 1, 0, noBackoff)
 	err := h.Handle(context.Background(), nil)
 
 	require.NoError(t, err, "skip guard for SET1 must not abort the invocation")
@@ -787,7 +791,7 @@ func TestHandle_ConsecutiveSkipGuard_AboveThresholdStillNonFatal(t *testing.T) {
 	store := newPersistentHashStore()
 
 	// threshold=3, run 7 times (matches the prod failure scenario).
-	h := handler.NewWithOptions(f, store, []string{"FDN"}, []string{"PremierDraft"}, 0, 3, 0, noBackoff)
+	h := handler.NewWithOptions(f, nil, store, []string{"FDN"}, []string{"PremierDraft"}, 0, 3, 0, noBackoff)
 	for i := 0; i < 7; i++ {
 		require.NoError(t, h.Handle(context.Background(), nil),
 			"invocation %d must return nil even with skip count above threshold", i+1)
@@ -811,7 +815,7 @@ func TestHandle_ConsecutiveSkipGuard_ResetOnSuccess(t *testing.T) {
 	store := newPersistentHashStore()
 
 	// Threshold = 3. The hit on invocation 3 resets the counter.
-	h := handler.NewWithOptions(f, store, []string{"FDN"}, []string{"PremierDraft"}, 0, 3, 0, noBackoff)
+	h := handler.NewWithOptions(f, nil, store, []string{"FDN"}, []string{"PremierDraft"}, 0, 3, 0, noBackoff)
 
 	for i := 0; i < 5; i++ {
 		err := h.Handle(context.Background(), nil)
@@ -841,7 +845,7 @@ func TestSyncSet_InterRequestSleep(t *testing.T) {
 	store := &stubStore{}
 
 	formats := []string{"PremierDraft", "QuickDraft", "Sealed"}
-	h := handler.NewWithOptions(fetcher, store, []string{"FDN"}, formats, 0, 0, sleep, noBackoff)
+	h := handler.NewWithOptions(fetcher, nil, store, []string{"FDN"}, formats, 0, 0, sleep, noBackoff)
 
 	start := time.Now()
 	err := h.Handle(context.Background(), nil)
@@ -943,7 +947,7 @@ func TestHandle_SkipGuardKey_UsesScryfallCode(t *testing.T) {
 	store.dbSets = []datasets.SyncSet{{Code: "AED", ExpansionCode: "DFT"}}
 
 	// threshold=1 so the guard logs a WARNING on the first miss — but no error returned.
-	h := handler.NewWithOptions(fetcher, store, nil, []string{"PremierDraft"}, 0, 1, 0, noBackoff)
+	h := handler.NewWithOptions(fetcher, nil, store, nil, []string{"PremierDraft"}, 0, 1, 0, noBackoff)
 	err := h.Handle(context.Background(), nil)
 
 	// Non-fatal: guard must log and increment counter but not abort the invocation.
@@ -1043,3 +1047,127 @@ func (f *toggleFetcher) FetchColorRatings(_ context.Context, _, _, _, _ string) 
 
 // noBackoff is a zero-sleep backoff function for use in tests.
 func noBackoff(_ int) time.Duration { return 0 }
+
+// --- CardFetcher / syncCards tests ---
+
+// stubCardFetcher is a test double for the CardFetcher interface.
+type stubCardFetcher struct {
+	cards  []scryfall.ScryfallCard
+	err    error
+	called int
+}
+
+func (f *stubCardFetcher) FetchBulkDefaultCards(_ context.Context) ([]scryfall.ScryfallCard, error) {
+	f.called++
+	return f.cards, f.err
+}
+
+// trackingStore wraps stubStore to record UpsertSetCards calls.
+type trackingStore struct {
+	stubStore
+	upsertSetCardsCalls [][]scryfall.ScryfallCard
+	upsertSetCardsErr   error
+}
+
+func (s *trackingStore) UpsertSetCards(_ context.Context, cards []scryfall.ScryfallCard) error {
+	s.upsertSetCardsCalls = append(s.upsertSetCardsCalls, cards)
+	return s.upsertSetCardsErr
+}
+
+func intPtr(v int) *int { return &v }
+
+// TestHandle_SyncCards_CallsUpsertSetCards verifies that when a CardFetcher is
+// provided, Handle calls UpsertSetCards with the fetched cards. UpsertSetCards
+// is the sole write target — the retired cards table is not written.
+func TestHandle_SyncCards_CallsUpsertSetCards(t *testing.T) {
+	arenaCards := []scryfall.ScryfallCard{
+		{ScryfallID: "aaa", ArenaID: intPtr(10001), Name: "Lightning Bolt", SetCode: "fdn"},
+		{ScryfallID: "bbb", ArenaID: intPtr(10002), Name: "Counterspell", SetCode: "fdn"},
+	}
+
+	cardFetcher := &stubCardFetcher{cards: arenaCards}
+	store := &trackingStore{
+		stubStore: stubStore{
+			dbSets: []datasets.SyncSet{{Code: "FDN", ExpansionCode: "FDN"}},
+		},
+	}
+	fetcher := &stubFetcher{cards: []seventeenlands.CardRating{{MtgaID: 1, Name: "Lightning Bolt", ALSA: 1.5}}}
+
+	// Pin to PremierDraft so call counts are predictable.
+	t.Setenv("SYNC_FORMATS", "PremierDraft")
+	h := handler.New(fetcher, cardFetcher, store, nil)
+
+	err := h.Handle(context.Background(), nil)
+
+	require.NoError(t, err)
+	assert.Equal(t, 1, cardFetcher.called, "FetchBulkDefaultCards must be called once")
+	require.Len(t, store.upsertSetCardsCalls, 1, "UpsertSetCards must be called once")
+	assert.Len(t, store.upsertSetCardsCalls[0], 2)
+}
+
+// TestHandle_SyncCards_NilCardFetcher_SkipsSyncCards verifies that when cardFetcher is nil,
+// Handle does not call UpsertSetCards.
+func TestHandle_SyncCards_NilCardFetcher_SkipsSyncCards(t *testing.T) {
+	store := &trackingStore{
+		stubStore: stubStore{
+			dbSets: []datasets.SyncSet{{Code: "FDN", ExpansionCode: "FDN"}},
+		},
+	}
+	fetcher := &stubFetcher{cards: []seventeenlands.CardRating{{MtgaID: 1, Name: "Plains", ALSA: 9.0}}}
+
+	// NewWithFormats sets cardFetcher=nil.
+	h := handler.NewWithFormats(fetcher, store, nil, []string{"PremierDraft"})
+	err := h.Handle(context.Background(), nil)
+
+	require.NoError(t, err)
+	assert.Empty(t, store.upsertSetCardsCalls, "UpsertSetCards must not be called when cardFetcher is nil")
+}
+
+// TestHandle_SyncCards_FetchError_NonFatal verifies that a CardFetcher error does not
+// abort Handle — the ratings sync continues and Handle returns nil.
+func TestHandle_SyncCards_FetchError_NonFatal(t *testing.T) {
+	t.Setenv("SYNC_FORMATS", "PremierDraft")
+
+	cardFetcher := &stubCardFetcher{err: errors.New("bulk download failed")}
+	store := &trackingStore{
+		stubStore: stubStore{
+			dbSets: []datasets.SyncSet{{Code: "FDN", ExpansionCode: "FDN"}},
+		},
+	}
+	fetcher := &stubFetcher{cards: []seventeenlands.CardRating{{MtgaID: 1, Name: "Island", ALSA: 8.0}}}
+
+	h := handler.New(fetcher, cardFetcher, store, nil)
+	err := h.Handle(context.Background(), nil)
+
+	// CardFetcher error must be non-fatal.
+	require.NoError(t, err)
+	// UpsertSetCards must not have been called.
+	assert.Empty(t, store.upsertSetCardsCalls)
+	// The 17Lands ratings sync must still have proceeded.
+	assert.Equal(t, 1, fetcher.called, "ratings sync must still run despite card fetch error (1 format pinned via env)")
+}
+
+// TestHandle_SyncCards_UpsertSetCardsError_NonFatal verifies that an UpsertSetCards
+// error is non-fatal — Handle still returns nil and the 17Lands sync proceeds.
+func TestHandle_SyncCards_UpsertSetCardsError_NonFatal(t *testing.T) {
+	t.Setenv("SYNC_FORMATS", "PremierDraft")
+
+	arenaCards := []scryfall.ScryfallCard{
+		{ScryfallID: "aaa", ArenaID: intPtr(10001), Name: "Lightning Bolt", SetCode: "fdn"},
+	}
+	cardFetcher := &stubCardFetcher{cards: arenaCards}
+	store := &trackingStore{
+		stubStore:         stubStore{dbSets: []datasets.SyncSet{{Code: "FDN", ExpansionCode: "FDN"}}},
+		upsertSetCardsErr: errors.New("db write failed"),
+	}
+	fetcher := &stubFetcher{cards: []seventeenlands.CardRating{{MtgaID: 1, Name: "Plains", ALSA: 9.0}}}
+
+	h := handler.New(fetcher, cardFetcher, store, nil)
+	err := h.Handle(context.Background(), nil)
+
+	require.NoError(t, err, "UpsertSetCards error must be non-fatal")
+	// UpsertSetCards was called (and failed) — verify it was attempted.
+	require.Len(t, store.upsertSetCardsCalls, 1)
+	// The 17Lands ratings sync must still have proceeded.
+	assert.Equal(t, 1, fetcher.called, "ratings sync must still run despite UpsertSetCards error")
+}

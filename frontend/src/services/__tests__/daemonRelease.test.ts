@@ -11,6 +11,12 @@
  * - prod env (VITE_SENTRY_ENV=production, or any non-staging value): skips
  *   prerelease tags and resolves the newest stable daemon/v* tag only.
  *
+ * Pagination tests (added for vault-mtg-tickets#179):
+ * - When page 1 contains no daemon/v* stable releases (crowded by non-daemon
+ *   tags or RCs), the resolver paginates to page 2+ and finds the matching tag.
+ * - Stops paginating when a page returns fewer than per_page results (last page).
+ * - Returns null when all pages are exhausted with no match (respects MAX_PAGES cap).
+ *
  * These tests run in the Node environment (matched by the vitest environmentMatchGlobs
  * for service test files) — fetch is mocked with vi.fn().
  */
@@ -104,13 +110,14 @@ describe('fetchLatestDaemonRelease', () => {
     );
   });
 
-  it('queries with per_page=20', async () => {
+  it('queries page 1 with per_page=100', async () => {
     mockFetch.mockResolvedValueOnce(githubResponse([makeRelease('daemon/v0.3.1')]));
 
     await fetchLatestDaemonRelease();
 
     const [url] = mockFetch.mock.calls[0] as [string, RequestInit];
-    expect(url).toContain(`${RELEASES_API}?per_page=20`);
+    expect(url).toContain('per_page=100');
+    expect(url).toContain('page=1');
   });
 
   // ---------------------------------------------------------------------------
@@ -314,5 +321,141 @@ describe('fetchLatestDaemonRelease', () => {
     expect(FALLBACK_DOWNLOAD_BASE).toBe(
       `https://github.com/${GITHUB_REPO}/releases/latest/download`
     );
+  });
+
+  // ---------------------------------------------------------------------------
+  // Pagination: latest stable is beyond page 1 / page 1 crowded by non-daemon tags
+  //
+  // These tests verify the fix for vault-mtg-tickets#179: when page 1 is full
+  // of non-daemon tags or RC tags, the resolver must paginate to find the
+  // matching daemon/v* stable release.
+  // ---------------------------------------------------------------------------
+
+  describe('pagination: daemon release beyond page 1', () => {
+    /**
+     * Build a full page of non-daemon releases (simulates a crowded page 1).
+     * Count must equal PER_PAGE (100) so the resolver knows there may be more pages.
+     */
+    function makeFullPageOfNonDaemonReleases(): ReturnType<typeof makeRelease>[] {
+      return Array.from({ length: 100 }, (_, i) => makeRelease(`app/v1.${i}.0`));
+    }
+
+    it('paginates to page 2 when page 1 has no daemon/v* releases', async () => {
+      // Page 1: 100 non-daemon releases (full page → resolver should request page 2)
+      mockFetch.mockResolvedValueOnce(githubResponse(makeFullPageOfNonDaemonReleases()));
+      // Page 2: daemon release is present
+      mockFetch.mockResolvedValueOnce(
+        githubResponse([
+          makeRelease('daemon/v0.3.2'),
+          makeRelease('app/v2.0.0'),
+        ])
+      );
+
+      const result = await fetchLatestDaemonRelease();
+
+      expect(result).not.toBeNull();
+      expect(result!.tag).toBe('daemon/v0.3.2');
+      expect(mockFetch).toHaveBeenCalledTimes(2);
+
+      const [page1Url] = mockFetch.mock.calls[0] as [string, RequestInit];
+      const [page2Url] = mockFetch.mock.calls[1] as [string, RequestInit];
+      expect(page1Url).toContain('page=1');
+      expect(page2Url).toContain('page=2');
+    });
+
+    it('resolves the stable release when page 1 is crowded with non-daemon and RC tags (prod env)', async () => {
+      vi.stubEnv('VITE_SENTRY_ENV', 'production');
+
+      // Page 1: mix of non-daemon tags and RC daemon tags (full page)
+      const page1Releases = [
+        ...Array.from({ length: 50 }, (_, i) => makeRelease(`app/v${i}.0.0`)),
+        ...Array.from({ length: 49 }, (_, i) =>
+          makeRelease(`daemon/v0.4.${i}-rc1`, { prerelease: true })
+        ),
+        makeRelease('sync/v1.0.0'),
+      ];
+      mockFetch.mockResolvedValueOnce(githubResponse(page1Releases));
+
+      // Page 2: stable daemon release
+      mockFetch.mockResolvedValueOnce(
+        githubResponse([makeRelease('daemon/v0.3.2'), makeRelease('app/v0.9.0')])
+      );
+
+      const result = await fetchLatestDaemonRelease();
+
+      expect(result).not.toBeNull();
+      expect(result!.tag).toBe('daemon/v0.3.2');
+      expect(mockFetch).toHaveBeenCalledTimes(2);
+    });
+
+    it('finds stable release on page 2 in staging env when page 1 only has RCs', async () => {
+      vi.stubEnv('VITE_SENTRY_ENV', 'staging');
+
+      // Page 1: only RC daemon releases — staging should pick these up immediately
+      mockFetch.mockResolvedValueOnce(
+        githubResponse([
+          makeRelease('daemon/v0.4.0-rc1', { prerelease: true }),
+        ])
+      );
+
+      const result = await fetchLatestDaemonRelease();
+
+      // Staging accepts RC — found on page 1, no page 2 needed
+      expect(result).not.toBeNull();
+      expect(result!.tag).toBe('daemon/v0.4.0-rc1');
+      expect(mockFetch).toHaveBeenCalledTimes(1);
+    });
+
+    it('stops paginating when an empty page is returned (no more releases)', async () => {
+      // Page 1: full page of non-daemon (resolver will request page 2)
+      mockFetch.mockResolvedValueOnce(githubResponse(makeFullPageOfNonDaemonReleases()));
+      // Page 2: empty — no more releases
+      mockFetch.mockResolvedValueOnce(githubResponse([]));
+
+      const result = await fetchLatestDaemonRelease();
+
+      expect(result).toBeNull();
+      expect(mockFetch).toHaveBeenCalledTimes(2);
+    });
+
+    it('stops paginating when a partial page is returned (last page)', async () => {
+      // Page 1: full page of non-daemon
+      mockFetch.mockResolvedValueOnce(githubResponse(makeFullPageOfNonDaemonReleases()));
+      // Page 2: partial page with no daemon release → resolver stops here
+      mockFetch.mockResolvedValueOnce(
+        githubResponse([makeRelease('app/v5.0.0'), makeRelease('sync/v2.0.0')])
+      );
+
+      const result = await fetchLatestDaemonRelease();
+
+      expect(result).toBeNull();
+      // Only 2 fetches despite no match — partial page signals end of releases
+      expect(mockFetch).toHaveBeenCalledTimes(2);
+    });
+
+    it('respects MAX_PAGES cap and returns null when all pages are exhausted', async () => {
+      // Mock MAX_PAGES (5) full pages of non-daemon releases — no daemon tag anywhere
+      for (let i = 0; i < 5; i++) {
+        mockFetch.mockResolvedValueOnce(githubResponse(makeFullPageOfNonDaemonReleases()));
+      }
+
+      const result = await fetchLatestDaemonRelease();
+
+      expect(result).toBeNull();
+      // Stopped after exactly MAX_PAGES=5 fetches, not more
+      expect(mockFetch).toHaveBeenCalledTimes(5);
+    });
+
+    it('returns null when the API returns non-ok on page 2', async () => {
+      // Page 1: full page of non-daemon
+      mockFetch.mockResolvedValueOnce(githubResponse(makeFullPageOfNonDaemonReleases()));
+      // Page 2: API error
+      mockFetch.mockResolvedValueOnce({ ok: false, status: 500 });
+
+      const result = await fetchLatestDaemonRelease();
+
+      expect(result).toBeNull();
+      expect(mockFetch).toHaveBeenCalledTimes(2);
+    });
   });
 });

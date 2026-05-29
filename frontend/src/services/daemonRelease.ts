@@ -15,11 +15,23 @@
  * - production / any other value: excludes prereleases — stable channel only.
  *   This is the fail-safe default: an unknown env value behaves like production
  *   so a daemon RC can never leak onto the prod Download page.
+ *
+ * Pagination (fix for vault-mtg-tickets#179):
+ * - Uses per_page=100 and paginates up to MAX_PAGES pages.
+ * - Stops as soon as a matching daemon/v* release is found.
+ * - Prevents a daemon release from being missed when non-daemon tags or RCs
+ *   crowd the first page at high release volume.
  */
 
 const GITHUB_REPO = 'RdHamilton/vault-mtg';
 const RELEASES_BASE = `https://github.com/${GITHUB_REPO}/releases/download`;
 const LATEST_RELEASE_URL = `https://api.github.com/repos/${GITHUB_REPO}/releases`;
+
+/** Number of results fetched per page. 100 is the GitHub API maximum. */
+const PER_PAGE = 100;
+
+/** Maximum pages to paginate before giving up. Caps at 500 releases checked. */
+const MAX_PAGES = 5;
 
 /**
  * Returns true only when the build was produced by deploy-spa-staging.yml.
@@ -40,8 +52,25 @@ export interface DaemonReleaseInfo {
   downloadBase: string;
 }
 
+type GitHubRelease = { tag_name: string; draft: boolean; prerelease: boolean };
+
+/**
+ * Returns true when a release entry is a candidate for the current environment.
+ */
+function isCandidate(r: GitHubRelease): boolean {
+  if (r.draft) return false;
+  if (!r.tag_name.startsWith('daemon/v')) return false;
+  // On prod, skip prereleases so an RC tag never leaks to the prod download page.
+  if (!isStaging() && r.prerelease) return false;
+  return true;
+}
+
 /**
  * Fetch the most-recent release whose tag starts with "daemon/v".
+ *
+ * Paginates through the GitHub Releases API (per_page=100, up to MAX_PAGES
+ * pages) so the resolver remains correct even when non-daemon tags or release
+ * candidates push the newest stable daemon release off page 1.
  *
  * Channel behaviour:
  * - staging env  → accepts prereleases (daemon/v*-rc* are valid targets).
@@ -55,44 +84,48 @@ export async function fetchLatestDaemonRelease(
   signal?: AbortSignal
 ): Promise<DaemonReleaseInfo | null> {
   try {
-    const response = await fetch(
-      `${LATEST_RELEASE_URL}?per_page=20`,
-      {
-        signal,
-        headers: {
-          Accept: 'application/vnd.github+json',
-          'X-GitHub-Api-Version': '2022-11-28',
-        },
-      }
-    );
-
-    if (!response.ok) {
-      console.warn(
-        `[daemonRelease] GitHub Releases API returned ${response.status} — falling back`
+    for (let page = 1; page <= MAX_PAGES; page++) {
+      const response = await fetch(
+        `${LATEST_RELEASE_URL}?per_page=${PER_PAGE}&page=${page}`,
+        {
+          signal,
+          headers: {
+            Accept: 'application/vnd.github+json',
+            'X-GitHub-Api-Version': '2022-11-28',
+          },
+        }
       );
-      return null;
+
+      if (!response.ok) {
+        console.warn(
+          `[daemonRelease] GitHub Releases API returned ${response.status} — falling back`
+        );
+        return null;
+      }
+
+      const releases: GitHubRelease[] = await response.json();
+
+      // Empty page means we have exhausted all releases.
+      if (releases.length === 0) {
+        break;
+      }
+
+      const match = releases.find(isCandidate);
+      if (match) {
+        return {
+          tag: match.tag_name,
+          downloadBase: `${RELEASES_BASE}/${match.tag_name}`,
+        };
+      }
+
+      // If the page was not full, there are no more pages to fetch.
+      if (releases.length < PER_PAGE) {
+        break;
+      }
     }
 
-    const releases: Array<{ tag_name: string; draft: boolean; prerelease: boolean }> =
-      await response.json();
-
-    const match = releases.find((r) => {
-      if (r.draft) return false;
-      if (!r.tag_name.startsWith('daemon/v')) return false;
-      // On prod, skip prereleases so an RC tag never leaks to the prod download page.
-      if (!isStaging() && r.prerelease) return false;
-      return true;
-    });
-
-    if (!match) {
-      console.warn('[daemonRelease] No daemon/v* release found — falling back');
-      return null;
-    }
-
-    return {
-      tag: match.tag_name,
-      downloadBase: `${RELEASES_BASE}/${match.tag_name}`,
-    };
+    console.warn('[daemonRelease] No daemon/v* release found — falling back');
+    return null;
   } catch (err) {
     if ((err as Error).name === 'AbortError') {
       return null;

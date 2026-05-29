@@ -2,6 +2,7 @@ package datasets
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"log"
@@ -207,6 +208,135 @@ func (s *PostgresStore) UpsertColorRatings(ctx context.Context, setCode, draftFo
 	log.Printf("[sync] UpsertColorRatings: inserted %d rows for %s/%s", len(ratings), setCode, draftFormat)
 
 	return nil
+}
+
+// UpsertSetCards upserts per-set card entries into the set_cards table keyed on
+// (set_code, arena_id). arena_id in set_cards is TEXT, so the integer ArenaID
+// from ScryfallCard is cast via fmt.Sprintf. The upsert updates all mutable
+// fields on conflict — no WHERE guard (always-upsert for v1).
+// image_url_small and image_url_art are written from the "small" and "art_crop"
+// keys in the ImageURIs map using the same extractImageURLKey helper as image_url.
+// Price columns (price_usd, price_eur, etc.) have no Scryfall source and are
+// left null — they are populated by the separate price-sync path.
+func (s *PostgresStore) UpsertSetCards(ctx context.Context, cards []scryfall.ScryfallCard) error {
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		return fmt.Errorf("begin tx: %w", err)
+	}
+	defer func() {
+		if err := tx.Rollback(ctx); err != nil && !errors.Is(err, pgx.ErrTxClosed) {
+			log.Printf("[sync] UpsertSetCards: rollback error: %v", err)
+		}
+	}()
+
+	const q = `
+		INSERT INTO set_cards (
+			set_code, arena_id, scryfall_id, name, mana_cost, cmc, types,
+			colors, rarity, text, power, toughness, image_url, image_url_small,
+			image_url_art, legalities, fetched_at
+		) VALUES (
+			$1, $2, $3, $4, $5, $6, $7,
+			$8, $9, $10, $11, $12, $13, $14,
+			$15, $16, NOW()
+		)
+		ON CONFLICT (set_code, arena_id) DO UPDATE SET
+			scryfall_id     = EXCLUDED.scryfall_id,
+			name            = EXCLUDED.name,
+			mana_cost       = EXCLUDED.mana_cost,
+			cmc             = EXCLUDED.cmc,
+			types           = EXCLUDED.types,
+			colors          = EXCLUDED.colors,
+			rarity          = EXCLUDED.rarity,
+			text            = EXCLUDED.text,
+			power           = EXCLUDED.power,
+			toughness       = EXCLUDED.toughness,
+			image_url       = EXCLUDED.image_url,
+			image_url_small = EXCLUDED.image_url_small,
+			image_url_art   = EXCLUDED.image_url_art,
+			legalities      = EXCLUDED.legalities,
+			fetched_at      = NOW()
+	`
+
+	inserted := 0
+	for i := range cards {
+		c := &cards[i]
+		if c.ArenaID == nil {
+			continue
+		}
+
+		// set_cards.arena_id is TEXT; cast integer ArenaID to string.
+		arenaIDText := fmt.Sprintf("%d", *c.ArenaID)
+
+		colorsJSON, err := json.Marshal(c.Colors)
+		if err != nil {
+			return fmt.Errorf("marshal colors for set_card %q: %w", c.Name, err)
+		}
+		legalitiesJSON, err := json.Marshal(c.Legalities)
+		if err != nil {
+			return fmt.Errorf("marshal legalities for set_card %q: %w", c.Name, err)
+		}
+
+		// Extract image URLs from the ImageURIs map using the shared helper.
+		imageURL := extractImageURL(c.ImageURIs)
+		imageURLSmall := extractImageURLKey(c.ImageURIs, "small")
+		imageURLArt := extractImageURLKey(c.ImageURIs, "art_crop")
+
+		if _, err := tx.Exec(
+			ctx, q,
+			c.SetCode,
+			arenaIDText,
+			c.ScryfallID,
+			c.Name,
+			c.ManaCost,
+			int(c.CMC),
+			c.TypeLine,
+			string(colorsJSON),
+			c.Rarity,
+			c.OracleText,
+			c.Power,
+			c.Toughness,
+			imageURL,
+			imageURLSmall,
+			imageURLArt,
+			string(legalitiesJSON),
+		); err != nil {
+			return fmt.Errorf("upsert set_card %q (set=%s arena_id=%s): %w", c.Name, c.SetCode, arenaIDText, err)
+		}
+		inserted++
+	}
+
+	if err := tx.Commit(ctx); err != nil {
+		return fmt.Errorf("commit: %w", err)
+	}
+
+	log.Printf("[sync] UpsertSetCards: upserted %d set_cards", inserted)
+	return nil
+}
+
+// extractImageURL pulls the "normal" image URL out of the ImageURIs field.
+// ImageURIs is decoded as any (interface{}) from JSON, so a type assertion
+// is used to avoid a secondary parse. Returns empty string if absent.
+func extractImageURL(imageURIs any) string {
+	return extractImageURLKey(imageURIs, "normal")
+}
+
+// extractImageURLKey pulls the named key's URL out of the ImageURIs field.
+// ImageURIs is decoded as any (interface{}) from JSON. Returns empty string
+// when the field is absent, not a map, or the key is missing.
+func extractImageURLKey(imageURIs any, key string) string {
+	if imageURIs == nil {
+		return ""
+	}
+	m, ok := imageURIs.(map[string]any)
+	if !ok {
+		return ""
+	}
+	if v, ok := m[key]; ok {
+		if s, ok := v.(string); ok {
+			return s
+		}
+	}
+	return ""
 }
 
 // GetHash returns the stored hash for the given key, or ("", nil) if none exists.

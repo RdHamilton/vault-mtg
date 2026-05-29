@@ -1,9 +1,11 @@
 # .goreleaser.yml -- GoReleaser configuration for the MTGA Companion daemon.
 #
 # Targets:
-#   - darwin/amd64  }
-#   - darwin/arm64  } merged by lipo into a darwin universal binary
-#   - windows/amd64   -- single exe, no CGO
+#   - windows/amd64   -- single exe, no CGO (built here on ubuntu-latest)
+#
+# darwin (arm64 + amd64) is built separately in the `build-macos` CI job on a
+# macos-latest runner with CGO_ENABLED=1 so the systray/Cocoa tray icon
+# compiles in.  GoReleaser only handles Windows and the GitHub Release creation.
 #
 # GoReleaser open-source (free tier) only -- no Pro features used.
 #
@@ -122,20 +124,16 @@ builds:
     main: ./cmd/daemon
     binary: vaultmtg-daemon
     env:
+      # CGO_ENABLED=0 is intentional here: this build only targets Windows.
+      # darwin targets are built natively on macos-latest in the `build-macos`
+      # CI job with CGO_ENABLED=1 so the systray/Cocoa tray icon compiles in.
       - CGO_ENABLED=0
       - GONOSUMDB=github.com/RdHamilton/vault-mtg
       - GOPRIVATE=github.com/RdHamilton/vault-mtg
     goos:
-      - darwin
       - windows
     goarch:
       - amd64
-      - arm64
-    # Exclude darwin/arm64 from the individual windows-style naming -- arm64
-    # only appears in the darwin pair that lipo merges into a universal binary.
-    ignore:
-      - goos: windows
-        goarch: arm64
     ldflags:
       # main.Version embeds the release version for `mtga-daemon -version` output.
       # main.DefaultCloudAPIURL is the build-time default cloud_api_url written
@@ -168,48 +166,15 @@ builds:
             - IS_SNAPSHOT={{ .IsSnapshot }}
             - TARGET_GOOS={{ .Os }}
 
-# ---------------------------------------------------------------------------
-# Universal binary (darwin arm64 + amd64 -> single universal binary via lipo)
-# ---------------------------------------------------------------------------
-universal_binaries:
-  - id: daemon-universal
-    ids:
-      - daemon
-    name_template: vaultmtg-daemon
-    replace: true
-    # macOS .pkg/.dmg installer -- built after lipo produces the universal binary.
-    # Runs only on darwin and is skipped automatically in snapshot mode because
-    # the script checks for the GORELEASER_CURRENT_TAG / IS_SNAPSHOT env vars
-    # set by the CI workflow. hdiutil and pkgbuild are macOS-only tools.
-    hooks:
-      post:
-        - cmd: >
-            bash -c '[ "${IS_SNAPSHOT}" = "true" ] && exit 0;
-            [ "$(uname)" != "Darwin" ] && exit 0;
-            bash install/macos/pkg/build-pkg.sh'
-          env:
-            - IS_SNAPSHOT={{ .IsSnapshot }}
-            - BINARY_PATH={{ .Path }}
-            - VERSION={{ .Env.PLAIN_VERSION }}
-            - TEAM_ID={{ if index .Env "APPLE_TEAM_ID" }}{{ .Env.APPLE_TEAM_ID }}{{ end }}
 
 # ---------------------------------------------------------------------------
 # Archives / packaging
 # ---------------------------------------------------------------------------
 archives:
-  # macOS: ship the universal binary as a bare binary (no archive).
-  # The .pkg/.dmg are built by the universal_binaries post hook and attached as
-  # extra_files on the GitHub Release.
-  - id: darwin-universal
-    ids:
-      - daemon-universal
-    formats:
-      - binary
-    name_template: "vaultmtg-daemon-darwin-universal"
-    allow_different_binary_count: true
-
   # Windows amd64: ship the bare exe so the release also has a raw binary.
   # The NSIS .exe installer is also built by the build hook and attached.
+  # darwin archives are produced and uploaded by the build-macos + sign-macos
+  # CI jobs (macos-latest runner), not by GoReleaser.
   - id: windows-amd64
     ids:
       - daemon
@@ -219,17 +184,6 @@ archives:
     files:
       - none*
 
-  # ---------------------------------------------------------------------------
-  # ADR-022 Phase 6 (#1764) cutover completed 2026-05-25:
-  # the legacy dual-naming archive entries (mtga-companion-daemon-darwin-universal
-  # and mtga-companion-daemon-windows-amd64) were removed. Gate verified: zero
-  # legacy artifacts were ever published to a daemon/v* release — the dual-naming
-  # commit (#1760 / 0f958f71) landed AFTER the only daemon release (daemon/v0.3.1,
-  # 2026-05-17 18:58Z UTC; commit landed 2026-05-18 07:35Z UTC), so no in-field
-  # daemon ever fetched a mtga-companion-daemon-* asset under daemon/v0.3.1 or
-  # later tags. sha256sums.txt regenerates on the next daemon release with only
-  # vaultmtg-daemon-* checksums (no manual edit required).
-  # ---------------------------------------------------------------------------
 
 # ---------------------------------------------------------------------------
 # Checksums
