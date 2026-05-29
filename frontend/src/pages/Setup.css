@@ -221,6 +221,62 @@
   background-color: #9147ff;
 }
 
+/* Auth status panel (#2142) */
+.setup-auth-status {
+  background-color: #2d2d2d;
+  border: 1px solid #3d3d3d;
+  border-radius: 8px;
+  padding: 20px 24px;
+}
+
+.setup-auth-status__item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.setup-auth-status__dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.setup-auth-status__dot--green  { background-color: #22c55e; }
+.setup-auth-status__dot--yellow { background-color: #f59e0b; }
+.setup-auth-status__dot--red    { background-color: #ef4444; }
+.setup-auth-status__dot--orange { background-color: #f97316; }
+
+.setup-auth-status__label {
+  font-size: 15px;
+  font-weight: 600;
+  color: #ffffff;
+}
+
+.setup-auth-status__item--authenticated .setup-auth-status__label { color: #22c55e; }
+.setup-auth-status__item--setup-required .setup-auth-status__label { color: #f59e0b; }
+.setup-auth-status__item--keychain-error .setup-auth-status__label { color: #ef4444; }
+.setup-auth-status__item--auth-paused .setup-auth-status__label { color: #f97316; }
+
+.setup-auth-status__cta {
+  margin-left: auto;
+  background-color: #7b2fff;
+  color: #ffffff;
+  border: none;
+  border-radius: 6px;
+  padding: 6px 16px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  text-decoration: none;
+  transition: background-color 0.15s ease;
+}
+
+.setup-auth-status__cta:hover {
+  background-color: #9147ff;
+}
+
 /* Mobile */
 @media (max-width: 600px) {
   .setup-container {

@@ -78,6 +78,29 @@ fi
 EOF
   chmod +x "${stub_dir}/install"
 
+  # curl — default stub returns a healthy /health response so existing tests
+  # (which test plist content, not health-check behaviour) continue to pass.
+  # Health-check-specific tests override this stub in their own setup.
+  cat > "${stub_dir}/curl" <<'EOF'
+#!/usr/bin/env bash
+echo '{"status":"ok","account_id":"user_stub","auth_status":"authenticated"}'
+EOF
+  chmod +x "${stub_dir}/curl"
+
+  # sleep — no-op so tests do not incur the real delay between retries.
+  cat > "${stub_dir}/sleep" <<'EOF'
+#!/usr/bin/env bash
+exit 0
+EOF
+  chmod +x "${stub_dir}/sleep"
+
+  # pkill — no-op (no real daemon process to kill in tests)
+  cat > "${stub_dir}/pkill" <<'EOF'
+#!/usr/bin/env bash
+exit 0
+EOF
+  chmod +x "${stub_dir}/pkill"
+
   echo "${stub_dir}"
 }
 
@@ -324,4 +347,120 @@ EOF
   echo "output: ${output}"
   [ "${status}" -eq 0 ]
   [[ "${output}" == *"To uninstall: sudo /usr/local/share/vaultmtg/uninstall.sh"* ]]
+}
+
+# ---------------------------------------------------------------------------
+# Health-check tests (issue #2131) — verify poll_daemon_health behaviour.
+#
+# Strategy: add a curl stub to STUB_DIR that echoes a configurable JSON body
+# or simulates a timeout.  We override STUB_DIR's curl for each test.
+# ---------------------------------------------------------------------------
+
+# 10. Health-check passes when daemon responds with a non-empty account_id.
+@test "health check: exits 0 when daemon responds with non-empty account_id" {
+  # curl stub returns a healthy JSON body immediately.
+  cat > "${STUB_DIR}/curl" <<'EOF'
+#!/usr/bin/env bash
+echo '{"status":"ok","account_id":"user_abc123","auth_status":"authenticated"}'
+EOF
+  chmod +x "${STUB_DIR}/curl"
+
+  run env \
+    PATH="${STUB_DIR}:${PATH}" \
+    SUDO_USER="${REAL_USER}" \
+    BATS_TEST_TMPDIR="${BATS_TEST_TMPDIR}" \
+    bash "${TMP_SCRIPT}"
+
+  echo "status: ${status}"
+  echo "output: ${output}"
+  [ "${status}" -eq 0 ]
+  [[ "${output}" == *"daemon healthy"* ]]
+  [[ "${output}" == *"post-install health check passed"* ]]
+}
+
+# 11. Health-check fails when daemon never responds (curl always fails).
+@test "health check: exits 1 when daemon never responds within retry limit" {
+  # curl stub always exits non-zero (connection refused simulation).
+  # Also stub sleep so the test does not actually wait 15 s.
+  cat > "${STUB_DIR}/curl" <<'EOF'
+#!/usr/bin/env bash
+exit 1
+EOF
+  chmod +x "${STUB_DIR}/curl"
+
+  cat > "${STUB_DIR}/sleep" <<'EOF'
+#!/usr/bin/env bash
+exit 0
+EOF
+  chmod +x "${STUB_DIR}/sleep"
+
+  run env \
+    PATH="${STUB_DIR}:${PATH}" \
+    SUDO_USER="${REAL_USER}" \
+    BATS_TEST_TMPDIR="${BATS_TEST_TMPDIR}" \
+    bash "${TMP_SCRIPT}"
+
+  echo "status: ${status}"
+  echo "output: ${output}"
+  [ "${status}" -eq 1 ]
+  [[ "${output}" == *"daemon did not respond"* ]]
+}
+
+# 12. Health-check fails when daemon responds but account_id is empty.
+@test "health check: exits 1 when daemon responds but account_id is empty" {
+  # curl stub returns a JSON body without account_id (setup_required state).
+  cat > "${STUB_DIR}/curl" <<'EOF'
+#!/usr/bin/env bash
+echo '{"status":"ok","auth_status":"setup_required"}'
+EOF
+  chmod +x "${STUB_DIR}/curl"
+
+  cat > "${STUB_DIR}/sleep" <<'EOF'
+#!/usr/bin/env bash
+exit 0
+EOF
+  chmod +x "${STUB_DIR}/sleep"
+
+  run env \
+    PATH="${STUB_DIR}:${PATH}" \
+    SUDO_USER="${REAL_USER}" \
+    BATS_TEST_TMPDIR="${BATS_TEST_TMPDIR}" \
+    bash "${TMP_SCRIPT}"
+
+  echo "status: ${status}"
+  echo "output: ${output}"
+  [ "${status}" -eq 1 ]
+  [[ "${output}" == *"daemon did not respond"* ]]
+}
+
+# 13. Health-check retries the correct number of times before giving up.
+@test "health check: makes exactly HEALTH_MAX_ATTEMPTS curl calls before failing" {
+  local call_count_file="${BATS_TEST_TMPDIR}/curl_calls"
+
+  cat > "${STUB_DIR}/curl" <<EOF
+#!/usr/bin/env bash
+count=\$(cat "${call_count_file}" 2>/dev/null || echo 0)
+count=\$(( count + 1 ))
+echo "\$count" > "${call_count_file}"
+exit 1
+EOF
+  chmod +x "${STUB_DIR}/curl"
+
+  cat > "${STUB_DIR}/sleep" <<'EOF'
+#!/usr/bin/env bash
+exit 0
+EOF
+  chmod +x "${STUB_DIR}/sleep"
+
+  run env \
+    PATH="${STUB_DIR}:${PATH}" \
+    SUDO_USER="${REAL_USER}" \
+    BATS_TEST_TMPDIR="${BATS_TEST_TMPDIR}" \
+    bash "${TMP_SCRIPT}"
+
+  [ "${status}" -eq 1 ]
+  local calls
+  calls=$(cat "${call_count_file}")
+  echo "curl call count: ${calls}"
+  [ "${calls}" -eq 5 ]
 }

@@ -58,28 +58,15 @@ jobs:
           RAW=$(git describe --tags --match 'app/v*' --abbrev=0 2>/dev/null || echo '')
           echo "version=${RAW#app/v}" >> "$GITHUB_OUTPUT"
 
-      - name: Build React SPA
-        working-directory: frontend
-        run: npm run build
-        env:
-          VITE_BFF_URL: ${{ vars.VITE_BFF_URL }}
-          VITE_CLERK_PUBLISHABLE_KEY: ${{ vars.VITE_CLERK_PUBLISHABLE_KEY }}
-          VITE_POSTHOG_KEY: ${{ vars.VITE_POSTHOG_KEY }}
-          VITE_SENTRY_DSN: ${{ vars.VITE_SENTRY_DSN }}
-          VITE_APP_VERSION: ${{ steps.version.outputs.version }}
-          VITE_SENTRY_ENV: production
-          SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
-          SENTRY_ORG: ${{ secrets.SENTRY_ORG }}
-          SENTRY_PROJECT: ${{ secrets.SENTRY_PROJECT }}
-
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v6
         with:
           role-to-assume: ${{ secrets.AWS_DEPLOY_ROLE_ARN }}
           aws-region: us-east-1
 
-      # Read S3 bucket name and CloudFront distribution ID from SSM at deploy time.
-      # Keeps infrastructure config out of repository secrets and in one central place.
+      # Read S3 bucket name, CloudFront distribution ID, and Sentry DSN from SSM at deploy
+      # time. Keeps infrastructure config out of repository vars/secrets and in one central
+      # place (canonical SSM-as-source-of-truth pattern established in vault-mtg-tickets#16).
       - name: Read SSM parameters
         id: ssm
         run: |
@@ -93,8 +80,31 @@ jobs:
             --region us-east-1 \
             --query Parameter.Value \
             --output text)
-          echo "bucket=$BUCKET" >> "$GITHUB_OUTPUT"
-          echo "dist_id=$DIST_ID" >> "$GITHUB_OUTPUT"
+          SENTRY_DSN=$(aws ssm get-parameter \
+            --name /vaultmtg/app/production/sentry-dsn-spa \
+            --region us-east-1 \
+            --with-decryption \
+            --query Parameter.Value \
+            --output text)
+          {
+            echo "bucket=$BUCKET"
+            echo "dist_id=$DIST_ID"
+            echo "sentry_dsn=$SENTRY_DSN"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Build React SPA
+        working-directory: frontend
+        run: npm run build
+        env:
+          VITE_BFF_URL: ${{ vars.VITE_BFF_URL }}
+          VITE_CLERK_PUBLISHABLE_KEY: ${{ vars.VITE_CLERK_PUBLISHABLE_KEY }}
+          VITE_POSTHOG_KEY: ${{ vars.VITE_POSTHOG_KEY }}
+          VITE_SENTRY_DSN: ${{ steps.ssm.outputs.sentry_dsn }}
+          VITE_APP_VERSION: ${{ steps.version.outputs.version }}
+          VITE_SENTRY_ENV: production
+          SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
+          SENTRY_ORG: ${{ secrets.SENTRY_ORG }}
+          SENTRY_PROJECT: ${{ secrets.SENTRY_PROJECT }}
 
       - name: Sync build output to S3
         run: |
