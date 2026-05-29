@@ -60,21 +60,37 @@ type setsResponse struct {
 
 // Client fetches set metadata from the Scryfall API.
 type Client struct {
-	baseURL    string
-	httpClient *http.Client
+	baseURL        string
+	httpClient     *http.Client // used for small requests (metadata, /sets) — 30s timeout
+	bulkHTTPClient *http.Client // used exclusively for the bulk-data stream — no transport timeout
 }
 
 // NewClient returns a Client using the default Scryfall base URL.
+//
+// Two HTTP clients are created:
+//   - httpClient: 30s timeout, used for the small metadata and /sets requests.
+//   - bulkHTTPClient: Timeout: 0 (no transport-level timeout), used exclusively for
+//     the 150 MB bulk-data stream download. The 900s context deadline passed into
+//     FetchBulkDefaultCards is the sole bound on that download — a transport-level
+//     timeout would race the context and kill the stream in ~30s from Lambda.
 func NewClient() *Client {
 	return &Client{
-		baseURL:    defaultBaseURL,
-		httpClient: &http.Client{Timeout: 30 * time.Second},
+		baseURL:        defaultBaseURL,
+		httpClient:     &http.Client{Timeout: 30 * time.Second},
+		bulkHTTPClient: &http.Client{Timeout: 0},
 	}
 }
 
 // NewClientWithBase returns a Client pointed at a custom base URL (useful for tests).
+// bulkHTTPClient inherits the transport of the provided httpClient so tests using
+// custom transports (e.g. DisableCompression) work correctly, but has Timeout: 0 so
+// the structural timeout assertion holds.
 func NewClientWithBase(baseURL string, httpClient *http.Client) *Client {
-	return &Client{baseURL: baseURL, httpClient: httpClient}
+	return &Client{
+		baseURL:        baseURL,
+		httpClient:     httpClient,
+		bulkHTTPClient: &http.Client{Transport: httpClient.Transport, Timeout: 0},
+	}
 }
 
 // setScryfallHeaders sets the User-Agent and Accept headers required by the
@@ -101,10 +117,10 @@ func isDraftableSetType(t string) bool {
 	return false
 }
 
-// bulkDownloadTimeout is applied via context.WithTimeout for the 150 MB
-// bulk-data stream. The global *http.Client timeout of 30 s is too short
-// to stream the full file, so a per-request context deadline is used instead
-// without touching the shared client timeout. 900 s matches the Lambda max.
+// bulkDownloadTimeout is the context deadline applied to the 150 MB bulk-data
+// stream download via context.WithTimeout. The download uses bulkHTTPClient
+// (Timeout: 0) so there is no competing transport-level timeout; this context
+// deadline is the sole wall-clock bound. 900 s matches the Lambda maximum.
 const bulkDownloadTimeout = 900 * time.Second
 
 // bulkDataMeta is the JSON object returned by GET /bulk-data/default-cards.
@@ -123,9 +139,12 @@ type bulkDataMeta struct {
 //  2. GET download_uri → JSON array of card objects (~150 MB, optionally
 //     gzip-encoded at the HTTP transport layer).
 //
-// The metadata GET uses the normal 30 s client timeout. A separate
-// context.WithTimeout of 900 s is applied to the bulk download so it has
-// enough wall-clock time without altering the shared *http.Client timeout.
+// Step 1 uses c.httpClient (30 s transport timeout — the metadata response is tiny).
+// Step 2 uses c.bulkHTTPClient (Timeout: 0 — no transport-level timeout). The 900 s
+// context deadline applied via context.WithTimeout is the sole time bound on the bulk
+// download. Using the 30 s client for step 2 would race the context: from Lambda in
+// us-east-1 the 150 MB stream takes >30 s, causing "context deadline exceeded …
+// while reading body" before the 900 s deadline fires.
 //
 // The bulk array is decoded with a streaming json.Decoder so the full body is
 // never buffered in memory. If the download server sends Content-Encoding:
@@ -174,7 +193,7 @@ func (c *Client) FetchBulkDefaultCards(ctx context.Context) ([]ScryfallCard, err
 	}
 	setScryfallHeaders(dlReq)
 
-	dlResp, err := c.httpClient.Do(dlReq)
+	dlResp, err := c.bulkHTTPClient.Do(dlReq)
 	if err != nil {
 		return nil, fmt.Errorf("fetch bulk-data download: %w", err)
 	}

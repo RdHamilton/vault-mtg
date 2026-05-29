@@ -17,7 +17,6 @@ on:
     paths:
       - '.claude/agents/**'
       - 'scripts/corpus-lint.sh'
-      - 'vault_mtg_docs/**'
 
 concurrency:
   group: corpus-lint-${{ github.ref }}
