@@ -563,6 +563,16 @@ func TestFetchBulkDefaultCards_TransparentGzipHandledByTransport(t *testing.T) {
 	assert.Equal(t, 777, *got[0].ArenaID)
 }
 
+// TestNewClient_BulkClientHasNoTimeout asserts that the bulk-download HTTP client
+// created by NewClient has Timeout == 0. This catches any future edit that
+// re-introduces a transport-level timeout on the bulk-data stream, which would
+// race the 900 s context deadline and kill the download in ~30 s from Lambda.
+func TestNewClient_BulkClientHasNoTimeout(t *testing.T) {
+	c := scryfall.NewClientForTest()
+	assert.Equal(t, 0, int(c.BulkTimeout()),
+		"bulk HTTP client must have Timeout==0; a non-zero transport timeout races the context deadline and kills the 150 MB stream")
+}
+
 // TestFetchBulkDefaultCards_RealScryfall is a real-network integration test
 // that calls the live Scryfall bulk-data endpoint and verifies that the
 // Arena-tagged card count meets the expected minimum. It is skipped by default
