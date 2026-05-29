@@ -5,6 +5,12 @@
  * API at runtime, filters to `daemon/v*` tags, and falls back gracefully when
  * the API is unavailable.
  *
+ * Env-channel tests (added for the env-aware prerelease feature):
+ * - staging env (VITE_SENTRY_ENV=staging): resolves the newest daemon/v* tag
+ *   regardless of whether it is a prerelease.
+ * - prod env (VITE_SENTRY_ENV=production, or any non-staging value): skips
+ *   prerelease tags and resolves the newest stable daemon/v* tag only.
+ *
  * These tests run in the Node environment (matched by the vitest environmentMatchGlobs
  * for service test files) — fetch is mocked with vi.fn().
  */
@@ -45,6 +51,7 @@ describe('fetchLatestDaemonRelease', () => {
 
   afterEach(() => {
     vi.clearAllMocks();
+    vi.unstubAllEnvs();
   });
 
   // ---------------------------------------------------------------------------
@@ -123,7 +130,8 @@ describe('fetchLatestDaemonRelease', () => {
     expect(result!.tag).toBe('daemon/v0.3.1');
   });
 
-  it('does NOT skip prerelease releases (prereleases are valid download targets)', async () => {
+  it('does NOT skip prerelease releases in staging env (prereleases are valid staging targets)', async () => {
+    vi.stubEnv('VITE_SENTRY_ENV', 'staging');
     mockFetch.mockResolvedValueOnce(
       githubResponse([makeRelease('daemon/v0.4.0-rc1', { prerelease: true })])
     );
@@ -184,6 +192,118 @@ describe('fetchLatestDaemonRelease', () => {
     const result = await fetchLatestDaemonRelease(controller.signal);
 
     expect(result).toBeNull();
+  });
+
+  // ---------------------------------------------------------------------------
+  // Env-channel: staging vs prod prerelease filtering
+  //
+  // Both suites use the same mock release list:
+  //   - daemon/v0.3.3-rc1  (prerelease: true)   ← newest tag in list
+  //   - daemon/v0.3.2      (prerelease: false)   ← latest stable
+  //   - app/v1.0.0                               ← non-daemon (always ignored)
+  //
+  // staging  → resolves daemon/v0.3.3-rc1 (RC is a valid staging target)
+  // prod     → resolves daemon/v0.3.2     (RC is excluded from stable channel)
+  // ---------------------------------------------------------------------------
+
+  describe('env-channel: staging (VITE_SENTRY_ENV=staging)', () => {
+    beforeEach(() => {
+      vi.stubEnv('VITE_SENTRY_ENV', 'staging');
+    });
+
+    it('resolves the RC prerelease when staging env is set', async () => {
+      mockFetch.mockResolvedValueOnce(
+        githubResponse([
+          makeRelease('daemon/v0.3.3-rc1', { prerelease: true }),
+          makeRelease('daemon/v0.3.2'),
+          makeRelease('app/v1.0.0'),
+        ])
+      );
+
+      const result = await fetchLatestDaemonRelease();
+
+      expect(result).not.toBeNull();
+      expect(result!.tag).toBe('daemon/v0.3.3-rc1');
+    });
+
+    it('still skips draft releases even in staging env', async () => {
+      mockFetch.mockResolvedValueOnce(
+        githubResponse([
+          makeRelease('daemon/v0.3.3-rc1', { draft: true, prerelease: true }),
+          makeRelease('daemon/v0.3.2'),
+        ])
+      );
+
+      const result = await fetchLatestDaemonRelease();
+
+      expect(result).not.toBeNull();
+      expect(result!.tag).toBe('daemon/v0.3.2');
+    });
+  });
+
+  describe('env-channel: prod (VITE_SENTRY_ENV=production)', () => {
+    beforeEach(() => {
+      vi.stubEnv('VITE_SENTRY_ENV', 'production');
+    });
+
+    it('skips the RC prerelease and resolves the stable release', async () => {
+      mockFetch.mockResolvedValueOnce(
+        githubResponse([
+          makeRelease('daemon/v0.3.3-rc1', { prerelease: true }),
+          makeRelease('daemon/v0.3.2'),
+          makeRelease('app/v1.0.0'),
+        ])
+      );
+
+      const result = await fetchLatestDaemonRelease();
+
+      expect(result).not.toBeNull();
+      expect(result!.tag).toBe('daemon/v0.3.2');
+    });
+
+    it('returns null when only a prerelease is available in prod env', async () => {
+      mockFetch.mockResolvedValueOnce(
+        githubResponse([
+          makeRelease('daemon/v0.3.3-rc1', { prerelease: true }),
+        ])
+      );
+
+      const result = await fetchLatestDaemonRelease();
+
+      expect(result).toBeNull();
+    });
+  });
+
+  describe('env-channel: fail-safe default (unknown / undefined VITE_SENTRY_ENV)', () => {
+    it('excludes prereleases when VITE_SENTRY_ENV is undefined (safe default = prod behaviour)', async () => {
+      // No vi.stubEnv call — env var is absent, IS_STAGING evaluates to false.
+      mockFetch.mockResolvedValueOnce(
+        githubResponse([
+          makeRelease('daemon/v0.3.3-rc1', { prerelease: true }),
+          makeRelease('daemon/v0.3.2'),
+        ])
+      );
+
+      const result = await fetchLatestDaemonRelease();
+
+      expect(result).not.toBeNull();
+      expect(result!.tag).toBe('daemon/v0.3.2');
+    });
+
+    it('excludes prereleases when VITE_SENTRY_ENV is an unrecognised value', async () => {
+      vi.stubEnv('VITE_SENTRY_ENV', 'preview');
+      mockFetch.mockResolvedValueOnce(
+        githubResponse([
+          makeRelease('daemon/v0.3.3-rc1', { prerelease: true }),
+          makeRelease('daemon/v0.3.2'),
+        ])
+      );
+
+      const result = await fetchLatestDaemonRelease();
+
+      expect(result).not.toBeNull();
+      expect(result!.tag).toBe('daemon/v0.3.2');
+    });
   });
 
   // ---------------------------------------------------------------------------
