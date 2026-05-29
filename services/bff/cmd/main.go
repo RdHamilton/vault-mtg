@@ -432,6 +432,7 @@ func main() {
 			questRepo := repository.NewQuestRepository(sqlDB)
 			deckProjectorRepo := repository.NewDeckProjectorRepository(sqlDB)
 			gamePlayRepo := repository.NewGamePlayRepository(sqlDB)
+			projectionErrorsRepo := repository.NewProjectionErrorsRepository(sqlDB)
 			worker := projection.NewWorker(
 				daemonEventsRepo,
 				accountRepo,
@@ -443,6 +444,10 @@ func main() {
 				deckProjectorRepo,
 				gamePlayRepo,
 			)
+			worker.WithDLQ(projectionErrorsRepo)
+			if postHogClient != nil {
+				worker.WithPostHogClient(postHogClient)
+			}
 			go worker.Run(projCtx)
 		} else {
 			log.Println("BFF_PROJECTION_DISABLED=true — projection worker not started.")

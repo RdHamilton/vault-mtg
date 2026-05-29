@@ -7,11 +7,13 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log"
 	"time"
 
 	"github.com/RdHamilton/vault-mtg/services/contract"
+	"github.com/posthog/posthog-go"
 
 	"github.com/RdHamilton/vault-mtg/services/bff/internal/storage/repository"
 )
@@ -70,6 +72,47 @@ type gamePlayStore interface {
 	InsertLifeChanges(ctx context.Context, changes []repository.LifeChangeInsert) error
 }
 
+// dlqStore writes permanently-failed projection rows to the dead-letter table.
+type dlqStore interface {
+	Insert(ctx context.Context, ins repository.ProjectionErrorInsert) error
+}
+
+// postHogClient is a mockable interface for server-side PostHog event capture.
+// It is satisfied by the real posthog.Client and by test doubles.
+type postHogClient interface {
+	Enqueue(msg posthog.Message) error
+}
+
+// noopPostHogClient is a no-op postHogClient used when PostHog is not wired.
+type noopPostHogClient struct{}
+
+func (noopPostHogClient) Enqueue(posthog.Message) error { return nil }
+
+// permanentErr wraps an error to signal that the failure is not transient —
+// it will not be resolved by retrying.  Projection rows whose projector returns
+// a permanent error are written to the projection_errors DLQ.
+type permanentErr struct {
+	cause error
+}
+
+func (e *permanentErr) Error() string { return e.cause.Error() }
+func (e *permanentErr) Unwrap() error { return e.cause }
+
+// permanent wraps err in permanentErr so the worker identifies it as a DLQ
+// candidate rather than a transient retry.
+func permanent(err error) error {
+	if err == nil {
+		return nil
+	}
+	return &permanentErr{cause: err}
+}
+
+// isPermanent reports whether err (or any error in its chain) is a permanentErr.
+func isPermanent(err error) bool {
+	var p *permanentErr
+	return errors.As(err, &p)
+}
+
 // Worker projects pending daemon_events rows into their destination tables.
 type Worker struct {
 	events     daemonEventStore
@@ -81,6 +124,8 @@ type Worker struct {
 	quests     questStore
 	decks      deckStore
 	gamePlays  gamePlayStore
+	dlq        dlqStore
+	postHog    postHogClient
 }
 
 // NewWorker returns a Worker wired with the provided stores.
@@ -105,7 +150,21 @@ func NewWorker(
 		quests:     quests,
 		decks:      decks,
 		gamePlays:  gamePlays,
+		dlq:        nil, // optional; wired via WithDLQ
+		postHog:    noopPostHogClient{},
 	}
+}
+
+// WithDLQ returns a copy of w with the dead-letter store wired.
+func (w *Worker) WithDLQ(store dlqStore) *Worker {
+	w.dlq = store
+	return w
+}
+
+// WithPostHogClient returns a copy of w with the PostHog client wired.
+func (w *Worker) WithPostHogClient(client postHogClient) *Worker {
+	w.postHog = client
+	return w
 }
 
 // Run starts the projection loop.  It performs an immediate drain on startup,
@@ -138,7 +197,7 @@ func (w *Worker) RunOnce(ctx context.Context) {
 func (w *Worker) runOnce(ctx context.Context) {
 	start := time.Now()
 
-	var projected, skippedUnknown, skippedMalformed, errored int
+	var projected, skippedUnknown, skippedMalformed, errored, deadLettered int
 
 	defer func() {
 		if r := recover(); r != nil {
@@ -146,9 +205,9 @@ func (w *Worker) runOnce(ctx context.Context) {
 		}
 
 		log.Printf(
-			"[projection] runOnce completed pending=%d projected=%d skipped_unknown=%d skipped_malformed=%d errored=%d duration_ms=%d",
-			projected+skippedUnknown+skippedMalformed+errored,
-			projected, skippedUnknown, skippedMalformed, errored,
+			"[projection] runOnce completed pending=%d projected=%d skipped_unknown=%d skipped_malformed=%d errored=%d dead_lettered=%d duration_ms=%d",
+			projected+skippedUnknown+skippedMalformed+errored+deadLettered,
+			projected, skippedUnknown, skippedMalformed, errored, deadLettered,
 			time.Since(start).Milliseconds(),
 		)
 	}()
@@ -174,6 +233,8 @@ func (w *Worker) runOnce(ctx context.Context) {
 			skippedMalformed++
 		case outcomeErrored:
 			errored++
+		case outcomeDeadLettered:
+			deadLettered++
 		}
 	}
 }
@@ -185,6 +246,7 @@ const (
 	outcomeSkippedUnknown
 	outcomeSkippedMalformed
 	outcomeErrored
+	outcomeDeadLettered
 )
 
 // projectRow processes a single daemon_events row.
@@ -265,6 +327,12 @@ func (w *Worker) projectRow(ctx context.Context, row *repository.DaemonEventRow)
 		outcome = outcomeSkippedUnknown
 	}
 
+	// If the projector returned a permanent error, write to the DLQ and emit
+	// the projection.dead_letter PostHog metric.
+	if writeErr != nil && isPermanent(writeErr) {
+		outcome = w.writeToDLQ(ctx, row, writeErr)
+	}
+
 	// Always mark projected so we don't re-scan this row.
 	if err := w.events.MarkProjected(ctx, row.ID); err != nil {
 		log.Printf("[projection] MarkProjected id=%d: %v", row.ID, err)
@@ -272,6 +340,56 @@ func (w *Worker) projectRow(ctx context.Context, row *repository.DaemonEventRow)
 	}
 
 	return outcome
+}
+
+// writeToDLQ inserts a dead-letter row for a permanently-failed projection
+// and emits the projection.dead_letter PostHog metric.
+// Returns outcomeDeadLettered on success, outcomeSkippedMalformed on DLQ failure.
+func (w *Worker) writeToDLQ(ctx context.Context, row *repository.DaemonEventRow, projErr error) projectionOutcome {
+	if w.dlq == nil {
+		// DLQ not wired — fall back to existing malformed behaviour.
+		log.Printf("[projection] DLQ not wired, cannot dead-letter id=%d: %v", row.ID, projErr)
+		return outcomeSkippedMalformed
+	}
+
+	rawPayload := string(row.Payload)
+
+	dlqErr := w.dlq.Insert(ctx, repository.ProjectionErrorInsert{
+		DaemonEventID: row.ID,
+		AccountID:     row.AccountID,
+		EventType:     row.EventType,
+		RawPayload:    rawPayload,
+		ErrorMessage:  projErr.Error(),
+	})
+	if dlqErr != nil {
+		log.Printf("[projection] DLQ insert failed id=%d: %v", row.ID, dlqErr)
+		return outcomeSkippedMalformed
+	}
+
+	log.Printf("[projection] dead-lettered id=%d event_type=%s: %v", row.ID, row.EventType, projErr)
+
+	// Emit projection.dead_letter PostHog metric.
+	// account_id_hash uses SHA-256 (first 16 hex chars) per I-10 — never raw account_id.
+	acctHash := hashAccountIDProjection(row.AccountID)
+	_ = w.postHog.Enqueue(posthog.Capture{
+		DistinctId: acctHash,
+		Event:      "projection.dead_letter",
+		Properties: posthog.NewProperties().
+			Set("account_id_hash", acctHash).
+			Set("event_type", row.EventType).
+			Set("error_message", projErr.Error()),
+	})
+
+	return outcomeDeadLettered
+}
+
+// hashAccountIDProjection returns a privacy-safe representation of accountID
+// for PostHog: SHA-256 hex, first 16 characters.  No raw PII is ever sent.
+// Mirrors handlers.hashAccountID — defined here to avoid a cross-package
+// import of the handlers package.
+func hashAccountIDProjection(accountID string) string {
+	sum := sha256.Sum256([]byte(accountID))
+	return fmt.Sprintf("%x", sum)[:16]
 }
 
 // --- payload shapes ---
@@ -306,17 +424,23 @@ type draftPayload struct {
 }
 
 func (w *Worker) projectMatch(ctx context.Context, row *repository.DaemonEventRow) error {
+	// Correction 2 (Ray): guard on empty account_id before the DB call.
+	// An empty account_id is a structural payload defect — permanent error.
+	if row.AccountID == "" {
+		return permanent(fmt.Errorf("match.completed payload missing account_id"))
+	}
+
 	var p matchPayload
 	if err := json.Unmarshal(row.Payload, &p); err != nil {
-		return fmt.Errorf("unmarshal match payload: %w", err)
+		return permanent(fmt.Errorf("unmarshal match payload: %w", err))
 	}
 
 	if p.MatchID == "" {
-		return fmt.Errorf("match payload missing match_id")
+		return permanent(fmt.Errorf("match payload missing match_id"))
 	}
 
 	if p.Format == "" {
-		return fmt.Errorf("match payload missing format")
+		return permanent(fmt.Errorf("match payload missing format"))
 	}
 
 	result := normaliseResult(p.Result)
@@ -330,12 +454,17 @@ func (w *Worker) projectMatch(ctx context.Context, row *repository.DaemonEventRo
 			result = "loss"
 		}
 	}
+	// Correction 1 (Ray): result indeterminate is an enrichment miss (won is an
+	// enrichment field), NOT a structural failure.  Do NOT wrap in permanent().
+	// Leave as a plain error so it produces outcomeSkippedMalformed and does not
+	// go to the DLQ.  #200 will convert this to default-fill (result="unknown").
 	if result == "" {
 		return fmt.Errorf("match payload: result indeterminate (result=%q winning_team_id=%d player_team_id=%d)", p.Result, p.WinningTeamID, p.PlayerTeamID)
 	}
 
 	accountID, err := w.accounts.GetOrCreateByClientID(ctx, row.AccountID, row.UserID)
 	if err != nil {
+		// GetOrCreateByClientID failure is transient (DB call) — do NOT wrap in permanent().
 		return fmt.Errorf("resolve account: %w", err)
 	}
 
@@ -486,7 +615,7 @@ func (w *Worker) projectInventoryUpdated(ctx context.Context, row *repository.Da
 	}
 
 	if row.AccountID == "" {
-		return fmt.Errorf("inventory.updated payload missing account_id")
+		return permanent(fmt.Errorf("inventory.updated payload missing account_id"))
 	}
 
 	accountID, err := w.accounts.GetOrCreateByClientID(ctx, row.AccountID, row.UserID)
