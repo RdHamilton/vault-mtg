@@ -16,7 +16,8 @@
 #      if still present — handles the upgrade-then-uninstall scenario.
 #   3. Removes both plists from ~/Library/LaunchAgents/.
 #   4. Removes the binary from /usr/local/bin/.
-#   5. (--purge only) Deletes the API key from the macOS Keychain.
+#   5. Removes the legacy binary (mtga-companion-daemon) if present (upgrader path).
+#   6. (--purge only) Deletes the API key from the macOS Keychain.
 
 set -euo pipefail
 
@@ -33,6 +34,8 @@ done
 
 INSTALL_DIR="${INSTALL_DIR:-/usr/local/bin}"
 BINARY_NAME="vaultmtg-daemon"
+# ADR-022 Phase 2: legacy binary name — removed on the upgrader path.
+BINARY_NAME_LEGACY="mtga-companion-daemon"
 
 # ADR-022 Phase 2: new label.
 PLIST_LABEL="com.vaultmtg.daemon"
@@ -87,6 +90,20 @@ if [[ -f "${BINARY_PATH}" ]]; then
   sudo rm -f "${BINARY_PATH}"
 else
   echo "Binary not found (${BINARY_PATH}), skipping."
+fi
+
+# ---------------------------------------------------------------------------
+# Remove the legacy binary (upgrader path — vault-mtg-tickets#48).
+# Mirrors the pattern above. The guard ensures sudo is only invoked when the
+# file is actually present — a fresh install (no legacy binary) skips cleanly.
+# ---------------------------------------------------------------------------
+LEGACY_BINARY_PATH="${INSTALL_DIR}/${BINARY_NAME_LEGACY}"
+if [[ -f "${LEGACY_BINARY_PATH}" ]]; then
+  echo "Found legacy binary: ${LEGACY_BINARY_PATH} — removing..."
+  sudo rm -f "${LEGACY_BINARY_PATH}"
+  echo "Legacy binary removed."
+else
+  echo "Legacy binary not found (${LEGACY_BINARY_PATH}), skipping."
 fi
 
 # ---------------------------------------------------------------------------

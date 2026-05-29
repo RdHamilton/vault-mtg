@@ -19,6 +19,7 @@
 #   9. Default (no --purge): keychain entry is retained and warn message is shown (#2567)
 #  10. --purge flag: keychain entry is deleted via security(1) (#2567)
 #  11. --purge flag: security(1) delete is a no-op when entry is already absent (#2567)
+#  12. Legacy binary removal: mtga-companion-daemon removed from INSTALL_DIR (vault-mtg-tickets#48)
 #
 # All tests stub `sudo` and `launchctl` so they never require privileges or
 # touch real launchd state. HOME is pointed at a per-test temp dir so plist
@@ -465,4 +466,41 @@ _make_fake_home() {
   # Must exit 0 — idempotent even when entry is absent.
   [ "${status}" -eq 0 ]
   [[ "${output}" == *"VaultMTG daemon uninstalled"* ]]
+}
+
+# ---------------------------------------------------------------------------
+# 12. Legacy binary removal — mtga-companion-daemon is removed (upgrader path)
+# Regression coverage for vault-mtg-tickets#48: a user who installed the
+# pre-rebrand daemon (which placed mtga-companion-daemon in INSTALL_DIR) and
+# then ran the new installer still has both binaries on disk. Uninstall must
+# remove both.
+# ---------------------------------------------------------------------------
+@test "legacy binary: mtga-companion-daemon is removed from INSTALL_DIR (upgrader path)" {
+  local stub_dir; stub_dir="$(_make_stub_dir)"
+  local install_dir; install_dir="$(mktemp -d)"
+  local fake_home; fake_home="$(_make_fake_home "${install_dir}" \
+    with-binary no-current-plist no-legacy-plist no-log no-config)"
+
+  # Place the legacy binary alongside the current binary — this is the
+  # upgrader scenario: both binaries are present in INSTALL_DIR.
+  echo "fake legacy binary" > "${install_dir}/mtga-companion-daemon"
+  chmod +x "${install_dir}/mtga-companion-daemon"
+  [ -f "${install_dir}/mtga-companion-daemon" ]
+
+  run env \
+    PATH="${stub_dir}:${PATH}" \
+    HOME="${fake_home}" \
+    INSTALL_DIR="${install_dir}" \
+    BATS_TEST_TMPDIR="${BATS_TEST_TMPDIR}" \
+    bash "${UNINSTALL_SH}"
+
+  echo "output: ${output}"
+  [ "${status}" -eq 0 ]
+  # Legacy binary must be gone.
+  [ ! -f "${install_dir}/mtga-companion-daemon" ]
+  # Current binary must also be gone (no regression to existing behavior).
+  [ ! -f "${install_dir}/vaultmtg-daemon" ]
+  # Script must emit the legacy-binary removal message.
+  [[ "${output}" == *"legacy binary"* ]]
+  [[ "${output}" == *"mtga-companion-daemon"* ]]
 }
