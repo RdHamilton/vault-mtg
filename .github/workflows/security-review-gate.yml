@@ -404,6 +404,8 @@ jobs:
                   ".github/workflows/release.yml"
                   ".github/workflows/rollback.yml"
                   ".github/workflows/staging-deploy.yml"
+                  ".github/workflows/daemon-release.yml"
+                  ".github/workflows/frontend.yml"
                   "services/bff/cmd/"
                   "services/daemon/cmd/"
                   "scripts/deploy/"
