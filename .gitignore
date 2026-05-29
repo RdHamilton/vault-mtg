@@ -76,4 +76,5 @@ apiserver
 # Local Go build outputs (binaries built next to package main.go)
 services/daemon/daemon
 services/collection-agent-helper/mtga-collection-helper
+services/collection-agent-helper/collection-helper
 services/collection-poc/mtga-collection-poc
