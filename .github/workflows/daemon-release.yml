@@ -60,7 +60,13 @@ jobs:
           GONOSUMDB: github.com/RdHamilton/vault-mtg
           GOPRIVATE: github.com/RdHamilton/vault-mtg
           GOFLAGS: -mod=mod
-        run: go mod download
+        run: |
+          go mod download
+          # go mod download with -mod=mod may update go.work.sum with new checksums.
+          # GoReleaser aborts on a dirty git state. Reset to the committed state so
+          # the workspace is clean before goreleaser runs. The downloaded module cache
+          # (GOPATH/pkg/mod) is unaffected by this restore.
+          git restore ../../go.work.sum
 
       - name: Run tests (pre-release gate)
         working-directory: services/daemon
