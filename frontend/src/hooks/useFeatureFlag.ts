@@ -59,9 +59,6 @@ export function useFeatureFlag(flagKey: string): FeatureFlagResult {
   const [enabled, setEnabled] = useState<boolean | null>(() => resolveFlag(flagKey));
 
   useEffect(() => {
-    // Re-resolve in case the test override was set after module init.
-    setEnabled(resolveFlag(flagKey));
-
     // If PostHog is not initialized there is nothing to subscribe to.
     if (!posthog.__loaded) {
       return;
