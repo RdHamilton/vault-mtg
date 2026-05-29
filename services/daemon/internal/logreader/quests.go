@@ -177,13 +177,15 @@ func questEntryFromMap(qm map[string]interface{}) *contract.QuestEntry {
 }
 
 // questNameFromMap extracts the human-readable quest name from the JSON map.
-// MTGA provides either a "locKey" or a "questTrack" string.
+// MTGA provides either a "locKey" or a "questTrack" string; both are resolved
+// through the static display-name map in quest_names.go. Unknown keys fall
+// back to the raw string value with a one-time warning log.
 func questNameFromMap(qm map[string]interface{}) string {
 	if v, ok := qm["locKey"].(string); ok && v != "" {
-		return v
+		return resolveQuestDisplayName(v)
 	}
-	if v, ok := qm["questTrack"].(string); ok {
-		return v
+	if v, ok := qm["questTrack"].(string); ok && v != "" {
+		return resolveQuestDisplayName(v)
 	}
 	return ""
 }
