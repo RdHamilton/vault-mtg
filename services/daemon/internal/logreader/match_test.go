@@ -9,12 +9,36 @@ import (
 
 // helpers
 
+// makeMatchCompletedEntry builds an in-memory LogEntry that mirrors the real
+// MTGA wire format: gameRoomConfig carries only "matchId" and "reservedPlayers"
+// at the top level; eventId lives inside each reservedPlayers[] entry.
+//
+// When eventID is non-empty it is injected into every player map in players.
+// The caller-supplied player maps are shallow-copied so the originals are not
+// mutated.
 func makeMatchCompletedEntry(stateType, matchID string, resultList []interface{}, players []interface{}, eventID string) *LogEntry {
-	gameRoomConfig := map[string]interface{}{
-		"reservedPlayers": players,
+	// Inject eventId into each player entry when non-empty.
+	injected := make([]interface{}, len(players))
+	for i, pl := range players {
+		pm, ok := pl.(map[string]interface{})
+		if !ok {
+			injected[i] = pl
+			continue
+		}
+		// Shallow-copy to avoid mutating the shared twoPlayers() slice.
+		cp := make(map[string]interface{}, len(pm)+1)
+		for k, v := range pm {
+			cp[k] = v
+		}
+		if eventID != "" {
+			cp["eventId"] = eventID
+		}
+		injected[i] = cp
 	}
-	if eventID != "" {
-		gameRoomConfig["eventId"] = eventID
+
+	gameRoomConfig := map[string]interface{}{
+		"matchId":         matchID,
+		"reservedPlayers": injected,
 	}
 
 	finalMatchResult := map[string]interface{}{
@@ -243,7 +267,7 @@ func TestParseMatchCompletedEntry_NoEventIDEmptyFormat(t *testing.T) {
 	entry := makeMatchCompletedEntry(
 		"MatchGameRoomStateType_MatchCompleted",
 		"match-1", ladderResultList(), twoPlayers(),
-		"", // no eventId
+		"", // no eventId in any player
 	)
 	p, err := ParseMatchCompletedEntry(entry, "")
 	require.NoError(t, err)
@@ -289,6 +313,18 @@ func TestParseMatchCompletedEntry_ConcedeReason(t *testing.T) {
 
 func TestParseMatchCompletedEntry_MissingFinalMatchResult(t *testing.T) {
 	// finalMatchResult absent — MatchID and ResultList should be zero values.
+	// gameRoomConfig uses real wire format: matchId + reservedPlayers only at
+	// top level; eventId carried inside each reservedPlayers entry.
+	playersWithEventID := []interface{}{
+		map[string]interface{}{
+			"userId": "USER_A", "playerName": "PlayerOne",
+			"systemSeatId": float64(1), "teamId": float64(1), "eventId": "Ladder",
+		},
+		map[string]interface{}{
+			"userId": "USER_B", "playerName": "PlayerTwo",
+			"systemSeatId": float64(2), "teamId": float64(2), "eventId": "Ladder",
+		},
+	}
 	entry := &LogEntry{
 		IsJSON: true,
 		JSON: map[string]interface{}{
@@ -296,8 +332,8 @@ func TestParseMatchCompletedEntry_MissingFinalMatchResult(t *testing.T) {
 				"gameRoomInfo": map[string]interface{}{
 					"stateType": "MatchGameRoomStateType_MatchCompleted",
 					"gameRoomConfig": map[string]interface{}{
-						"eventId":         "Ladder",
-						"reservedPlayers": twoPlayers(),
+						"matchId":         "match-no-fmr",
+						"reservedPlayers": playersWithEventID,
 					},
 				},
 			},
