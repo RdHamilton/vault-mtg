@@ -86,11 +86,34 @@ func readMemory(task C.mach_port_t, addr, size uint64) ([]byte, error) {
 	return data, nil
 }
 
+// CollectionSignatureVersion identifies the currently active memory-scan signature.
+// Bump this (and add a corresponding entry to knownSignatureVersions) whenever
+// re-deriving after an MTGA patch shifts the Unity heap layout.
+//
+// Derivation record for 20260529-001 — PENDING LLDB SESSION (vault-mtg-tickets#202):
+//
+//	Tool:           lldb -p <MTGA PID>
+//	MTGA build:     2026-05-29 patch (version string TBD — mtga_build=unknown for this stopgap)
+//	Address range:  TBD (update after LLDB session with Ramone)
+//	H1/H2 outcome: TBD — fill in after derivation:
+//	  H1 (region filter too strict): if yes, record adjusted minEntries/maxFillPct here.
+//	  H2 (Unity layout changed):     if yes, record new stride/field-order here.
+//	Command used:   memory read --outfile /tmp/region_X.bin --binary --count 4194304 0x<addr>
+//	Entries found:  TBD
+//
+// TODO(v0.3.5): detect MTGA build string via task port Info.plist lookup (ADR-040 §G4).
+const CollectionSignatureVersion = "20260529-001"
+
 const (
 	minRegionSize = 4 * 1024 * 1024
 	chunkSize     = 4 * 1024 * 1024
-	minEntries    = 500
-	maxFillPct    = 3.0
+	// minEntries and maxFillPct are the region-filter thresholds for the collection
+	// dictionary scan. These values are tuned for the 2026-05-12 MTGA build.
+	// H1 outcome from the 2026-05-29 LLDB derivation session will determine whether
+	// these need adjustment — see the CollectionSignatureVersion comment above.
+	// TODO(#202): update these constants after the LLDB derivation session.
+	minEntries = 500
+	maxFillPct = 3.0
 )
 
 // scanProcess reads the collection from pid's memory. Must run as root.

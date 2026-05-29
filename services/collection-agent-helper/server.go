@@ -84,7 +84,11 @@ func handleConn(conn net.Conn) {
 
 	cards, err := scanProcess(req.PID)
 	if err != nil {
-		log.Printf("[helper] scan error: %v", err)
+		// COLLECTION_SCAN_DRIFT is the canary trigger string. The T3 CloudWatch log
+		// filter (Ray's infra ticket) pattern-matches on this exact string. Do not
+		// rename it without updating the alarm filter.
+		log.Printf("COLLECTION_SCAN_DRIFT signature_version=%s pid=%d error=%v",
+			CollectionSignatureVersion, req.PID, err)
 		writeError(conn, err.Error())
 		return
 	}

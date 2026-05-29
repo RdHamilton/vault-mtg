@@ -29,6 +29,11 @@ func main() {
 	log.SetFlags(log.Ldate | log.Ltime)
 
 	log.Printf("starting (pid=%d)", os.Getpid())
+	// Emit the active signature version at startup so CloudWatch / on-call triage
+	// can correlate a COLLECTION_SCAN_DRIFT alarm with the known-good signature.
+	// mtga_build=unknown until v0.3.5 adds Info.plist detection (ADR-040 §G4).
+	log.Printf("signature_version=%s mtga_build=unknown note=%q",
+		CollectionSignatureVersion, knownSignatureVersions[CollectionSignatureVersion])
 	if err := runServer(); err != nil {
 		log.Fatalf("server: %v", err)
 	}
