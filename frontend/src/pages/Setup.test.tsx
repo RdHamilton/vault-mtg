@@ -345,6 +345,104 @@ describe('Setup — pairing: timeout/error state', () => {
 });
 
 // ---------------------------------------------------------------------------
+// Auth status panel (#2142)
+//
+// When the local /health response includes `auth_status`, Setup renders the
+// AuthStatusPanel in place of the PairingStatus UI. All four states are
+// tested here: authenticated, setup_required, keychain_error, auth_paused.
+// ---------------------------------------------------------------------------
+
+describe('Setup — auth status panel (#2142)', () => {
+  beforeEach(() => {
+    mockIsDesktopApp.mockReturnValue(true);
+    vi.useFakeTimers();
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+    vi.clearAllMocks();
+  });
+
+  it('renders "Connected" (green) for auth_status: authenticated', async () => {
+    global.fetch = vi.fn().mockResolvedValue({
+      ok: true,
+      json: () => Promise.resolve({ status: 'ok', auth_status: 'authenticated' }),
+    });
+
+    renderSetup();
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(3_100);
+    });
+
+    const panel = screen.getByTestId('auth-status-panel');
+    expect(panel).toBeInTheDocument();
+    expect(panel).toHaveTextContent(/connected/i);
+    expect(screen.getByTestId('auth-status-authenticated')).toBeInTheDocument();
+  });
+
+  it('renders "Setup required" + "Complete setup" CTA for auth_status: setup_required', async () => {
+    global.fetch = vi.fn().mockResolvedValue({
+      ok: true,
+      json: () => Promise.resolve({ status: 'ok', auth_status: 'setup_required' }),
+    });
+
+    renderSetup();
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(3_100);
+    });
+
+    const panel = screen.getByTestId('auth-status-panel');
+    expect(panel).toHaveTextContent(/setup required/i);
+    expect(screen.getByTestId('auth-status-setup-required')).toBeInTheDocument();
+    const cta = screen.getByTestId('auth-status-cta');
+    expect(cta).toBeInTheDocument();
+    expect(cta).toHaveTextContent(/complete setup/i);
+  });
+
+  it('renders "Keychain unavailable" + "Learn more" for auth_status: keychain_error', async () => {
+    global.fetch = vi.fn().mockResolvedValue({
+      ok: true,
+      json: () => Promise.resolve({ status: 'ok', auth_status: 'keychain_error' }),
+    });
+
+    renderSetup();
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(3_100);
+    });
+
+    const panel = screen.getByTestId('auth-status-panel');
+    expect(panel).toHaveTextContent(/keychain unavailable/i);
+    expect(screen.getByTestId('auth-status-keychain-error')).toBeInTheDocument();
+    const cta = screen.getByTestId('auth-status-cta');
+    expect(cta).toBeInTheDocument();
+    expect(cta).toHaveTextContent(/learn more/i);
+  });
+
+  it('renders "Sync paused" + "Retry setup" button for auth_status: auth_paused', async () => {
+    global.fetch = vi.fn().mockResolvedValue({
+      ok: true,
+      json: () => Promise.resolve({ status: 'ok', auth_status: 'auth_paused' }),
+    });
+
+    renderSetup();
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(3_100);
+    });
+
+    const panel = screen.getByTestId('auth-status-panel');
+    expect(panel).toHaveTextContent(/sync paused/i);
+    expect(screen.getByTestId('auth-status-auth-paused')).toBeInTheDocument();
+    const cta = screen.getByTestId('auth-status-cta');
+    expect(cta).toBeInTheDocument();
+    expect(cta).toHaveTextContent(/retry setup/i);
+  });
+});
+
+// ---------------------------------------------------------------------------
 // Runtime context gating (#1927)
 //
 // On any browser-only session `isDesktopApp()` returns `false`. Setup.tsx must
