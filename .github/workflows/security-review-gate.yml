@@ -333,6 +333,14 @@ jobs:
             # ------------------------------------------------------------------
 
             # Determine temporal ordering (python3 for UTC-safe ISO8601 parsing)
+            # Guard: if the HEAD SHA lookup returned an empty timestamp (API
+            # error / race), skip the comparison and treat the verdict as
+            # non-stale so the delta-path check below runs and decides freshness.
+            if [ -z "${LAST_PUSH_TIMESTAMP}" ]; then
+              echo "LAST_PUSH_TIMESTAMP is empty (HEAD SHA lookup failed or returned no date)."
+              echo "Skipping fast-path timestamp comparison; falling through to SHA-delta check."
+              VERDICT_AFTER_PUSH="false"
+            else
             VERDICT_AFTER_PUSH=$(python3 -c "
           from datetime import datetime, timezone
           def p(t):
@@ -344,6 +352,7 @@ jobs:
           push   = p('${LAST_PUSH_TIMESTAMP}')
           print('true' if verdict > push else 'false')
           ")
+            fi
 
             echo "Verdict post-dates last push: ${VERDICT_AFTER_PUSH}"
 
