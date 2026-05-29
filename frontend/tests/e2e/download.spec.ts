@@ -125,7 +125,7 @@ test.describe('Download Page', () => {
       await expect(link).toBeVisible();
       await expect(link).toHaveAttribute(
         'href',
-        `https://github.com/${GITHUB_REPO}/releases/download/daemon/v0.3.2/vaultmtg-daemon-darwin-universal.dmg`
+        `https://github.com/${GITHUB_REPO}/releases/download/daemon/v0.3.2/vaultmtg-daemon-darwin-universal.pkg`
       );
     });
 
@@ -258,7 +258,7 @@ test.describe('Download Page — runtime URL resolution (post-mortem A7)', () =>
     );
     await expect(macLink).toHaveAttribute(
       'href',
-      `${RUNTIME_RELEASES_BASE}/vaultmtg-daemon-darwin-universal.dmg`
+      `${RUNTIME_RELEASES_BASE}/vaultmtg-daemon-darwin-universal.pkg`
     );
   });
 
@@ -278,7 +278,7 @@ test.describe('Download Page — runtime URL resolution (post-mortem A7)', () =>
     );
     await expect(macLink).toHaveAttribute(
       'href',
-      `${FALLBACK_RELEASES_BASE}/vaultmtg-daemon-darwin-universal.dmg`
+      `${FALLBACK_RELEASES_BASE}/vaultmtg-daemon-darwin-universal.pkg`
     );
   });
 
