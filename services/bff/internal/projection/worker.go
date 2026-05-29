@@ -155,13 +155,13 @@ func NewWorker(
 	}
 }
 
-// WithDLQ returns a copy of w with the dead-letter store wired.
+// WithDLQ wires the dead-letter store into w and returns w.
 func (w *Worker) WithDLQ(store dlqStore) *Worker {
 	w.dlq = store
 	return w
 }
 
-// WithPostHogClient returns a copy of w with the PostHog client wired.
+// WithPostHogClient wires the PostHog client into w and returns w.
 func (w *Worker) WithPostHogClient(client postHogClient) *Worker {
 	w.postHog = client
 	return w
@@ -392,6 +392,21 @@ func hashAccountIDProjection(accountID string) string {
 	return fmt.Sprintf("%x", sum)[:16]
 }
 
+// emitMissingField emits a projection.missing_field PostHog metric for an
+// enrichment field that was absent from the event payload.  The account_id is
+// hashed per I-10 — no raw PII is sent.
+func emitMissingField(ph postHogClient, accountID, field, eventType string) {
+	acctHash := hashAccountIDProjection(accountID)
+	_ = ph.Enqueue(posthog.Capture{
+		DistinctId: acctHash,
+		Event:      "projection.missing_field",
+		Properties: posthog.NewProperties().
+			Set("account_id_hash", acctHash).
+			Set("field", field).
+			Set("type", eventType),
+	})
+}
+
 // --- payload shapes ---
 
 type matchPayload struct {
@@ -440,7 +455,12 @@ func (w *Worker) projectMatch(ctx context.Context, row *repository.DaemonEventRo
 	}
 
 	if p.Format == "" {
-		return permanent(fmt.Errorf("match payload missing format"))
+		// Enrichment miss: format is not a PK/FK — default-fill and project.
+		// Emit projection.missing_field metric so missing-format events are
+		// observable without dropping the record.
+		p.Format = "Unknown"
+		log.Printf("[projection] projectMatch id=%d: format empty, defaulting to %q", row.ID, p.Format)
+		emitMissingField(w.postHog, row.AccountID, "format", "match")
 	}
 
 	result := normaliseResult(p.Result)
@@ -454,12 +474,16 @@ func (w *Worker) projectMatch(ctx context.Context, row *repository.DaemonEventRo
 			result = "loss"
 		}
 	}
-	// Correction 1 (Ray): result indeterminate is an enrichment miss (won is an
-	// enrichment field), NOT a structural failure.  Do NOT wrap in permanent().
-	// Leave as a plain error so it produces outcomeSkippedMalformed and does not
-	// go to the DLQ.  #200 will convert this to default-fill (result="unknown").
+	// Q2 (Ray): result indeterminate is an enrichment miss — default-fill to
+	// "unknown" so the row is projected rather than dropped.  The DB constraint
+	// on matches.result is widened to ('win','loss','unknown') by migration
+	// 000095.  Emit projection.missing_field so indeterminate-result events are
+	// observable.
 	if result == "" {
-		return fmt.Errorf("match payload: result indeterminate (result=%q winning_team_id=%d player_team_id=%d)", p.Result, p.WinningTeamID, p.PlayerTeamID)
+		result = "unknown"
+		log.Printf("[projection] projectMatch id=%d: result indeterminate (result=%q winning_team_id=%d player_team_id=%d), defaulting to %q",
+			row.ID, p.Result, p.WinningTeamID, p.PlayerTeamID, result)
+		emitMissingField(w.postHog, row.AccountID, "result", "match")
 	}
 
 	accountID, err := w.accounts.GetOrCreateByClientID(ctx, row.AccountID, row.UserID)
@@ -501,7 +525,7 @@ func (w *Worker) projectDraftSession(ctx context.Context, row *repository.Daemon
 	}
 
 	if p.SessionID == "" {
-		return fmt.Errorf("draft payload missing session_id")
+		return permanent(fmt.Errorf("draft payload missing session_id"))
 	}
 
 	accountID, err := w.accounts.GetOrCreateByClientID(ctx, row.AccountID, row.UserID)
@@ -547,7 +571,7 @@ func (w *Worker) projectDraftPick(ctx context.Context, row *repository.DaemonEve
 	}
 
 	if p.SessionID == "" {
-		return fmt.Errorf("draft.pick payload missing session_id")
+		return permanent(fmt.Errorf("draft.pick payload missing session_id"))
 	}
 
 	accountID, err := w.accounts.GetOrCreateByClientID(ctx, row.AccountID, row.UserID)
@@ -679,7 +703,7 @@ func (w *Worker) projectQuestCompleted(ctx context.Context, row *repository.Daem
 	}
 
 	if p.QuestID == "" {
-		return fmt.Errorf("quest.completed payload missing quest_id")
+		return permanent(fmt.Errorf("quest.completed payload missing quest_id"))
 	}
 
 	accountID, err := w.accounts.GetOrCreateByClientID(ctx, row.AccountID, row.UserID)
@@ -708,7 +732,7 @@ func (w *Worker) projectDeckUpdated(ctx context.Context, row *repository.DaemonE
 	}
 
 	if p.DeckID == "" {
-		return fmt.Errorf("deck.updated payload missing deck_id")
+		return permanent(fmt.Errorf("deck.updated payload missing deck_id"))
 	}
 
 	accountID, err := w.accounts.GetOrCreateByClientID(ctx, row.AccountID, row.UserID)

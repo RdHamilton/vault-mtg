@@ -1286,6 +1286,104 @@ func TestRunOnce_MatchCompleted_FallbackResultLoss(t *testing.T) {
 	}
 }
 
+// TestProjectMatch_MissingFormat_DefaultsToUnknownAndProjects is the golden-event
+// test for vault-mtg-tickets#200.  A match.completed event with format="" must
+// project (match upsert written, row marked projected) with Format=="Unknown".
+// The projection.missing_field PostHog metric must be emitted with a hashed
+// account_id (never raw PII).
+func TestProjectMatch_MissingFormat_DefaultsToUnknownAndProjects(t *testing.T) {
+	payload := makePayload(t, map[string]interface{}{
+		"match_id":       "match-missing-format",
+		"event_id":       "evt-mf-001",
+		"event_name":     "Standard_BO1",
+		"format":         "", // intentionally empty — the bug trigger
+		"result":         "win",
+		"player_wins":    2,
+		"opponent_wins":  1,
+		"player_team_id": 1,
+	})
+
+	ph := &fakePostHogClient{}
+	matches := &fakeMatchStore{}
+	events := &fakeEventStore{
+		pending: []repository.DaemonEventRow{
+			{ID: 700, UserID: 1, AccountID: "acct-fmt-test", EventType: "match.completed", Payload: payload, OccurredAt: time.Now()},
+		},
+	}
+	accounts := &fakeAccountStore{accountID: 42}
+
+	w := NewWorker(events, accounts, matches, &fakeDraftStore{}, &fakeCollectionStore{}, &fakeInventoryStore{}, &fakeQuestStore{}, &fakeDeckStore{}, &fakeGamePlayStore{})
+	w.WithPostHogClient(ph)
+	w.RunOnce(context.Background())
+
+	// AC1: match row must be written (not dropped).
+	if len(matches.upserts) != 1 {
+		t.Fatalf("expected 1 match upsert for missing-format event, got %d", len(matches.upserts))
+	}
+	// AC1: format must be defaulted to "Unknown".
+	if matches.upserts[0].Format != "Unknown" {
+		t.Errorf("Format: want %q, got %q", "Unknown", matches.upserts[0].Format)
+	}
+	// Row must be marked projected.
+	if len(events.projected) != 1 || events.projected[0] != 700 {
+		t.Errorf("expected row 700 marked projected, got %v", events.projected)
+	}
+	// AC3: projection.missing_field metric must be emitted with a hashed account_id.
+	// The fakePostHogClient (defined in worker_dlq_test.go, same package) captures
+	// posthog.Message values; the Capture variant carries Properties.
+	if len(ph.captured) != 1 {
+		t.Fatalf("expected 1 PostHog metric for missing format, got %d", len(ph.captured))
+	}
+	// The captured message must NOT carry the raw account_id as DistinctId.
+	// posthog.Capture implements posthog.Message and is the concrete type emitted
+	// by emitMissingField — cast to check I-10 compliance.
+	type distinctider interface {
+		GetDistinctId() string
+	}
+	if di, ok := ph.captured[0].(distinctider); ok {
+		if di.GetDistinctId() == "acct-fmt-test" {
+			t.Error("DistinctId must be hashed, not the raw account_id")
+		}
+	}
+}
+
+// TestProjectMatch_ResultIndeterminate_DefaultsToUnknownAndProjects verifies Q2
+// decision: when result is indeterminate (all team IDs zero, no daemon-computed
+// result), the projector defaults result to "unknown" and still writes the row.
+func TestProjectMatch_ResultIndeterminate_DefaultsToUnknownAndProjects(t *testing.T) {
+	// Both winning_team_id and player_team_id are zero — result indeterminate.
+	payload := makePayload(t, map[string]interface{}{
+		"match_id":        "match-result-unknown",
+		"format":          "Standard",
+		"winning_team_id": 0,
+		"player_team_id":  0,
+	})
+
+	matches := &fakeMatchStore{}
+	events := &fakeEventStore{
+		pending: []repository.DaemonEventRow{
+			{ID: 701, UserID: 1, AccountID: "acct-res-unknown", EventType: "match.completed", Payload: payload, OccurredAt: time.Now()},
+		},
+	}
+	accounts := &fakeAccountStore{accountID: 43}
+
+	w := newWorker(events, accounts, matches, &fakeDraftStore{})
+	w.RunOnce(context.Background())
+
+	// Match must be written — not dropped.
+	if len(matches.upserts) != 1 {
+		t.Fatalf("expected 1 match upsert for indeterminate result, got %d", len(matches.upserts))
+	}
+	// Result must be defaulted to "unknown".
+	if matches.upserts[0].Result != "unknown" {
+		t.Errorf("Result: want %q, got %q", "unknown", matches.upserts[0].Result)
+	}
+	// Row must be marked projected.
+	if len(events.projected) != 1 || events.projected[0] != 701 {
+		t.Errorf("expected row 701 marked projected, got %v", events.projected)
+	}
+}
+
 // --- cross-tenant security tests (AC1, AC2, AC5) ---
 
 // fakeAccountStoreCrossTenant simulates the case where the daemon-supplied

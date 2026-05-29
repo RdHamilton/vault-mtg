@@ -161,10 +161,7 @@ func TestDLQ_PermanentError_EmitsPostHogMetric(t *testing.T) {
 			},
 		},
 	}
-	accounts := &fakeAccountStore{accountID: 10}
-
 	w := newWorkerWithDLQ(events, &fakeAccountStore{accountID: 10}, &fakeMatchStore{}, dlq, ph)
-	_ = accounts
 	w.RunOnce(context.Background())
 
 	if len(ph.captured) != 1 {
@@ -341,11 +338,14 @@ func (f *fakeAccountStoreTracking) GetOrCreateByClientID(_ context.Context, _ st
 	return f.accountID, f.err
 }
 
-// TestDLQ_MatchCompleted_ResultIndeterminate_NotPermanent verifies Correction 1:
-// the "result indeterminate" path is NOT wrapped in permanent() — it must not
-// trigger a DLQ write.  It stays as outcomeSkippedMalformed (transient).
-func TestDLQ_MatchCompleted_ResultIndeterminate_NotPermanent(t *testing.T) {
+// TestDLQ_MatchCompleted_ResultIndeterminate_DefaultsAndProjects verifies Q2
+// (vault-mtg-tickets#200): when result is indeterminate the event now projects
+// with result="unknown" rather than being dropped.  The DLQ must NOT receive a
+// row (indeterminate result is an enrichment miss, not a permanent structural
+// error), and a projection.missing_field metric IS emitted.
+func TestDLQ_MatchCompleted_ResultIndeterminate_DefaultsAndProjects(t *testing.T) {
 	// Both winning_team_id and player_team_id are zero → result indeterminate.
+	matches := &fakeMatchStore{}
 	payload := makePayload(t, map[string]interface{}{
 		"match_id":        "match-indet",
 		"format":          "Standard",
@@ -361,18 +361,27 @@ func TestDLQ_MatchCompleted_ResultIndeterminate_NotPermanent(t *testing.T) {
 		},
 	}
 
-	w := newWorkerWithDLQ(events, &fakeAccountStore{accountID: 10}, &fakeMatchStore{}, dlq, ph)
+	w := NewWorker(events, &fakeAccountStore{accountID: 10}, matches, &fakeDraftStore{}, &fakeCollectionStore{}, &fakeInventoryStore{}, &fakeQuestStore{}, &fakeDeckStore{}, &fakeGamePlayStore{})
+	w.WithDLQ(dlq)
+	w.WithPostHogClient(ph)
 	w.RunOnce(context.Background())
 
-	// DLQ must NOT receive a row — indeterminate result is transient.
+	// DLQ must NOT receive a row — indeterminate result is default-filled, not dead-lettered.
 	if len(dlq.inserts) != 0 {
 		t.Errorf("result indeterminate must NOT produce a DLQ row; got %d inserts", len(dlq.inserts))
 	}
-	// No PostHog event.
-	if len(ph.captured) != 0 {
-		t.Errorf("result indeterminate must NOT emit PostHog event; got %d", len(ph.captured))
+	// Match must be written with result="unknown".
+	if len(matches.upserts) != 1 {
+		t.Fatalf("expected 1 match upsert for indeterminate result, got %d", len(matches.upserts))
 	}
-	// Row must still be marked projected.
+	if matches.upserts[0].Result != "unknown" {
+		t.Errorf("Result: want %q (default-fill), got %q", "unknown", matches.upserts[0].Result)
+	}
+	// projection.missing_field metric must be emitted (not projection.dead_letter).
+	if len(ph.captured) != 1 {
+		t.Errorf("expected 1 projection.missing_field metric, got %d", len(ph.captured))
+	}
+	// Row must be marked projected.
 	if len(events.projected) != 1 || events.projected[0] != 420 {
 		t.Errorf("expected row 420 marked projected, got %v", events.projected)
 	}
