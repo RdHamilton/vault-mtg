@@ -2,6 +2,30 @@ name: E2E Smoke Tests
 
 on:
   workflow_dispatch:
+  # Safety-net: run smoke suite on every push to main so regressions surface
+  # within minutes of merge rather than at the next release gate.
+  # Root cause of run/26614819125: beta_invite_only and auth-status-panel
+  # regressions merged undetected because the PR-level E2E job only runs
+  # the `pipeline` Playwright project (pipeline.spec.ts), not the `smoke`
+  # project (@smoke-tagged tests).  Adding push-to-main here closes that gap
+  # without requiring a path-filter change or a full E2E rerun on every PR.
+  push:
+    branches: [ main ]
+    paths-ignore:
+      - '**.md'
+      - 'docs/**'
+      - '.gitignore'
+      - 'LICENSE'
+      - '.cursorrules'
+      - 'CLAUDE.md'
+      - 'README.md'
+      - '.github/ISSUE_TEMPLATE/**'
+      - '.github/PULL_REQUEST_TEMPLATE/**'
+  # Nightly belt-and-suspenders: catches regressions introduced by indirect
+  # changes (feature-flag configs, shared hooks, analytics wiring) that may
+  # not have touched frontend/** at all.
+  schedule:
+    - cron: '0 6 * * *'  # 06:00 UTC daily
   # Called by release.yml as the Tier 3 release gate
   workflow_call:
     inputs:
