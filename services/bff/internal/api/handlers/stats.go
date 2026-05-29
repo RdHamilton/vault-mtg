@@ -433,7 +433,7 @@ func (h *StatsHandler) GetRankProgression(w http.ResponseWriter, r *http.Request
 
 	format := r.URL.Query().Get("format")
 	if format != "" {
-		if _, ok := knownFormats[format]; !ok {
+		if !IsKnownFormat(format) {
 			writeJSONError(w, "unknown format: "+format, http.StatusBadRequest)
 			return
 		}
@@ -507,7 +507,7 @@ func (h *StatsHandler) GetResultBreakdown(w http.ResponseWriter, r *http.Request
 
 	format := r.URL.Query().Get("format")
 	if format != "" {
-		if _, ok := knownFormats[format]; !ok {
+		if !IsKnownFormat(format) {
 			writeJSONError(w, "unknown format: "+format, http.StatusBadRequest)
 			return
 		}

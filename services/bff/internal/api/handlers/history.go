@@ -6,7 +6,6 @@ import (
 	"log"
 	"net/http"
 	"strconv"
-	"strings"
 	"time"
 	"unicode"
 
@@ -17,22 +16,6 @@ import (
 // historyMatchCursorPageSize is the default page size for the cursor-paginated
 // history matches endpoint. Callers can override via the ?limit= query param.
 const historyMatchCursorPageSize = 20
-
-// knownFormats is the set of MTGA format strings the history endpoint accepts.
-// Case-insensitive comparison is used during validation.
-var knownFormats = map[string]struct{}{
-	"standard":  {},
-	"historic":  {},
-	"brawl":     {},
-	"limited":   {},
-	"draft":     {},
-	"sealed":    {},
-	"alchemy":   {},
-	"explorer":  {},
-	"timeless":  {},
-	"gladiator": {},
-	"pauper":    {},
-}
 
 // AccountLookup is the minimal interface the history handlers need to resolve
 // a user's account_id from their DB user_id.
@@ -137,7 +120,7 @@ func (h *HistoryHandler) GetMatches(w http.ResponseWriter, r *http.Request) {
 
 	format := r.URL.Query().Get("format")
 	if format != "" {
-		if _, ok := knownFormats[strings.ToLower(format)]; !ok {
+		if !IsKnownFormat(format) {
 			writeJSONError(w, "unknown format: "+format, http.StatusBadRequest)
 			return
 		}
