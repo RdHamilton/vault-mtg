@@ -94,20 +94,38 @@ test.describe('Download Page', () => {
 
   test.describe('Download Links', () => {
     test('@smoke Windows download link has correct href', async ({ page }) => {
+      // Mock the GitHub Releases API before navigating so useDaemonRelease resolves
+      // the versioned URL (not the /latest/download fallback). PR #2731 made the
+      // resolver env-aware; without this mock the real API may respond and the hook
+      // returns a versioned base URL that the old fallback assertion would not match.
+      await mockGitHubReleasesApi(page, [
+        { tag_name: 'daemon/v0.3.2', draft: false, prerelease: false },
+      ]);
+      await page.goto('/download');
+      await expect(page.locator('[data-testid="app-container"]')).toBeVisible();
+
       const link = page.locator('[data-testid="download-link-vaultmtg-daemon-windows-amd64"]');
       await expect(link).toBeVisible();
       await expect(link).toHaveAttribute(
         'href',
-        `${FALLBACK_RELEASES_BASE}/vaultmtg-daemon-windows-amd64.exe`
+        `https://github.com/${GITHUB_REPO}/releases/download/daemon/v0.3.2/vaultmtg-daemon-windows-amd64.exe`
       );
     });
 
     test('@smoke macOS Universal download link has correct href', async ({ page }) => {
+      // Mock the GitHub Releases API before navigating so useDaemonRelease resolves
+      // the versioned URL. See note on Windows test above.
+      await mockGitHubReleasesApi(page, [
+        { tag_name: 'daemon/v0.3.2', draft: false, prerelease: false },
+      ]);
+      await page.goto('/download');
+      await expect(page.locator('[data-testid="app-container"]')).toBeVisible();
+
       const link = page.locator('[data-testid="download-link-vaultmtg-daemon-darwin-universal"]');
       await expect(link).toBeVisible();
       await expect(link).toHaveAttribute(
         'href',
-        `${FALLBACK_RELEASES_BASE}/vaultmtg-daemon-darwin-universal.dmg`
+        `https://github.com/${GITHUB_REPO}/releases/download/daemon/v0.3.2/vaultmtg-daemon-darwin-universal.dmg`
       );
     });
 
