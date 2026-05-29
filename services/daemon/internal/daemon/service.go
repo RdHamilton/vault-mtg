@@ -50,6 +50,14 @@ var heartbeatInterval = 30 * time.Second
 // the helper outside of the Grant Access flow).
 var helperCheckInterval = 30 * time.Second
 
+// mtgaDetectInterval is how often idleUntilMTGADetected polls for Player.log
+// when MTGA is not installed. Exposed as a var so tests can override it.
+var mtgaDetectInterval = 5 * time.Minute
+
+// defaultLogPathFn is the function used to detect the MTGA log path.
+// Exposed as a var so tests can override it without touching the real filesystem.
+var defaultLogPathFn = logreader.DefaultLogPath
+
 // Service is the top-level daemon service.
 type Service struct {
 	cfg        *config.Config
@@ -601,6 +609,40 @@ func (s *Service) runUpdateCheck(ctx context.Context) {
 	updatecheck.Check(ctx, s.cfg.CloudAPIURL, s.version)
 }
 
+// idleUntilMTGADetected blocks until defaultLogPathFn succeeds or ctx is cancelled.
+// It sets the tray to StatusWaitingForArena on entry and restores it on exit.
+// Returns nil when MTGA is detected, context.Canceled when the context is cancelled.
+// This prevents the daemon from exiting (and launchd/NSSM from respawning in a tight
+// loop) when MTGA Arena is not yet installed on the user's machine (#2568).
+func (s *Service) idleUntilMTGADetected(ctx context.Context) error {
+	log.Printf("[daemon] MTGA not detected — entering idle mode (polling every %s)", mtgaDetectInterval)
+
+	if s.trayHooks.SetWaitingForArena != nil {
+		s.trayHooks.SetWaitingForArena(true)
+	}
+	defer func() {
+		if s.trayHooks.SetWaitingForArena != nil {
+			s.trayHooks.SetWaitingForArena(false)
+		}
+	}()
+
+	ticker := time.NewTicker(mtgaDetectInterval)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-ticker.C:
+			if _, err := defaultLogPathFn(); err == nil {
+				log.Printf("[daemon] MTGA detected — resuming normal startup")
+				return nil
+			}
+			log.Printf("[daemon] MTGA still not detected — continuing idle poll")
+		}
+	}
+}
+
 // Run starts the daemon, blocks until ctx is cancelled.
 func (s *Service) Run(ctx context.Context) error {
 	// Phase 0: if the keychain was unavailable at startup, retry before
@@ -627,9 +669,22 @@ func (s *Service) Run(ctx context.Context) error {
 
 	logPath := s.cfg.LogPath
 	if logPath == "" {
-		detected, err := logreader.DefaultLogPath()
+		detected, err := defaultLogPathFn()
 		if err != nil {
-			return fmt.Errorf("detect log path: %w", err)
+			// MTGA not installed: idle until Player.log appears rather than
+			// exiting. Exiting causes launchd/NSSM to respawn within
+			// ThrottleInterval producing an infinite restart loop (#2568).
+			if idleErr := s.idleUntilMTGADetected(ctx); idleErr != nil {
+				if errors.Is(idleErr, context.Canceled) {
+					return nil
+				}
+				return idleErr
+			}
+			// Re-attempt detection after idle loop returns (MTGA now present).
+			detected, err = defaultLogPathFn()
+			if err != nil {
+				return fmt.Errorf("detect log path after idle: %w", err)
+			}
 		}
 		logPath = detected
 		log.Printf("[daemon] auto-detected log path: %s", logPath)
