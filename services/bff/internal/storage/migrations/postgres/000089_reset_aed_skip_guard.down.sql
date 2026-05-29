@@ -1,0 +1,8 @@
+-- Rollback migration 000089: no-op.
+--
+-- There is nothing meaningful to restore here. The sync_hashes row for
+-- 'skip_count:AED' will be re-created by the Lambda on the next invocation
+-- where AED returns 0 cards. Restoring the old counter value (7) would
+-- immediately re-trip the guard on the next run, which is the state we are
+-- fixing. The correct rollback is to leave the row absent and let the Lambda
+-- rebuild it from zero.

@@ -736,8 +736,9 @@ func TestHandle_ConsecutiveSkipGuard_UnderThreshold(t *testing.T) {
 	require.NoError(t, h.Handle(context.Background(), nil), "second miss — still under threshold")
 }
 
-// TestHandle_ConsecutiveSkipGuard_AtThreshold verifies that the guard returns an
-// error on the invocation that hits the threshold.
+// TestHandle_ConsecutiveSkipGuard_AtThreshold verifies that the guard is non-fatal:
+// even when the threshold is hit, Handle returns nil so the Lambda invocation
+// succeeds and other sets continue syncing.
 func TestHandle_ConsecutiveSkipGuard_AtThreshold(t *testing.T) {
 	f := &stubFetcher{cards: []seventeenlands.CardRating{}}
 	store := newPersistentHashStore()
@@ -746,9 +747,51 @@ func TestHandle_ConsecutiveSkipGuard_AtThreshold(t *testing.T) {
 
 	require.NoError(t, h.Handle(context.Background(), nil), "1st miss")
 	require.NoError(t, h.Handle(context.Background(), nil), "2nd miss")
+	// 3rd miss: threshold reached — guard must log but NOT return an error.
+	require.NoError(t, h.Handle(context.Background(), nil), "3rd miss at threshold must still return nil")
+}
+
+// TestHandle_ConsecutiveSkipGuard_OtherSetsStillSync verifies that when one set
+// trips the skip guard (returns 0 cards for >= threshold invocations), the
+// remaining sets in the same invocation are still synced and written to DB.
+// This is the core non-fatal resilience guarantee.
+func TestHandle_ConsecutiveSkipGuard_OtherSetsStillSync(t *testing.T) {
+	// SET1 always returns 0 cards (trips the guard); SET2 returns valid cards.
+	custom := &countingFetcher{
+		results: map[string]fetchResult{
+			"SET1": {cards: []seventeenlands.CardRating{}},
+			"SET2": {cards: []seventeenlands.CardRating{{MtgaID: 1, Name: "Forest", ALSA: 9.0}}},
+		},
+	}
+	store := newPersistentHashStore()
+	store.dbSets = []datasets.SyncSet{
+		{Code: "SET1", ExpansionCode: "SET1"},
+		{Code: "SET2", ExpansionCode: "SET2"},
+	}
+
+	// threshold=1 so SET1 trips on the very first invocation.
+	h := handler.NewWithOptions(custom, store, nil, []string{"PremierDraft"}, 0, 1, 0, noBackoff)
 	err := h.Handle(context.Background(), nil)
-	require.Error(t, err, "3rd miss must return error (threshold reached)")
-	assert.Contains(t, err.Error(), "consecutive")
+
+	require.NoError(t, err, "skip guard for SET1 must not abort the invocation")
+	// SET2 must have been upserted even though SET1 tripped the guard.
+	require.Len(t, store.upserted, 1, "SET2 must be upserted despite SET1 skip-guard trip")
+	assert.Equal(t, "SET2", store.upserted[0].SetCode)
+}
+
+// TestHandle_ConsecutiveSkipGuard_AboveThresholdStillNonFatal verifies that
+// repeated invocations where a set exceeds the threshold continue to return nil —
+// the skip guard never escalates to a fatal error regardless of how high the count grows.
+func TestHandle_ConsecutiveSkipGuard_AboveThresholdStillNonFatal(t *testing.T) {
+	f := &stubFetcher{cards: []seventeenlands.CardRating{}}
+	store := newPersistentHashStore()
+
+	// threshold=3, run 7 times (matches the prod failure scenario).
+	h := handler.NewWithOptions(f, store, []string{"FDN"}, []string{"PremierDraft"}, 0, 3, 0, noBackoff)
+	for i := 0; i < 7; i++ {
+		require.NoError(t, h.Handle(context.Background(), nil),
+			"invocation %d must return nil even with skip count above threshold", i+1)
+	}
 }
 
 // TestHandle_ConsecutiveSkipGuard_ResetOnSuccess verifies that a successful
@@ -888,21 +931,23 @@ func TestHandle_SyncSet_FallsBackToCodeWhenExpansionCodeMatches(t *testing.T) {
 	assert.Equal(t, "FDN", store.upserted[0].SetCode)
 }
 
-// TestHandle_SkipGuardKey_UsesScryfall Code verifies that when 0 cards are returned
+// TestHandle_SkipGuardKey_UsesScryfallCode verifies that when 0 cards are returned
 // for a set with a different expansion code, the skip guard key is the Scryfall
 // code ("skip_count:AED"), not the 17Lands expansion code ("skip_count:DFT").
 // This ensures the skip counter key is stable even if the expansion code changes.
+// The guard is non-fatal — Handle returns nil even at threshold.
 func TestHandle_SkipGuardKey_UsesScryfallCode(t *testing.T) {
-	// Fetcher always returns 0 cards — will trip the skip guard after threshold.
+	// Fetcher always returns 0 cards — skip guard increments on every invocation.
 	fetcher := &expansionTrackingFetcher{cards: []seventeenlands.CardRating{}}
 	store := newPersistentHashStore()
 	store.dbSets = []datasets.SyncSet{{Code: "AED", ExpansionCode: "DFT"}}
 
-	// Threshold = 1 so the guard trips on the first miss.
+	// threshold=1 so the guard logs a WARNING on the first miss — but no error returned.
 	h := handler.NewWithOptions(fetcher, store, nil, []string{"PremierDraft"}, 0, 1, 0, noBackoff)
 	err := h.Handle(context.Background(), nil)
 
-	require.Error(t, err, "skip guard must fire after 1 miss with threshold=1")
+	// Non-fatal: guard must log and increment counter but not abort the invocation.
+	require.NoError(t, err, "skip guard must be non-fatal — Handle must return nil even at threshold")
 
 	// The SetHash call for the skip counter must use the Scryfall code "AED".
 	var skipKeys []string
