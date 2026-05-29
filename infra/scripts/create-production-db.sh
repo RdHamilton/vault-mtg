@@ -260,6 +260,7 @@ unset APP_SECRET_JSON
 
 echo "[remote] Verifying vaultmtg_app login with SM password..."
 CURRENT_USER=$(PGPASSWORD="$APP_PASSWORD_VERIFY" psql \
+    -X \
     -h "$DB_ENDPOINT" \
     -U "$DB_APP_ROLE" \
     -d "$DB_NAME" \
