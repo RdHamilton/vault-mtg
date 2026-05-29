@@ -11,6 +11,8 @@ import (
 	"log"
 	"time"
 
+	"github.com/RdHamilton/vault-mtg/services/contract"
+
 	"github.com/RdHamilton/vault-mtg/services/bff/internal/storage/repository"
 )
 
@@ -434,18 +436,6 @@ func (w *Worker) projectDraftPick(ctx context.Context, row *repository.DaemonEve
 	})
 }
 
-// collectionUpdatedPayload mirrors contract.CollectionUpdatedPayload.
-// Redeclared here to avoid a circular import between projection and contract.
-type collectionUpdatedPayload struct {
-	Cards   []collectionCard `json:"cards"`
-	IsDelta bool             `json:"is_delta"`
-}
-
-type collectionCard struct {
-	ArenaID int `json:"arena_id"`
-	Count   int `json:"count"`
-}
-
 // projectCollectionUpdated applies the delta from a collection.updated event
 // to card_inventory.  Each card entry is upserted independently so a partial
 // delta (IsDelta=true) only touches the cards that changed.
@@ -453,7 +443,7 @@ type collectionCard struct {
 // Idempotency: the snapshot_hash is derived from the raw payload bytes so
 // replaying the exact same event produces no new writes.
 func (w *Worker) projectCollectionUpdated(ctx context.Context, row *repository.DaemonEventRow) error {
-	var p collectionUpdatedPayload
+	var p contract.CollectionUpdatedPayload
 	if err := json.Unmarshal(row.Payload, &p); err != nil {
 		return fmt.Errorf("unmarshal collection.updated payload: %w", err)
 	}
@@ -489,20 +479,8 @@ func (w *Worker) projectCollectionUpdated(ctx context.Context, row *repository.D
 
 // --- inventory.updated projector ---
 
-// inventoryUpdatedPayload mirrors contract.InventoryUpdatedPayload.
-// Redeclared here to avoid importing the contract module inside projection.
-type inventoryUpdatedPayload struct {
-	Gems               int `json:"gems"`
-	Gold               int `json:"gold"`
-	TotalVaultProgress int `json:"total_vault_progress"`
-	WildCardCommons    int `json:"wild_card_commons"`
-	WildCardUncommons  int `json:"wild_card_uncommons"`
-	WildCardRares      int `json:"wild_card_rares"`
-	WildCardMythics    int `json:"wild_card_mythics"`
-}
-
 func (w *Worker) projectInventoryUpdated(ctx context.Context, row *repository.DaemonEventRow) error {
-	var p inventoryUpdatedPayload
+	var p contract.InventoryUpdatedPayload
 	if err := json.Unmarshal(row.Payload, &p); err != nil {
 		return fmt.Errorf("unmarshal inventory.updated payload: %w", err)
 	}
@@ -531,21 +509,8 @@ func (w *Worker) projectInventoryUpdated(ctx context.Context, row *repository.Da
 
 // --- quest.progress projector ---
 
-// questProgressPayload mirrors contract.QuestProgressPayload.
-type questProgressPayload struct {
-	Quests []questEntry `json:"quests"`
-}
-
-type questEntry struct {
-	QuestID   string `json:"quest_id"`
-	QuestName string `json:"quest_name"`
-	Progress  int    `json:"progress"`
-	Goal      int    `json:"goal"`
-	CanSwap   bool   `json:"can_swap"`
-}
-
 func (w *Worker) projectQuestProgress(ctx context.Context, row *repository.DaemonEventRow) error {
-	var p questProgressPayload
+	var p contract.QuestProgressPayload
 	if err := json.Unmarshal(row.Payload, &p); err != nil {
 		return fmt.Errorf("unmarshal quest.progress payload: %w", err)
 	}
@@ -578,18 +543,8 @@ func (w *Worker) projectQuestProgress(ctx context.Context, row *repository.Daemo
 
 // --- quest.completed projector ---
 
-// questCompletedPayload mirrors contract.QuestCompletedPayload.
-type questCompletedPayload struct {
-	QuestID          string `json:"quest_id"`
-	QuestName        string `json:"quest_name"`
-	Progress         int    `json:"progress"`
-	Goal             int    `json:"goal"`
-	XPReward         int    `json:"xp_reward"`
-	CompletionSource string `json:"completion_source"`
-}
-
 func (w *Worker) projectQuestCompleted(ctx context.Context, row *repository.DaemonEventRow) error {
-	var p questCompletedPayload
+	var p contract.QuestCompletedPayload
 	if err := json.Unmarshal(row.Payload, &p); err != nil {
 		return fmt.Errorf("unmarshal quest.completed payload: %w", err)
 	}
@@ -617,21 +572,8 @@ func (w *Worker) projectQuestCompleted(ctx context.Context, row *repository.Daem
 
 // --- deck.updated projector ---
 
-// deckUpdatedPayload mirrors contract.DeckUpdatedPayload.
-type deckUpdatedPayload struct {
-	DeckID string          `json:"deck_id"`
-	Name   string          `json:"name"`
-	Format string          `json:"format"`
-	Cards  []deckCardEntry `json:"cards"`
-}
-
-type deckCardEntry struct {
-	ArenaID  int `json:"arena_id"`
-	Quantity int `json:"quantity"`
-}
-
 func (w *Worker) projectDeckUpdated(ctx context.Context, row *repository.DaemonEventRow) error {
-	var p deckUpdatedPayload
+	var p contract.DeckUpdatedPayload
 	if err := json.Unmarshal(row.Payload, &p); err != nil {
 		return fmt.Errorf("unmarshal deck.updated payload: %w", err)
 	}
@@ -665,27 +607,6 @@ func (w *Worker) projectDeckUpdated(ctx context.Context, row *repository.DaemonE
 
 // --- match.game_ended projector ---
 
-// gamePlayPayload mirrors contract.GamePlayPayload.
-// Redeclared here to avoid importing the contract module inside projection.
-type gamePlayPayload struct {
-	MatchID       string            `json:"match_id"`
-	GameNumber    int               `json:"game_number"`
-	WinningTeamID int               `json:"winning_team_id"`
-	TurnCount     int               `json:"turn_count"`
-	DurationSecs  int               `json:"duration_secs"`
-	LifeChanges   []lifeChangeEntry `json:"life_changes"`
-	// Partial is set when the event was emitted before game completion
-	// (GRE buffer threshold flush or stale sweep eviction).
-	Partial bool `json:"partial"`
-}
-
-type lifeChangeEntry struct {
-	TeamID     int `json:"team_id"`
-	LifeTotal  int `json:"life_total"`
-	Delta      int `json:"delta"`
-	TurnNumber int `json:"turn_number"`
-}
-
 // projectGamePlayEvent projects a match.game_ended event into game_plays and
 // life_change_tracking.
 //
@@ -695,7 +616,7 @@ type lifeChangeEntry struct {
 // out-of-order retransmissions of the same (match_id, game_number) do not
 // regress the stored state.
 func (w *Worker) projectGamePlayEvent(ctx context.Context, row *repository.DaemonEventRow) error {
-	var p gamePlayPayload
+	var p contract.GamePlayPayload
 	if err := json.Unmarshal(row.Payload, &p); err != nil {
 		return fmt.Errorf("unmarshal match.game_ended payload: %w", err)
 	}
