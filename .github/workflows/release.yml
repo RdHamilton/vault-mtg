@@ -83,6 +83,13 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       sha: ${{ steps.resolve.outputs.sha }}
+      # Strip the "app/v" prefix from the release tag to produce a bare semver
+      # string (e.g. "0.3.3") for injection into the binary via -ldflags.
+      # On workflow_dispatch (manual re-deploy, no new tag) the RELEASE_TAG env
+      # var resolves to "manual-<sha>", so the stripped value is also non-"dev"
+      # and clearly identifiable in Sentry. The deploy job passes this as the
+      # `version` input to deploy-bff.yml, which threads it to build-bff.
+      version: ${{ steps.resolve.outputs.version }}
     steps:
       - name: Checkout target ref
         uses: actions/checkout@v6
@@ -95,6 +102,12 @@ jobs:
           SHA=$(git rev-parse HEAD)
           echo "Resolved deploy SHA: ${SHA}"
           echo "sha=${SHA}" >> "$GITHUB_OUTPUT"
+          # Derive the version string from the release tag by stripping the "app/v" prefix.
+          # RELEASE_TAG is set at the workflow level (e.g. "app/v0.3.3" or "manual-<sha>").
+          RAW_TAG="${{ env.RELEASE_TAG }}"
+          VERSION="${RAW_TAG#app/v}"
+          echo "Resolved version: ${VERSION}"
+          echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
 
   # ---------------------------------------------------------------------------
   # Pre-flight checks — must pass before any release gates run.
@@ -307,6 +320,10 @@ jobs:
       s3-binary-key-suffix: releases/${{ needs.resolve-ref.outputs.sha }}/mtga-bff
       binary-name: mtga-bff
       deploy-sha: ${{ needs.resolve-ref.outputs.sha }}
+      # Pass the semver string derived from the app/v* tag (e.g. "0.3.3") so the
+      # compiled binary carries the real release version rather than "dev".
+      # resolve-ref strips the "app/v" prefix and writes it to outputs.version.
+      version: ${{ needs.resolve-ref.outputs.version }}
     secrets:
       AWS_DEPLOY_ROLE_ARN: ${{ secrets.AWS_DEPLOY_ROLE_ARN }}
       EC2_INSTANCE_ID: ${{ secrets.EC2_INSTANCE_ID }}

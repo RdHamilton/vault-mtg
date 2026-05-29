@@ -89,6 +89,10 @@ jobs:
       s3-binary-key-suffix: staging/${{ needs.resolve-ref.outputs.sha }}/mtga-bff-staging
       binary-name: mtga-bff-staging
       deploy-sha: ${{ needs.resolve-ref.outputs.sha }}
+      # Pass the full SHA as the Sentry release identifier for staging.
+      # This tags all staging Sentry events with the exact commit SHA rather than "dev",
+      # making it possible to correlate errors to a specific deployed commit.
+      version: ${{ needs.resolve-ref.outputs.sha }}
     secrets:
       AWS_DEPLOY_ROLE_ARN: ${{ secrets.AWS_DEPLOY_ROLE_ARN }}
       EC2_INSTANCE_ID: ${{ secrets.EC2_INSTANCE_ID }}

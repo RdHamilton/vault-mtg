@@ -50,6 +50,15 @@ on:
         description: 'Git SHA of the commit being deployed'
         required: true
         type: string
+      version:
+        description: >
+          Version string injected into the binary via -ldflags (passed through to build-bff).
+          Staging callers pass a short SHA (e.g. the first 8 chars of deploy-sha).
+          Release callers pass the semver string derived from the app/v* tag (e.g. "0.3.3").
+          Defaults to "dev" when not provided, which preserves pre-fix behaviour.
+        required: false
+        default: 'dev'
+        type: string
     secrets:
       AWS_DEPLOY_ROLE_ARN:
         required: true
@@ -96,6 +105,7 @@ jobs:
         goos: linux
         goarch: amd64
         output-path: services/bff/${{ inputs.binary-name }}
+        version: ${{ inputs.version }}
 
     - name: Configure AWS credentials (OIDC)
       uses: aws-actions/configure-aws-credentials@v6
