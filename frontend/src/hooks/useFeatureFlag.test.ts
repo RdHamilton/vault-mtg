@@ -185,4 +185,96 @@ describe('useFeatureFlag', () => {
     rerender({ key: 'flag_b' });
     expect(mockPosthog.onFeatureFlags).toHaveBeenCalledTimes(2);
   });
+
+  // -------------------------------------------------------------------------
+  // Test 9: window.__POSTHOG_TEST_FLAGS__ override — flag off
+  //
+  // When the test override is set to false, useFeatureFlag returns false
+  // regardless of PostHog load state. This is the E2E determinism mechanism
+  // that prevents CI failures when VITE_POSTHOG_KEY is absent.
+  // -------------------------------------------------------------------------
+  it('returns { enabled: false } when __POSTHOG_TEST_FLAGS__ overrides flag to false (PostHog not loaded)', () => {
+    mockPosthog.__loaded = false;
+    (window as unknown as Record<string, unknown>).__POSTHOG_TEST_FLAGS__ = { beta_invite_only: false };
+
+    const { result } = renderHook(() => useFeatureFlag('beta_invite_only'));
+
+    expect(result.current.enabled).toBe(false);
+    // PostHog must not be consulted when the override is present
+    expect(mockPosthog.isFeatureEnabled).not.toHaveBeenCalled();
+
+    // Cleanup
+    delete (window as unknown as Record<string, unknown>).__POSTHOG_TEST_FLAGS__;
+  });
+
+  // -------------------------------------------------------------------------
+  // Test 10: window.__POSTHOG_TEST_FLAGS__ override — flag on
+  //
+  // When the test override is set to true, useFeatureFlag returns true
+  // regardless of PostHog load state.
+  // -------------------------------------------------------------------------
+  it('returns { enabled: true } when __POSTHOG_TEST_FLAGS__ overrides flag to true (PostHog not loaded)', () => {
+    mockPosthog.__loaded = false;
+    (window as unknown as Record<string, unknown>).__POSTHOG_TEST_FLAGS__ = { my_flag: true };
+
+    const { result } = renderHook(() => useFeatureFlag('my_flag'));
+
+    expect(result.current.enabled).toBe(true);
+    expect(mockPosthog.isFeatureEnabled).not.toHaveBeenCalled();
+
+    // Cleanup
+    delete (window as unknown as Record<string, unknown>).__POSTHOG_TEST_FLAGS__;
+  });
+
+  // -------------------------------------------------------------------------
+  // Test 11: window.__POSTHOG_TEST_FLAGS__ override takes precedence over PostHog
+  //
+  // Even when PostHog is loaded and returns a different value, the test override
+  // wins. This prevents staging-environment flag values from leaking into tests.
+  // -------------------------------------------------------------------------
+  it('__POSTHOG_TEST_FLAGS__ override takes precedence over posthog.isFeatureEnabled when PostHog is loaded', () => {
+    mockPosthog.__loaded = true;
+    // PostHog says flag is ON
+    mockPosthog.isFeatureEnabled.mockReturnValue(true);
+    mockPosthog.onFeatureFlags.mockImplementation((cb: () => void) => {
+      cb();
+      return () => {};
+    });
+    // But test override says flag is OFF
+    (window as unknown as Record<string, unknown>).__POSTHOG_TEST_FLAGS__ = { beta_invite_only: false };
+
+    const { result } = renderHook(() => useFeatureFlag('beta_invite_only'));
+
+    // Override wins — flag is false despite PostHog returning true
+    expect(result.current.enabled).toBe(false);
+
+    // Cleanup
+    delete (window as unknown as Record<string, unknown>).__POSTHOG_TEST_FLAGS__;
+  });
+
+  // -------------------------------------------------------------------------
+  // Test 12: __POSTHOG_TEST_FLAGS__ only overrides keys that are present
+  //
+  // If a key is NOT in __POSTHOG_TEST_FLAGS__, useFeatureFlag falls through to
+  // normal PostHog / not-loaded behaviour for that key.
+  // -------------------------------------------------------------------------
+  it('falls through to PostHog when the requested flag key is absent from __POSTHOG_TEST_FLAGS__', () => {
+    mockPosthog.__loaded = true;
+    mockPosthog.isFeatureEnabled.mockReturnValue(false);
+    mockPosthog.onFeatureFlags.mockImplementation((cb: () => void) => {
+      cb();
+      return () => {};
+    });
+    // Override is present but for a DIFFERENT key
+    (window as unknown as Record<string, unknown>).__POSTHOG_TEST_FLAGS__ = { other_flag: true };
+
+    const { result } = renderHook(() => useFeatureFlag('beta_invite_only'));
+
+    // PostHog value used because 'beta_invite_only' is not in the override
+    expect(result.current.enabled).toBe(false);
+    expect(mockPosthog.isFeatureEnabled).toHaveBeenCalledWith('beta_invite_only');
+
+    // Cleanup
+    delete (window as unknown as Record<string, unknown>).__POSTHOG_TEST_FLAGS__;
+  });
 });

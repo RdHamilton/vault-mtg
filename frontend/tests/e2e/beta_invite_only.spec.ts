@@ -8,20 +8,23 @@ import { test, expect, Page } from '@playwright/test';
  *   - flag ON   → both SignInButton and SignUpButton ARE rendered (default beta UX)
  *
  * Approach:
- *   1. Intercept the PostHog /decide endpoint via page.route() to return a
- *      controlled flag value — the same pattern used by tests/e2e/download.spec.ts
- *      for daemon_download_enabled.
+ *   1. Inject flag state via window.__POSTHOG_TEST_FLAGS__ (addInitScript) so
+ *      useFeatureFlag picks up the override without PostHog being initialized.
+ *      This is deterministic on CI regardless of VITE_POSTHOG_KEY presence —
+ *      no /decide network call is needed. The PostHog /decide intercept is kept
+ *      as defence-in-depth for environments where VITE_POSTHOG_KEY IS set, but
+ *      the window override is the primary mechanism.
  *   2. Inject signed-out Clerk test state via window.__CLERK_TEST_STATE__ (same
  *      pattern as auth.spec.ts) so the AuthBar signed-out branch renders.
  *
- * When VITE_POSTHOG_KEY is absent (local dev, CI without a key), posthog.init()
- * is a no-op and posthog.__loaded stays false — useFeatureFlag returns true by
- * default, keeping the sign-up button visible. The /decide interception below
- * covers CI runs where the key IS present; the flag-ON test covers both cases.
- *
- * Note: these tests run against the full app (flag-gated by real network routing),
- * NOT against the Clerk mock alone. VITE_CLERK_TEST_MODE=true is set by the
- * playwright.config.ts webServer command, aliasing @clerk/react to clerkMock.tsx.
+ * Root cause of prior CI failure (#26614819125):
+ *   VITE_POSTHOG_KEY is absent in the e2e-smoke.yml build. Without the key,
+ *   posthog.init() is a no-op, posthog.__loaded stays false, and useFeatureFlag
+ *   always returns { enabled: true } (the "not loaded" default). The /decide
+ *   route intercept was never called, so the flag-OFF test saw sign-up always
+ *   visible and failed. Fix: useFeatureFlag now checks window.__POSTHOG_TEST_FLAGS__
+ *   before consulting PostHog, and tests inject the flag there instead of relying
+ *   on the network intercept alone.
  */
 
 // ---------------------------------------------------------------------------
@@ -43,8 +46,31 @@ async function setClerkSignedOut(page: Page): Promise<void> {
 }
 
 /**
+ * Inject a PostHog feature flag value via window.__POSTHOG_TEST_FLAGS__.
+ * useFeatureFlag reads this override before consulting posthog.isFeatureEnabled(),
+ * making the flag state deterministic regardless of whether PostHog is initialized.
+ * Must be called before page.goto().
+ */
+async function setPostHogFlag(
+  page: Page,
+  flagKey: string,
+  enabled: boolean
+): Promise<void> {
+  await page.addInitScript(
+    ({ key, value }: { key: string; value: boolean }) => {
+      if (!(window as unknown as Record<string, unknown>).__POSTHOG_TEST_FLAGS__) {
+        (window as unknown as Record<string, unknown>).__POSTHOG_TEST_FLAGS__ = {};
+      }
+      ((window as unknown as Record<string, unknown>).__POSTHOG_TEST_FLAGS__ as Record<string, boolean>)[key] = value;
+    },
+    { key: flagKey, value: enabled }
+  );
+}
+
+/**
  * Intercept the PostHog /decide endpoint to set feature flag values.
- * PostHog calls /decide?v=3 (or similar) to fetch flag payloads.
+ * Kept as defence-in-depth for environments where VITE_POSTHOG_KEY IS set.
+ * The window.__POSTHOG_TEST_FLAGS__ override (above) is the primary mechanism.
  * Must be called before page.goto().
  */
 async function mockPostHogFlag(
@@ -85,7 +111,9 @@ async function abortPostHogDecide(page: Page): Promise<void> {
 
 test.describe('Feature: beta_invite_only flag — flag OFF (SignUp hidden)', () => {
   test.beforeEach(async ({ page }) => {
-    // Route PostHog /decide before navigation so flag is available on first load
+    // Primary: inject flag via window global — works regardless of VITE_POSTHOG_KEY
+    await setPostHogFlag(page, 'beta_invite_only', false);
+    // Defence-in-depth: also intercept /decide for envs with VITE_POSTHOG_KEY set
     await mockPostHogFlag(page, 'beta_invite_only', false);
     await setClerkSignedOut(page);
   });
@@ -127,6 +155,7 @@ test.describe('Feature: beta_invite_only flag — flag OFF (SignUp hidden)', () 
 
 test.describe('Feature: beta_invite_only flag — flag ON (both buttons visible)', () => {
   test.beforeEach(async ({ page }) => {
+    await setPostHogFlag(page, 'beta_invite_only', true);
     await mockPostHogFlag(page, 'beta_invite_only', true);
     await setClerkSignedOut(page);
   });
@@ -147,14 +176,17 @@ test.describe('Feature: beta_invite_only flag — flag ON (both buttons visible)
 // Tests: PostHog absent (VITE_POSTHOG_KEY not set — dev / CI without key)
 // When PostHog is not initialized, posthog.__loaded is false and useFeatureFlag
 // falls back to true → sign-up visible (safe default).
+// No __POSTHOG_TEST_FLAGS__ injection here — this test validates the fallback
+// path when neither PostHog nor the test override is present.
 // ---------------------------------------------------------------------------
 
-test.describe('Feature: beta_invite_only flag — PostHog absent (key not configured)', () => {
+test.describe('Feature: beta_invoke_only flag — PostHog absent (key not configured)', () => {
   test.beforeEach(async ({ page }) => {
     // Abort /decide to simulate PostHog unavailable. useFeatureFlag stays in its
     // null/loading state → AuthBar optimistically shows sign-up (signUpEnabled !== false).
     await abortPostHogDecide(page);
     await setClerkSignedOut(page);
+    // Intentionally no setPostHogFlag() — validate the no-PostHog-no-override path
   });
 
   test('sign-up button is visible when PostHog is not initialized (optimistic default)', async ({

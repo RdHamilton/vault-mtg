@@ -169,9 +169,29 @@ test.describe('Setup Page — PKCE pairing flow', () => {
 });
 
 test.describe('Setup Page — auth status states (#2142)', () => {
+  /**
+   * The daemon health poll in Setup.tsx is gated by isDesktopApp() — it only
+   * starts when window.__VAULTMTG_DESKTOP__ is truthy. In a normal browser/CI
+   * context that flag is absent and the useEffect returns early, so authStatus
+   * never updates and auth-status-panel never renders.
+   *
+   * These tests inject window.__VAULTMTG_DESKTOP__ = true via addInitScript()
+   * before navigation so the poll starts and hits the mocked /health endpoint.
+   * This mirrors how window.__CLERK_TEST_STATE__ is used to control auth state
+   * in auth.spec.ts and is the correct E2E pattern for isDesktopApp()-gated code.
+   *
+   * Root cause of prior CI failure (#26614819125): PR #2715 added these tests
+   * without accounting for the isDesktopApp() guard added in PR #1946.
+   */
+
   test('@smoke shows "Connected" when daemon returns auth_status: authenticated', async ({
     page,
   }) => {
+    // Enable the daemon poll path in the test browser context
+    await page.addInitScript(() => {
+      (window as unknown as Record<string, unknown>).__VAULTMTG_DESKTOP__ = true;
+    });
+
     await page.route('http://localhost:9001/health', async (route) => {
       await route.fulfill({
         status: 200,
@@ -193,6 +213,11 @@ test.describe('Setup Page — auth status states (#2142)', () => {
   test('@smoke shows "Setup required" + CTA when daemon returns auth_status: setup_required', async ({
     page,
   }) => {
+    // Enable the daemon poll path in the test browser context
+    await page.addInitScript(() => {
+      (window as unknown as Record<string, unknown>).__VAULTMTG_DESKTOP__ = true;
+    });
+
     await page.route('http://localhost:9001/health', async (route) => {
       await route.fulfill({
         status: 200,
