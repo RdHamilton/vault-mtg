@@ -188,3 +188,82 @@ func TestFetchSets_ErrorOnInvalidJSON(t *testing.T) {
 
 	require.Error(t, err)
 }
+
+// writeBulkJSONL writes a slice of ScryfallCard objects as JSONL (one JSON
+// object per line) directly to the response writer. This mirrors the actual
+// Scryfall bulk-data file format.
+func writeBulkJSONL(w http.ResponseWriter, cards []scryfall.ScryfallCard) {
+	w.Header().Set("Content-Type", "application/x-ndjson")
+	enc := json.NewEncoder(w)
+	for _, c := range cards {
+		_ = enc.Encode(c)
+	}
+}
+
+func TestFetchBulkDefaultCards_ReturnsArenaCards(t *testing.T) {
+	cards := []scryfall.ScryfallCard{
+		// Arena card — must be returned.
+		{ScryfallID: "aaa", ArenaID: intPtr(12345), Name: "Lightning Bolt", SetCode: "fdn"},
+		// No arena_id — must be skipped.
+		{ScryfallID: "bbb", ArenaID: nil, Name: "Black Lotus", SetCode: "lea"},
+		// Another arena card.
+		{ScryfallID: "ccc", ArenaID: intPtr(67890), Name: "Counterspell", SetCode: "fdn"},
+	}
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		assert.Equal(t, "/bulk-data/default-cards", r.URL.Path)
+		writeBulkJSONL(w, cards)
+	}))
+	defer srv.Close()
+
+	client := scryfall.NewClientWithBase(srv.URL, srv.Client())
+	got, err := client.FetchBulkDefaultCards(context.Background())
+
+	require.NoError(t, err)
+	require.Len(t, got, 2, "only Arena-tagged cards (non-null arena_id) must be returned")
+	assert.Equal(t, 12345, *got[0].ArenaID)
+	assert.Equal(t, 67890, *got[1].ArenaID)
+}
+
+func TestFetchBulkDefaultCards_ErrorOnNon200(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusServiceUnavailable)
+	}))
+	defer srv.Close()
+
+	client := scryfall.NewClientWithBase(srv.URL, srv.Client())
+	_, err := client.FetchBulkDefaultCards(context.Background())
+
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "503")
+}
+
+func TestFetchBulkDefaultCards_ErrorOnInvalidJSONL(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/x-ndjson")
+		_, _ = w.Write([]byte("not-json\n"))
+	}))
+	defer srv.Close()
+
+	client := scryfall.NewClientWithBase(srv.URL, srv.Client())
+	_, err := client.FetchBulkDefaultCards(context.Background())
+
+	require.Error(t, err)
+}
+
+func TestFetchBulkDefaultCards_EmptyResponse(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/x-ndjson")
+		// Empty body — no lines written.
+	}))
+	defer srv.Close()
+
+	client := scryfall.NewClientWithBase(srv.URL, srv.Client())
+	got, err := client.FetchBulkDefaultCards(context.Background())
+
+	require.NoError(t, err)
+	assert.Empty(t, got)
+}
+
+// intPtr is a test helper that returns a pointer to an int literal.
+func intPtr(v int) *int { return &v }

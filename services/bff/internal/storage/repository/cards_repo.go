@@ -64,18 +64,17 @@ func (r *CardsRepository) SearchCards(ctx context.Context, query, setCode string
 		args = append(args, setCode)
 		next++
 	}
-	q := `SELECT c.arena_id, COALESCE(c.arena_id, 0) AS card_id,
+	q := `SELECT c.arena_id::INTEGER, c.arena_id::INTEGER AS card_id,
 	             c.name, COALESCE(c.set_code, ''), COALESCE(s.name, ''),
 	             COALESCE(c.rarity, ''), COALESCE(c.mana_cost, ''),
-	             COALESCE(c.cmc, 0), COALESCE(c.type_line, ''),
-	             COALESCE(c.colors, '[]'), COALESCE(c.color_identity, '[]'),
-	             COALESCE(c.image_uris, '{}'),
+	             COALESCE(c.cmc, 0), COALESCE(c.types, ''),
+	             COALESCE(c.colors, '[]'), '' AS color_identity,
+	             '{}' AS image_uris,
 	             c.power, c.toughness,
-	             sc.price_usd, sc.price_usd_foil, sc.price_eur,
-	             EXTRACT(EPOCH FROM sc.prices_updated_at)::BIGINT
-	      FROM cards c
-	      LEFT JOIN sets s       ON s.code = c.set_code
-	      LEFT JOIN set_cards sc ON sc.set_code = c.set_code AND sc.arena_id = c.arena_id::TEXT
+	             c.price_usd, c.price_usd_foil, c.price_eur,
+	             EXTRACT(EPOCH FROM c.prices_updated_at)::BIGINT
+	      FROM set_cards c
+	      LEFT JOIN sets s ON s.code = c.set_code
 	      WHERE c.arena_id IS NOT NULL AND ` + strings.Join(clauses, " AND ") + `
 	      ORDER BY c.name
 	      LIMIT $` + strconv.Itoa(next)
@@ -86,19 +85,18 @@ func (r *CardsRepository) SearchCards(ctx context.Context, query, setCode string
 // CardByArenaID returns the card with the given arena id. Returns nil
 // when not found.
 func (r *CardsRepository) CardByArenaID(ctx context.Context, arenaID int) (*SetCardRow, error) {
-	const q = `SELECT c.arena_id, COALESCE(c.arena_id, 0),
+	const q = `SELECT c.arena_id::INTEGER, c.arena_id::INTEGER AS card_id,
 	                  c.name, COALESCE(c.set_code, ''), COALESCE(s.name, ''),
 	                  COALESCE(c.rarity, ''), COALESCE(c.mana_cost, ''),
-	                  COALESCE(c.cmc, 0), COALESCE(c.type_line, ''),
-	                  COALESCE(c.colors, '[]'), COALESCE(c.color_identity, '[]'),
-	                  COALESCE(c.image_uris, '{}'),
+	                  COALESCE(c.cmc, 0), COALESCE(c.types, ''),
+	                  COALESCE(c.colors, '[]'), '' AS color_identity,
+	                  '{}' AS image_uris,
 	                  c.power, c.toughness,
-	                  sc.price_usd, sc.price_usd_foil, sc.price_eur,
-	                  EXTRACT(EPOCH FROM sc.prices_updated_at)::BIGINT
-	           FROM cards c
-	           LEFT JOIN sets s       ON s.code = c.set_code
-	           LEFT JOIN set_cards sc ON sc.set_code = c.set_code AND sc.arena_id = c.arena_id::TEXT
-	           WHERE c.arena_id = $1
+	                  c.price_usd, c.price_usd_foil, c.price_eur,
+	                  EXTRACT(EPOCH FROM c.prices_updated_at)::BIGINT
+	           FROM set_cards c
+	           LEFT JOIN sets s ON s.code = c.set_code
+	           WHERE c.arena_id::INTEGER = $1
 	           LIMIT 1`
 	rows, err := r.scanSetCardRows(ctx, q, arenaID)
 	if err != nil {
@@ -112,18 +110,17 @@ func (r *CardsRepository) CardByArenaID(ctx context.Context, arenaID int) (*SetC
 
 // CardsBySetCode returns every card in setCode, ordered by name.
 func (r *CardsRepository) CardsBySetCode(ctx context.Context, setCode string) ([]SetCardRow, error) {
-	const q = `SELECT c.arena_id, COALESCE(c.arena_id, 0),
+	const q = `SELECT c.arena_id::INTEGER, c.arena_id::INTEGER AS card_id,
 	                  c.name, COALESCE(c.set_code, ''), COALESCE(s.name, ''),
 	                  COALESCE(c.rarity, ''), COALESCE(c.mana_cost, ''),
-	                  COALESCE(c.cmc, 0), COALESCE(c.type_line, ''),
-	                  COALESCE(c.colors, '[]'), COALESCE(c.color_identity, '[]'),
-	                  COALESCE(c.image_uris, '{}'),
+	                  COALESCE(c.cmc, 0), COALESCE(c.types, ''),
+	                  COALESCE(c.colors, '[]'), '' AS color_identity,
+	                  '{}' AS image_uris,
 	                  c.power, c.toughness,
-	                  sc.price_usd, sc.price_usd_foil, sc.price_eur,
-	                  EXTRACT(EPOCH FROM sc.prices_updated_at)::BIGINT
-	           FROM cards c
-	           LEFT JOIN sets s       ON s.code = c.set_code
-	           LEFT JOIN set_cards sc ON sc.set_code = c.set_code AND sc.arena_id = c.arena_id::TEXT
+	                  c.price_usd, c.price_usd_foil, c.price_eur,
+	                  EXTRACT(EPOCH FROM c.prices_updated_at)::BIGINT
+	           FROM set_cards c
+	           LEFT JOIN sets s ON s.code = c.set_code
 	           WHERE lower(c.set_code) = lower($1) AND c.arena_id IS NOT NULL
 	           ORDER BY c.name
 	           LIMIT 1000`
@@ -156,20 +153,19 @@ func (r *CardsRepository) SearchCardsWithCollection(ctx context.Context, account
 		args = append(args, lowerSlice(sets))
 		next++
 	}
-	q := `SELECT c.arena_id, COALESCE(c.arena_id, 0),
+	q := `SELECT c.arena_id::INTEGER, c.arena_id::INTEGER AS card_id,
 	             c.name, COALESCE(c.set_code, ''), COALESCE(s.name, ''),
 	             COALESCE(c.rarity, ''), COALESCE(c.mana_cost, ''),
-	             COALESCE(c.cmc, 0), COALESCE(c.type_line, ''),
-	             COALESCE(c.colors, '[]'), COALESCE(c.color_identity, '[]'),
-	             COALESCE(c.image_uris, '{}'),
+	             COALESCE(c.cmc, 0), COALESCE(c.types, ''),
+	             COALESCE(c.colors, '[]'), '' AS color_identity,
+	             '{}' AS image_uris,
 	             c.power, c.toughness,
-	             sc.price_usd, sc.price_usd_foil, sc.price_eur,
-	             EXTRACT(EPOCH FROM sc.prices_updated_at)::BIGINT,
+	             c.price_usd, c.price_usd_foil, c.price_eur,
+	             EXTRACT(EPOCH FROM c.prices_updated_at)::BIGINT,
 	             COALESCE(ci.count, 0) AS qty
-	      FROM cards c
-	      LEFT JOIN sets s       ON s.code = c.set_code
-	      LEFT JOIN set_cards sc ON sc.set_code = c.set_code AND sc.arena_id = c.arena_id::TEXT
-	      LEFT JOIN card_inventory ci ON ci.account_id = $` + strconv.Itoa(next) + ` AND ci.card_id = c.arena_id
+	      FROM set_cards c
+	      LEFT JOIN sets s ON s.code = c.set_code
+	      LEFT JOIN card_inventory ci ON ci.account_id = $` + strconv.Itoa(next) + ` AND ci.card_id = c.arena_id::INTEGER
 	      WHERE ` + strings.Join(clauses, " AND ") + `
 	      ORDER BY c.name
 	      LIMIT $` + strconv.Itoa(next+1)
@@ -481,8 +477,8 @@ func (r *CardsRepository) ImportCFBRatings(ctx context.Context, imports []CFBImp
 // cards on lower(name). Returns the number of rows updated.
 func (r *CardsRepository) LinkCFBArenaIds(ctx context.Context, setCode string) (int, error) {
 	const q = `UPDATE cfb_ratings cr
-	           SET arena_id = c.arena_id
-	           FROM cards c
+	           SET arena_id = c.arena_id::INTEGER
+	           FROM set_cards c
 	           WHERE lower(cr.set_code) = lower($1)
 	             AND cr.arena_id IS NULL
 	             AND lower(c.name) = lower(cr.card_name)

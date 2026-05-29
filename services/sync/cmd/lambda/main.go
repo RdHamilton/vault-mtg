@@ -42,6 +42,7 @@ import (
 	"github.com/RdHamilton/vault-mtg/services/sync/internal/datasets"
 	"github.com/RdHamilton/vault-mtg/services/sync/internal/dbconn"
 	"github.com/RdHamilton/vault-mtg/services/sync/internal/handler"
+	"github.com/RdHamilton/vault-mtg/services/sync/internal/scryfall"
 	"github.com/RdHamilton/vault-mtg/services/sync/internal/seventeenlands"
 	awslambda "github.com/aws/aws-lambda-go/lambda"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -67,7 +68,8 @@ func main() {
 
 	store := datasets.NewPostgresStore(pool)
 	client := seventeenlands.NewClient()
-	h := handler.New(client, store, activeSets())
+	scryfallClient := scryfall.NewClient()
+	h := handler.New(client, scryfallClient, store, activeSets())
 
 	awslambda.Start(h.Handle)
 }

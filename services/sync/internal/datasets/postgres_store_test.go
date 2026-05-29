@@ -29,12 +29,17 @@ func newMockStore() *mockStore {
 	}
 }
 
-func (m *mockStore) GetActiveSets(_ context.Context) ([]string, error) {
-	var codes []string
+func (m *mockStore) GetActiveSets(_ context.Context) ([]datasets.SyncSet, error) {
+	seen := make(map[string]bool)
+	var sets []datasets.SyncSet
 	for k := range m.data {
-		codes = append(codes, strings.SplitN(k, "/", 2)[0])
+		code := strings.SplitN(k, "/", 2)[0]
+		if !seen[code] {
+			seen[code] = true
+			sets = append(sets, datasets.SyncSet{Code: code, ExpansionCode: code})
+		}
 	}
-	return codes, nil
+	return sets, nil
 }
 
 func (m *mockStore) UpsertRatings(_ context.Context, ratings draftdata.SetRatings) error {
@@ -64,6 +69,10 @@ func (m *mockStore) GetHash(_ context.Context, key string) (string, error) {
 
 func (m *mockStore) SetHash(_ context.Context, key string, hash string) error {
 	m.hashes[key] = hash
+	return nil
+}
+
+func (m *mockStore) UpsertSetCards(_ context.Context, _ []scryfall.ScryfallCard) error {
 	return nil
 }
 

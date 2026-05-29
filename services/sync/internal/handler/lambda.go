@@ -17,6 +17,7 @@ import (
 
 	"github.com/RdHamilton/vault-mtg/services/sync/internal/datasets"
 	"github.com/RdHamilton/vault-mtg/services/sync/internal/draftdata"
+	"github.com/RdHamilton/vault-mtg/services/sync/internal/scryfall"
 	"github.com/RdHamilton/vault-mtg/services/sync/internal/seventeenlands"
 )
 
@@ -55,10 +56,17 @@ type Fetcher interface {
 	FetchColorRatings(ctx context.Context, setCode, format, startDate, endDate string) ([]seventeenlands.ColorRating, error)
 }
 
+// CardFetcher retrieves Scryfall card metadata from the bulk-data endpoint.
+// The returned slice contains only Arena-tagged cards (non-null arena_id).
+type CardFetcher interface {
+	FetchBulkDefaultCards(ctx context.Context) ([]scryfall.ScryfallCard, error)
+}
+
 // SyncHandler is the Lambda handler that fetches card ratings for all active sets
 // and persists them to Postgres. Each invocation performs a single full refresh.
 type SyncHandler struct {
 	fetcher             Fetcher
+	cardFetcher         CardFetcher // fetches Scryfall bulk card metadata; may be nil (skips syncCards)
 	store               datasets.Store
 	overrideSets        []string      // non-empty when caller provides an explicit set list
 	formats             []string      // draft formats to sync; read from SYNC_FORMATS env var
@@ -72,12 +80,14 @@ type SyncHandler struct {
 
 // New creates a SyncHandler. overrideSets may be nil/empty to use DB-driven active sets.
 //
+// cardFetcher may be nil; when nil, the syncCards step is skipped this invocation.
+//
 // The formats list is read from SYNC_FORMATS (comma-separated). If unset, defaultFormats
 // is used: PremierDraft and QuickDraft.
 //
 // Retry counts are read from SYNC_MAX_RETRIES and SYNC_MAX_CONSECUTIVE_SKIP_DAYS env vars;
 // defaults are defaultMaxRetries and defaultMaxConsecutiveSkipDays respectively.
-func New(fetcher Fetcher, store datasets.Store, overrideSets []string) *SyncHandler {
+func New(fetcher Fetcher, cardFetcher CardFetcher, store datasets.Store, overrideSets []string) *SyncHandler {
 	formats := defaultFormats
 	if v := os.Getenv("SYNC_FORMATS"); v != "" {
 		var parsed []string
@@ -114,6 +124,7 @@ func New(fetcher Fetcher, store datasets.Store, overrideSets []string) *SyncHand
 
 	return &SyncHandler{
 		fetcher:             fetcher,
+		cardFetcher:         cardFetcher,
 		store:               store,
 		overrideSets:        overrideSets,
 		formats:             formats,
@@ -127,11 +138,12 @@ func New(fetcher Fetcher, store datasets.Store, overrideSets []string) *SyncHand
 // NewWithFormats creates a SyncHandler with an explicit formats list, bypassing the
 // SYNC_FORMATS env var. Intended for tests that need deterministic format control.
 //
-// maxRetries, maxConsecutiveSkips, and interRequestSleep are all 0 (disabled) to
-// preserve existing test expectations around exact fetch/upsert call counts and timing.
+// cardFetcher is nil (syncCards step disabled) so existing test expectations are
+// preserved. maxRetries, maxConsecutiveSkips, and interRequestSleep are all 0 (disabled).
 func NewWithFormats(fetcher Fetcher, store datasets.Store, overrideSets, formats []string) *SyncHandler {
 	return &SyncHandler{
 		fetcher:             fetcher,
+		cardFetcher:         nil,
 		store:               store,
 		overrideSets:        overrideSets,
 		formats:             formats,
@@ -145,8 +157,11 @@ func NewWithFormats(fetcher Fetcher, store datasets.Store, overrideSets, formats
 // NewWithOptions creates a SyncHandler with fully explicit configuration.
 // Intended for tests that need fine-grained control over retry, skip-guard, and
 // inter-request sleep behaviour.
+//
+// cardFetcher may be nil; when nil, the syncCards step is skipped.
 func NewWithOptions(
 	fetcher Fetcher,
+	cardFetcher CardFetcher,
 	store datasets.Store,
 	overrideSets, formats []string,
 	maxRetries, maxConsecutiveSkips int,
@@ -158,6 +173,7 @@ func NewWithOptions(
 	}
 	return &SyncHandler{
 		fetcher:             fetcher,
+		cardFetcher:         cardFetcher,
 		store:               store,
 		overrideSets:        overrideSets,
 		formats:             formats,
@@ -180,6 +196,11 @@ func NewWithOptions(
 // conditions. Handle can still return a non-nil error for context cancellation
 // or a DB-query failure in activeSets.
 func (h *SyncHandler) Handle(ctx context.Context, _ any) error {
+	// Step 1: sync Scryfall card metadata into cards and set_cards tables.
+	// Non-fatal: a failure here is logged and the ratings sync continues.
+	h.syncCards(ctx)
+
+	// Step 2: sync 17Lands ratings for all active sets.
 	sets, err := h.activeSets(ctx)
 	if err != nil {
 		return err
@@ -211,6 +232,34 @@ func (h *SyncHandler) Handle(ctx context.Context, _ any) error {
 	}
 
 	return firstErr
+}
+
+// syncCards fetches the Scryfall default-cards bulk file and writes all
+// Arena-tagged cards into set_cards (the sole write target — the retired
+// cards table was dropped in migration 000025). It is intentionally non-fatal:
+// any failure is logged and the caller continues with the 17Lands ratings sync.
+//
+// When h.cardFetcher is nil the step is skipped silently (e.g. in tests
+// constructed with NewWithFormats / NewWithOptions(cardFetcher=nil)).
+func (h *SyncHandler) syncCards(ctx context.Context) {
+	if h.cardFetcher == nil {
+		return
+	}
+
+	cards, err := h.cardFetcher.FetchBulkDefaultCards(ctx)
+	if err != nil {
+		log.Printf("[sync] syncCards: fetch bulk-data: %v", err)
+		return
+	}
+
+	log.Printf("[sync] syncCards: fetched %d Arena cards from Scryfall bulk-data", len(cards))
+
+	if err := h.store.UpsertSetCards(ctx, cards); err != nil {
+		log.Printf("[sync] syncCards: UpsertSetCards: %v", err)
+		return
+	}
+
+	log.Printf("[sync] syncCards: upserted %d cards into set_cards", len(cards))
 }
 
 // syncSet fetches and upserts ratings for all formats of a single set. It never
