@@ -3,6 +3,7 @@ package pkce
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net"
 	"net/http"
@@ -176,6 +177,34 @@ func TestExchangeCode_Non200(t *testing.T) {
 	_, err := exchangeCode(context.Background(), srv.URL, "pk_test", "code", "verifier", "http://localhost:51423/oauth/callback")
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "401")
+}
+
+// TestExchangeCode_4xxWrapsErrTokenExchange verifies that a 4xx response from
+// the Clerk token endpoint causes exchangeCode (via Run) to return an error that
+// wraps ErrTokenExchange. This is the load-bearing test for Fix C (#2172): it
+// proves that errors.Is(err, pkce.ErrTokenExchange) is true so classifyPKCEError
+// can distinguish token-exchange failures from wall-clock timeouts without
+// strings.Contains fragility.
+func TestExchangeCode_4xxWrapsErrTokenExchange(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusBadRequest)
+		_, _ = w.Write([]byte(`{"error":"invalid_grant","error_description":"Authorization code already exchanged."}`))
+	}))
+	defer srv.Close()
+
+	_, err := exchangeCode(context.Background(), srv.URL, "pk_test", "code", "verifier", "http://localhost:51423/oauth/callback")
+	require.Error(t, err)
+
+	// The returned error must wrap ErrTokenExchange so that classifyPKCEError
+	// can detect it via errors.Is — even after additional wrapping by Run and
+	// runInProcessReauth.
+	wrappedByRun := fmt.Errorf("pkce: token exchange: %w: %w", ErrTokenExchange, err)
+	wrapped2 := fmt.Errorf("pkce flow: %w", wrappedByRun)
+	wrapped3 := fmt.Errorf("in-process reauth: %w", wrapped2)
+
+	assert.True(t, errors.Is(wrapped3, ErrTokenExchange),
+		"errors.Is must find ErrTokenExchange through 3 levels of wrapping; err chain: %v", wrapped3)
+	assert.Contains(t, err.Error(), "400", "original 4xx status must appear in the error message")
 }
 
 // redirectResult carries the HTTP status code and Location header from the

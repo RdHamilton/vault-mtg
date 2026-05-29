@@ -110,6 +110,17 @@ type TokenResponse struct {
 	RefreshToken string
 }
 
+// ErrTokenExchange is returned (wrapped) when the Clerk token endpoint rejects the
+// authorization code exchange (e.g. HTTP 4xx "invalid_grant"). Callers in the daemon
+// package detect this via errors.Is and map it to the "pkce_token_exchange_failed"
+// reason code for daemon.auth_failed PostHog events. Using a sentinel instead of a
+// strings.Contains check makes the taxonomy contract explicit and immune to error-string
+// drift across Clerk API versions.
+//
+// Commit cb4a4c15 [#88] established the reason-code taxonomy (pkce_cancelled,
+// pkce_timeout); this sentinel extends it with a third code.
+var ErrTokenExchange = errors.New("pkce: token exchange failed")
+
 // Run executes the full PKCE browser-redirect flow and returns the Clerk session JWT.
 // It opens the system browser, waits for the OAuth callback, and exchanges the
 // auth code for a token.
@@ -154,9 +165,12 @@ func Run(ctx context.Context, cfg Config, headless bool) (*TokenResponse, error)
 	}
 
 	// Exchange code + verifier for a token.
+	// Wrap ErrTokenExchange as the first %w so callers can detect token-exchange
+	// failures via errors.Is(err, pkce.ErrTokenExchange) regardless of wrapping
+	// depth. The original exchange error is preserved as the second %w for context.
 	tok, err := exchangeCode(ctx, cfg.TokenEndpoint, cfg.ClientID, code, verifier, redirectURI)
 	if err != nil {
-		return nil, fmt.Errorf("pkce: token exchange: %w", err)
+		return nil, fmt.Errorf("pkce: token exchange: %w: %w", ErrTokenExchange, err)
 	}
 
 	return tok, nil

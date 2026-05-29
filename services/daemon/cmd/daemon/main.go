@@ -728,14 +728,26 @@ func runInProcessReauth(ctx context.Context, cfg *config.Config, cfgPath string)
 		TokenEndpoint:    tokenEndpoint,
 	}
 
+	// Add a 10-minute wall-clock deadline to bound the entire reauth flow
+	// (PKCE browser wait + BFF registration). Without this cap, a hung BFF
+	// call would pin reauthInProgress=true permanently, blocking all subsequent
+	// 401 recovery attempts with ErrReauthRequired forever.
+	//
+	// ctx here is context.Background() (set by keychainRefresherAdapter per
+	// the S-07 fix, #2135) — so this WithTimeout creates a fresh 10-min budget
+	// and does NOT reintroduce the 5-second dispatcher context that #2135
+	// intentionally excluded. The S-07 invariant is preserved.
+	reauthCtx, reauthCancel := context.WithTimeout(ctx, 10*time.Minute)
+	defer reauthCancel()
+
 	log.Printf("[mtga-daemon] in-process reauth: starting PKCE flow")
-	tok, err := pkce.Run(ctx, pkceCfg, headless)
+	tok, err := pkce.Run(reauthCtx, pkceCfg, headless)
 	if err != nil {
 		return fmt.Errorf("in-process reauth: pkce flow: %w", err)
 	}
 
 	apiKey, accountID, serverDeviceID, alreadyRegistered, err := registerWithBFF(
-		ctx, cfg.CloudAPIURL, tok.AccessToken, cfg.DaemonID, runtime.GOOS, Version,
+		reauthCtx, cfg.CloudAPIURL, tok.AccessToken, cfg.DaemonID, runtime.GOOS, Version,
 	)
 	if err != nil {
 		return fmt.Errorf("in-process reauth: BFF registration: %w", err)

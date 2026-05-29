@@ -15,12 +15,35 @@ import (
 	"github.com/RdHamilton/vault-mtg/services/contract"
 	"github.com/RdHamilton/vault-mtg/services/daemon/internal/config"
 	"github.com/RdHamilton/vault-mtg/services/daemon/internal/logreader"
+	"github.com/RdHamilton/vault-mtg/services/daemon/internal/pkce"
 	"github.com/stretchr/testify/assert"
 )
 
 // ---------------------------------------------------------------------------
 // classifyPKCEError — unit tests (Cases 1–4)
 // ---------------------------------------------------------------------------
+
+// TestClassifyPKCEError_TokenExchangeFailed_WrappedDeep verifies that an error
+// wrapping pkce.ErrTokenExchange at the source (pkce.Run) maps to
+// "pkce_token_exchange_failed" even after additional wrapping layers added by
+// runInProcessReauth and keychainRefresherAdapter. This is the regression guard
+// for Fix C (#2172): errors.Is must unwrap through multiple fmt.Errorf levels.
+func TestClassifyPKCEError_TokenExchangeFailed_WrappedDeep(t *testing.T) {
+	// Simulate the exact wrap chain produced in production:
+	//   pkce.Run wraps:       "pkce: token exchange: %w: %w" (ErrTokenExchange, origErr)
+	//   runInProcessReauth:   "in-process reauth: pkce flow: %w"
+	origErr := errors.New("token endpoint returned 400: {\"error\":\"invalid_grant\"}")
+	innerWrap := fmt.Errorf("pkce: token exchange: %w: %w", pkce.ErrTokenExchange, origErr)
+	runWrap := fmt.Errorf("in-process reauth: pkce flow: %w", innerWrap)
+
+	// classifyPKCEError must detect ErrTokenExchange through three levels.
+	assert.Equal(t, "pkce_token_exchange_failed", classifyPKCEError(runWrap),
+		"classifyPKCEError must return pkce_token_exchange_failed when ErrTokenExchange is wrapped 3 levels deep")
+
+	// Sanity: errors.Is resolves correctly (validates the wrap chain itself).
+	assert.True(t, errors.Is(runWrap, pkce.ErrTokenExchange),
+		"errors.Is must find pkce.ErrTokenExchange through 3 wrap levels")
+}
 
 // TestClassifyPKCEError_Cancelled verifies that bare context.Canceled maps to
 // "pkce_cancelled".

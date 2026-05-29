@@ -24,6 +24,7 @@ import (
 	"github.com/RdHamilton/vault-mtg/services/daemon/internal/keychain"
 	"github.com/RdHamilton/vault-mtg/services/daemon/internal/localapi"
 	"github.com/RdHamilton/vault-mtg/services/daemon/internal/logreader"
+	"github.com/RdHamilton/vault-mtg/services/daemon/internal/pkce"
 	"github.com/RdHamilton/vault-mtg/services/daemon/internal/ratingsclient"
 	"github.com/RdHamilton/vault-mtg/services/daemon/internal/registrar"
 	"github.com/RdHamilton/vault-mtg/services/daemon/internal/updatecheck"
@@ -938,7 +939,10 @@ func (s *Service) clearBFFFailureCounter() {
 }
 
 // authFailedPayload is the JSON body of a daemon.auth_failed dispatch event.
-// reason is one of: "bff_rejected", "pkce_timeout", "pkce_cancelled".
+// reason is one of: "bff_rejected", "pkce_timeout", "pkce_cancelled",
+// "pkce_token_exchange_failed". The latter is emitted when the Clerk token
+// endpoint rejects the authorization code (e.g. HTTP 4xx "invalid_grant") and
+// was added in #2172 as the third code in the cb4a4c15 [#88] taxonomy.
 // BFFStatusCode is populated only when reason is "bff_rejected"; it carries the
 // raw HTTP status (401, 403, etc.) for operator routing on the dashboard.
 type authFailedPayload struct {
@@ -963,8 +967,9 @@ type keychainErrorPayload struct {
 // keychain mode and the BFF returned 401 for the telemetry event). A no-refresher
 // dispatcher will retry up to 3 times and buffer on exhaustion — correct
 // behaviour for a telemetry event that the BFF may briefly be unable to accept.
-// reason must be one of: "bff_rejected", "pkce_timeout", "pkce_cancelled".
-// For "bff_rejected", lastBFFStatusCode is read under the lock and included as
+// reason must be one of: "bff_rejected", "pkce_timeout", "pkce_cancelled",
+// "pkce_token_exchange_failed" (added #2172). For "bff_rejected", lastBFFStatusCode
+// is read under the lock and included as
 // bff_status_code. This is best-effort — errors are logged and swallowed.
 func (s *Service) dispatchAuthFailed(ctx context.Context, reason string) {
 	s.bffMu.Lock()
@@ -1012,17 +1017,24 @@ func (s *Service) dispatchAuthFailed(ctx context.Context, reason string) {
 }
 
 // classifyPKCEError maps a PKCE error to the appropriate daemon.auth_failed
-// reason code. context.Canceled (bare or wrapped) means the user dismissed the
-// browser window → "pkce_cancelled". All other errors — wall-clock timeout,
-// port-bind failure, token-exchange failure — map to "pkce_timeout".
+// reason code. Precedence (highest first):
 //
-// This is correct because pkce.waitForCode returns bare context.Canceled for
-// user-cancel and a non-wrapping formatted string for wall-clock expiry; both
-// callers (runPKCEAuth, runInProcessReauth) wrap with fmt.Errorf("pkce flow: %w"),
-// so errors.Is traverses the chain for cancel and is false for timeout.
+//  1. context.Canceled (bare or wrapped) — user dismissed the browser window
+//     → "pkce_cancelled".
+//  2. pkce.ErrTokenExchange (wrapped via %w in pkce.Run) — Clerk token endpoint
+//     rejected the authorization code (e.g. HTTP 4xx "invalid_grant") →
+//     "pkce_token_exchange_failed". Detected via errors.Is; never strings.Contains.
+//  3. All other errors — wall-clock timeout, port-bind failure, etc. →
+//     "pkce_timeout" (safe default).
+//
+// Commit cb4a4c15 [#88] established the two-code taxonomy (pkce_cancelled,
+// pkce_timeout). This function extends it with pkce_token_exchange_failed (#2172).
 func classifyPKCEError(err error) string {
 	if errors.Is(err, context.Canceled) {
 		return "pkce_cancelled"
+	}
+	if errors.Is(err, pkce.ErrTokenExchange) {
+		return "pkce_token_exchange_failed"
 	}
 	return "pkce_timeout"
 }
