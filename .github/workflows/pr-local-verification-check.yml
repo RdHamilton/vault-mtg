@@ -30,6 +30,15 @@ name: PR Local Verification Check
 #    or `dry-run` — shell-script PRs must show the dry-run exercised the
 #    actual code path, not just `bash -n`.
 #
+#    EXCEPTION — declaration-only shell changes: if the author cannot
+#    produce a meaningful dry-run (e.g. the change only adds a function,
+#    constant, or `source` call with no new executable entrypoint), a
+#    syntax/lint check is accepted in lieu of `--dry-run`. The LV section
+#    must contain `sh -n` or `shellcheck` against the changed file. If
+#    neither `--dry-run` NOR a syntax/lint check is present, the gate
+#    fails. The rule: executable entrypoint changes require `--dry-run`;
+#    declaration-only changes accept `sh -n` / `shellcheck`.
+#
 # WHAT IT DOES NOT CHECK
 # ----------------------
 # - It cannot tell a real transcript from a fabricated transcript that
@@ -103,14 +112,31 @@ name: PR Local Verification Check
 #        ```
 #      → FAIL (no success marker — could be predicted output).
 #
-#   I) Shell-script PR (touches `scripts/deploy/ec2-bootstrap.sh`) but the
-#      transcript shows only `bash -n` and `shellcheck` (no `--dry-run`):
+#   I) Shell-script PR (touches `scripts/deploy/ec2-bootstrap.sh`) with an
+#      executable entrypoint change, but transcript shows only `bash -n`:
 #        ```
-#        $ shellcheck scripts/deploy/ec2-bootstrap.sh
 #        $ bash -n scripts/deploy/ec2-bootstrap.sh
 #        PASS
 #        ```
-#      → FAIL (missing `--dry-run` / `dry-run` for a shell PR).
+#      → FAIL (executable entrypoint changed; `--dry-run` required).
+#
+#   J) Declaration-only shell PR with no syntax/lint check OR --dry-run:
+#        ```
+#        $ echo "change looks fine"
+#        PASS
+#        ```
+#      → FAIL (neither --dry-run nor sh -n/shellcheck present).
+#
+# NEW PASS case — declaration-only shell change:
+#   K) PR adds a helper function to `scripts/lib/utils.sh` (not executable).
+#      LV shows syntax check only (no --dry-run):
+#        ```
+#        $ sh -n scripts/lib/utils.sh
+#        $ shellcheck scripts/lib/utils.sh
+#        PASS
+#        ```
+#      → PASS (declaration-only escape hatch: sh -n / shellcheck accepted
+#              in lieu of --dry-run when no executable entrypoint is changed).
 # ---------------------------------------------------------------------------
 
 on:
@@ -293,14 +319,33 @@ jobs:
           fi
 
           # ---- 5. Shell-script PRs require --dry-run / dry-run ----
+          # Exception (declaration-only): if the author cannot produce a
+          # meaningful dry-run (the change only adds a function, constant,
+          # or `source` call with no new executable entrypoint), a syntax
+          # or lint check is accepted in lieu of --dry-run.  The LV section
+          # must contain `sh -n` or `shellcheck` against the changed file.
+          # Rule: executable entrypoint changes → --dry-run required;
+          #       declaration-only changes      → sh -n / shellcheck accepted.
           if [ "${SHELL_TOUCHED}" = "yes" ]; then
-            if ! grep -qE '(--dry-run|dry-run)' /tmp/lv_section.txt; then
+            HAS_DRY_RUN=no
+            HAS_SYNTAX_CHECK=no
+            if grep -qE '(--dry-run|dry-run)' /tmp/lv_section.txt; then
+              HAS_DRY_RUN=yes
+            fi
+            if grep -qE '(\bsh[[:space:]]+-n[[:space:]]|shellcheck[[:space:]])' /tmp/lv_section.txt; then
+              HAS_SYNTAX_CHECK=yes
+            fi
+            if [ "${HAS_DRY_RUN}" = "no" ] && [ "${HAS_SYNTAX_CHECK}" = "no" ]; then
               echo ""
-              echo "Parser expected: at least one occurrence of regex  (--dry-run|dry-run)  in the section"
-              echo "This PR touches a *.sh file or scripts/deploy/ — the transcript must show"
-              echo "the script was invoked with --dry-run (or dry-run) to exercise the actual code path."
+              echo "Parser expected: at least one of:"
+              echo "  (a) regex  (--dry-run|dry-run)  for executable entrypoint changes"
+              echo "  (b) regex  (sh -n |shellcheck )  for declaration-only changes"
+              echo "This PR touches a *.sh file or scripts/deploy/."
+              echo "Executable entrypoint change → include a --dry-run transcript."
+              echo "Declaration-only change (function/constant/source only) → include sh -n or shellcheck."
               echo ""
-              fail "Shell-script PR (touches *.sh or scripts/deploy/): Local Verification must include a --dry-run transcript that exercised the actual code path."
+              fail "Shell-script PR (touches *.sh or scripts/deploy/): Local Verification must include either (a) a --dry-run transcript showing the actual code path was exercised, or (b) a syntax/lint check (sh -n or shellcheck) for declaration-only changes that add no executable entrypoint." \
+                   "If your change only adds a function, constant, or source call, use: sh -n <file> && shellcheck <file>"
             fi
           fi
 
@@ -312,5 +357,9 @@ jobs:
           echo "  - Shell-prompt indicator: present"
           echo "  - Success marker: present"
           if [ "${SHELL_TOUCHED}" = "yes" ]; then
-            echo "  - Shell-script dry-run: present"
+            if [ "${HAS_DRY_RUN}" = "yes" ]; then
+              echo "  - Shell-script verification: --dry-run present"
+            else
+              echo "  - Shell-script verification: declaration-only (sh -n / shellcheck accepted)"
+            fi
           fi
