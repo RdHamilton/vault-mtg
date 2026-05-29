@@ -1,6 +1,7 @@
 - Always write Playwright e2e tests for new UI and UI changes
 - Use the REST API adapter for new components (enables E2E testing)
 - Run `npx tsc --noEmit` for TypeScript type checking (separate from vitest)
+- Run `npm run build` to catch Vite build-mode errors that `tsc --noEmit` misses
 - Run `npm run test:run` to run vitest component tests
 
 ## Local Go Build Setup (Required)
