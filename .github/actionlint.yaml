@@ -1,0 +1,14 @@
+self-hosted-runner:
+  labels: []
+
+config-variables: null
+
+# Path-scoped shellcheck ignore patterns.
+# SC2016: "Expressions don't expand in single quotes" — false positive on GraphQL
+#   query strings passed to `gh api graphql -f query='...'`. The single-quoted
+#   $variables are GraphQL placeholders, not shell expansions. Scoped to only
+#   the file that uses this pattern so other workflows remain fully linted.
+paths:
+  .github/workflows/board-status-automation.yml:
+    ignore:
+      - 'SC2016'
