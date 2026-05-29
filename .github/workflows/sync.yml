@@ -14,7 +14,7 @@ on:
 # NOTE: This workflow does NOT deploy the sync Lambda. The canonical deploy
 # path is `mtga-companion-infra/.github/workflows/deploy-sync-lambda.yml`,
 # which builds arm64 (matching the Lambda runtime) and holds a concurrency
-# lock. See `vault_mtg_docs/engineering/architecture/decisions/` for the
+# lock. See `vault-mtg-docs/engineering/architecture/decisions/` for the
 # canonical-deploy-path decision note.
 
 jobs:
