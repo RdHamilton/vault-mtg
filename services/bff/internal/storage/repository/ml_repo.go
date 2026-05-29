@@ -42,7 +42,7 @@ type CardCombinationStatsRow struct {
 }
 
 // SynergyReportPair is one card pair inside a deck's synergy report.
-// CardName columns come from the cards table join when available.
+// CardName columns come from the set_cards table join when available.
 type SynergyReportPair struct {
 	Card1ID       int
 	Card1Name     *string
@@ -147,11 +147,15 @@ func (r *MLRepository) SynergyReport(ctx context.Context, accountID int64, deckI
 	}
 
 	// Build the in-list once and pass it as an int[] array for performance.
+	// set_cards.arena_id is TEXT (migration 000014); cast to INTEGER for the join.
+	// DISTINCT ON guards against the same arena_id appearing in multiple sets.
 	pairsQ := `SELECT ccs.card_id_1, c1.name, ccs.card_id_2, c2.name,
 	                  ccs.synergy_score, ccs.games_together, ccs.wins_together
 	           FROM card_combination_stats ccs
-	           LEFT JOIN cards c1 ON c1.arena_id = ccs.card_id_1
-	           LEFT JOIN cards c2 ON c2.arena_id = ccs.card_id_2
+	           LEFT JOIN (SELECT DISTINCT ON (arena_id) arena_id, name FROM set_cards ORDER BY arena_id, id) c1
+	                  ON c1.arena_id::INTEGER = ccs.card_id_1
+	           LEFT JOIN (SELECT DISTINCT ON (arena_id) arena_id, name FROM set_cards ORDER BY arena_id, id) c2
+	                  ON c2.arena_id::INTEGER = ccs.card_id_2
 	           WHERE ccs.card_id_1 = ANY($1) AND ccs.card_id_2 = ANY($1)
 	           ORDER BY ccs.synergy_score DESC`
 	prows, err := r.db.QueryContext(ctx, pairsQ, intSliceToInt64Slice(cardIDs))
