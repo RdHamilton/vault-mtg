@@ -9,7 +9,7 @@
 # (Security Engineer) has completed the effect-enumeration SOP and posted an
 # explicit VERDICT: APPROVED comment.
 #
-# Runbook: vault_mtg_docs/engineering/runbooks/infra-security-review-gate.md
+# Runbook: vault-mtg-docs/engineering/runbooks/infra-security-review-gate.md
 # Ticket:  RdHamilton/vault-mtg#2365
 #
 # GATE MECHANISM
@@ -143,7 +143,7 @@ jobs:
 
           # ------------------------------------------------------------------
           # 2. Path glob check -- S-07 trigger paths for vault-mtg
-          #    Source: vault_mtg_docs/engineering/runbooks/infra-security-review-gate.md sec 1A
+          #    Source: vault-mtg-docs/engineering/runbooks/infra-security-review-gate.md sec 1A
           # ------------------------------------------------------------------
           CHANGED_FILES=$(gh api "repos/${REPO}/pulls/${PR_NUMBER}/files" \
             --jq '[.[].filename] | join("\n")' 2>/dev/null || echo "")
@@ -502,6 +502,6 @@ jobs:
           echo "  Re-review is only required when new security-sensitive code"
           echo "  was pushed after the last approval."
           echo ""
-          echo "Runbook: vault_mtg_docs/engineering/runbooks/infra-security-review-gate.md"
+          echo "Runbook: vault-mtg-docs/engineering/runbooks/infra-security-review-gate.md"
           echo "Ticket:  RdHamilton/vault-mtg#2365"
           exit 1

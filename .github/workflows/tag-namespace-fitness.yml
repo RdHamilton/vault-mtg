@@ -1,7 +1,7 @@
 # tag-namespace-fitness.yml — ADR-023 release-tag namespace fitness functions
 #
 # Automates two of the five fitness functions defined in ADR-023
-# (vault_mtg_docs/engineering/architecture/adr/2026-05-ADR-023-monorepo-release-tag-namespacing.md):
+# (vault-mtg-docs/engineering/architecture/adr/2026-05-ADR-023-monorepo-release-tag-namespacing.md):
 #
 #   Fitness #1 — No stray bare `v*` tags.
 #     Lists git tags matching v[0-9]* and rejects any that are NOT in the
@@ -104,7 +104,7 @@ jobs:
             echo "  5. Re-run this check to confirm the violation is resolved."
             echo ""
             echo "See ADR-023 for the authoritative tag namespacing scheme:"
-            echo "  vault_mtg_docs/engineering/architecture/adr/2026-05-ADR-023-monorepo-release-tag-namespacing.md"
+            echo "  vault-mtg-docs/engineering/architecture/adr/2026-05-ADR-023-monorepo-release-tag-namespacing.md"
             exit 1
           fi
 
