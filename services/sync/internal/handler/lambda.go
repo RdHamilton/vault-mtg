@@ -281,7 +281,10 @@ func (h *SyncHandler) syncFormat(ctx context.Context, set datasets.SyncSet, form
 		log.Printf("[sync] WARNING: 0 cards returned for %s/%s (17Lands expansion=%s) — check expansion code or upstream outage",
 			set.Code, format, set.ExpansionCode)
 		// Skip guard keyed on Scryfall Code — stable across expansion code changes.
-		return h.updateSkipGuard(ctx, set.Code)
+		// Non-fatal: increments the counter and logs a warning at threshold, but
+		// never aborts the run so other sets continue syncing.
+		h.updateSkipGuard(ctx, set.Code)
+		return nil
 	}
 
 	// Successful card response: reset the skip counter (keyed on Scryfall Code).
@@ -409,21 +412,23 @@ func (h *SyncHandler) activeSets(ctx context.Context) ([]datasets.SyncSet, error
 }
 
 // updateSkipGuard increments the consecutive-zero-card counter for setCode in
-// the sync_hashes table (using a "skip_count:" prefix). When the counter reaches
-// h.maxConsecutiveSkips, it returns an error so the Lambda invocation fails and
-// triggers EventBridge retries and (eventually) the DLQ alarm.
+// the sync_hashes table (using a "skip_count:" prefix). It is intentionally
+// non-fatal: when the counter reaches h.maxConsecutiveSkips it emits an
+// elevated WARNING log so operators can observe the condition via CloudWatch,
+// but it never returns an error. A single set returning 0 cards must not abort
+// the entire invocation or cause EventBridge to route to the DLQ.
 //
 // If h.maxConsecutiveSkips == 0, the guard is disabled and this is a no-op.
-func (h *SyncHandler) updateSkipGuard(ctx context.Context, setCode string) error {
+func (h *SyncHandler) updateSkipGuard(ctx context.Context, setCode string) {
 	if h.maxConsecutiveSkips <= 0 {
-		return nil
+		return
 	}
 
 	key := skipHashPrefix + setCode
 	stored, err := h.store.GetHash(ctx, key)
 	if err != nil {
 		log.Printf("[sync] skip guard: GetHash %s: %v — skipping guard check", setCode, err)
-		return nil
+		return
 	}
 
 	count := 0
@@ -441,11 +446,11 @@ func (h *SyncHandler) updateSkipGuard(ctx context.Context, setCode string) error
 	}
 
 	if count >= h.maxConsecutiveSkips {
-		return fmt.Errorf("set %s returned 0 cards for %d consecutive invocations (threshold=%d) — check 17Lands expansion code or upstream outage",
+		// Log at WARNING level so this appears in CloudWatch Logs Insights
+		// queries and can trigger a metric filter alarm without aborting the run.
+		log.Printf("[sync] skip guard WARNING: set %s returned 0 cards for %d consecutive invocations (threshold=%d) — check 17Lands expansion code or upstream outage",
 			setCode, count, h.maxConsecutiveSkips)
 	}
-
-	return nil
 }
 
 // resetSkipGuard clears the consecutive-zero-card counter for setCode when a
