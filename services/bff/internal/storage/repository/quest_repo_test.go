@@ -33,6 +33,23 @@ func insertTestQuest(t *testing.T, db *sql.DB, repo *repository.QuestRepository,
 	})
 }
 
+// countQuestRows returns the number of quests rows for the given
+// (account_id, quest_id) pair.
+func countQuestRows(t *testing.T, db *sql.DB, accountID int64, questID string) int {
+	t.Helper()
+
+	var n int
+	if err := db.QueryRowContext(
+		context.Background(),
+		`SELECT COUNT(*) FROM quests WHERE account_id = $1 AND quest_id = $2`,
+		accountID, questID,
+	).Scan(&n); err != nil {
+		t.Fatalf("countQuestRows account=%d quest=%q: %v", accountID, questID, err)
+	}
+
+	return n
+}
+
 // TestQuestRepository_LastQuestSeenAt_NoQuests verifies that an account with
 // no quest rows returns (zero, false, nil) — no panic, no scan error.
 // This is the NULL-scan path that the **time.Time bug caused to panic.
@@ -113,16 +130,15 @@ func TestQuestRepository_LastQuestSeenAt_NullLastSeenAtFallsBackToAssignedAt(t *
 	}
 }
 
-// ─── Issue #1924: account-scoped unique constraint tests ──────────────────────
+// ─── Issue #1924 / #204: account-scoped unique constraint tests ───────────────
 
 // TestQuestRepository_UpsertQuestProgress_CrossTenantCollisionSucceeds is the
 // primary AC1 regression test for issue #1924.
 //
 // Two different accounts are assigned the same quest_id at the exact same
-// assigned_at timestamp.  Prior to migration 000078 the old constraint
-// UNIQUE(quest_id, assigned_at) would cause the second INSERT to fail with a
-// constraint violation.  After the migration the constraint is
-// UNIQUE(account_id, quest_id, assigned_at) and both inserts must succeed.
+// seen_at timestamp.  The unique constraint UNIQUE(account_id, quest_id) (added
+// by migration 000096, replacing the 3-column constraint from migration 000078)
+// scopes each row to a single account, so both inserts must succeed independently.
 func TestQuestRepository_UpsertQuestProgress_CrossTenantCollisionSucceeds(t *testing.T) {
 	db := openTestDB(t)
 	repo := repository.NewQuestRepository(db)
@@ -192,9 +208,9 @@ func TestQuestRepository_UpsertQuestProgress_CrossTenantCollisionSucceeds(t *tes
 }
 
 // TestQuestRepository_UpsertQuestProgress_SameAccountIdempotent verifies that
-// two upserts for the same (account_id, quest_id, assigned_at) correctly
-// update in place — the ON CONFLICT clause targets the new account-scoped
-// constraint after migration 000078.
+// two upserts for the same (account_id, quest_id) correctly update in place —
+// the ON CONFLICT clause targets the 2-column constraint (account_id, quest_id)
+// introduced by migration 000096.
 func TestQuestRepository_UpsertQuestProgress_SameAccountIdempotent(t *testing.T) {
 	db := openTestDB(t)
 	repo := repository.NewQuestRepository(db)
@@ -321,5 +337,146 @@ func TestQuestRepository_UpsertQuestProgress_CrossTenantDataIsolation(t *testing
 	}
 	if progressB != 1 {
 		t.Errorf("account B ending_progress: want 1 (unchanged), got %d", progressB)
+	}
+}
+
+// ─── Issue #204: 2-column constraint dedup tests ──────────────────────────────
+
+// TestQuestRepository_UpsertQuestProgress_NoDupOnResighting verifies AC1/AC2/AC5:
+// multiple sync events for the same (account_id, quest_id) at different seen_at
+// timestamps produce exactly one row and update progress in place.
+//
+// This is the primary regression test for issue #204.  With the old 3-column
+// constraint (account_id, quest_id, assigned_at), each distinct seen_at caused
+// a fresh INSERT, accumulating one duplicate row per sync cycle.  With the new
+// 2-column constraint (account_id, quest_id) all events collapse onto a single
+// row via ON CONFLICT DO UPDATE.
+func TestQuestRepository_UpsertQuestProgress_NoDupOnResighting(t *testing.T) {
+	db := openTestDB(t)
+	repo := repository.NewQuestRepository(db)
+	ctx := context.Background()
+
+	accountID := insertTestAccount(t, db, fmt.Sprintf("quest-nodup-%d", time.Now().UnixNano()))
+	questID := fmt.Sprintf("quest-nodup-%d", time.Now().UnixNano())
+
+	t.Cleanup(func() {
+		_, _ = db.ExecContext(ctx, `DELETE FROM quests WHERE account_id = $1 AND quest_id = $2`, accountID, questID)
+	})
+
+	base := time.Date(2026, 5, 29, 10, 0, 0, 0, time.UTC)
+
+	// Simulate three separate sync cycles at distinct timestamps — the old bug
+	// would insert three rows; after the fix exactly one row must exist.
+	for i, progress := range []int{0, 2, 5} {
+		seenAt := base.Add(time.Duration(i) * time.Minute)
+		if err := repo.UpsertQuestProgress(ctx, repository.QuestProgressUpsert{
+			AccountID: accountID,
+			QuestID:   questID,
+			QuestName: "Win 5 Games",
+			Progress:  progress,
+			Goal:      5,
+			CanSwap:   true,
+			SeenAt:    seenAt,
+		}); err != nil {
+			t.Fatalf("UpsertQuestProgress cycle %d: %v", i, err)
+		}
+	}
+
+	count := countQuestRows(t, db, accountID, questID)
+	if count != 1 {
+		t.Errorf("expected exactly 1 row after 3 sync events, got %d (duplicate rows detected — issue #204 regression)", count)
+	}
+
+	// The surviving row must carry the final progress value.
+	var endingProgress int
+	if err := db.QueryRowContext(
+		ctx,
+		`SELECT ending_progress FROM quests WHERE account_id = $1 AND quest_id = $2`,
+		accountID, questID,
+	).Scan(&endingProgress); err != nil {
+		t.Fatalf("query ending_progress: %v", err)
+	}
+	if endingProgress != 5 {
+		t.Errorf("ending_progress: want 5 (latest sync), got %d", endingProgress)
+	}
+}
+
+// TestQuestRepository_UpsertQuestProgress_DifferentQuestsDistinct verifies AC3:
+// two different quest_ids for the same account produce two separate rows and are
+// not collapsed by the ON CONFLICT clause.
+func TestQuestRepository_UpsertQuestProgress_DifferentQuestsDistinct(t *testing.T) {
+	db := openTestDB(t)
+	repo := repository.NewQuestRepository(db)
+	ctx := context.Background()
+
+	accountID := insertTestAccount(t, db, fmt.Sprintf("quest-distinct-%d", time.Now().UnixNano()))
+	questA := fmt.Sprintf("quest-distinct-a-%d", time.Now().UnixNano())
+	questB := fmt.Sprintf("quest-distinct-b-%d", time.Now().UnixNano())
+
+	t.Cleanup(func() {
+		_, _ = db.ExecContext(ctx, `DELETE FROM quests WHERE account_id = $1 AND quest_id IN ($2, $3)`, accountID, questA, questB)
+	})
+
+	seenAt := time.Date(2026, 5, 29, 10, 0, 0, 0, time.UTC)
+
+	for _, qid := range []string{questA, questB} {
+		if err := repo.UpsertQuestProgress(ctx, repository.QuestProgressUpsert{
+			AccountID: accountID,
+			QuestID:   qid,
+			QuestName: "Win 3 Games",
+			Progress:  1,
+			Goal:      3,
+			CanSwap:   false,
+			SeenAt:    seenAt,
+		}); err != nil {
+			t.Fatalf("UpsertQuestProgress %q: %v", qid, err)
+		}
+	}
+
+	if n := countQuestRows(t, db, accountID, questA); n != 1 {
+		t.Errorf("quest A: expected 1 row, got %d", n)
+	}
+	if n := countQuestRows(t, db, accountID, questB); n != 1 {
+		t.Errorf("quest B: expected 1 row, got %d", n)
+	}
+}
+
+// TestQuestRepository_UpsertQuestProgress_CrossAccountDistinct verifies AC3:
+// the same quest_id for two different accounts produces two rows — each account
+// owns its own row independently under the (account_id, quest_id) constraint.
+func TestQuestRepository_UpsertQuestProgress_CrossAccountDistinct(t *testing.T) {
+	db := openTestDB(t)
+	repo := repository.NewQuestRepository(db)
+	ctx := context.Background()
+
+	accountA := insertTestAccount(t, db, fmt.Sprintf("quest-xacct-a-%d", time.Now().UnixNano()))
+	accountB := insertTestAccount(t, db, fmt.Sprintf("quest-xacct-b-%d", time.Now().UnixNano()))
+	questID := fmt.Sprintf("quest-xacct-%d", time.Now().UnixNano())
+
+	t.Cleanup(func() {
+		_, _ = db.ExecContext(ctx, `DELETE FROM quests WHERE quest_id = $1`, questID)
+	})
+
+	seenAt := time.Date(2026, 5, 29, 10, 0, 0, 0, time.UTC)
+
+	for _, id := range []int64{accountA, accountB} {
+		if err := repo.UpsertQuestProgress(ctx, repository.QuestProgressUpsert{
+			AccountID: id,
+			QuestID:   questID,
+			QuestName: "Cast 10 Spells",
+			Progress:  3,
+			Goal:      10,
+			CanSwap:   true,
+			SeenAt:    seenAt,
+		}); err != nil {
+			t.Fatalf("UpsertQuestProgress account %d: %v", id, err)
+		}
+	}
+
+	if n := countQuestRows(t, db, accountA, questID); n != 1 {
+		t.Errorf("account A: expected 1 row, got %d", n)
+	}
+	if n := countQuestRows(t, db, accountB, questID); n != 1 {
+		t.Errorf("account B: expected 1 row, got %d", n)
 	}
 }

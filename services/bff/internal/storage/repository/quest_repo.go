@@ -45,10 +45,10 @@ func NewQuestRepository(db DB) *QuestRepository {
 }
 
 // UpsertQuestProgress inserts or updates a quest row scoped by account_id.
-// The quests table unique constraint is (account_id, quest_id, assigned_at);
-// we treat seen_at as assigned_at when upserting from daemon events so each
-// observed quest state is recorded per-account.  On conflict, progress fields
-// are updated.
+// The quests table unique constraint is (account_id, quest_id) after migration
+// 000096.  On conflict the progress fields are updated in place so that repeated
+// daemon sync events for the same quest produce exactly one row, not one row
+// per event.
 func (r *QuestRepository) UpsertQuestProgress(ctx context.Context, u QuestProgressUpsert) error {
 	const q = `
 		INSERT INTO quests (
@@ -63,7 +63,7 @@ func (r *QuestRepository) UpsertQuestProgress(ctx context.Context, u QuestProgre
 			assigned_at,
 			last_seen_at
 		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $9)
-		ON CONFLICT (account_id, quest_id, assigned_at) DO UPDATE
+		ON CONFLICT (account_id, quest_id) DO UPDATE
 			SET ending_progress = EXCLUDED.ending_progress,
 			    can_swap        = EXCLUDED.can_swap,
 			    last_seen_at    = EXCLUDED.last_seen_at`
