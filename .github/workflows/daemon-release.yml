@@ -178,6 +178,49 @@ jobs:
           # Sentry disabled at runtime per sentryhook.Init contract. #1832.
           DEFAULT_SENTRY_DSN: ${{ steps.sentry_dsn.outputs.dsn }}
 
+      - name: Sign Windows binary (Azure Trusted Signing)
+        # What this catches: shipping an unsigned Windows .exe. Azure Trusted
+        # Signing is the credential-based signing provider (ADR-011, ticket #1649).
+        # Guard: tag-only - never burn Azure signing quota on snapshot/dispatch runs.
+        # See ADR-041 G1/P0-3.
+        if: startsWith(github.ref, 'refs/tags/daemon/v')
+        uses: microsoft/trusted-signing-action@v0
+        with:
+          azure-tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          azure-client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          azure-client-secret: ${{ secrets.AZURE_CLIENT_SECRET }}
+          endpoint: https://eus.codesigning.azure.net/
+          trusted-signing-account-name: ${{ secrets.AZURE_TRUSTED_SIGNING_ACCOUNT }}
+          certificate-profile-name: ${{ secrets.AZURE_CERTIFICATE_PROFILE }}
+          files-folder: dist/
+          files-folder-filter: exe
+          file-digest: SHA256
+          timestamp-rfc3161: http://timestamp.acs.microsoft.com
+          timestamp-digest: SHA256
+
+      - name: Assert Authenticode signature on Windows .exe
+        # What this catches: .exe not validly signed after the Azure Trusted
+        # Signing step - e.g. missing credentials, Azure quota exhausted, or
+        # signing action silently exiting zero on failure. Hard-fail if
+        # Get-AuthenticodeSignature returns any status other than "Valid".
+        # Guard: tag-only (same condition as the signing step above).
+        # See ADR-041 G1/P0-3.
+        if: startsWith(github.ref, 'refs/tags/daemon/v')
+        shell: pwsh
+        run: |
+          $exe = Get-ChildItem -Path dist/ -Filter "*.exe" -Recurse | Select-Object -First 1
+          if (-not $exe) {
+            Write-Error "ERROR: No .exe found under dist/ to verify Authenticode signature"
+            exit 1
+          }
+          Write-Host "Checking signature on: $($exe.FullName)"
+          $sig = Get-AuthenticodeSignature $exe.FullName
+          if ($sig.Status -ne "Valid") {
+            Write-Error "ERROR: Authenticode signature status: $($sig.Status) on $($exe.FullName)"
+            exit 1
+          }
+          Write-Host "PASS: Authenticode signature Valid on $($exe.FullName)"
+
       - name: Rename GitHub Release to daemon/v* tag (ADR-023)
         # GoReleaser publishes the release at the bare semver tag (e.g.
         # `v0.3.2-rc1`) because `ctx.Git.CurrentTag` is what drives both the
@@ -539,11 +582,33 @@ jobs:
         # Fix 1: the original workflow stapled only the .dmg; the .pkg was never
         # stapled, so `xcrun stapler validate vaultmtg-daemon-darwin-universal.pkg`
         # would return "The file ... does not have a ticket stapled to it."
-        #
-        # Verify after this step with:
-        #   xcrun stapler validate vaultmtg-daemon-darwin-universal.pkg
-        #   spctl -a -t install -vvv vaultmtg-daemon-darwin-universal.pkg
         run: xcrun stapler staple ${{ env.PKG }}
+
+      - name: Validate staple on .pkg
+        # What this catches: staple ran but the notarization ticket is not actually
+        # present on the artifact - the staple step exiting zero does not guarantee
+        # the ticket was written. A missing or corrupt ticket causes Gatekeeper to
+        # require a live Apple OCSP check; on offline machines the install is
+        # blocked. This step proves the ticket is stapled - see ADR-041 G1/P0-3.
+        run: |
+          xcrun stapler validate "${{ env.PKG }}"
+          echo "PASS: staple validated on ${{ env.PKG }}"
+
+      - name: Assert Gatekeeper acceptance of .pkg
+        # What this catches: staple or Gatekeeper rejection of the final .pkg -
+        # e.g. wrong entitlements, mismatched certificate, or a notarization
+        # ticket that passed but Gatekeeper still rejects due to policy. The
+        # historical .dmg-vs-.pkg gap was exactly this failure mode: an
+        # intermediate step succeeded while the final artifact was rejected.
+        # Hard-fail if output does not contain "accepted" - see ADR-041 G1/P0-3.
+        run: |
+          spctl -a -t install -vvv "${{ env.PKG }}" 2>&1 | tee /tmp/spctl-output.txt
+          if ! grep -q "accepted" /tmp/spctl-output.txt; then
+            echo "ERROR: Gatekeeper did not accept ${{ env.PKG }}" >&2
+            cat /tmp/spctl-output.txt >&2
+            exit 1
+          fi
+          echo "PASS: Gatekeeper accepted ${{ env.PKG }}"
 
       - name: Clean up temporary keychain
         if: always()
