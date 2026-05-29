@@ -8,9 +8,9 @@ import (
 
 // StandardRepository serves the Phase 2 /api/v1/standard/* read paths.
 // All queries are global (sets, standard_config) or scoped by account_id
-// (decks, deck_cards). Card legality is read from cards.legalities — the
-// per-set set_cards.legalities column is not used here because the SPA
-// looks up by arena_id which has a 1:N relationship with set_cards.
+// (decks, deck_cards). Card legality is read from set_cards.legalities
+// (migration 000029). set_cards.arena_id is TEXT; casts are applied where
+// comparisons with INTEGER arena ids are needed.
 type StandardRepository struct {
 	db DB
 }
@@ -86,10 +86,14 @@ type CardLegalityRow struct {
 
 // CardByArenaID fetches a single card by its MTGA Arena id. Returns
 // sql.ErrNoRows when not found.
+//
+// set_cards.arena_id is TEXT (migration 000014); cast to INTEGER for comparison.
+// DISTINCT ON guards against the same arena_id appearing in multiple sets.
 func (r *StandardRepository) CardByArenaID(ctx context.Context, arenaID int) (CardLegalityRow, error) {
-	const q = `SELECT arena_id, name, COALESCE(set_code, ''), COALESCE(legalities, '{}')
-	           FROM cards
-	           WHERE arena_id = $1`
+	const q = `SELECT arena_id::INTEGER, name, COALESCE(set_code, ''), COALESCE(legalities, '{}')
+	           FROM set_cards
+	           WHERE arena_id::INTEGER = $1
+	           LIMIT 1`
 	var c CardLegalityRow
 	if err := r.db.QueryRowContext(ctx, q, arenaID).Scan(&c.ArenaID, &c.Name, &c.SetCode, &c.Legalities); err != nil {
 		return CardLegalityRow{}, err
@@ -120,18 +124,26 @@ func (r *StandardRepository) DeckByID(ctx context.Context, accountID int64, deck
 	return &d, nil
 }
 
-// DeckCardsForValidation returns every card in deckID joined to cards (for
+// DeckCardsForValidation returns every card in deckID joined to set_cards (for
 // name + set_code + legalities) and sets (for rotation_date). The handler
 // applies the standard-format predicate using the parsed JSON legalities;
 // the repo just delivers the rows.
+//
+// set_cards.arena_id is TEXT (migration 000014); cast dc.card_id to TEXT for
+// the join. DISTINCT ON (arena_id) prevents a card that appears in multiple
+// sets from producing duplicate rows.
 func (r *StandardRepository) DeckCardsForValidation(ctx context.Context, deckID string) ([]DeckCardForValidation, error) {
 	const q = `SELECT dc.card_id, dc.quantity, dc.board,
 	                  COALESCE(c.name, ''), COALESCE(c.set_code, ''),
 	                  COALESCE(c.legalities, '{}'),
 	                  s.rotation_date, COALESCE(s.is_standard_legal, FALSE)
 	           FROM deck_cards dc
-	           LEFT JOIN cards c ON c.arena_id = dc.card_id
-	           LEFT JOIN sets  s ON s.code = c.set_code
+	           LEFT JOIN (
+	               SELECT DISTINCT ON (arena_id) arena_id, name, set_code, legalities
+	               FROM set_cards
+	               ORDER BY arena_id, id
+	           ) c ON c.arena_id = dc.card_id::TEXT
+	           LEFT JOIN sets s ON s.code = c.set_code
 	           WHERE dc.deck_id = $1
 	           ORDER BY dc.board, c.name`
 	rows, err := r.db.QueryContext(ctx, q, deckID)

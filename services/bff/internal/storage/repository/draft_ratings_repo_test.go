@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"os"
+	"strconv"
 	"testing"
 	"time"
 
@@ -58,20 +59,21 @@ func seedCardRating(t *testing.T, db *sql.DB, setCode, format, name string, cach
 	})
 }
 
-// seedCard inserts a minimal cards row for testing the color/rarity JOIN.
+// seedCard inserts a minimal set_cards row for testing the color/rarity JOIN.
+// set_cards.arena_id is TEXT (migration 000014); arenaID is converted to string.
 // The row is cleaned up via t.Cleanup.
 func seedCard(t *testing.T, db *sql.DB, arenaID int, colors, rarity string) {
 	t.Helper()
 
+	arenaIDText := strconv.Itoa(arenaID)
 	_, err := db.ExecContext(
 		context.Background(), `
-		INSERT INTO cards (id, arena_id, name, colors, rarity)
-		VALUES ($1, $2, $3, $4, $5)
-		ON CONFLICT (id) DO UPDATE
-			SET arena_id = EXCLUDED.arena_id,
-			    colors   = EXCLUDED.colors,
-			    rarity   = EXCLUDED.rarity`,
-		"test-scryfall-id-99901", arenaID, "Test Card", colors, rarity,
+		INSERT INTO set_cards (set_code, arena_id, scryfall_id, name, colors, rarity)
+		VALUES ('TST', $1, $2, 'Test Card', $3, $4)
+		ON CONFLICT (set_code, arena_id) DO UPDATE
+			SET colors  = EXCLUDED.colors,
+			    rarity  = EXCLUDED.rarity`,
+		arenaIDText, "test-scryfall-id-"+arenaIDText, colors, rarity,
 	)
 	if err != nil {
 		t.Fatalf("seedCard: %v", err)
@@ -80,7 +82,8 @@ func seedCard(t *testing.T, db *sql.DB, arenaID int, colors, rarity string) {
 	t.Cleanup(func() {
 		_, _ = db.ExecContext(
 			context.Background(),
-			`DELETE FROM cards WHERE id = 'test-scryfall-id-99901'`,
+			`DELETE FROM set_cards WHERE set_code = 'TST' AND arena_id = $1`,
+			arenaIDText,
 		)
 	})
 }

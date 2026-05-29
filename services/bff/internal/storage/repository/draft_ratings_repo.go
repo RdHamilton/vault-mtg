@@ -50,8 +50,12 @@ func NewDraftRatingsRepository(db DB) *DraftRatingsRepository {
 // given setCode and draftFormat.  The CachedAt field is set to MAX(cached_at)
 // from the card ratings rows.
 //
-// color and rarity are resolved by LEFT JOIN-ing against the cards table so
-// that the sync service does not need to duplicate Scryfall metadata.
+// color and rarity are resolved by LEFT JOIN-ing against set_cards so that the
+// sync service does not need to duplicate Scryfall metadata.
+//
+// set_cards.arena_id is TEXT (migration 000014); draft_card_ratings.arena_id is
+// INTEGER (migration 000015) — the join casts set_cards.arena_id to INTEGER.
+// DISTINCT ON guards against the same arena_id appearing in multiple sets.
 //
 // Returns (nil, nil) when no rows exist for the requested set/format so that the
 // caller can distinguish a missing result from a database error.
@@ -69,7 +73,11 @@ func (r *DraftRatingsRepository) GetRatings(ctx context.Context, setCode, draftF
 			dcr.gih_count,
 			MAX(dcr.cached_at) OVER () AS max_cached_at
 		FROM draft_card_ratings dcr
-		LEFT JOIN cards c ON c.arena_id = dcr.arena_id
+		LEFT JOIN (
+			SELECT DISTINCT ON (arena_id) arena_id, colors, rarity
+			FROM set_cards
+			ORDER BY arena_id, id
+		) c ON c.arena_id::INTEGER = dcr.arena_id
 		WHERE dcr.set_code = $1 AND dcr.draft_format = $2`
 
 	rows, err := r.db.QueryContext(ctx, cardQuery, setCode, draftFormat)
