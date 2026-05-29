@@ -320,6 +320,9 @@ _make_fake_home() {
   # Script must call out the preserved config path.
   [[ "${output}" == *"Config file"* ]]
   [[ "${output}" == *"NOT removed"* ]]
+  # Pin the exact config path (#2145): message must reference ~/.vaultmtg/daemon.json,
+  # not the pre-rebrand path ~/.config/mtga-companion/daemon.yaml.
+  [[ "${output}" == *"~/.vaultmtg/daemon.json"* ]]
 }
 
 # ---------------------------------------------------------------------------
