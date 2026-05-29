@@ -28,7 +28,7 @@ const DOWNLOAD_OPTIONS: DownloadOption[] = [
     label: 'macOS (Universal)',
     artifact: 'vaultmtg-daemon-darwin-universal',
     platform: 'macos',
-    ext: 'dmg',
+    ext: 'pkg',
     description: 'macOS 12+ — Apple Silicon and Intel',
   },
 ];
@@ -43,7 +43,7 @@ const GETTING_STARTED_STEPS = [
     number: 2,
     title: 'Run the installer',
     description:
-      'On macOS: open the .dmg, drag the daemon to Applications, then launch it. On Windows: run the .exe installer and follow the Next → Next → Finish prompts.',
+      'On macOS: open the .pkg installer and follow the prompts. On Windows: run the .exe installer and follow the Next → Next → Finish prompts.',
   },
   {
     number: 3,

@@ -373,7 +373,12 @@ jobs:
       # is 'vaultmtg-daemon'. BINARY must match the file name, not the artifact name.
       BINARY: vaultmtg-daemon
       PKG: vaultmtg-daemon-darwin-universal.pkg
-      DMG: vaultmtg-daemon-darwin-universal.dmg
+      # DMG removed: the .dmg container was never code-signed (no Developer ID
+      # Application signature on the disk image), causing Gatekeeper to reject it
+      # even though the .pkg inside was signed. The .pkg is the canonical macOS
+      # install artifact; the .dmg wrapper added no install-UX value and introduced
+      # a Gatekeeper failure vector. The frontend Download button is being repointed
+      # to the .pkg in the parallel frontend ticket.
       # ADR-022 Phase 6 (#1764) cutover 2026-05-25: legacy mtga-companion-daemon-*
       # artifact names removed. Zero downloads of legacy assets were ever recorded
       # — the dual-naming code landed AFTER the only daemon release (daemon/v0.3.1,
@@ -507,29 +512,38 @@ jobs:
             --timestamp \
             ${{ env.PKG }}
 
-      - name: Wrap .pkg in .dmg
-        run: |
-          mkdir -p dmg-staging
-          cp ${{ env.PKG }} dmg-staging/
-          hdiutil create \
-            -volname "VaultMTG Daemon" \
-            -srcfolder dmg-staging \
-            -ov \
-            -format UDZO \
-            ${{ env.DMG }}
-
-      - name: Notarize .dmg
+      - name: Notarize .pkg
+        # Submit the .pkg directly to notarytool so it receives its own notarization
+        # ticket independent of any container format. --wait blocks until Apple
+        # returns an Accepted or Invalid status; the step fails fast on rejection.
+        #
+        # Fix 2: previously only the .dmg was submitted, so the .pkg had no
+        # registered ticket and would fail `spctl -a -t install` on offline machines
+        # or on any system where Gatekeeper cannot reach the Apple OCSP/notarization
+        # CDN in time.
         env:
           APPLE_NOTARIZATION_PASSWORD: ${{ secrets.APPLE_NOTARIZATION_PASSWORD }}
         run: |
-          xcrun notarytool submit ${{ env.DMG }} \
+          xcrun notarytool submit ${{ env.PKG }} \
             --apple-id "${{ secrets.APPLE_NOTARIZATION_APPLE_ID }}" \
             --team-id "${{ env.APPLE_TEAM_ID }}" \
             --password "$APPLE_NOTARIZATION_PASSWORD" \
             --wait
 
-      - name: Staple notarization ticket
-        run: xcrun stapler staple ${{ env.DMG }}
+      - name: Staple notarization ticket to .pkg
+        # Staple the ticket returned above onto the .pkg so the ticket travels with
+        # the file. Without stapling, Gatekeeper must perform a live network check
+        # against Apple's CDN on every install — offline or CDN-delayed installs
+        # block or show an unverified warning.
+        #
+        # Fix 1: the original workflow stapled only the .dmg; the .pkg was never
+        # stapled, so `xcrun stapler validate vaultmtg-daemon-darwin-universal.pkg`
+        # would return "The file ... does not have a ticket stapled to it."
+        #
+        # Verify after this step with:
+        #   xcrun stapler validate vaultmtg-daemon-darwin-universal.pkg
+        #   spctl -a -t install -vvv vaultmtg-daemon-darwin-universal.pkg
+        run: xcrun stapler staple ${{ env.PKG }}
 
       - name: Clean up temporary keychain
         if: always()
@@ -545,7 +559,6 @@ jobs:
           TAG="${GITHUB_REF#refs/tags/}"
           gh release upload "$TAG" \
             "${{ env.PKG }}" \
-            "${{ env.DMG }}" \
             --repo "${{ github.repository }}" \
             --clobber
 

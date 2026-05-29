@@ -87,7 +87,7 @@ describe('DaemonDownload', () => {
         expect(link).toBeInTheDocument();
         expect(link).toHaveAttribute(
           'href',
-          `${FALLBACK_RELEASES_BASE}/vaultmtg-daemon-darwin-universal.dmg`
+          `${FALLBACK_RELEASES_BASE}/vaultmtg-daemon-darwin-universal.pkg`
         );
       });
 
@@ -297,9 +297,10 @@ describe('DaemonDownload', () => {
       render(<DaemonDownload />);
       const step = screen.getByTestId('getting-started-step-2');
       expect(step).toHaveTextContent('Run the installer');
-      // macOS uses .dmg, not install script
-      expect(step).toHaveTextContent('.dmg');
-      expect(step).not.toHaveTextContent('install script');
+      // macOS uses .pkg installer, not .dmg drag-to-Applications
+      expect(step).toHaveTextContent('.pkg');
+      expect(step).toHaveTextContent('follow the prompts');
+      expect(step).not.toHaveTextContent('.dmg');
     });
 
     it('should render step 3 — Launch MTGA Arena', () => {
@@ -425,7 +426,7 @@ describe('DaemonDownload', () => {
       const link = screen.getByTestId('download-link-vaultmtg-daemon-darwin-universal');
       expect(link).toHaveAttribute(
         'href',
-        `${RUNTIME_RELEASES_BASE}/vaultmtg-daemon-darwin-universal.dmg`
+        `${RUNTIME_RELEASES_BASE}/vaultmtg-daemon-darwin-universal.pkg`
       );
     });
 
@@ -443,7 +444,7 @@ describe('DaemonDownload', () => {
       );
       expect(macLink).toHaveAttribute(
         'href',
-        `${FALLBACK_RELEASES_BASE}/vaultmtg-daemon-darwin-universal.dmg`
+        `${FALLBACK_RELEASES_BASE}/vaultmtg-daemon-darwin-universal.pkg`
       );
     });
 
