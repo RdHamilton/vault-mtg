@@ -8,11 +8,30 @@
  * The adapter is a plain async function — no React state, no fetch inside
  * components — so it can be stubbed cleanly in both vitest component tests and
  * Playwright E2E tests.
+ *
+ * Release channel selection (env-aware):
+ * - staging (VITE_SENTRY_ENV === "staging"): includes prerelease builds so RC
+ *   tags such as daemon/v0.3.3-rc1 are served on the staging Download page.
+ * - production / any other value: excludes prereleases — stable channel only.
+ *   This is the fail-safe default: an unknown env value behaves like production
+ *   so a daemon RC can never leak onto the prod Download page.
  */
 
 const GITHUB_REPO = 'RdHamilton/vault-mtg';
 const RELEASES_BASE = `https://github.com/${GITHUB_REPO}/releases/download`;
 const LATEST_RELEASE_URL = `https://api.github.com/repos/${GITHUB_REPO}/releases`;
+
+/**
+ * Returns true only when the build was produced by deploy-spa-staging.yml.
+ * Any value other than "staging" (including undefined / "production") is treated
+ * as prod-safe: exclude prereleases.
+ *
+ * Evaluated at call time (not module load time) so that vi.stubEnv() works
+ * correctly in unit tests without requiring module re-imports.
+ */
+function isStaging(): boolean {
+  return import.meta.env.VITE_SENTRY_ENV === 'staging';
+}
 
 export interface DaemonReleaseInfo {
   /** Full tag name, e.g. "daemon/v0.3.2" */
@@ -23,6 +42,10 @@ export interface DaemonReleaseInfo {
 
 /**
  * Fetch the most-recent release whose tag starts with "daemon/v".
+ *
+ * Channel behaviour:
+ * - staging env  → accepts prereleases (daemon/v*-rc* are valid targets).
+ * - prod env     → excludes prereleases (stable channel only).
  *
  * @param signal  Optional AbortSignal for cancellation.
  * @returns Resolved release info, or null if the fetch failed or no matching
@@ -53,9 +76,13 @@ export async function fetchLatestDaemonRelease(
     const releases: Array<{ tag_name: string; draft: boolean; prerelease: boolean }> =
       await response.json();
 
-    const match = releases.find(
-      (r) => !r.draft && r.tag_name.startsWith('daemon/v')
-    );
+    const match = releases.find((r) => {
+      if (r.draft) return false;
+      if (!r.tag_name.startsWith('daemon/v')) return false;
+      // On prod, skip prereleases so an RC tag never leaks to the prod download page.
+      if (!isStaging() && r.prerelease) return false;
+      return true;
+    });
 
     if (!match) {
       console.warn('[daemonRelease] No daemon/v* release found — falling back');
