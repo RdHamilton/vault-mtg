@@ -6,11 +6,17 @@
 # CI (tests on push/PR) is handled exclusively by daemon.yml.
 #
 # Job graph:
-#   goreleaser   — runs on ubuntu-latest; tests, cross-compiles all targets, builds
-#                  Windows NSIS installer (via makensis), creates GitHub Release draft.
-#   sign-macos   — runs on macos-latest; downloads darwin universal binary, code-signs,
-#                  notarizes, wraps in .pkg + .dmg, uploads signed artifacts to the
-#                  existing GitHub Release. Tag-guarded to avoid burning Apple quota.
+#   goreleaser   — runs on ubuntu-latest; tests, cross-compiles Windows targets,
+#                  builds NSIS installer (via makensis), creates GitHub Release.
+#                  darwin is NOT built here — see build-macos below.
+#   build-macos  — runs on macos-latest; builds darwin/arm64 and darwin/amd64
+#                  natively with CGO_ENABLED=1 (required for systray/Cocoa tray
+#                  icon), runs lipo to produce a universal binary, then uploads
+#                  the artifact so sign-macos can sign and notarize it.
+#   sign-macos   — runs on macos-latest; downloads darwin universal binary from
+#                  build-macos, code-signs, notarizes, wraps in .pkg, uploads
+#                  signed artifacts to the existing GitHub Release. Tag-guarded
+#                  to avoid burning Apple quota.
 
 name: Daemon Release
 
@@ -213,22 +219,146 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
+
+  build-macos:
+    name: Build darwin universal binary (CGO, native macOS)
+    runs-on: macos-latest
+    needs: [goreleaser]
+    # Run on every tag-triggered release AND on manual workflow_dispatch so
+    # snapshot/dry-run builds also produce a darwin binary for local testing.
+    # The goreleaser job must complete first so we know the Go version and env.
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Set up Go
+        uses: actions/setup-go@v6
+        with:
+          go-version: '1.25'
+
+      - name: Configure private module access
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          git config --global url."https://${GITHUB_TOKEN}@github.com/".insteadOf "https://github.com/"
+
+      - name: Download Go dependencies
+        working-directory: services/daemon
+        env:
+          GONOSUMDB: github.com/RdHamilton/vault-mtg
+          GOPRIVATE: github.com/RdHamilton/vault-mtg
+          GOFLAGS: -mod=mod
+        run: go mod download
+
+      - name: Resolve semver from tag
+        # Mirror the goreleaser job's semver step so PLAIN_VERSION is available
+        # for the ldflags -X main.Version embed.
+        id: semver
+        run: |
+          RAW="${{ github.ref_name }}"
+          SEMVER="${RAW#daemon/}"
+          echo "tag=${SEMVER}" >> "$GITHUB_OUTPUT"
+
+      - name: Resolve build-time DefaultCloudAPIURL
+        id: default_url
+        run: |
+          REF="${{ github.ref_name }}"
+          if [[ "$REF" == *"-rc"* || "$REF" == *"-alpha"* || "$REF" == *"-beta"* || "$REF" == *"-pre"* ]]; then
+            echo "url=https://staging-api.vaultmtg.app/api/v1" >> "$GITHUB_OUTPUT"
+          elif [[ "$REF" == daemon/v* ]]; then
+            echo "url=https://api.vaultmtg.app/api/v1" >> "$GITHUB_OUTPUT"
+          else
+            echo "url=https://staging-api.vaultmtg.app/api/v1" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Resolve build-time Sentry DSN
+        id: sentry_dsn
+        env:
+          SENTRY_DSN_DAEMON_PRODUCTION: ${{ secrets.SENTRY_DSN_DAEMON_PRODUCTION }}
+          SENTRY_DSN_DAEMON_STAGING: ${{ secrets.SENTRY_DSN_DAEMON_STAGING }}
+        run: |
+          REF="${{ github.ref_name }}"
+          if [[ "$REF" == *"-rc"* || "$REF" == *"-alpha"* || "$REF" == *"-beta"* || "$REF" == *"-pre"* ]]; then
+            DSN="$SENTRY_DSN_DAEMON_STAGING"
+          elif [[ "$REF" == daemon/v* ]]; then
+            DSN="$SENTRY_DSN_DAEMON_PRODUCTION"
+          else
+            DSN=""
+          fi
+          if [[ -n "$DSN" ]]; then
+            echo "::add-mask::$DSN"
+          fi
+          echo "dsn=$DSN" >> "$GITHUB_OUTPUT"
+
+      - name: Build darwin/arm64 (CGO_ENABLED=1)
+        working-directory: services/daemon
+        env:
+          CGO_ENABLED: "1"
+          GONOSUMDB: github.com/RdHamilton/vault-mtg
+          GOPRIVATE: github.com/RdHamilton/vault-mtg
+          GOOS: darwin
+          GOARCH: arm64
+        run: |
+          go build \
+            -ldflags "-s -w -X main.Version=${{ steps.semver.outputs.tag }} -X main.DefaultCloudAPIURL=${{ steps.default_url.outputs.url }} -X main.DefaultSentryDSN=${{ steps.sentry_dsn.outputs.dsn }}" \
+            -o /tmp/vaultmtg-daemon-arm64 \
+            ./cmd/daemon
+
+      - name: Build darwin/amd64 (CGO_ENABLED=1)
+        working-directory: services/daemon
+        env:
+          CGO_ENABLED: "1"
+          GONOSUMDB: github.com/RdHamilton/vault-mtg
+          GOPRIVATE: github.com/RdHamilton/vault-mtg
+          GOOS: darwin
+          GOARCH: amd64
+        run: |
+          go build \
+            -ldflags "-s -w -X main.Version=${{ steps.semver.outputs.tag }} -X main.DefaultCloudAPIURL=${{ steps.default_url.outputs.url }} -X main.DefaultSentryDSN=${{ steps.sentry_dsn.outputs.dsn }}" \
+            -o /tmp/vaultmtg-daemon-amd64 \
+            ./cmd/daemon
+
+      - name: Merge into universal binary with lipo
+        run: |
+          lipo -create \
+            /tmp/vaultmtg-daemon-arm64 \
+            /tmp/vaultmtg-daemon-amd64 \
+            -output /tmp/vaultmtg-daemon
+          lipo -info /tmp/vaultmtg-daemon
+
+      - name: Verify CGO linkage (Cocoa + systray symbols)
+        # Fail fast if the binary is not Cocoa-linked — this guards against a
+        # future regression where CGO_ENABLED is accidentally set back to 0.
+        run: |
+          echo "=== otool -L (dynamic libraries) ==="
+          otool -L /tmp/vaultmtg-daemon
+          echo ""
+          echo "=== Checking for Cocoa/AppKit linkage ==="
+          if ! otool -L /tmp/vaultmtg-daemon | grep -q "Cocoa\|AppKit"; then
+            echo "ERROR: darwin binary is not linked against Cocoa/AppKit — tray icon will be missing." >&2
+            exit 1
+          fi
+          echo "PASS: Cocoa/AppKit linkage confirmed."
+          echo ""
+          echo "=== Checking for systray symbols ==="
+          nm /tmp/vaultmtg-daemon | grep -i "systray\|registerSystray\|systray_on" || true
+
       - name: Upload darwin universal binary for sign-macos
-        # Share the unsigned darwin binary so sign-macos can sign and notarize it.
-        # GoReleaser v2 with format:binary writes the universal binary to a
-        # subdirectory named after the universal_binaries id + _darwin_all, so
-        # the path is dist/daemon-universal_darwin_all/vaultmtg-daemon.
-        # v6 runs on Node 24 (v4 was Node 20, deprecated Sept 2026 -- issue #2242).
+        # Artifact name matches what sign-macos expects: the container is
+        # vaultmtg-daemon-darwin-universal and the file inside is vaultmtg-daemon.
         uses: actions/upload-artifact@v6
         with:
           name: vaultmtg-daemon-darwin-universal
-          path: dist/daemon-universal_darwin_all/vaultmtg-daemon
+          path: /tmp/vaultmtg-daemon
           if-no-files-found: error
 
   sign-macos:
     name: Sign & Notarize macOS universal binary
     runs-on: macos-latest
-    needs: [goreleaser]
+    needs: [goreleaser, build-macos]
     # Guard: only run when triggered by a real daemon/v* tag.
     # workflow_dispatch without a tag must not burn Apple notarization quota
     # or waste macOS runner minutes. (#1658)
