@@ -2,6 +2,7 @@ package logreader
 
 import (
 	"fmt"
+	"log/slog"
 
 	"github.com/RdHamilton/vault-mtg/services/contract"
 )
@@ -97,15 +98,15 @@ func ParseMatchCompletedEntry(entry *LogEntry, playerUserID string) (*contract.M
 	}
 
 	// --- gameRoomConfig (format + opponent name + player team) ---
+	//
+	// Real MTGA wire format: gameRoomConfig carries "reservedPlayers" and
+	// "matchId" at the top level only.  eventId lives inside each
+	// reservedPlayers[] entry — there is no top-level eventId key.
 	if cfg, ok := gameRoomInfo["gameRoomConfig"].(map[string]interface{}); ok {
-		// Format comes from eventId (e.g. "Ladder", "QuickDraft_SOS_20260430").
-		if eventID, ok := cfg["eventId"].(string); ok {
-			p.Format = eventID
-		}
-
-		// Iterate reservedPlayers to identify the local player's teamId and
-		// the opponent's display name.  When playerUserID is non-empty and
-		// matches a player's userId we can definitively assign both roles.
+		// Iterate reservedPlayers to:
+		//   1. Extract eventId (format) from the first player entry that carries it.
+		//   2. Identify the local player's teamId.
+		//   3. Identify the opponent's display name.
 		if players, ok := cfg["reservedPlayers"].([]interface{}); ok {
 			for _, pl := range players {
 				pm, ok := pl.(map[string]interface{})
@@ -119,6 +120,13 @@ func ParseMatchCompletedEntry(entry *LogEntry, playerUserID string) (*contract.M
 					teamID = int(v)
 				}
 
+				// Pick up eventId from the first player entry that has it.
+				if p.Format == "" {
+					if eid, ok := pm["eventId"].(string); ok && eid != "" {
+						p.Format = eid
+					}
+				}
+
 				if playerUserID != "" && uid == playerUserID {
 					// This entry is the local player.
 					p.PlayerTeamID = teamID
@@ -127,6 +135,13 @@ func ParseMatchCompletedEntry(entry *LogEntry, playerUserID string) (*contract.M
 					p.OpponentName = name
 				}
 			}
+		}
+
+		// Warn after exhausting all reservedPlayers entries if no eventId was
+		// found.  The daemon emits an empty Format; the BFF owns the display
+		// default.
+		if p.Format == "" {
+			slog.Warn("match.go: no reservedPlayers entry carries eventId; format will be empty", "matchID", p.MatchID)
 		}
 	}
 

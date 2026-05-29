@@ -50,6 +50,11 @@ func TestParseDraftPickFromFile(t *testing.T) {
 
 // TestParseMatchCompletedFromFile reads testdata/match_completed.log and verifies
 // the parsed MatchCompletedPayload with the local player ID resolved.
+//
+// This fixture uses the real MTGA wire format (eventId inside reservedPlayers[]
+// entries only; no top-level eventId in gameRoomConfig).  A passing result here
+// is the fail-before/pass-after proof that the eventId extraction fix is
+// correct.
 func TestParseMatchCompletedFromFile(t *testing.T) {
 	raw, err := os.ReadFile("testdata/match_completed.log")
 	require.NoError(t, err)
@@ -75,6 +80,26 @@ func TestParseMatchCompletedFromFile(t *testing.T) {
 	assert.Equal(t, 2, p.PlayerWins)
 	assert.Equal(t, 1, p.OpponentWins)
 	require.Len(t, p.ResultList, 4)
+}
+
+// TestParseMatchCompletedNoEventIDFromFile reads testdata/match_completed_no_eventid.log
+// and verifies that when no reservedPlayers entry carries an eventId field the
+// parsed Format is empty (daemon stays honest; BFF owns the display default).
+func TestParseMatchCompletedNoEventIDFromFile(t *testing.T) {
+	raw, err := os.ReadFile("testdata/match_completed_no_eventid.log")
+	require.NoError(t, err)
+
+	entry := &LogEntry{Raw: string(raw)}
+	entry.parseJSON()
+	require.True(t, entry.IsJSON, "match_completed_no_eventid.log must parse as JSON")
+
+	require.True(t, IsMatchCompletedEntry(entry), "entry must be classified as match completed")
+
+	p, err := ParseMatchCompletedEntry(entry, "USER_LOCAL")
+	require.NoError(t, err)
+	require.NotNil(t, p)
+
+	assert.Empty(t, p.Format, "Format must be empty when no reservedPlayers entry carries eventId")
 }
 
 // TestParseInventoryFromFile reads testdata/inventory_updated.log and verifies

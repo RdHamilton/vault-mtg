@@ -635,17 +635,18 @@ func matchCompletedEntry() *logreader.LogEntry {
 				"gameRoomInfo": map[string]interface{}{
 					"stateType": "MatchGameRoomStateType_MatchCompleted",
 					"gameRoomConfig": map[string]interface{}{
-						"eventId": "Ladder",
 						"reservedPlayers": []interface{}{
 							map[string]interface{}{
 								"userId":     "USER_A",
 								"playerName": "OpponentPlayer",
 								"teamId":     float64(1),
+								"eventId":    "Ladder",
 							},
 							map[string]interface{}{
 								"userId":     "USER_B",
 								"playerName": "LocalPlayer",
 								"teamId":     float64(2),
+								"eventId":    "Ladder",
 							},
 						},
 					},
