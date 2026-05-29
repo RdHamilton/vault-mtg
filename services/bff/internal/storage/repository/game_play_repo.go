@@ -154,13 +154,15 @@ func (r *GamePlayRepository) InsertLifeChanges(ctx context.Context, changes []Li
 }
 
 // GetGamePlay returns a single game_plays row by (account_id, match_id, game_number).
-// Returns sql.ErrNoRows when no row exists.
+// Partial rows (partial = true) are excluded — they represent incomplete GRE
+// events and must not surface as readable game records.
+// Returns sql.ErrNoRows when no non-partial row exists.
 func (r *GamePlayRepository) GetGamePlay(ctx context.Context, accountID int64, matchID string, gameNumber int) (GamePlayRow, error) {
 	const q = `
 		SELECT id, account_id, match_id, game_number, winning_team_id,
 		       turn_count, duration_secs, sequence, occurred_at, partial
 		FROM game_plays
-		WHERE account_id = $1 AND match_id = $2 AND game_number = $3`
+		WHERE account_id = $1 AND match_id = $2 AND game_number = $3 AND partial = false`
 
 	var row GamePlayRow
 	err := r.db.QueryRowContext(ctx, q, accountID, matchID, gameNumber).Scan(
@@ -179,15 +181,17 @@ func (r *GamePlayRepository) GetGamePlay(ctx context.Context, accountID int64, m
 	return row, err
 }
 
-// ListGamePlaysByMatch returns all game_plays rows for a match ordered by
-// (occurred_at, sequence) — the canonical per-session ordering defined in the
-// projection layer v2 spec.
+// ListGamePlaysByMatch returns all non-partial game_plays rows for a match
+// ordered by (occurred_at, sequence) — the canonical per-session ordering
+// defined in the projection layer v2 spec.
+// Partial rows (partial = true) are excluded — they represent incomplete GRE
+// events and must not pollute the per-match game list.
 func (r *GamePlayRepository) ListGamePlaysByMatch(ctx context.Context, accountID int64, matchID string) ([]GamePlayRow, error) {
 	const q = `
 		SELECT id, account_id, match_id, game_number, winning_team_id,
 		       turn_count, duration_secs, sequence, occurred_at, partial
 		FROM game_plays
-		WHERE account_id = $1 AND match_id = $2
+		WHERE account_id = $1 AND match_id = $2 AND partial = false
 		ORDER BY occurred_at, sequence`
 
 	rows, err := r.db.QueryContext(ctx, q, accountID, matchID)

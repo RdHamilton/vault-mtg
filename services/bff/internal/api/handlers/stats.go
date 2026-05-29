@@ -332,6 +332,7 @@ func (h *StatsHandler) GetFormatDistribution(w http.ResponseWriter, r *http.Requ
 // Query params: cursor, limit (default 50, max 200), set_code.
 func (h *StatsHandler) GetDraftAnalytics(w http.ResponseWriter, r *http.Request) {
 	if h.draftAnalytics == nil {
+		// TODO: remove nil guard after #TBD (wire draftAnalytics dependency) is resolved.
 		writeJSONError(w, "service unavailable", http.StatusServiceUnavailable)
 		return
 	}
@@ -495,6 +496,7 @@ func (h *StatsHandler) GetRankProgression(w http.ResponseWriter, r *http.Request
 // Query param: format — optional; when set filters to that format only.
 func (h *StatsHandler) GetResultBreakdown(w http.ResponseWriter, r *http.Request) {
 	if h.resultBreakdown == nil {
+		// TODO: remove nil guard after #TBD (wire resultBreakdown dependency) is resolved.
 		writeJSONError(w, "service unavailable", http.StatusServiceUnavailable)
 		return
 	}

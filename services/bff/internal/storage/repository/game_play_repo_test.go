@@ -344,8 +344,8 @@ func TestGamePlayRepository_GetGamePlay_NotFound(t *testing.T) {
 // --- partial flag integration tests ---
 
 // TestGamePlayRepository_PartialTrue verifies that InsertGamePlay stores
-// partial=true when the insert carries Partial:true, and GetGamePlay reads
-// it back correctly.
+// partial=true when the insert carries Partial:true, and that GetGamePlay
+// returns sql.ErrNoRows — partial rows are excluded from read queries.
 func TestGamePlayRepository_PartialTrue(t *testing.T) {
 	db := openTestDB(t)
 	repo := repository.NewGamePlayRepository(db)
@@ -368,12 +368,100 @@ func TestGamePlayRepository_PartialTrue(t *testing.T) {
 		t.Fatalf("InsertGamePlay: %v", err)
 	}
 
-	row, err := repo.GetGamePlay(ctx, accountID, "match-partial-001", 1)
-	if err != nil {
-		t.Fatalf("GetGamePlay: %v", err)
+	// After the AND partial = false filter, GetGamePlay on a partial row must
+	// return sql.ErrNoRows — partial rows are invisible to callers.
+	_, err = repo.GetGamePlay(ctx, accountID, "match-partial-001", 1)
+	if err != sql.ErrNoRows {
+		t.Errorf("GetGamePlay on partial row: want sql.ErrNoRows, got %v", err)
 	}
-	if !row.Partial {
-		t.Errorf("Partial: want true, got false")
+}
+
+// TestGamePlayRepository_GetGamePlay_ExcludesPartial verifies that GetGamePlay
+// does not return a row that was inserted with Partial:true.
+func TestGamePlayRepository_GetGamePlay_ExcludesPartial(t *testing.T) {
+	db := openTestDB(t)
+	repo := repository.NewGamePlayRepository(db)
+	ctx := context.Background()
+
+	accountID := insertTestAccountForGamePlay(t, db, "gp-excl-partial")
+	cleanupGamePlays(t, db, accountID)
+
+	now := time.Now().UTC().Truncate(time.Microsecond)
+
+	_, err := repo.InsertGamePlay(ctx, repository.GamePlayInsert{
+		AccountID:  accountID,
+		MatchID:    "match-excl-partial-001",
+		GameNumber: 1,
+		Sequence:   1,
+		OccurredAt: now,
+		Partial:    true,
+	})
+	if err != nil {
+		t.Fatalf("InsertGamePlay partial=true: %v", err)
+	}
+
+	_, err = repo.GetGamePlay(ctx, accountID, "match-excl-partial-001", 1)
+	if err != sql.ErrNoRows {
+		t.Errorf("GetGamePlay on partial row: want sql.ErrNoRows, got %v", err)
+	}
+}
+
+// TestGamePlayRepository_ListGamePlaysByMatch_ExcludesPartial verifies that
+// ListGamePlaysByMatch omits rows inserted with Partial:true.
+func TestGamePlayRepository_ListGamePlaysByMatch_ExcludesPartial(t *testing.T) {
+	db := openTestDB(t)
+	repo := repository.NewGamePlayRepository(db)
+	ctx := context.Background()
+
+	accountID := insertTestAccountForGamePlay(t, db, "list-excl-partial")
+	cleanupGamePlays(t, db, accountID)
+
+	base := time.Now().UTC().Truncate(time.Microsecond)
+
+	type gameSeed struct {
+		gameNumber int
+		partial    bool
+		seq        uint64
+		at         time.Time
+	}
+	seeds := []gameSeed{
+		{1, false, 10, base.Add(1 * time.Minute)},
+		{2, true, 20, base.Add(2 * time.Minute)},
+		{3, false, 30, base.Add(3 * time.Minute)},
+	}
+
+	for _, s := range seeds {
+		_, err := repo.InsertGamePlay(ctx, repository.GamePlayInsert{
+			AccountID:  accountID,
+			MatchID:    "match-list-excl-001",
+			GameNumber: s.gameNumber,
+			Sequence:   s.seq,
+			OccurredAt: s.at,
+			Partial:    s.partial,
+		})
+		if err != nil {
+			t.Fatalf("InsertGamePlay game %d: %v", s.gameNumber, err)
+		}
+	}
+
+	rows, err := repo.ListGamePlaysByMatch(ctx, accountID, "match-list-excl-001")
+	if err != nil {
+		t.Fatalf("ListGamePlaysByMatch: %v", err)
+	}
+
+	if len(rows) != 2 {
+		t.Fatalf("expected 2 rows (partial row excluded), got %d", len(rows))
+	}
+
+	// Rows must be game_number 1 and 3 — never game_number 2 (partial).
+	wantGameNumbers := []int{1, 3}
+	for i, r := range rows {
+		if r.GameNumber != wantGameNumbers[i] {
+			t.Errorf("row[%d]: want game_number=%d, got %d", i, wantGameNumbers[i], r.GameNumber)
+		}
+		if r.Partial {
+			t.Errorf("row[%d] game_number=%d: partial must be false in read results, got true", i, r.GameNumber)
+		}
 	}
 }
 
