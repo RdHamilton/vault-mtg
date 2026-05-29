@@ -31,9 +31,10 @@ const (
 	defaultMaxRetries = 2
 
 	// defaultMaxConsecutiveSkipDays is the number of consecutive daily invocations that
-	// must return 0 cards before the handler returns an error for that set. This causes
-	// EventBridge Scheduler to retry and, if all retries fail, route to the DLQ and
-	// trigger the SyncLambdaErrorAlarm. See: docs/runbooks/sync-dlq-alarms.md
+	// must return 0 cards before the skip guard emits a WARNING log for that set.
+	// The guard is non-fatal: threshold breaches are observable via CloudWatch Logs
+	// Insights but never abort the Lambda invocation or cause EventBridge retries.
+	// See: docs/runbooks/sync-dlq-alarms.md
 	defaultMaxConsecutiveSkipDays = 3
 
 	// defaultInterRequestSleepMs is the inter-request pause injected between
@@ -62,7 +63,7 @@ type SyncHandler struct {
 	overrideSets        []string      // non-empty when caller provides an explicit set list
 	formats             []string      // draft formats to sync; read from SYNC_FORMATS env var
 	maxRetries          int           // per-fetch/upsert retry attempts (0 = no retries)
-	maxConsecutiveSkips int           // zero-card invocations before returning error (0 = disabled)
+	maxConsecutiveSkips int           // zero-card invocations before WARNING log (0 = disabled; non-fatal)
 	interRequestSleep   time.Duration // courtesy pause between consecutive set×format API calls
 	// retryBackoff returns the duration to sleep before attempt n (1-indexed).
 	// Defaults to exponentialBackoff. Injectable for tests to use noBackoff.
@@ -173,9 +174,11 @@ func NewWithOptions(
 // The event payload is ignored — EventBridge scheduled events carry no
 // application-level data. Any invocation triggers a full sync.
 //
-// If any set trips the consecutive-skip guard, Handle returns the first such error so
-// EventBridge Scheduler retries the invocation and, after exhausting retries, routes it
-// to the DLQ where the SyncLambdaErrorAlarm will fire.
+// The consecutive-skip guard is non-fatal: when a set trips the threshold,
+// updateSkipGuard emits a WARNING log but never returns an error, so Handle
+// continues syncing all remaining sets and always returns nil for skip-guard
+// conditions. Handle can still return a non-nil error for context cancellation
+// or a DB-query failure in activeSets.
 func (h *SyncHandler) Handle(ctx context.Context, _ any) error {
 	sets, err := h.activeSets(ctx)
 	if err != nil {
@@ -210,10 +213,12 @@ func (h *SyncHandler) Handle(ctx context.Context, _ any) error {
 	return firstErr
 }
 
-// syncSet fetches and upserts ratings for all formats of a single set. It returns
-// an error only when the consecutive-skip guard trips for one of the formats.
-// A courtesy inter-request pause (h.interRequestSleep) is injected between each
-// set×format API call to stay within 17Lands' undocumented rate limit.
+// syncSet fetches and upserts ratings for all formats of a single set. It never
+// returns an error due to the consecutive-skip guard — the guard is non-fatal and
+// only emits a WARNING log at threshold. syncSet can still return a non-nil error
+// for context cancellation. A courtesy inter-request pause (h.interRequestSleep)
+// is injected between each set×format API call to stay within 17Lands'
+// undocumented rate limit.
 //
 // set.ExpansionCode is sent to the 17Lands API; set.Code is used for all DB
 // writes so ratings remain keyed on the stable Scryfall code.
