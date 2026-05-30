@@ -55,6 +55,7 @@ jobs:
             --output text)
           SENTRY_DSN=$(aws ssm get-parameter \
             --name /vaultmtg/staging/sentry-spa-dsn \
+            --with-decryption \
             --region us-east-1 \
             --query Parameter.Value \
             --output text)
