@@ -6,3 +6,6 @@ package main
 // is macOS-specific; Windows and Linux use their own service managers (Task
 // Scheduler and systemd respectively) and do not need equivalent handling here.
 func stopLaunchAgent() {}
+
+// startLaunchAgent is a no-op on non-macOS platforms.
+func startLaunchAgent() {}

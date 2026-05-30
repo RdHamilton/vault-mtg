@@ -11,8 +11,8 @@
 # Triggers on any PR that modifies daemon-release.yml. The lint script
 # reads the file directly from the checkout — no external tooling required.
 #
-# S-07 note: this workflow file is in .github/workflows/ — Sarah security
-# review is required for any PR that modifies this file.
+# S-07 note: this file is NOT in the §1A S-07 trigger list. daemon-release.yml
+# (signing + release-asset logic) is the S-07-gated file, not this lint helper.
 
 name: daemon-release lint
 
