@@ -28,7 +28,7 @@ func (s Status) label() string {
 	case StatusError:
 		return "✕ Error — check logs"
 	case StatusKeychainError:
-		return "⚠ Keychain unavailable"
+		return "Keychain unavailable — unlock to continue"
 	case StatusSetupRequired:
 		return "⚠ Setup required — auth failed"
 	default:
@@ -91,7 +91,16 @@ func (a *App) Quit() {
 func (a *App) SetStatus(s Status)        { a.status = s }
 func (a *App) SetHelperInstalled(_ bool) {}
 func (a *App) SetLastSync(t time.Time)   { a.lastSync = t }
-func (a *App) SetKeychainError(_ bool)   {}
-func (a *App) SetSetupRequired(_ bool)   {}
+func (a *App) SetKeychainError(show bool) {
+	if show {
+		a.status = StatusKeychainError
+	}
+}
+
+func (a *App) SetSetupRequired(show bool) {
+	if show {
+		a.status = StatusSetupRequired
+	}
+}
 func (a *App) SetWaitingForArena(_ bool) {}
 func (a *App) NotifySyncResult(_ error)  {} // headless stub — no tray label to update
