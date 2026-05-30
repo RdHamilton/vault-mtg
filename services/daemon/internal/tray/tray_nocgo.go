@@ -39,6 +39,7 @@ func (s Status) label() string {
 // App is a no-op tray stub for headless builds.
 type App struct {
 	appURL   string
+	version  string
 	onQuit   func()
 	status   Status
 	lastSync time.Time
@@ -52,10 +53,11 @@ type App struct {
 	RetrySetup chan struct{}
 }
 
-// New creates a no-op App.
-func New(appURL string, openURL func(string) error, onQuit func()) *App {
+// New creates a no-op App. version is stored but not rendered (headless stub).
+func New(appURL, version string, openURL func(string) error, onQuit func()) *App {
 	return &App{
 		appURL:      appURL,
+		version:     version,
 		onQuit:      onQuit,
 		status:      StatusStarting,
 		quit:        make(chan struct{}),

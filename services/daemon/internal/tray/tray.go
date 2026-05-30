@@ -50,6 +50,7 @@ func (s Status) label() string {
 // App manages the tray icon, menu items, and status state.
 type App struct {
 	appURL  string
+	version string
 	openURL func(string) error
 	onQuit  func()
 
@@ -58,14 +59,16 @@ type App struct {
 	lastSync        time.Time
 	helperInstalled bool
 
-	miStatus      *systray.MenuItem
-	miLastSync    *systray.MenuItem
-	miSyncNow     *systray.MenuItem
-	miGrantAccess *systray.MenuItem
-	miTryAgain    *systray.MenuItem
-	miRetrySetup  *systray.MenuItem
-	miOpenApp     *systray.MenuItem
-	miQuit        *systray.MenuItem
+	miStatus          *systray.MenuItem
+	miAbout           *systray.MenuItem
+	miCheckForUpdates *systray.MenuItem
+	miLastSync        *systray.MenuItem
+	miSyncNow         *systray.MenuItem
+	miGrantAccess     *systray.MenuItem
+	miTryAgain        *systray.MenuItem
+	miRetrySetup      *systray.MenuItem
+	miOpenApp         *systray.MenuItem
+	miQuit            *systray.MenuItem
 
 	// SyncNow is signalled when the user clicks "Sync Now".
 	SyncNow chan struct{}
@@ -80,11 +83,14 @@ type App struct {
 }
 
 // New creates an App. appURL is opened when "Open VaultMTG" is clicked.
+// version is the daemon build version (injected via -ldflags -X main.Version=<ver>;
+// defaults to "dev" for local builds) and is displayed in the "About" menu item.
 // openURL is the platform open-browser function. onQuit is called when the
 // tray exits (Quit clicked or process terminated).
-func New(appURL string, openURL func(string) error, onQuit func()) *App {
+func New(appURL, version string, openURL func(string) error, onQuit func()) *App {
 	return &App{
 		appURL:      appURL,
+		version:     version,
 		openURL:     openURL,
 		onQuit:      onQuit,
 		status:      StatusStarting,
@@ -204,6 +210,16 @@ func (a *App) setup() {
 		systray.SetTitle("VaultMTG")
 	}
 
+	// About item — disabled (informational label showing the running version).
+	// Positioned at the top so the version is immediately visible without scrolling.
+	a.miAbout = systray.AddMenuItem("VaultMTG Daemon "+a.version, "Running version")
+	a.miAbout.Disable()
+
+	// Check for Updates — opens the GitHub Releases page for the daemon.
+	a.miCheckForUpdates = systray.AddMenuItem("Check for Updates", "Opens GitHub Releases page for the VaultMTG daemon")
+
+	systray.AddSeparator()
+
 	a.miStatus = systray.AddMenuItem(a.status.label(), "Daemon status")
 	a.miStatus.Disable()
 
@@ -232,9 +248,19 @@ func (a *App) setup() {
 	a.miQuit = systray.AddMenuItem("Quit", "Stop the VaultMTG daemon")
 }
 
+// openCheckForUpdates opens the GitHub Releases page for the VaultMTG daemon
+// in the default browser. Extracted so it can be tested without systray.
+func (a *App) openCheckForUpdates() {
+	if a.openURL != nil {
+		_ = a.openURL("https://github.com/RdHamilton/vault-mtg/releases?q=daemon")
+	}
+}
+
 func (a *App) loop() {
 	for {
 		select {
+		case <-a.miCheckForUpdates.ClickedCh:
+			a.openCheckForUpdates()
 		case <-a.miSyncNow.ClickedCh:
 			select {
 			case a.SyncNow <- struct{}{}:
