@@ -237,6 +237,7 @@ func main() {
 		mlHandler                         *handlers.MLHandler
 		settingsHandler                   *handlers.SettingsHandler
 		waitlistHandler                   *handlers.WaitlistHandler
+		systemAccountHandler              *handlers.SystemAccountHandler
 	)
 
 	// projCtx is cancelled on SIGTERM so the projection worker exits cleanly.
@@ -363,6 +364,11 @@ func main() {
 		)
 
 		daemonHealthHandler = handlers.NewDaemonHealthHandler(daemonEventsRepo)
+
+		// SystemAccountHandler serves GET /api/v1/system/account — returns the
+		// authenticated user's MTGA account row (name, wins, mastery, etc.).
+		// Clerk-session-authenticated; fixes the SPA 404 introduced by PR #2063.
+		systemAccountHandler = handlers.NewSystemAccountHandler(accountRepo)
 
 		// DaemonRegisterHandler mints (or retrieves) a per-account API key for the
 		// daemon PKCE registration flow.  Protected by RequireClerkOAuthToken — the
@@ -507,6 +513,7 @@ func main() {
 		MLHandler:                         mlHandler,
 		SettingsHandler:                   settingsHandler,
 		WaitlistHandler:                   waitlistHandler,
+		SystemAccountHandler:              systemAccountHandler,
 		HealthzHandler:                    healthzHandler,
 		ClerkAuthMiddl:                    clerkAuthMiddl,
 		ClerkAuthSSEMiddl:                 clerkAuthSSEMiddl,
@@ -643,6 +650,11 @@ type RouterDeps struct {
 	// WaitlistHandler serves POST /api/v1/waitlist (Phase 1, ticket #121).
 	// Public endpoint — no Clerk auth required. Rate limited per-IP.
 	WaitlistHandler *handlers.WaitlistHandler
+	// SystemAccountHandler serves GET /api/v1/system/account.
+	// Returns the authenticated user's MTGA account row wrapped in the
+	// standard {"data": ...} envelope.  Fixes the SPA 404 from PR #2063.
+	// Protected by ClerkAuthMiddl (or APIKeyAuthMiddl in the fallback branch).
+	SystemAccountHandler *handlers.SystemAccountHandler
 	// HealthzHandler serves GET /healthz — intentionally public (no auth).
 	HealthzHandler *handlers.HealthzHandler
 	ClerkAuthMiddl func(http.Handler) http.Handler
@@ -1304,6 +1316,13 @@ func BuildRouter(cfg *config.Config, deps RouterDeps) http.Handler {
 			if deps.DaemonHealthHandler != nil {
 				r.Get("/api/v1/health/daemon", deps.DaemonHealthHandler.GetDaemonHealth)
 			}
+
+			// GET /api/v1/system/account — returns the authenticated user's MTGA
+			// account row (name, wins, mastery, etc.) wrapped in {"data": ...}.
+			// Fixes the SPA 404 introduced by PR #2063 (closes #272).
+			if deps.SystemAccountHandler != nil {
+				r.Get("/api/v1/system/account", deps.SystemAccountHandler.GetSystemAccount)
+			}
 		})
 
 	case deps.APIKeyAuthMiddl != nil:
@@ -1339,6 +1358,10 @@ func BuildRouter(cfg *config.Config, deps RouterDeps) http.Handler {
 
 		if deps.DaemonHealthHandler != nil {
 			r.With(deps.APIKeyAuthMiddl).Get("/api/v1/health/daemon", deps.DaemonHealthHandler.GetDaemonHealth)
+		}
+
+		if deps.SystemAccountHandler != nil {
+			r.With(deps.APIKeyAuthMiddl).Get("/api/v1/system/account", deps.SystemAccountHandler.GetSystemAccount)
 		}
 
 	default:

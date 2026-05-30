@@ -268,6 +268,79 @@ func TestAccountRepository_GetOrCreateByClientID_ConcurrentRetry(t *testing.T) {
 	}
 }
 
+// TestAccountRepository_GetByUserID_Found verifies that GetByUserID returns
+// the full account row when an account exists for the given user.
+func TestAccountRepository_GetByUserID_Found(t *testing.T) {
+	db := openTestDB(t)
+	repo := repository.NewAccountRepository(db)
+
+	clerkID := "clerk_getbyuserid_found_" + t.Name()
+	var userID int64
+	err := db.QueryRowContext(
+		context.Background(),
+		`INSERT INTO users (email, clerk_user_id) VALUES ($1, $2) RETURNING id`,
+		clerkID+"@test.local", clerkID,
+	).Scan(&userID)
+	if err != nil {
+		t.Fatalf("seed user: %v", err)
+	}
+	t.Cleanup(func() {
+		_, _ = db.ExecContext(context.Background(), "DELETE FROM users WHERE id = $1", userID)
+	})
+
+	clientID := "MTGA_getbyuserid_" + t.Name()
+	var accountID int64
+	err = db.QueryRowContext(
+		context.Background(),
+		`INSERT INTO accounts (name, client_id, user_id) VALUES ($1, $2, $3) RETURNING id`,
+		"TestAccount", clientID, userID,
+	).Scan(&accountID)
+	if err != nil {
+		t.Fatalf("seed account: %v", err)
+	}
+	t.Cleanup(func() {
+		_, _ = db.ExecContext(context.Background(), "DELETE FROM accounts WHERE id = $1", accountID)
+	})
+
+	row, found, err := repo.GetByUserID(context.Background(), userID)
+	if err != nil {
+		t.Fatalf("GetByUserID: %v", err)
+	}
+	if !found {
+		t.Fatal("expected found=true, got false")
+	}
+	if row == nil {
+		t.Fatal("expected non-nil row")
+	}
+	if row.ID != accountID {
+		t.Errorf("ID: want %d, got %d", accountID, row.ID)
+	}
+	if row.Name != "TestAccount" {
+		t.Errorf("Name: want %q, got %q", "TestAccount", row.Name)
+	}
+	if row.ClientID.String != clientID {
+		t.Errorf("ClientID: want %q, got %q", clientID, row.ClientID.String)
+	}
+}
+
+// TestAccountRepository_GetByUserID_NotFound verifies that a user with no
+// account returns (nil, false, nil).
+func TestAccountRepository_GetByUserID_NotFound(t *testing.T) {
+	db := openTestDB(t)
+	repo := repository.NewAccountRepository(db)
+
+	row, found, err := repo.GetByUserID(context.Background(), -9991)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if found {
+		t.Error("expected found=false for non-existent user")
+	}
+	if row != nil {
+		t.Errorf("expected nil row, got %+v", row)
+	}
+}
+
 // TestAccountRepository_GetAccountIDByUserID_NotFound verifies that a missing
 // account returns (0, false, nil).
 func TestAccountRepository_GetAccountIDByUserID_NotFound(t *testing.T) {

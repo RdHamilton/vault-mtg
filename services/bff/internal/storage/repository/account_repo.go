@@ -5,9 +5,27 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"time"
 
 	"github.com/RdHamilton/vault-mtg/services/bff/internal/observability"
 )
+
+// AccountRow holds the display columns from the accounts table for a single
+// account row.  Used by GetByUserID.
+type AccountRow struct {
+	ID           int64
+	Name         string
+	ScreenName   sql.NullString
+	ClientID     sql.NullString
+	IsDefault    int
+	DailyWins    int
+	WeeklyWins   int
+	MasteryLevel int
+	MasteryPass  sql.NullString
+	MasteryMax   int
+	CreatedAt    time.Time
+	UpdatedAt    time.Time
+}
 
 // ErrCrosstenantAccount is returned by GetOrCreateByClientID when the supplied
 // client_id resolves to an account that belongs to a different user_id.  The
@@ -22,6 +40,38 @@ type AccountRepository struct {
 // NewAccountRepository returns an AccountRepository backed by db.
 func NewAccountRepository(db DB) *AccountRepository {
 	return &AccountRepository{db: db}
+}
+
+// GetByUserID returns the first accounts row for the given users.id, including
+// all display columns the SPA's models.Account type needs.
+// Returns (nil, false, nil) when the user has no account row yet (first-run
+// state — daemon has not paired yet).
+func (r *AccountRepository) GetByUserID(ctx context.Context, userID int64) (*AccountRow, bool, error) {
+	const q = `
+		SELECT id, name, screen_name, client_id, is_default,
+		       daily_wins, weekly_wins, mastery_level, mastery_pass, mastery_max,
+		       created_at, updated_at
+		FROM   accounts
+		WHERE  user_id = $1
+		LIMIT  1`
+
+	row := r.db.QueryRowContext(ctx, q, userID)
+
+	var a AccountRow
+	err := row.Scan(
+		&a.ID, &a.Name, &a.ScreenName, &a.ClientID, &a.IsDefault,
+		&a.DailyWins, &a.WeeklyWins, &a.MasteryLevel, &a.MasteryPass, &a.MasteryMax,
+		&a.CreatedAt, &a.UpdatedAt,
+	)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, false, nil
+		}
+		observability.ReportError(ctx, err, map[string]string{"component": "db", "table": "accounts"})
+		return nil, false, err
+	}
+
+	return &a, true, nil
 }
 
 // GetAccountIDByUserID returns the first accounts.id for the given users.id.
