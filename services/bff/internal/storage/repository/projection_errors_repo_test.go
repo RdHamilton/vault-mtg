@@ -75,3 +75,49 @@ func TestProjectionErrorsRepository_Insert_NonJSONPayload(t *testing.T) {
 		)
 	})
 }
+
+// TestProjectionErrorsRepository_CountProjectionErrors verifies that
+// CountProjectionErrors returns a non-negative count and increases by one
+// after an Insert (integration, requires TEST_DATABASE_URL).
+func TestProjectionErrorsRepository_CountProjectionErrors(t *testing.T) {
+	db := openTestDB(t)
+	repo := repository.NewProjectionErrorsRepository(db)
+	ctx := context.Background()
+
+	before, err := repo.CountProjectionErrors(ctx)
+	if err != nil {
+		t.Fatalf("CountProjectionErrors before insert: %v", err)
+	}
+
+	if before < 0 {
+		t.Fatalf("expected non-negative count, got %d", before)
+	}
+
+	ins := repository.ProjectionErrorInsert{
+		DaemonEventID: 99997,
+		AccountID:     "test-acct-dlq-count",
+		EventType:     "match.completed",
+		RawPayload:    `{"match_id":"count-test"}`,
+		ErrorMessage:  "count test row",
+	}
+
+	if err := repo.Insert(ctx, ins); err != nil {
+		t.Fatalf("Insert: %v", err)
+	}
+
+	t.Cleanup(func() {
+		_, _ = db.ExecContext(
+			ctx,
+			`DELETE FROM projection_errors WHERE account_id = 'test-acct-dlq-count'`,
+		)
+	})
+
+	after, err := repo.CountProjectionErrors(ctx)
+	if err != nil {
+		t.Fatalf("CountProjectionErrors after insert: %v", err)
+	}
+
+	if after != before+1 {
+		t.Errorf("expected count to increase by 1: before=%d after=%d", before, after)
+	}
+}

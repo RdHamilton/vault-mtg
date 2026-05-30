@@ -26,6 +26,7 @@ This directory holds VaultMTG's ADRs. Numbering is zero-padded 4 digits. Status 
 | 0018 | List endpoint pagination standard (cursor-based) | Accepted |
 | 0019 | Staging environment design | Accepted |
 | 0025 | AWS audit / observability floor for a solo-operated account | Accepted |
+| 0040 | Collection-helper --dump-regions derivation procedure (PII handling, path validation, permissions) | Accepted |
 
 ## Conventions
 
