@@ -216,6 +216,13 @@ jobs:
         # GoReleaser writes the binary to dist/vaultmtg-daemon_windows_amd64_v1/
         # (the path matches the "binary" field + GoReleaser's OS/arch matrix).
         # We find it by glob so the path survives future GoReleaser layout changes.
+        #
+        # Implementation note: `go tool nm` cannot parse PE (Windows) format
+        # binaries on Linux — it returns no output for cross-compiled CGO exes,
+        # producing a false-negative failure even when CGO_ENABLED=1 is correct.
+        # We use `x86_64-w64-mingw32-nm` (part of gcc-mingw-w64-x86-64, already
+        # installed in the apt-get step above) which reads PE symbol tables
+        # natively. Fall back to `strings` if the mingw nm is absent.
         run: |
           set -euo pipefail
           EXE=$(find dist -name 'vaultmtg-daemon.exe' | head -1)
@@ -225,7 +232,13 @@ jobs:
             exit 1
           fi
           echo "Checking systray symbols in: ${EXE}"
-          if ! go tool nm "${EXE}" 2>/dev/null | grep -qi "systray"; then
+          if command -v x86_64-w64-mingw32-nm >/dev/null 2>&1; then
+            NM_OUTPUT=$(x86_64-w64-mingw32-nm "${EXE}" 2>/dev/null || true)
+          else
+            echo "WARNING: x86_64-w64-mingw32-nm not found — falling back to strings" >&2
+            NM_OUTPUT=$(strings "${EXE}" 2>/dev/null || true)
+          fi
+          if ! echo "${NM_OUTPUT}" | grep -qi "systray"; then
             echo "ERROR: systray symbols missing from Windows binary." >&2
             echo "The no-op stub (tray_nocgo.go) was compiled instead of the real tray (tray.go)." >&2
             echo "Check CGO_ENABLED and CC in .goreleaser.yml and the apt-get step." >&2
@@ -270,7 +283,9 @@ jobs:
             --jq '"renamed: \(.tag_name) at \(.html_url)"'
 
       - name: Delete orphan bare v* git ref
-        if: startsWith(github.ref, 'refs/tags/daemon/v')
+        # Run even on earlier step failure so a bare v* tag never persists on
+        # origin (which would trigger deploy-spa.yml — ADR-023 violation).
+        if: always() && startsWith(github.ref, 'refs/tags/daemon/v')
         run: |
           SEMVER="${{ steps.semver.outputs.tag }}"
           gh api --method DELETE "repos/${{ github.repository }}/git/refs/tags/${SEMVER}" || true
