@@ -311,8 +311,9 @@ jobs:
           mkdir -p "$CONFIG_DIR"
           cat > "$CONFIG_DIR/daemon.json" <<JSON
           {
-            "cloud_api_url": "http://127.0.0.1:1/unused-in-ci",
+            "cloud_api_url": "http://127.0.0.1:1/unused",
             "api_key": "ci-test-fake-key-not-real",
+            "account_id": "ci-lifecycle-test",
             "sync_enabled": false,
             "disable_update_check": true
           }
@@ -616,7 +617,7 @@ jobs:
           mkdir -p "$CONFIG_DIR"
           cat > "$CONFIG_DIR/daemon.json" <<JSON
           {
-            "cloud_api_url": "http://127.0.0.1:1/unused-in-ci",
+            "cloud_api_url": "http://127.0.0.1:1/unused",
             "api_key": "ci-test-fake-key-not-real",
             "account_id": "ci-lifecycle-test",
             "sync_enabled": false,
@@ -702,6 +703,36 @@ jobs:
             exit 1
           fi
           echo "PASS: /health returned 200"
+
+      # -----------------------------------------------------------------------
+      - name: "[STEP 2b] SEED — inject api_key into daemon.json to simulate first-auth (#194)"
+      # -----------------------------------------------------------------------
+        # DEFECT 4 fix: the daemon normalizes daemon.json on startup, adding
+        # default fields but writing api_key as "".  STEP 4b (AC7 / ticket #194)
+        # asserts that api_key survives a same-env reinstall, so the field must be
+        # present BEFORE TestMacOSDaemonEvent's t.Cleanup saves a snapshot.
+        #
+        # We inject api_key here — after STEP 2 confirms the daemon is healthy and
+        # has had time to write its startup defaults — to simulate an authenticated
+        # daemon (api_key is normally set by the BFF on first registration, then
+        # stored by the daemon).  TestMacOSDaemonEvent's t.Cleanup will then restore
+        # a config that includes api_key, STEP 4 same-env reinstall leaves it intact,
+        # and STEP 4b assertion passes.
+        run: |
+          CONFIG_FILE="$HOME/.vaultmtg/daemon.json"
+          python3 - "$CONFIG_FILE" <<'PYEOF'
+          import json, sys
+          path = sys.argv[1]
+          with open(path) as f:
+              d = json.load(f)
+          d['api_key'] = 'ci-seeded-api-key-for-step4b'
+          with open(path, 'w') as f:
+              json.dump(d, f, indent=2)
+              f.write('\n')
+          PYEOF
+          echo "PASS: api_key seeded into $CONFIG_FILE"
+          python3 -c "import json; d=json.load(open('$CONFIG_FILE')); assert 'api_key' in d and d['api_key'] != '', 'FAIL: api_key not seeded'"
+          echo "PASS: api_key seed verified"
 
       # =======================================================================
       # STEP 3 — stub-BFF daemon_event delivery
