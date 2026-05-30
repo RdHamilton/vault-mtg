@@ -483,3 +483,65 @@ jobs:
           --overwrite \
           --region us-east-1
         echo "Published /vaultmtg/app/production/latest-bff-sha = ${DEPLOY_SHA}"
+
+    # Origins completeness check (vault-mtg-tickets#269).
+    #
+    # Asserts that every active CloudFront hostname for vaultmtg.app appears
+    # in the ALLOWED_ORIGINS SSM parameter. A mismatch means a domain was
+    # added to CloudFront (or removed from ALLOWED_ORIGINS) without updating
+    # the other surface — the root cause of the 2026-05-30 config-drift
+    # outage.
+    #
+    # RULE-INFRA-01 (soft mode): continue-on-error: true until one full
+    # staging+prod cycle confirms no false positives. The WARNING log is
+    # always emitted on mismatch regardless. Harden to continue-on-error:
+    # false after the first clean staging+prod pair (vault-mtg-tickets#269).
+    - name: Assert CloudFront hostnames present in ALLOWED_ORIGINS
+      continue-on-error: true
+      env:
+        ENVIRONMENT: ${{ inputs.environment }}
+        AWS_REGION: us-east-1
+      run: |
+        SSM_PATH="/vaultmtg/app/${ENVIRONMENT}/ALLOWED_ORIGINS"
+        echo "[origins-check] Environment: ${ENVIRONMENT}"
+        echo "[origins-check] SSM path: ${SSM_PATH}"
+
+        ALLOWED_ORIGINS_VALUE=$(aws ssm get-parameter \
+          --name "${SSM_PATH}" \
+          --region "${AWS_REGION}" \
+          --query "Parameter.Value" \
+          --output text)
+
+        echo "[origins-check] ALLOWED_ORIGINS = ${ALLOWED_ORIGINS_VALUE}"
+
+        CF_ALIASES=$(aws cloudfront list-distributions \
+          --region us-east-1 \
+          --query "DistributionList.Items[].Aliases.Items[]" \
+          --output json)
+
+        VAULTMTG_ALIASES=$(echo "${CF_ALIASES}" | \
+          python3 -c "import sys,json; aliases=json.load(sys.stdin); print('\n'.join(a for a in aliases if 'vaultmtg.app' in a))")
+
+        echo "[origins-check] Active CloudFront aliases (vaultmtg.app):"
+        echo "${VAULTMTG_ALIASES}"
+
+        MISSING=()
+        while IFS= read -r alias; do
+          [ -z "${alias}" ] && continue
+          EXPECTED="https://${alias}"
+          if ! echo "${ALLOWED_ORIGINS_VALUE}" | grep -qF "${EXPECTED}"; then
+            MISSING+=("${EXPECTED}")
+          fi
+        done <<< "${VAULTMTG_ALIASES}"
+
+        if [ ${#MISSING[@]} -eq 0 ]; then
+          echo "[origins-check] PASS: all CloudFront hostnames present in ALLOWED_ORIGINS"
+        else
+          echo "[origins-check] WARNING: the following CloudFront hostnames are MISSING from ALLOWED_ORIGINS:"
+          for m in "${MISSING[@]}"; do
+            echo "[origins-check]   MISSING: ${m}"
+          done
+          echo "[origins-check] ACTION REQUIRED: update ${SSM_PATH} via a CFN changeset in"
+          echo "[origins-check]   mtga-companion-infra (vault-mtg-tickets#269)."
+          exit 1
+        fi
