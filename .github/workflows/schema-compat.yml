@@ -1,0 +1,72 @@
+name: Schema-Compat Gate
+
+# ---------------------------------------------------------------------------
+# vault-mtg-tickets#207 — Schema-compatibility CI gate
+#
+# PURPOSE
+# -------
+# Catches schema/migration compatibility breaks before merge: specifically,
+# .up.sql migrations that DROP or RENAME a column that is still referenced
+# by repository code (*_repo.go files in services/bff/).
+#
+# Scope (v0.3.4): DROP COLUMN and RENAME COLUMN detection only.
+# Full ORM-level validation is deferred to v0.3.5.
+#
+# Implementation: scripts/schema-compat-check.sh
+# Runbook:        vault-mtg-docs/engineering/runbooks/schema-compat-gate.md
+#
+# GATE MECHANISM
+# --------------
+# Runs on every pull_request targeting main that touches services/bff/ or
+# migration files (path-filtered via dorny/paths-filter).
+#
+# The gate checks only changed .up.sql files in the PR diff, so it does not
+# re-scan historical migrations already merged to main.
+#
+# EXIT CODES from schema-compat-check.sh:
+#   0 — clean (or no migration changes in this PR)
+#   1 — one or more dropped/renamed columns still referenced in *_repo.go
+#   2 — script configuration error
+# ---------------------------------------------------------------------------
+
+on:
+  pull_request:
+    branches: [ main ]
+    paths:
+      - 'services/bff/**'
+      - 'services/bff/internal/storage/migrations/**'
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  schema-compat:
+    name: Schema-compat — dropped/renamed column check
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+        with:
+          # Fetch enough history so the merge-base diff is available.
+          fetch-depth: 0
+
+      - name: Determine diff range
+        id: diff-range
+        env:
+          BASE_REF: ${{ github.event.pull_request.base.sha }}
+          HEAD_REF: ${{ github.event.pull_request.head.sha }}
+        run: |
+          echo "BASE_SHA=${BASE_REF}" >> "$GITHUB_OUTPUT"
+          echo "HEAD_SHA=${HEAD_REF}" >> "$GITHUB_OUTPUT"
+
+      - name: Run schema-compat check
+        env:
+          BASE_SHA: ${{ steps.diff-range.outputs.BASE_SHA }}
+          HEAD_SHA: ${{ steps.diff-range.outputs.HEAD_SHA }}
+        run: bash scripts/schema-compat-check.sh
