@@ -26,7 +26,6 @@ import (
 	"github.com/RdHamilton/vault-mtg/services/daemon/internal/logreader"
 	"github.com/RdHamilton/vault-mtg/services/daemon/internal/pkce"
 	"github.com/RdHamilton/vault-mtg/services/daemon/internal/ratingsclient"
-	"github.com/RdHamilton/vault-mtg/services/daemon/internal/registrar"
 	"github.com/RdHamilton/vault-mtg/services/daemon/internal/updatecheck"
 	"github.com/getsentry/sentry-go"
 	"github.com/google/uuid"
@@ -64,7 +63,6 @@ type Service struct {
 	dispatcher *dispatch.Dispatcher
 	poller     *logreader.Poller
 	sessionID  string
-	regClient  *registrar.Client
 	version    string // build-time version; "dev" skips update checks
 	greManager *gre.Manager
 	// draftState caches the live draft session(s) the daemon has seen
@@ -170,8 +168,8 @@ func New(cfg *config.Config) *Service {
 	//   2. cfg.DaemonJWT (legacy HMAC daemon-JWT path).
 	//   3. cfg.APIKey plaintext (pre-keychain-migration legacy path).
 	// The PKCE path is the only one that works against the current BFF; the
-	// legacy registrar refresher is no longer wired because the BFF no longer
-	// mounts /api/daemon/register (see ADR-009 / #1315).
+	// legacy registration endpoint /api/daemon/register is no longer mounted
+	// (ADR-009 / #1315). Non-keychain modes dispatch without a refresher.
 	token := ""
 	var keychainErr error
 	switch {
@@ -198,7 +196,6 @@ func New(cfg *config.Config) *Service {
 		dispatcher:  d,
 		eventBuffer: buf,
 		sessionID:   sessionID,
-		regClient:   registrar.NewClient(cfg.CloudAPIURL),
 		version:     "dev",
 		draftState:  draftstate.New(),
 		keychainErr: keychainErr,
@@ -208,14 +205,13 @@ func New(cfg *config.Config) *Service {
 			Token:  token,
 		}),
 	}
-	// Wire the appropriate Refresher based on the auth mode:
-	// - Keychain mode: KeychainReauthRequired fires the tray hook and returns
-	//   ErrReauthRequired, which breaks the retry loop immediately.
-	// - Legacy mode: Refresh calls the registration endpoint to obtain a new JWT.
+	// Wire the keychain refresher. Non-keychain installs do not wire a refresher:
+	// the legacy /api/daemon/register endpoint is no longer mounted on the BFF
+	// (ADR-009 / #1315), so calling it would produce a 404 loop. Keychain mode
+	// uses the in-process PKCE re-auth adapter which recovers from 401 without
+	// a daemon restart.
 	if cfg.Keychain {
 		d.WithRefresher(svc.keychainRefresherAdapter())
-	} else {
-		d.WithRefresher(svc)
 	}
 
 	// Build the GRE session manager.  The flush func emits a match.game_ended
@@ -348,10 +344,45 @@ func (s *Service) ClearAuthPaused() {
 	s.authPaused.Store(false)
 }
 
-// Refresh implements dispatch.Refresher. It is called by the dispatcher when
-// the BFF returns 401 so a new JWT can be obtained before the next retry.
-func (s *Service) Refresh(ctx context.Context) (string, error) {
-	return s.register(ctx)
+// PropagateKeychainToken reads the API key from the OS keychain and wires it
+// into the dispatcher and ratings client so subsequent dispatches use the new
+// token immediately. It also clears keychainErr so computeAuthStatus reports
+// "authenticated" at the next heartbeat tick.
+//
+// Call this from main.go right after a successful Retry-Setup PKCE flow
+// (after ClearAuthPaused(), before Run()) so the token obtained during the
+// Retry-Setup browser flow reaches the long-lived dispatcher that Run() uses.
+// Without this call, the token set inside runPKCEAuth (via keychain.Set) is
+// never wired into the existing dispatcher — Run() would start with an empty
+// bearer and every ingest call would return 401 until the next reactive PKCE
+// cycle completes.
+//
+// Binding items (Ray #issuecomment-4582173385):
+//   - A1: guards s.ratings != nil before SetToken (New() does not guarantee
+//     ratings is non-nil in all test configurations).
+//   - A2: treats an empty key returned with a nil error as an error — same
+//     guard as retryKeychain (service.go ~line 579) — to avoid silently
+//     setting an empty bearer token.
+func (s *Service) PropagateKeychainToken() error {
+	key, err := s.keychainGet()
+	if err != nil {
+		s.setKeychainErr(err)
+		return fmt.Errorf("PropagateKeychainToken: keychain read: %w", err)
+	}
+	// A2: empty key with nil error is still unusable — treat it as an error.
+	if key == "" {
+		e := fmt.Errorf("PropagateKeychainToken: keychain returned empty key")
+		s.setKeychainErr(e)
+		return e
+	}
+	s.dispatcher.SetToken(key)
+	// A1: guard ratings != nil (not guaranteed in all test configurations).
+	if s.ratings != nil {
+		s.ratings.SetToken(key)
+	}
+	// Clear keychainErr so computeAuthStatus reports "authenticated".
+	s.setKeychainErr(nil)
+	return nil
 }
 
 // KeychainReauthRequired is called when the BFF returns 401 in keychain mode.
@@ -472,32 +503,6 @@ type refresherFunc func(ctx context.Context) (string, error)
 
 func (f refresherFunc) Refresh(ctx context.Context) (string, error) {
 	return f(ctx)
-}
-
-// register calls the BFF registration endpoint and persists the resulting JWT.
-func (s *Service) register(ctx context.Context) (string, error) {
-	resp, err := s.regClient.Register(ctx, s.cfg.APIKey, s.cfg.UserID)
-	if err != nil {
-		return "", fmt.Errorf("daemon: registration failed: %w", err)
-	}
-
-	s.cfg.DaemonJWT = resp.Token
-	s.cfg.DaemonID = resp.DaemonID
-	s.dispatcher.SetToken(resp.Token)
-	// Keep the ratings client's bearer in sync with the dispatcher so
-	// the next /api/v1/draft-ratings fetch (after TTL expiry) uses the
-	// fresh token. Cache contents stay valid across the swap — the
-	// BFF's auth check happens per-request.
-	if s.ratings != nil {
-		s.ratings.SetToken(resp.Token)
-	}
-
-	if saveErr := s.cfg.Save(); saveErr != nil {
-		log.Printf("[daemon] warn: could not persist JWT to config file: %v", saveErr)
-	}
-
-	log.Printf("[daemon] registered successfully (daemon_id=%s)", resp.DaemonID)
-	return resp.Token, nil
 }
 
 // ErrSetupRequired is returned by retryKeychain when s.keychainErr is
@@ -654,16 +659,6 @@ func (s *Service) Run(ctx context.Context) error {
 		}
 	}
 
-	// Phase 1: ensure we have a valid JWT before starting event dispatch.
-	// Skipped when cfg.Keychain is true — the PKCE flow's api_key does not
-	// expire and the legacy /api/daemon/register endpoint is not mounted.
-	if !s.cfg.Keychain && s.cfg.SyncEnabled && s.cfg.JWTNeedsRefresh() && s.cfg.APIKey != "" {
-		if _, err := s.register(ctx); err != nil {
-			// Non-fatal: log and continue; the dispatcher will retry on 401.
-			log.Printf("[daemon] warn: startup registration failed: %v", err)
-		}
-	}
-
 	// Run update check once on startup (non-blocking).
 	go s.runUpdateCheck(ctx)
 
@@ -790,13 +785,11 @@ func (s *Service) Run(ctx context.Context) error {
 			return nil
 
 		case <-jwtTicker.C:
-			// Skip in keychain (PKCE) mode — api_key does not expire.
-			if !s.cfg.Keychain && s.cfg.SyncEnabled && s.cfg.JWTNeedsRefresh() && s.cfg.APIKey != "" {
-				log.Printf("[daemon] JWT within refresh window — re-registering")
-				if _, err := s.register(ctx); err != nil {
-					log.Printf("[daemon] warn: periodic JWT refresh failed: %v", err)
-				}
-			}
+			// The legacy /api/daemon/register endpoint is no longer mounted on
+			// the BFF (ADR-009 / #1315). Keychain (PKCE) api_keys do not expire;
+			// the keychainRefresherAdapter handles 401 recovery without polling.
+			// This tick is kept as a no-op placeholder so existing ticker cleanup
+			// (defer jwtTicker.Stop()) remains correct.
 
 		case <-updateTicker.C:
 			// Run non-blocking; errors are swallowed inside runUpdateCheck.

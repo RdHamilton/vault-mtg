@@ -364,6 +364,22 @@ func main() {
 				log.Printf("[mtga-daemon] retry setup: auth complete — starting daemon service")
 			}
 
+			// ── Propagate keychain token after Retry-Setup success (#275) ─────
+			// runPKCEAuth stores the new api_key in the OS keychain and updates
+			// daemon.json, but does NOT update the long-lived dispatcher that
+			// svc.Run() uses. Without this call, Run() would start with an empty
+			// bearer token and every ingest call would return 401 until the next
+			// reactive PKCE cycle completes.
+			//
+			// We only call this when cfg.Keychain is true — non-keychain installs
+			// do not use the dispatcher token path and PropagateKeychainToken
+			// would immediately fail with ErrNotFound.
+			if cfg.Keychain {
+				if propErr := svc.PropagateKeychainToken(); propErr != nil {
+					log.Printf("[mtga-daemon] warn: PropagateKeychainToken failed: %v — Run will attempt keychain retry", propErr)
+				}
+			}
+
 			// ── Normal daemon run loop ─────────────────────────────────────────
 			if err := svc.Run(ctx); err != nil {
 				if headless {
