@@ -63,7 +63,7 @@ type questResponse struct {
 	Completed        bool       `json:"completed"`
 	CanSwap          bool       `json:"can_swap"`
 	Rewards          string     `json:"rewards"`
-	AssignedAt       time.Time  `json:"assigned_at"`
+	FirstSeenAt      time.Time  `json:"first_seen_at"`
 	CompletedAt      *time.Time `json:"completed_at,omitempty"`
 	LastSeenAt       *time.Time `json:"last_seen_at,omitempty"`
 	Rerolled         bool       `json:"rerolled"`
@@ -272,7 +272,7 @@ func questsToResponse(rows []repository.QuestRow) []questResponse {
 			Completed:        q.Completed,
 			CanSwap:          q.CanSwap,
 			Rewards:          derefOr(q.Rewards, ""),
-			AssignedAt:       q.AssignedAt,
+			FirstSeenAt:      q.FirstSeenAt,
 			CompletedAt:      q.CompletedAt,
 			LastSeenAt:       q.LastSeenAt,
 			Rerolled:         q.Rerolled,

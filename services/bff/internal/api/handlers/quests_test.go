@@ -93,7 +93,7 @@ func TestQuestsActive_HappyPath(t *testing.T) {
 	now := time.Now().UTC()
 	reader := &stubQuestsReader{
 		active: []repository.QuestRow{
-			{ID: 1, QuestID: "q1", Goal: 5, EndingProgress: 2, AssignedAt: now},
+			{ID: 1, QuestID: "q1", Goal: 5, EndingProgress: 2, FirstSeenAt: now},
 		},
 		lastSeen: now, lastSeenOK: true,
 	}
@@ -149,7 +149,7 @@ func TestQuestsHistory_HappyPath(t *testing.T) {
 	now := time.Now().UTC()
 	reader := &stubQuestsReader{
 		history: []repository.QuestRow{
-			{ID: 1, QuestID: "q1", Goal: 5, EndingProgress: 5, Completed: true, AssignedAt: now.Add(-time.Hour), CompletedAt: &now},
+			{ID: 1, QuestID: "q1", Goal: 5, EndingProgress: 5, Completed: true, FirstSeenAt: now.Add(-time.Hour), CompletedAt: &now},
 		},
 	}
 	h := handlers.NewQuestsHandler(reader, &questsAccountLookup{accountID: 7, found: true})
