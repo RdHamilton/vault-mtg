@@ -35,12 +35,19 @@ on:
   push:
     tags:
       - 'daemon/v*'
-  # Manual dispatch is supported for dry-runs and debugging.
-  # NOTE: without a daemon/v* tag, GoReleaser must be invoked with --snapshot
-  # (already the case when there is no matching tag).  workflow_dispatch on a
-  # branch (not a tag) will fail at the GoReleaser step unless you add
-  # --snapshot to the args in the goreleaser step below.
-  workflow_dispatch: {}
+  # Manual dispatch supports dry-run validation of the signing job paths.
+  # Set dry_run=true to exercise the windows-latest / macos-latest runner
+  # wiring and secret-presence checks WITHOUT publishing a release or burning
+  # Apple / Azure signing quota.  The two dry-run jobs are separate from the
+  # real sign-windows / sign-macos jobs so they have no needs-chain dependency
+  # on the tag-guarded goreleaser job.  (vault-mtg-tickets#256)
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: 'Validate signing job wiring (runner OS + secret presence) without producing a release'
+        required: false
+        default: 'false'
+        type: boolean
 
 permissions:
   contents: write
@@ -807,3 +814,113 @@ jobs:
           gh workflow run deploy-spa-staging.yml \
             --ref main \
             --repo "${{ github.repository }}"
+
+
+  # ---------------------------------------------------------------------------
+  # DRY-RUN JOBS (vault-mtg-tickets#256)
+  #
+  # These jobs run ONLY on workflow_dispatch with dry_run=true.  They exercise
+  # the runner-OS assignment and secret-presence checks for the two signing
+  # paths that are otherwise tag-guarded and would only surface failures on a
+  # real release cut.  They do NOT invoke azure/trusted-signing-action, import
+  # any keychain, call codesign/notarytool, download Release assets, or produce
+  # any artifact.  They are additive and have no effect on the tag-triggered
+  # release path.
+  # ---------------------------------------------------------------------------
+
+  dry-run-sign-windows:
+    name: 'DRY-RUN: Validate Windows signing wiring (runner + secrets)'
+    runs-on: windows-latest
+    # Only run on manual dispatch with dry_run=true.  Never runs on tag push.
+    if: github.event_name == 'workflow_dispatch' && inputs.dry_run == true
+
+    steps:
+      - name: Assert runner OS is Windows
+        # Confirms that runs-on: windows-latest resolved to a Windows runner.
+        # If GitHub ever changes the label mapping this step will fail fast
+        # rather than silently running the Azure action on the wrong OS.
+        shell: pwsh
+        run: |
+          Write-Host "Runner OS: $env:RUNNER_OS"
+          if ($env:RUNNER_OS -ne "Windows") {
+            Write-Error "ERROR: Expected Windows runner, got: $env:RUNNER_OS"
+            exit 1
+          }
+          Write-Host "PASS: Runner OS is Windows"
+
+      - name: Assert Azure Trusted Signing secrets are present
+        # Fails closed if any of the five required Azure secrets are missing.
+        # Matches the failure class surfaced in incident I-14 (daemon/v0.3.4):
+        # sign-windows exited non-zero because AZURE_TENANT_ID et al. were not
+        # configured in the repo.  This step surfaces that failure on a
+        # workflow_dispatch dry-run instead of on a real release tag.
+        # vault-mtg-tickets#256, ADR-041 G1/P0-3.
+        shell: pwsh
+        env:
+          AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+          AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+          AZURE_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
+          AZURE_TRUSTED_SIGNING_ACCOUNT: ${{ secrets.AZURE_TRUSTED_SIGNING_ACCOUNT }}
+          AZURE_CERTIFICATE_PROFILE: ${{ secrets.AZURE_CERTIFICATE_PROFILE }}
+        run: |
+          $missing = @()
+          if ([string]::IsNullOrEmpty($env:AZURE_TENANT_ID))             { $missing += "AZURE_TENANT_ID" }
+          if ([string]::IsNullOrEmpty($env:AZURE_CLIENT_ID))             { $missing += "AZURE_CLIENT_ID" }
+          if ([string]::IsNullOrEmpty($env:AZURE_CLIENT_SECRET))         { $missing += "AZURE_CLIENT_SECRET" }
+          if ([string]::IsNullOrEmpty($env:AZURE_TRUSTED_SIGNING_ACCOUNT)) { $missing += "AZURE_TRUSTED_SIGNING_ACCOUNT" }
+          if ([string]::IsNullOrEmpty($env:AZURE_CERTIFICATE_PROFILE))   { $missing += "AZURE_CERTIFICATE_PROFILE" }
+          if ($missing.Count -gt 0) {
+            Write-Error "ERROR: Missing Azure Trusted Signing secrets: $($missing -join ', ')"
+            Write-Error "Configure these secrets in the repo before cutting a signed release."
+            exit 1
+          }
+          Write-Host "PASS: All 5 Azure Trusted Signing secrets are present"
+
+
+  dry-run-sign-macos:
+    name: 'DRY-RUN: Validate macOS signing wiring (runner + secrets)'
+    runs-on: macos-latest
+    # Only run on manual dispatch with dry_run=true.  Never runs on tag push.
+    if: github.event_name == 'workflow_dispatch' && inputs.dry_run == true
+
+    steps:
+      - name: Assert runner OS is macOS
+        # Confirms that runs-on: macos-latest resolved to a macOS runner.
+        run: |
+          echo "Runner OS: ${RUNNER_OS}"
+          if [[ "${RUNNER_OS}" != "macOS" ]]; then
+            echo "ERROR: Expected macOS runner, got: ${RUNNER_OS}" >&2
+            exit 1
+          fi
+          echo "PASS: Runner OS is macOS"
+
+      - name: Assert Apple signing secrets are present
+        # Fails closed if any of the eight required Apple signing secrets are
+        # missing.  Guards against the same silent-skip failure class that
+        # tag-guarding creates: a misconfigured repo would only surface on a
+        # real notarization attempt.  vault-mtg-tickets#256.
+        env:
+          APPLE_DEVELOPER_CERTIFICATE: ${{ secrets.APPLE_DEVELOPER_CERTIFICATE }}
+          APPLE_DEVELOPER_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_DEVELOPER_CERTIFICATE_PASSWORD }}
+          APPLE_INSTALLER_CERTIFICATE: ${{ secrets.APPLE_INSTALLER_CERTIFICATE }}
+          APPLE_INSTALLER_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_INSTALLER_CERTIFICATE_PASSWORD }}
+          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          APPLE_NOTARIZATION_APPLE_ID: ${{ secrets.APPLE_NOTARIZATION_APPLE_ID }}
+          APPLE_NOTARIZATION_PASSWORD: ${{ secrets.APPLE_NOTARIZATION_PASSWORD }}
+        run: |
+          missing=()
+          [[ -z "${APPLE_DEVELOPER_CERTIFICATE}"          ]] && missing+=("APPLE_DEVELOPER_CERTIFICATE")
+          [[ -z "${APPLE_DEVELOPER_CERTIFICATE_PASSWORD}" ]] && missing+=("APPLE_DEVELOPER_CERTIFICATE_PASSWORD")
+          [[ -z "${APPLE_INSTALLER_CERTIFICATE}"          ]] && missing+=("APPLE_INSTALLER_CERTIFICATE")
+          [[ -z "${APPLE_INSTALLER_CERTIFICATE_PASSWORD}" ]] && missing+=("APPLE_INSTALLER_CERTIFICATE_PASSWORD")
+          [[ -z "${APPLE_SIGNING_IDENTITY}"               ]] && missing+=("APPLE_SIGNING_IDENTITY")
+          [[ -z "${APPLE_TEAM_ID}"                        ]] && missing+=("APPLE_TEAM_ID")
+          [[ -z "${APPLE_NOTARIZATION_APPLE_ID}"          ]] && missing+=("APPLE_NOTARIZATION_APPLE_ID")
+          [[ -z "${APPLE_NOTARIZATION_PASSWORD}"          ]] && missing+=("APPLE_NOTARIZATION_PASSWORD")
+          if [[ ${#missing[@]} -gt 0 ]]; then
+            echo "ERROR: Missing Apple signing secrets: ${missing[*]}" >&2
+            echo "Configure these secrets in the repo before cutting a signed release." >&2
+            exit 1
+          fi
+          echo "PASS: All 8 Apple signing secrets are present"

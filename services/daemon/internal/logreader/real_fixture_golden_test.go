@@ -110,15 +110,16 @@ func TestRealFixture_QuestProgress_2026_59_20(t *testing.T) {
 	q0 := p.Quests[0]
 	assert.Equal(t, "00000001-0000-4000-8000-000000000001", q0.QuestID)
 	assert.Equal(t, 30, q0.Goal)
-	// locKey not in quest_names map → falls back to raw key.
-	assert.Equal(t, "Quests/Quest_Simic_Evolution", q0.QuestName)
+	// locKey added to questDisplayNames in vault-mtg-tickets#235.
+	assert.Equal(t, "Cast 30 blue or green spells", q0.QuestName)
 	assert.Equal(t, 3, q0.Progress)
 	assert.True(t, q0.CanSwap)
 
 	q1 := p.Quests[1]
 	assert.Equal(t, "00000001-0000-4000-8000-000000000002", q1.QuestID)
 	assert.Equal(t, 20, q1.Goal)
-	assert.Equal(t, "Quests/Quest_Orzhov_Advokist", q1.QuestName)
+	// locKey added to questDisplayNames in vault-mtg-tickets#235.
+	assert.Equal(t, "Cast 20 white or black spells", q1.QuestName)
 	assert.Equal(t, 6, q1.Progress)
 	assert.True(t, q1.CanSwap)
 }

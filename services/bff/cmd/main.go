@@ -208,34 +208,35 @@ func main() {
 	// Wire API key handler and auth middleware when a database is available.
 	// sqlDB is declared here so it is in scope for NewHealthzHandler below.
 	var (
-		sqlDB                   *sql.DB
-		apiKeysHandler          *handlers.APIKeysHandler
-		apiKeyAuthMiddl         func(http.Handler) http.Handler
-		daemonAPIKeyAuthMiddl   func(http.Handler) http.Handler
-		clerkUserResolver       func(http.Handler) http.Handler
-		draftRatingsHandler     *handlers.DraftRatingsHandler
-		historyHandler          *handlers.HistoryHandler
-		listV2Handler           *handlers.ListV2Handler
-		statsHandler            *handlers.StatsHandler
-		daemonHealthHandler     *handlers.DaemonHealthHandler
-		daemonRegisterHandler   *handlers.DaemonRegisterHandler
-		daemonsListHandler      *handlers.DaemonsListHandler
-		daemonsRevokeHandler    *handlers.DaemonsRevokeHandler
-		adminFleetHealthHandler *handlers.AdminFleetHealthHandler
-		matchesHandler          *handlers.MatchesHandler
-		collectionHandler       *handlers.CollectionHandler
-		questsHandler           *handlers.QuestsHandler
-		standardHandler         *handlers.StandardHandler
-		gamePlaysHandler        *handlers.GamePlaysHandler
-		metaHandler             *handlers.MetaHandler
-		opponentsHandler        *handlers.OpponentsHandler
-		notesHandler            *handlers.NotesHandler
-		cardsHandler            *handlers.CardsHandler
-		decksHandler            *handlers.DecksHandler
-		draftsHandler           *handlers.DraftsHandler
-		mlHandler               *handlers.MLHandler
-		settingsHandler         *handlers.SettingsHandler
-		waitlistHandler         *handlers.WaitlistHandler
+		sqlDB                             *sql.DB
+		apiKeysHandler                    *handlers.APIKeysHandler
+		apiKeyAuthMiddl                   func(http.Handler) http.Handler
+		daemonAPIKeyAuthMiddl             func(http.Handler) http.Handler
+		clerkUserResolver                 func(http.Handler) http.Handler
+		draftRatingsHandler               *handlers.DraftRatingsHandler
+		historyHandler                    *handlers.HistoryHandler
+		listV2Handler                     *handlers.ListV2Handler
+		statsHandler                      *handlers.StatsHandler
+		daemonHealthHandler               *handlers.DaemonHealthHandler
+		daemonRegisterHandler             *handlers.DaemonRegisterHandler
+		daemonsListHandler                *handlers.DaemonsListHandler
+		daemonsRevokeHandler              *handlers.DaemonsRevokeHandler
+		adminFleetHealthHandler           *handlers.AdminFleetHealthHandler
+		adminProjectionErrorsCountHandler *handlers.AdminProjectionErrorsCountHandler
+		matchesHandler                    *handlers.MatchesHandler
+		collectionHandler                 *handlers.CollectionHandler
+		questsHandler                     *handlers.QuestsHandler
+		standardHandler                   *handlers.StandardHandler
+		gamePlaysHandler                  *handlers.GamePlaysHandler
+		metaHandler                       *handlers.MetaHandler
+		opponentsHandler                  *handlers.OpponentsHandler
+		notesHandler                      *handlers.NotesHandler
+		cardsHandler                      *handlers.CardsHandler
+		decksHandler                      *handlers.DecksHandler
+		draftsHandler                     *handlers.DraftsHandler
+		mlHandler                         *handlers.MLHandler
+		settingsHandler                   *handlers.SettingsHandler
+		waitlistHandler                   *handlers.WaitlistHandler
 	)
 
 	// projCtx is cancelled on SIGTERM so the projection worker exits cleanly.
@@ -392,6 +393,11 @@ func main() {
 		// token from SSM /vaultmtg/app/production/bff-admin-token).
 		adminFleetHealthHandler = handlers.NewAdminFleetHealthHandler(daemonAPIKeyRepo)
 
+		// #239 projection-errors count admin endpoint — total DLQ row count
+		// for operational visibility. Protected by AdminTokenAuth.
+		projectionErrorsRepo := repository.NewProjectionErrorsRepository(sqlDB)
+		adminProjectionErrorsCountHandler = handlers.NewAdminProjectionErrorsCountHandler(projectionErrorsRepo)
+
 		// StatsHandler provides deck performance, win-rate trend, and format
 		// distribution analytics endpoints (issue #1513).
 		statsRepo := repository.NewStatsRepository(sqlDB)
@@ -474,42 +480,43 @@ func main() {
 	}
 
 	r := BuildRouter(cfg, RouterDeps{
-		Broker:                  broker,
-		IngestHandler:           ingestHandler,
-		APIKeysHandler:          apiKeysHandler,
-		DraftRatingsHandler:     draftRatingsHandler,
-		HistoryHandler:          historyHandler,
-		ListV2Handler:           listV2Handler,
-		StatsHandler:            statsHandler,
-		DaemonHealthHandler:     daemonHealthHandler,
-		DaemonRegisterHandler:   daemonRegisterHandler,
-		DaemonsListHandler:      daemonsListHandler,
-		DaemonsRevokeHandler:    daemonsRevokeHandler,
-		AdminFleetHealthHandler: adminFleetHealthHandler,
-		MatchesHandler:          matchesHandler,
-		CollectionHandler:       collectionHandler,
-		QuestsHandler:           questsHandler,
-		StandardHandler:         standardHandler,
-		GamePlaysHandler:        gamePlaysHandler,
-		MetaHandler:             metaHandler,
-		OpponentsHandler:        opponentsHandler,
-		NotesHandler:            notesHandler,
-		CardsHandler:            cardsHandler,
-		DecksHandler:            decksHandler,
-		DraftsHandler:           draftsHandler,
-		MLHandler:               mlHandler,
-		SettingsHandler:         settingsHandler,
-		WaitlistHandler:         waitlistHandler,
-		HealthzHandler:          healthzHandler,
-		ClerkAuthMiddl:          clerkAuthMiddl,
-		ClerkAuthSSEMiddl:       clerkAuthSSEMiddl,
-		ClerkOAuthMiddl:         clerkOAuthMiddl,
-		ClerkUserResolver:       clerkUserResolver,
-		APIKeyAuthMiddl:         apiKeyAuthMiddl,
-		DaemonAPIKeyAuthMiddl:   daemonAPIKeyAuthMiddl,
-		AdminTokenMiddl:         bffmiddleware.AdminTokenAuth(cfg.BFFAdminToken),
-		SentryMiddl:             bffmiddleware.NewSentryMiddleware(),
-		E2EUnguardedSSE:         e2eUnguardedSSE,
+		Broker:                            broker,
+		IngestHandler:                     ingestHandler,
+		APIKeysHandler:                    apiKeysHandler,
+		DraftRatingsHandler:               draftRatingsHandler,
+		HistoryHandler:                    historyHandler,
+		ListV2Handler:                     listV2Handler,
+		StatsHandler:                      statsHandler,
+		DaemonHealthHandler:               daemonHealthHandler,
+		DaemonRegisterHandler:             daemonRegisterHandler,
+		DaemonsListHandler:                daemonsListHandler,
+		DaemonsRevokeHandler:              daemonsRevokeHandler,
+		AdminFleetHealthHandler:           adminFleetHealthHandler,
+		AdminProjectionErrorsCountHandler: adminProjectionErrorsCountHandler,
+		MatchesHandler:                    matchesHandler,
+		CollectionHandler:                 collectionHandler,
+		QuestsHandler:                     questsHandler,
+		StandardHandler:                   standardHandler,
+		GamePlaysHandler:                  gamePlaysHandler,
+		MetaHandler:                       metaHandler,
+		OpponentsHandler:                  opponentsHandler,
+		NotesHandler:                      notesHandler,
+		CardsHandler:                      cardsHandler,
+		DecksHandler:                      decksHandler,
+		DraftsHandler:                     draftsHandler,
+		MLHandler:                         mlHandler,
+		SettingsHandler:                   settingsHandler,
+		WaitlistHandler:                   waitlistHandler,
+		HealthzHandler:                    healthzHandler,
+		ClerkAuthMiddl:                    clerkAuthMiddl,
+		ClerkAuthSSEMiddl:                 clerkAuthSSEMiddl,
+		ClerkOAuthMiddl:                   clerkOAuthMiddl,
+		ClerkUserResolver:                 clerkUserResolver,
+		APIKeyAuthMiddl:                   apiKeyAuthMiddl,
+		DaemonAPIKeyAuthMiddl:             daemonAPIKeyAuthMiddl,
+		AdminTokenMiddl:                   bffmiddleware.AdminTokenAuth(cfg.BFFAdminToken),
+		SentryMiddl:                       bffmiddleware.NewSentryMiddleware(),
+		E2EUnguardedSSE:                   e2eUnguardedSSE,
 	})
 
 	srv := &http.Server{
@@ -574,6 +581,10 @@ type RouterDeps struct {
 	// Protected by AdminTokenMiddl (static Bearer token from SSM).
 	// Requires a non-nil DB (daemon_api_keys table).
 	AdminFleetHealthHandler *handlers.AdminFleetHealthHandler
+	// AdminProjectionErrorsCountHandler serves
+	// GET /api/v1/admin/projection-errors/count — total DLQ row count.
+	// Protected by AdminTokenMiddl. Requires a non-nil DB.
+	AdminProjectionErrorsCountHandler *handlers.AdminProjectionErrorsCountHandler
 	// MatchesHandler serves the Phase 2 /api/v1/matches/* surface that the
 	// SPA's daemonClient previously hit. Protected by DaemonAPIKeyAuth.
 	MatchesHandler *handlers.MatchesHandler
@@ -783,17 +794,24 @@ func BuildRouter(cfg *config.Config, deps RouterDeps) http.Handler {
 	// AdminTokenMiddl is always non-nil (constructed in main with cfg.BFFAdminToken
 	// which may be empty); when the token is not configured the middleware rejects
 	// all requests — the endpoint is mounted but fail-closed.
-	if deps.AdminFleetHealthHandler != nil {
-		adminMiddl := deps.AdminTokenMiddl
-		if adminMiddl == nil {
-			// Safety net: if AdminTokenMiddl was not wired, reject everything.
-			adminMiddl = func(http.Handler) http.Handler {
-				return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-					http.Error(w, "admin token not configured", http.StatusUnauthorized)
-				})
-			}
+	adminMiddl := deps.AdminTokenMiddl
+	if adminMiddl == nil {
+		// Safety net: if AdminTokenMiddl was not wired, reject everything.
+		adminMiddl = func(http.Handler) http.Handler {
+			return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				http.Error(w, "admin token not configured", http.StatusUnauthorized)
+			})
 		}
+	}
+
+	if deps.AdminFleetHealthHandler != nil {
 		r.With(adminMiddl).Get("/api/v1/admin/daemons/fleet-health", deps.AdminFleetHealthHandler.ServeHTTP)
+	}
+
+	// GET /api/v1/admin/projection-errors/count — total DLQ row count (#239).
+	// Protected by the same static Bearer token middleware as fleet-health.
+	if deps.AdminProjectionErrorsCountHandler != nil {
+		r.With(adminMiddl).Get("/api/v1/admin/projection-errors/count", deps.AdminProjectionErrorsCountHandler.ServeHTTP)
 	}
 
 	// ── Phase 2 — /api/v1/matches/* (camelCase API, full filter support) ─────
