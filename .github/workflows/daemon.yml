@@ -83,6 +83,20 @@ jobs:
           flags: daemon
           fail_ci_if_error: false
 
+      # ADR-042 Layer 2: contract/serialisation gate.
+      # Runs the TestContractEmit_* suite which round-trips every event class
+      # through the real parsers + dispatch.BuildEvent and validates payload
+      # shapes against the committed corpus fixtures.
+      # continue-on-error: true per RULE-INFRA-01 (soft-fail until two green
+      # main runs). Flipped to hard-fail by vault-mtg-tickets#249.
+      - name: Contract/serialisation gate (ADR-042 Layer 2)
+        working-directory: services/daemon
+        env:
+          GONOSUMDB: github.com/RdHamilton/vault-mtg
+          GOPRIVATE: github.com/RdHamilton/vault-mtg
+        continue-on-error: true
+        run: go test -v -run TestContractEmit ./internal/logreader/...
+
       # Run services/contract tests — the contract package has no dependencies on the daemon
       # module, so it is tested independently to catch marshal/unmarshal regressions (#2089).
       - name: Run contract tests
