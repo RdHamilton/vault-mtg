@@ -9,6 +9,12 @@
 #   goreleaser   — runs on ubuntu-latest; tests, cross-compiles Windows targets,
 #                  builds NSIS installer (via makensis), creates GitHub Release.
 #                  darwin is NOT built here — see build-macos below.
+#   sign-windows — runs on windows-latest; downloads the Windows .exe from the
+#                  GitHub Release created by goreleaser, signs it via Azure
+#                  Trusted Signing, asserts Authenticode validity, re-uploads the
+#                  signed .exe to the release. Tag-guarded to avoid burning Azure
+#                  signing quota. Separate from goreleaser because
+#                  azure/trusted-signing-action requires a Windows runner.
 #   build-macos  — runs on macos-latest; builds darwin/arm64 and darwin/amd64
 #                  natively with CGO_ENABLED=1 (required for systray/Cocoa tray
 #                  icon), runs lipo to produce a universal binary, then uploads
@@ -187,53 +193,6 @@ jobs:
           # Sentry disabled at runtime per sentryhook.Init contract. #1832.
           DEFAULT_SENTRY_DSN: ${{ steps.sentry_dsn.outputs.dsn }}
 
-      - name: Sign Windows binary (Azure Trusted Signing)
-        # What this catches: shipping an unsigned Windows .exe. Azure Trusted
-        # Signing is the credential-based signing provider (ADR-011, ticket #1649).
-        # Guard: tag-only - never burn Azure signing quota on snapshot/dispatch runs.
-        # See ADR-041 G1/P0-3.
-        # Action: azure/trusted-signing-action (canonical GitHub name:
-        # Azure/artifact-signing-action). Pinned to a full commit SHA per
-        # supply-chain policy (March 2026 Trivy tag-hijack precedent). SHA
-        # verified against the v2.0.0 annotated tag in the Azure repo on 2026-05-29.
-        if: startsWith(github.ref, 'refs/tags/daemon/v')
-        uses: azure/trusted-signing-action@c7ab2a863ab5f9a846ddb8265964877ef296ee82 # v2.0.0
-        with:
-          azure-tenant-id: ${{ secrets.AZURE_TENANT_ID }}
-          azure-client-id: ${{ secrets.AZURE_CLIENT_ID }}
-          azure-client-secret: ${{ secrets.AZURE_CLIENT_SECRET }}
-          endpoint: https://eus.codesigning.azure.net/
-          trusted-signing-account-name: ${{ secrets.AZURE_TRUSTED_SIGNING_ACCOUNT }}
-          certificate-profile-name: ${{ secrets.AZURE_CERTIFICATE_PROFILE }}
-          files-folder: dist/
-          files-folder-filter: exe
-          file-digest: SHA256
-          timestamp-rfc3161: http://timestamp.acs.microsoft.com
-          timestamp-digest: SHA256
-
-      - name: Assert Authenticode signature on Windows .exe
-        # What this catches: .exe not validly signed after the Azure Trusted
-        # Signing step - e.g. missing credentials, Azure quota exhausted, or
-        # signing action silently exiting zero on failure. Hard-fail if
-        # Get-AuthenticodeSignature returns any status other than "Valid".
-        # Guard: tag-only (same condition as the signing step above).
-        # See ADR-041 G1/P0-3.
-        if: startsWith(github.ref, 'refs/tags/daemon/v')
-        shell: pwsh
-        run: |
-          $exe = Get-ChildItem -Path dist/ -Filter "*.exe" -Recurse | Select-Object -First 1
-          if (-not $exe) {
-            Write-Error "ERROR: No .exe found under dist/ to verify Authenticode signature"
-            exit 1
-          }
-          Write-Host "Checking signature on: $($exe.FullName)"
-          $sig = Get-AuthenticodeSignature $exe.FullName
-          if ($sig.Status -ne "Valid") {
-            Write-Error "ERROR: Authenticode signature status: $($sig.Status) on $($exe.FullName)"
-            exit 1
-          }
-          Write-Host "PASS: Authenticode signature Valid on $($exe.FullName)"
-
       - name: Rename GitHub Release to daemon/v* tag (ADR-023)
         # GoReleaser publishes the release at the bare semver tag (e.g.
         # `v0.3.2-rc1`) because `ctx.Git.CurrentTag` is what drives both the
@@ -274,6 +233,92 @@ jobs:
           gh api --method DELETE "repos/${{ github.repository }}/git/refs/tags/${SEMVER}" || true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+
+  sign-windows:
+    name: Sign Windows .exe (Azure Trusted Signing)
+    runs-on: windows-latest
+    needs: [goreleaser]
+    # Guard: tag-only — never burn Azure signing quota on snapshot/dispatch runs.
+    # azure/trusted-signing-action requires a Windows runner; this job is separate
+    # from goreleaser (ubuntu-latest) for exactly that reason. ADR-041 G1/P0-3.
+    if: startsWith(github.ref, 'refs/tags/daemon/v')
+
+    env:
+      EXE_NAME: vaultmtg-daemon-windows-amd64.exe
+
+    steps:
+      - name: Resolve semver tag (strip daemon/ prefix)
+        id: semver
+        shell: bash
+        run: |
+          RAW="${{ github.ref_name }}"
+          SEMVER="${RAW#daemon/}"
+          echo "tag=${SEMVER}" >> "$GITHUB_OUTPUT"
+
+      - name: Download Windows .exe from GitHub Release
+        # GoReleaser published the release at the bare semver tag. The Rename step
+        # in the goreleaser job has already moved it to daemon/v* at this point
+        # (goreleaser job completed successfully before this job started).
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        shell: bash
+        run: |
+          mkdir -p signed
+          gh release download "${{ github.ref_name }}" \
+            --pattern "${{ env.EXE_NAME }}" \
+            --dir signed \
+            --repo "${{ github.repository }}"
+          ls -lh signed/
+
+      - name: Sign Windows binary (Azure Trusted Signing)
+        # azure/trusted-signing-action requires a Windows runner — this is why
+        # signing is in its own job rather than in the goreleaser (ubuntu) job.
+        # Pinned to full commit SHA per supply-chain policy (March 2026 Trivy
+        # tag-hijack precedent). SHA verified against v2.0.0 annotated tag in
+        # the Azure repo on 2026-05-29. ADR-011, ticket #1649.
+        uses: azure/trusted-signing-action@c7ab2a863ab5f9a846ddb8265964877ef296ee82 # v2.0.0
+        with:
+          azure-tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          azure-client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          azure-client-secret: ${{ secrets.AZURE_CLIENT_SECRET }}
+          endpoint: https://eus.codesigning.azure.net/
+          trusted-signing-account-name: ${{ secrets.AZURE_TRUSTED_SIGNING_ACCOUNT }}
+          certificate-profile-name: ${{ secrets.AZURE_CERTIFICATE_PROFILE }}
+          files-folder: signed/
+          files-folder-filter: exe
+          file-digest: SHA256
+          timestamp-rfc3161: http://timestamp.acs.microsoft.com
+          timestamp-digest: SHA256
+
+      - name: Assert Authenticode signature on signed .exe
+        # Hard-fail if Get-AuthenticodeSignature returns any status other than
+        # "Valid". Guards against the signing action silently exiting zero on
+        # failure (e.g. missing credentials, Azure quota exhausted). ADR-041 G1/P0-3.
+        shell: pwsh
+        run: |
+          $exe = Get-Item "signed\${{ env.EXE_NAME }}"
+          Write-Host "Checking signature on: $($exe.FullName)"
+          $sig = Get-AuthenticodeSignature $exe.FullName
+          if ($sig.Status -ne "Valid") {
+            Write-Error "ERROR: Authenticode signature status: $($sig.Status) on $($exe.FullName)"
+            exit 1
+          }
+          Write-Host "PASS: Authenticode signature Valid on $($exe.FullName)"
+
+      - name: Re-upload signed .exe to GitHub Release
+        # Overwrites the unsigned .exe GoReleaser originally uploaded with the
+        # signed version. --clobber replaces the existing asset in-place so the
+        # release asset URL is unchanged and the sha256sums.txt entry remains valid
+        # (the signing process does not change the file name, only the binary content).
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        shell: bash
+        run: |
+          gh release upload "${{ github.ref_name }}" \
+            "signed/${{ env.EXE_NAME }}" \
+            --repo "${{ github.repository }}" \
+            --clobber
 
 
   build-macos:

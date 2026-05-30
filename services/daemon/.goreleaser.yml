@@ -62,10 +62,14 @@
 #
 # How it works:
 #   1. build    -- GoReleaser produces vaultmtg-daemon-windows-amd64.exe
-#   2. sign     -- Azure Trusted Signing via microsoft/trusted-signing-action@v0
-#                  Signs the .exe using Azure account credentials
-#   3. installer -- NSIS wraps the signed .exe into a per-user installer
-#   4. publish  -- GitHub Release via goreleaser-action
+#   2. publish  -- GitHub Release via goreleaser-action (unsigned .exe uploaded)
+#   3. sign     -- daemon-release.yml sign-windows job (windows-latest runner)
+#                  downloads the .exe, signs via azure/trusted-signing-action,
+#                  asserts Get-AuthenticodeSignature Valid, re-uploads signed .exe
+#
+# Note: signing runs in a separate sign-windows job on windows-latest because
+# azure/trusted-signing-action only supports Windows runners. It cannot run in
+# the goreleaser job (ubuntu-latest).
 #
 # GitHub Actions secrets (active):
 #   AZURE_TENANT_ID               -- Azure AD tenant ID
@@ -80,24 +84,6 @@
 #   /vaultmtg/prod/azure-client-secret            (SecureString)
 #   /vaultmtg/prod/azure-trusted-signing-account
 #   /vaultmtg/prod/azure-certificate-profile
-#
-# Active step in daemon-release.yml (goreleaser job, after GoReleaser):
-#
-#   - name: Sign Windows binary (Azure Trusted Signing)
-#     if: startsWith(github.ref, 'refs/tags/daemon/v')
-#     uses: microsoft/trusted-signing-action@v0
-#     with:
-#       azure-tenant-id: ${{ secrets.AZURE_TENANT_ID }}
-#       azure-client-id: ${{ secrets.AZURE_CLIENT_ID }}
-#       azure-client-secret: ${{ secrets.AZURE_CLIENT_SECRET }}
-#       endpoint: https://eus.codesigning.azure.net/
-#       trusted-signing-account-name: ${{ secrets.AZURE_TRUSTED_SIGNING_ACCOUNT }}
-#       certificate-profile-name: ${{ secrets.AZURE_CERTIFICATE_PROFILE }}
-#       files-folder: dist/
-#       files-folder-filter: exe
-#       file-digest: SHA256
-#       timestamp-rfc3161: http://timestamp.acs.microsoft.com
-#       timestamp-digest: SHA256
 #
 # Budget summary (ADR-011, budget approved 2026-05-10):
 #   Apple Developer Program: $99/yr
