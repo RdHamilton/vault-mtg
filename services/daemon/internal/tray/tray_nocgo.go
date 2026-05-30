@@ -94,3 +94,4 @@ func (a *App) SetLastSync(t time.Time)   { a.lastSync = t }
 func (a *App) SetKeychainError(_ bool)   {}
 func (a *App) SetSetupRequired(_ bool)   {}
 func (a *App) SetWaitingForArena(_ bool) {}
+func (a *App) NotifySyncResult(_ error)  {} // headless stub — no tray label to update

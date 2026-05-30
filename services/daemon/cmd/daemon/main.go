@@ -270,6 +270,7 @@ func main() {
 		SetKeychainError:   app.SetKeychainError,
 		SetSetupRequired:   app.SetSetupRequired,
 		SetWaitingForArena: app.SetWaitingForArena,
+		NotifySyncResult:   app.NotifySyncResult,
 	})
 
 	// Handle OS signals: forward SIGTERM/SIGINT to systray so onQuit fires cleanly.

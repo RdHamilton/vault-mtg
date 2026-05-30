@@ -49,6 +49,11 @@ type TrayHooks struct {
 	// StatusConnected (false). Called by idleUntilMTGADetected when MTGA is not
 	// installed and the daemon is polling for Player.log.
 	SetWaitingForArena func(bool)
+	// NotifySyncResult is called after a Sync Now operation completes. A nil
+	// error indicates success; a non-nil error indicates failure. The tray
+	// updates the "Sync Now" label briefly (AC2 / AC3) then resets to "Sync Now"
+	// and clears the in-flight flag so subsequent clicks are accepted (AC4).
+	NotifySyncResult func(error)
 }
 
 // WithTray attaches tray integration to the service.
@@ -77,15 +82,25 @@ func (s *Service) checkHelperOnStartup(ctx context.Context) {
 
 // performCollectionSync finds the MTGA process, scans its memory via the
 // privileged helper, and dispatches a collection.updated event to the BFF.
+// On completion (success or error) it calls trayHooks.NotifySyncResult so the
+// tray label updates and the in-flight debounce flag is cleared (AC2/AC3/AC4).
 func (s *Service) performCollectionSync(ctx context.Context) {
 	if s.cfg.AccountID == "" {
 		log.Printf("[daemon] collection sync skipped: not authenticated")
+		// Not authenticated is not a user-visible sync failure; clear the
+		// in-flight flag without a feedback label.
+		if s.trayHooks.NotifySyncResult != nil {
+			s.trayHooks.NotifySyncResult(nil)
+		}
 		return
 	}
 
 	pid, err := findMTGAPID()
 	if err != nil {
 		log.Printf("[daemon] collection sync: %v", err)
+		if s.trayHooks.NotifySyncResult != nil {
+			s.trayHooks.NotifySyncResult(err)
+		}
 		return
 	}
 
@@ -94,7 +109,10 @@ func (s *Service) performCollectionSync(ctx context.Context) {
 	c := collectionclient.New()
 	resp, err := c.Scan(pid)
 	if err != nil {
-		log.Printf("[daemon] collection sync error: %v", err)
+		log.Printf("[daemon] collection sync error: %v", err) // AC5: existing log line preserved
+		if s.trayHooks.NotifySyncResult != nil {
+			s.trayHooks.NotifySyncResult(err)
+		}
 		return
 	}
 
@@ -116,6 +134,9 @@ func (s *Service) performCollectionSync(ctx context.Context) {
 	evt, err := dispatch.BuildEvent("collection.updated", s.cfg.AccountID, s.sessionID, payload)
 	if err != nil {
 		log.Printf("[daemon] collection sync: build event: %v", err)
+		if s.trayHooks.NotifySyncResult != nil {
+			s.trayHooks.NotifySyncResult(err)
+		}
 		return
 	}
 
@@ -124,6 +145,9 @@ func (s *Service) performCollectionSync(ctx context.Context) {
 
 	if err := s.dispatcher.Send(dispatchCtx, evt); err != nil {
 		log.Printf("[daemon] collection sync: dispatch: %v", err)
+		if s.trayHooks.NotifySyncResult != nil {
+			s.trayHooks.NotifySyncResult(err)
+		}
 		return
 	}
 
@@ -132,6 +156,9 @@ func (s *Service) performCollectionSync(ctx context.Context) {
 
 	if s.trayHooks.SetLastSync != nil {
 		s.trayHooks.SetLastSync(resp.CapturedAt)
+	}
+	if s.trayHooks.NotifySyncResult != nil {
+		s.trayHooks.NotifySyncResult(nil)
 	}
 }
 

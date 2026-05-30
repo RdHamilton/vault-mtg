@@ -10,6 +10,7 @@ import (
 	_ "embed"
 	"fmt"
 	"runtime"
+	"sync"
 	"time"
 
 	"github.com/getlantern/systray"
@@ -69,6 +70,12 @@ type App struct {
 	miRetrySetup      *systray.MenuItem
 	miOpenApp         *systray.MenuItem
 	miQuit            *systray.MenuItem
+
+	// syncMu guards syncInFlight.
+	syncMu sync.Mutex
+	// syncInFlight is true while a Sync Now operation is in progress.
+	// Concurrent clicks are dropped until the current sync completes (AC4).
+	syncInFlight bool
 
 	// SyncNow is signalled when the user clicks "Sync Now".
 	SyncNow chan struct{}
@@ -256,15 +263,61 @@ func (a *App) openCheckForUpdates() {
 	}
 }
 
+// tryStartSync attempts to claim the sync lock. Returns true if the sync may
+// proceed (syncInFlight was false and is now set to true), false if a sync is
+// already in flight (debounce — AC4). Extracted for testability.
+func (a *App) tryStartSync() bool {
+	a.syncMu.Lock()
+	defer a.syncMu.Unlock()
+	if a.syncInFlight {
+		return false
+	}
+	a.syncInFlight = true
+	return true
+}
+
+// NotifySyncResult is called by the daemon after a Sync Now operation completes.
+// It updates the tray item label to show success ("Synced") or failure
+// ("Sync failed"), holds it briefly, then resets to "Sync Now" and clears the
+// in-flight flag so subsequent clicks are accepted again.
+//
+// When miSyncNow is nil (headless / pre-setup), the label steps are skipped but
+// the in-flight flag is still cleared — matching the nil-guard pattern used by
+// SetKeychainError and SetSetupRequired.
+//
+// Safe to call from any goroutine.
+func (a *App) NotifySyncResult(err error) {
+	if a.miSyncNow != nil {
+		if err != nil {
+			a.miSyncNow.SetTitle("Sync failed")
+			time.Sleep(3 * time.Second)
+		} else {
+			a.miSyncNow.SetTitle("Synced")
+			time.Sleep(2 * time.Second)
+		}
+		a.miSyncNow.SetTitle("Sync Now")
+	}
+	a.syncMu.Lock()
+	a.syncInFlight = false
+	a.syncMu.Unlock()
+}
+
 func (a *App) loop() {
 	for {
 		select {
 		case <-a.miCheckForUpdates.ClickedCh:
 			a.openCheckForUpdates()
 		case <-a.miSyncNow.ClickedCh:
-			select {
-			case a.SyncNow <- struct{}{}:
-			default: // already queued
+			if a.tryStartSync() {
+				a.miSyncNow.SetTitle("Syncing...")
+				select {
+				case a.SyncNow <- struct{}{}:
+				default: // channel full — daemon is busy; clear in-flight so the next click works
+					a.syncMu.Lock()
+					a.syncInFlight = false
+					a.syncMu.Unlock()
+					a.miSyncNow.SetTitle("Sync Now")
+				}
 			}
 		case <-a.miGrantAccess.ClickedCh:
 			select {

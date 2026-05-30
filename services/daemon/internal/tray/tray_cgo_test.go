@@ -17,6 +17,7 @@ package tray
 // needed to extend it.
 
 import (
+	"fmt"
 	"testing"
 	"time"
 
@@ -205,4 +206,105 @@ func TestTrayCGO_CheckForUpdates_URLIsVaultMTGRepo(t *testing.T) {
 
 	assert.Contains(t, gotURL, "RdHamilton/vault-mtg", "URL must reference the vault-mtg repo")
 	assert.NotContains(t, gotURL, "mtga-companion", "legacy repo slug must not appear in Check for Updates URL")
+}
+
+// ---------------------------------------------------------------------------
+// Sync Now debounce + feedback (ticket #203)
+// ---------------------------------------------------------------------------
+
+// TestTrayCGO_SyncNow_InitialState verifies that a newly constructed App starts
+// with syncInFlight == false (no sync in progress at creation).
+func TestTrayCGO_SyncNow_InitialState(t *testing.T) {
+	app := newCGOTestApp()
+	app.syncMu.Lock()
+	inFlight := app.syncInFlight
+	app.syncMu.Unlock()
+	assert.False(t, inFlight, "syncInFlight must be false after New()")
+}
+
+// TestTrayCGO_NotifySyncResult_NoopWithoutMenu verifies that NotifySyncResult
+// does not panic when miSyncNow is nil (menu not initialised in headless tests).
+// The nil-guard is the same pattern used by SetKeychainError / SetSetupRequired.
+func TestTrayCGO_NotifySyncResult_NoopWithoutMenu(t *testing.T) {
+	app := newCGOTestApp()
+	assert.Nil(t, app.miSyncNow, "miSyncNow must be nil before setup()")
+	// Both nil-success and nil-error paths must not panic.
+	assert.NotPanics(t, func() { app.NotifySyncResult(nil) })
+	assert.NotPanics(t, func() { app.NotifySyncResult(fmt.Errorf("helper error")) })
+}
+
+// TestTrayCGO_Debounce_SecondClickDropped verifies AC4: while syncInFlight is
+// true, a call to onSyncNowClick (the extracted click handler) is a no-op and
+// does NOT send to the SyncNow channel.
+//
+// We test via the exported tryStartSync helper method rather than through the
+// systray select loop (which would require systray.Run).
+func TestTrayCGO_Debounce_SecondClickDropped(t *testing.T) {
+	app := newCGOTestApp()
+
+	// Artificially set syncInFlight = true to simulate a sync already running.
+	app.syncMu.Lock()
+	app.syncInFlight = true
+	app.syncMu.Unlock()
+
+	// Attempt to start a sync while one is in flight — must return false (debounced).
+	started := app.tryStartSync()
+	assert.False(t, started, "tryStartSync must return false while syncInFlight is true")
+
+	// SyncNow channel must be empty — no signal was enqueued.
+	assert.Equal(t, 0, len(app.SyncNow), "SyncNow channel must be empty after debounced click")
+}
+
+// TestTrayCGO_Debounce_FirstClickAllowed verifies AC1: when no sync is in
+// flight, tryStartSync sets syncInFlight=true and returns true.
+func TestTrayCGO_Debounce_FirstClickAllowed(t *testing.T) {
+	app := newCGOTestApp()
+
+	started := app.tryStartSync()
+	assert.True(t, started, "tryStartSync must return true when no sync is in flight")
+
+	app.syncMu.Lock()
+	inFlight := app.syncInFlight
+	app.syncMu.Unlock()
+	assert.True(t, inFlight, "syncInFlight must be true after tryStartSync returns true")
+}
+
+// TestTrayCGO_NotifySyncResult_ClearsInFlight verifies that NotifySyncResult
+// clears syncInFlight so a subsequent sync can start (AC1 / AC4 reset path).
+// We skip the label-transition sleep assertions here (they require real systray
+// menu items) and focus on the state machine.
+func TestTrayCGO_NotifySyncResult_ClearsInFlight(t *testing.T) {
+	app := newCGOTestApp()
+
+	// Set in-flight state directly (simulating a sync having started).
+	app.syncMu.Lock()
+	app.syncInFlight = true
+	app.syncMu.Unlock()
+
+	// NotifySyncResult must clear syncInFlight (after its internal sleep).
+	// We call it synchronously here; the real loop calls it in a goroutine.
+	// The internal sleep is skipped when miSyncNow is nil (no real menu).
+	app.NotifySyncResult(nil)
+
+	app.syncMu.Lock()
+	inFlight := app.syncInFlight
+	app.syncMu.Unlock()
+	assert.False(t, inFlight, "syncInFlight must be false after NotifySyncResult")
+}
+
+// TestTrayCGO_NotifySyncResult_ErrorClearsInFlight verifies the error path
+// also clears syncInFlight (AC3 reset path).
+func TestTrayCGO_NotifySyncResult_ErrorClearsInFlight(t *testing.T) {
+	app := newCGOTestApp()
+
+	app.syncMu.Lock()
+	app.syncInFlight = true
+	app.syncMu.Unlock()
+
+	app.NotifySyncResult(fmt.Errorf("collection sync error: helper error"))
+
+	app.syncMu.Lock()
+	inFlight := app.syncInFlight
+	app.syncMu.Unlock()
+	assert.False(t, inFlight, "syncInFlight must be false after NotifySyncResult(err)")
 }
