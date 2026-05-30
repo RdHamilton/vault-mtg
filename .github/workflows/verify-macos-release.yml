@@ -1,0 +1,124 @@
+# verify-macos-release.yml — Post-release macOS Gatekeeper smoke
+#
+# Triggers after every daemon/v* Release is published. Downloads the
+# canonical macOS .pkg from the GitHub Release and asserts all four
+# Gatekeeper requirements before the release is considered valid.
+#
+# This workflow was added to automate the notarization verification that
+# was previously manual (vault-mtg-tickets#197). It runs on macos-latest
+# because spctl, xcrun stapler, and codesign are macOS-only tools.
+#
+# Reference: ADR-041 G1/P0-3 (Gatekeeper acceptance requirement),
+#            daemon-release.yml sign-macos job (signing + stapling source).
+#
+# Checks performed (must all pass or the workflow fails):
+#   1. spctl -a -vvv -t install <pkg>           — Gatekeeper accepts the package
+#   2. xcrun stapler validate <pkg>              — notarization ticket is stapled
+#   3. codesign --verify --deep <inner-binary>   — inner binary signature is valid
+
+name: Verify macOS Release Notarization
+
+on:
+  release:
+    types: [published]
+
+permissions:
+  contents: read
+
+jobs:
+  verify-macos-notarization:
+    name: macOS Gatekeeper + Notarization Smoke
+    # Only run for daemon release tags. Other release events (e.g. app/v*) do
+    # not ship a macOS .pkg and should not trigger this job.
+    if: startsWith(github.ref, 'refs/tags/daemon/v')
+    runs-on: macos-latest
+    timeout-minutes: 15
+
+    env:
+      # Canonical macOS release artifact name — must match daemon-release.yml sign-macos env.PKG.
+      PKG: vaultmtg-daemon-darwin-universal.pkg
+      # Inner binary name inside the .pkg payload.
+      BINARY: vaultmtg-daemon
+
+    steps:
+      - name: Download macOS .pkg from GitHub Release
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release download "${{ github.ref_name }}" \
+            --pattern "${{ env.PKG }}" \
+            --repo "${{ github.repository }}"
+          if [ ! -f "${{ env.PKG }}" ]; then
+            echo "ERROR: ${{ env.PKG }} not found in release ${{ github.ref_name }}" >&2
+            exit 1
+          fi
+          echo "PASS: ${{ env.PKG }} downloaded ($(du -sh ${{ env.PKG }} | cut -f1))"
+
+      - name: Assert Gatekeeper accepts the .pkg
+        # spctl -a verifies that Gatekeeper would allow the package to install.
+        # The tee preserves the output for inspection while still capturing exit code
+        # via PIPESTATUS before the pipe masks it.
+        run: |
+          spctl -a -vvv -t install "${{ env.PKG }}" 2>&1 | tee /tmp/spctl-output.txt
+          spctl_exit=${PIPESTATUS[0]}
+          if [ "$spctl_exit" -ne 0 ]; then
+            echo "ERROR: Gatekeeper rejected ${{ env.PKG }} (spctl exit $spctl_exit)" >&2
+            cat /tmp/spctl-output.txt >&2
+            exit 1
+          fi
+          if ! grep -q "accepted" /tmp/spctl-output.txt; then
+            echo "ERROR: spctl did not report 'accepted' for ${{ env.PKG }}" >&2
+            cat /tmp/spctl-output.txt >&2
+            exit 1
+          fi
+          echo "PASS: Gatekeeper accepted ${{ env.PKG }}"
+
+      - name: Assert notarization ticket is stapled to the .pkg
+        # xcrun stapler validate confirms the offline notarization ticket is
+        # embedded in the .pkg, so it passes Gatekeeper without a network call.
+        run: |
+          xcrun stapler validate "${{ env.PKG }}" 2>&1 | tee /tmp/stapler-output.txt
+          stapler_exit=${PIPESTATUS[0]}
+          if [ "$stapler_exit" -ne 0 ]; then
+            echo "ERROR: stapler validation failed for ${{ env.PKG }} (exit $stapler_exit)" >&2
+            cat /tmp/stapler-output.txt >&2
+            exit 1
+          fi
+          echo "PASS: notarization ticket confirmed stapled on ${{ env.PKG }}"
+
+      - name: Extract inner binary and assert codesign --verify --deep
+        # Expand the .pkg payload, locate the inner binary, and run codesign
+        # --verify --deep to confirm the binary itself is validly signed.
+        run: |
+          mkdir -p /tmp/pkg-payload
+          # pkgutil --expand-full unpacks the .pkg into its component directories.
+          pkgutil --expand-full "${{ env.PKG }}" /tmp/pkg-payload
+          # The installed binary lands at usr/local/bin/ inside the pkg payload.
+          BINARY_PATH=$(find /tmp/pkg-payload -name "${{ env.BINARY }}" -type f | head -1)
+          if [ -z "$BINARY_PATH" ]; then
+            echo "ERROR: inner binary '${{ env.BINARY }}' not found inside ${{ env.PKG }}" >&2
+            find /tmp/pkg-payload -type f | head -20 >&2
+            exit 1
+          fi
+          echo "Found binary at: $BINARY_PATH"
+          codesign --verify --deep --verbose=2 "$BINARY_PATH" 2>&1 | tee /tmp/codesign-output.txt
+          codesign_exit=${PIPESTATUS[0]}
+          if [ "$codesign_exit" -ne 0 ]; then
+            echo "ERROR: codesign --verify --deep failed (exit $codesign_exit)" >&2
+            cat /tmp/codesign-output.txt >&2
+            exit 1
+          fi
+          echo "PASS: codesign --verify --deep succeeded for $BINARY_PATH"
+
+      - name: Summary
+        if: success()
+        run: |
+          echo "========================================"
+          echo "macOS notarization smoke: ALL CHECKS PASS"
+          echo "  Release : ${{ github.ref_name }}"
+          echo "  Artifact: ${{ env.PKG }}"
+          echo "  Checks  :"
+          echo "    [PASS] Gatekeeper spctl accepted"
+          echo "    [PASS] Notarization ticket stapled"
+          echo "    [PASS] codesign --verify --deep OK"
+          echo "========================================"
