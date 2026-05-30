@@ -69,8 +69,10 @@ jobs:
         run: |
           # Verdict posted at T=0; update-branch merge commit lands at T=+1m.
           # The merge commit only touches non-S07 paths (docs, frontend assets).
-          echo "VERDICT_TIMESTAMP=2026-05-29T10:00:00Z"  >> "$GITHUB_ENV"
-          echo "LAST_PUSH_TIMESTAMP=2026-05-29T10:01:00Z" >> "$GITHUB_ENV"
+          {
+            echo "VERDICT_TIMESTAMP=2026-05-29T10:00:00Z"
+            echo "LAST_PUSH_TIMESTAMP=2026-05-29T10:01:00Z"
+          } >> "$GITHUB_ENV"
           # Newline-delimited: one file per "commit" (flat list for the check)
           {
             printf 'COMMIT_FILES<<EOF\n'
@@ -167,8 +169,10 @@ jobs:
       - name: "AC4 setup: verdict before a real 1A-path commit"
         run: |
           # Verdict posted at T=0; engineer pushes a services/bff/cmd/ change at T=+2m.
-          echo "VERDICT_TIMESTAMP=2026-05-29T10:00:00Z"  >> "$GITHUB_ENV"
-          echo "LAST_PUSH_TIMESTAMP=2026-05-29T10:02:00Z" >> "$GITHUB_ENV"
+          {
+            echo "VERDICT_TIMESTAMP=2026-05-29T10:00:00Z"
+            echo "LAST_PUSH_TIMESTAMP=2026-05-29T10:02:00Z"
+          } >> "$GITHUB_ENV"
           {
             printf 'COMMIT_FILES<<EOF\n'
             printf 'services/bff/cmd/main.go\n'
@@ -258,8 +262,10 @@ jobs:
       - name: "AC3b setup: verdict newer than head commit (fast path)"
         run: |
           # Sarah posts verdict at T=+5m, head commit is at T=0.
-          echo "VERDICT_TIMESTAMP=2026-05-29T10:05:00Z"  >> "$GITHUB_ENV"
-          echo "LAST_PUSH_TIMESTAMP=2026-05-29T10:00:00Z" >> "$GITHUB_ENV"
+          {
+            echo "VERDICT_TIMESTAMP=2026-05-29T10:05:00Z"
+            echo "LAST_PUSH_TIMESTAMP=2026-05-29T10:00:00Z"
+          } >> "$GITHUB_ENV"
           {
             printf 'COMMIT_FILES<<EOF\n'
             printf 'services/bff/cmd/main.go\n'
