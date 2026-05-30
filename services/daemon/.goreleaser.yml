@@ -110,10 +110,14 @@ builds:
     main: ./cmd/daemon
     binary: vaultmtg-daemon
     env:
-      # CGO_ENABLED=0 is intentional here: this build only targets Windows.
-      # darwin targets are built natively on macos-latest in the `build-macos`
-      # CI job with CGO_ENABLED=1 so the systray/Cocoa tray icon compiles in.
-      - CGO_ENABLED=0
+      # CGO_ENABLED=1 so the real tray.go (//go:build cgo) compiles in and the
+      # Windows systray icon is present. CGO was previously 0 here (the macOS
+      # tray stub regression introduced in commit 39e53fa7, 2026-05-09). Fixed
+      # by vault-mtg-tickets#199 — mirrors the macOS fix in PR #2745.
+      # CC must point at the mingw-w64 cross-compiler installed in the goreleaser
+      # job's apt-get step (gcc-mingw-w64-x86-64).
+      - CGO_ENABLED=1
+      - CC=x86_64-w64-mingw32-gcc
       - GONOSUMDB=github.com/RdHamilton/vault-mtg
       - GOPRIVATE=github.com/RdHamilton/vault-mtg
     goos:
