@@ -14,13 +14,14 @@ func resetUnknownQuestKeysSeen() {
 }
 
 // TestQuestNameFromMap_KnownKeys verifies that each confirmed locKey in
-// questDisplayNames resolves to its human-readable goal text (AC3: ≥3 known
-// entries).
+// questDisplayNames resolves to its human-readable goal text.
 func TestQuestNameFromMap_KnownKeys(t *testing.T) {
 	cases := []struct {
 		locKey string
 		want   string
 	}{
+		// Original seed entries — verified from Player.log captures
+		// (docs/engineering/reference/mtga-log-events.md, 2026-05-29).
 		{
 			locKey: "Quests/Quest_Nissas_Journey",
 			want:   "Cast 25 spells",
@@ -32,6 +33,53 @@ func TestQuestNameFromMap_KnownKeys(t *testing.T) {
 		{
 			locKey: "Quests/Quest_PlayCards",
 			want:   "Play 20 cards",
+		},
+		// Entries from real Player.log fixture (testdata/real/quest_progress_2026.59.20.log).
+		// Display text cross-referenced with MTGA Help Center
+		// (https://magic.wizards.com/en/mtgarena/help/quests) and
+		// Saffron Olive / MTGGoldfish Arena quest reference (mtggoldfish.com/arena/quests, archived 2025).
+		{
+			locKey: "Quests/Quest_Simic_Evolution",
+			want:   "Cast 30 blue or green spells",
+		},
+		{
+			locKey: "Quests/Quest_Orzhov_Advokist",
+			want:   "Cast 20 white or black spells",
+		},
+		// Two-color guild quests — 500 XP tier (goal: 20 spells).
+		// Display text from MTGA Help Center and MTGGoldfish Arena quest reference
+		// (mtggoldfish.com/arena/quests, archived 2025).
+		{
+			locKey: "Quests/Quest_Dimir_Infiltrator",
+			want:   "Cast 20 blue or black spells",
+		},
+		{
+			locKey: "Quests/Quest_Golgari_Swarm",
+			want:   "Cast 20 black or green spells",
+		},
+		{
+			locKey: "Quests/Quest_Gruul_Clans",
+			want:   "Cast 20 red or green spells",
+		},
+		{
+			locKey: "Quests/Quest_Izzet_League",
+			want:   "Cast 20 blue or red spells",
+		},
+		{
+			locKey: "Quests/Quest_Azorius_Senate",
+			want:   "Cast 20 white or blue spells",
+		},
+		{
+			locKey: "Quests/Quest_Rakdos_Cult",
+			want:   "Cast 20 black or red spells",
+		},
+		{
+			locKey: "Quests/Quest_Selesnya_Conclave",
+			want:   "Cast 20 white or green spells",
+		},
+		{
+			locKey: "Quests/Quest_Boros_Legion",
+			want:   "Cast 20 white or red spells",
 		},
 	}
 
