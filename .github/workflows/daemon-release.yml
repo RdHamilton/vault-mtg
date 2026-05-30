@@ -562,6 +562,30 @@ jobs:
             --repo "${{ github.repository }}" \
             --clobber
 
+      - name: Append .pkg SHA256 checksum to release sha256sums.txt
+        # GoReleaser's checksum job runs on ubuntu-latest and covers only the
+        # artifacts it builds (Windows NSIS .exe). The macOS .pkg is created and
+        # uploaded by sign-macos after GoReleaser runs, so it is never included
+        # in GoReleaser's sha256sums.txt. This step downloads the existing
+        # sha256sums.txt, appends the .pkg hash, and re-uploads the file so
+        # macOS users can verify their download. (ADR-041, ticket #226)
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          TAG="${GITHUB_REF#refs/tags/}"
+          # Download the GoReleaser-generated sha256sums.txt from the release.
+          gh release download "$TAG" \
+            --pattern sha256sums.txt \
+            --repo "${{ github.repository }}"
+          # Append the .pkg line: <hex-hash>  <filename>
+          # Use 'shasum -a 256' (macOS) — 'sha256sum' is not on macOS runners.
+          echo "$(shasum -a 256 "${{ env.PKG }}" | awk '{print $1}')  ${{ env.PKG }}" \
+            >> sha256sums.txt
+          # Re-upload; --clobber replaces the GoReleaser-generated version.
+          gh release upload "$TAG" sha256sums.txt \
+            --repo "${{ github.repository }}" \
+            --clobber
+
       - name: Update staging VITE_DAEMON_VERSION and redeploy
         # Only auto-update staging for pre-release tags (rc, alpha, beta, pre).
         # Stable releases (e.g. daemon/v0.3.1) go through a manual promotion so
