@@ -246,6 +246,61 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
+      - name: Assert no bare v* ref reached remote (ADR-023 contract test)
+        # Post-condition check: after the PATCH rename and the orphan-ref delete
+        # above, no NEW bare v* ref must exist on the remote.  The two ADR-023
+        # frozen legacy tags (v0.1.0, v0.3.0) predate the namespacing scheme and
+        # are excluded from the check.  Any other bare v* ref means the tag-dance
+        # failed — either the delete-orphan step was silently suppressed or
+        # GoReleaser pushed an additional bare tag.  A bare v* ref on origin
+        # triggers deploy-spa.yml (which fires on v*), corrupting the application
+        # release namespace (ADR-023).
+        #
+        # Skipped on workflow_dispatch: no real tag is pushed in dispatch mode,
+        # so there is no orphan ref to check and no risk of a spurious failure.
+        if: startsWith(github.ref, 'refs/tags/daemon/v')
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          # ADR-023 frozen legacy set — these bare tags predate the namespacing
+          # scheme and are intentionally preserved as historical artifacts.
+          # Mirrors the allowlist in tag-namespace-fitness.yml.
+          LEGACY_ALLOWED="v0.1.0 v0.3.0"
+
+          echo "Checking remote for bare v* refs outside the ADR-023 frozen legacy set..."
+          echo "Allowed legacy refs: ${LEGACY_ALLOWED}"
+
+          STRAY_REFS=""
+          while IFS= read -r ref; do
+            [ -z "$ref" ] && continue
+            # Strip refs/tags/ prefix to get the tag name
+            tag="${ref#refs/tags/}"
+            # Check if this tag is in the frozen legacy set
+            found=0
+            for allowed in ${LEGACY_ALLOWED}; do
+              if [ "$tag" = "$allowed" ]; then
+                found=1
+                break
+              fi
+            done
+            if [ "$found" -eq 0 ]; then
+              STRAY_REFS="${STRAY_REFS}  ${ref}"$'\n'
+            fi
+          done < <(git ls-remote origin 'refs/tags/v*' | awk '{print $2}' | grep -v '\^{}' || true)
+
+          if [ -n "${STRAY_REFS}" ]; then
+            echo "ERROR: bare v* ref found on remote — tag-dance failed; see ADR-023 and daemon-release.yml PATCH step." >&2
+            echo "" >&2
+            echo "Stray bare refs found (not in frozen legacy set):" >&2
+            printf '%s' "${STRAY_REFS}" >&2
+            echo "" >&2
+            echo "These refs will trigger deploy-spa.yml and corrupt the application release namespace." >&2
+            echo "Manual remediation: git push origin --delete <bare-tag>" >&2
+            exit 1
+          fi
+          echo "PASS: No stray bare v* refs found on remote. ADR-023 tag-namespace invariant holds."
+
 
   sign-windows:
     name: Sign Windows .exe (Azure Trusted Signing)
