@@ -1,0 +1,133 @@
+# collection-canary.yml — scheduled drift-detection canary (vault-mtg-tickets#210)
+#
+# Purpose: detect MTGA patch-day collection-scan signature drift before users
+# notice "Sync Now → no cards." Runs the collection-agent-helper canary test
+# suite against the committed 8KB memory snapshot fixture. Does NOT require a
+# live MTGA process or a macOS runner — the fixture is the gate.
+#
+# Triggers:
+#   schedule: weekly on Tuesdays 14:00 UTC (MTGA typically patches on Tuesdays)
+#   workflow_dispatch: manual trigger on patch day (pull from the runbook)
+#   push/PR: on changes to the helper or this workflow
+#
+# Failure routing: a failing canary means the snapshot fixture no longer matches
+# the current scanDictEntries heuristic — see the patch-day runbook at
+# vault-mtg-docs/engineering/runbooks/collection-sync-canary.md for the
+# re-derive procedure.
+#
+# AC2 (scheduled/manual trigger), AC3 (failure visibility), AC6 (CI gate)
+
+name: Collection Sync Canary
+
+on:
+  schedule:
+    # 14:00 UTC every Tuesday — MTGA patch window. See runbook for manual trigger.
+    - cron: '0 14 * * 2'
+  workflow_dispatch:
+    inputs:
+      reason:
+        description: 'Reason for manual trigger (e.g. "MTGA patch 2026-06-10")'
+        required: false
+        default: 'manual patch-day verification'
+  push:
+    branches: [main]
+    paths:
+      - 'services/collection-agent-helper/**'
+      - '.github/workflows/collection-canary.yml'
+  pull_request:
+    branches: [main]
+    paths:
+      - 'services/collection-agent-helper/**'
+      - '.github/workflows/collection-canary.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  canary:
+    name: Collection-Scan Drift Canary
+    # ubuntu-latest is sufficient — the canary tests run against the committed
+    # fixture; no CGO or macOS APIs are required. The mem_darwin.go file is
+    # excluded from the build by its //go:build darwin guard.
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: services/collection-agent-helper/go.mod
+          cache-dependency-path: services/collection-agent-helper/go.sum
+
+      - name: Configure private module access
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          git config --global \
+            url."https://${GITHUB_TOKEN}@github.com/".insteadOf \
+            "https://github.com/"
+
+      - name: Download dependencies
+        working-directory: services/collection-agent-helper
+        env:
+          GONOSUMDB: github.com/RdHamilton/vault-mtg
+          GOPRIVATE: github.com/RdHamilton/vault-mtg
+          GOFLAGS: -mod=mod
+        run: go mod download
+
+      - name: Run canary test suite
+        working-directory: services/collection-agent-helper
+        env:
+          GONOSUMDB: github.com/RdHamilton/vault-mtg
+          GOPRIVATE: github.com/RdHamilton/vault-mtg
+        # Run all tests — the drift canary tests (TestCanary* + TestScanDictEntriesDrift*)
+        # produce output containing COLLECTION_SCAN_DRIFT on failure, which
+        # surfaces in the job log for CloudWatch / on-call triage.
+        run: |
+          go test -v -count=1 \
+            -run 'TestScanDictEntriesRealSnapshot|TestScanDictEntriesDriftCanary|TestCanary' \
+            ./... 2>&1 | tee canary-output.txt
+          # Propagate the test exit code (tee swallows it)
+          exit "${PIPESTATUS[0]}"
+
+      - name: Summarise canary result
+        if: always()
+        run: |
+          echo "## Collection Sync Canary" >> "$GITHUB_STEP_SUMMARY"
+          if grep -q "COLLECTION_SCAN_DRIFT" canary-output.txt 2>/dev/null; then
+            echo "**FAIL** — COLLECTION_SCAN_DRIFT detected. See output above." >> "$GITHUB_STEP_SUMMARY"
+            echo "Re-derive signature per [patch-day runbook](../../vault-mtg-docs/engineering/runbooks/collection-sync-canary.md)." >> "$GITHUB_STEP_SUMMARY"
+          elif grep -q "FAIL" canary-output.txt 2>/dev/null; then
+            echo "**FAIL** — canary tests failed (not a drift error). See output above." >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "**PASS** — all canary tests green. Current signature: \`${{ env.COLLECTION_SIGNATURE_VERSION }}\`" >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      - name: Upload canary output on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: canary-output
+          path: services/collection-agent-helper/canary-output.txt
+          retention-days: 14
+
+  # Gate job — required branch-protection status check.
+  # Set "Collection Sync Canary / Gate" as the required check.
+  gate:
+    name: Gate
+    runs-on: ubuntu-latest
+    needs: [canary]
+    if: always()
+    steps:
+      - name: Check canary passed
+        run: |
+          if [[ "${{ needs.canary.result }}" != "success" ]]; then
+            echo "FAIL: collection-scan drift canary did not pass (result: ${{ needs.canary.result }})"
+            echo "If this is a scheduled run: MTGA may have patched and shifted the memory layout."
+            echo "See vault-mtg-docs/engineering/runbooks/collection-sync-canary.md for the re-derive procedure."
+            exit 1
+          fi
+          echo "PASS: collection-scan drift canary green"
