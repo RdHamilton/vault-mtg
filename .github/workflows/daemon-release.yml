@@ -9,12 +9,17 @@
 #   goreleaser   — runs on ubuntu-latest; tests, cross-compiles Windows targets,
 #                  builds NSIS installer (via makensis), creates GitHub Release.
 #                  darwin is NOT built here — see build-macos below.
-#   sign-windows — runs on windows-latest; downloads the Windows .exe from the
-#                  GitHub Release created by goreleaser, signs it via Azure
-#                  Trusted Signing, asserts Authenticode validity, re-uploads the
-#                  signed .exe to the release. Tag-guarded to avoid burning Azure
-#                  signing quota. Separate from goreleaser because
-#                  azure/trusted-signing-action requires a Windows runner.
+#   sign-windows — runs on windows-latest; needs [goreleaser, sign-macos].
+#                  Downloads the Windows .exe from the GitHub Release, signs via
+#                  Azure Trusted Signing, asserts Authenticode validity,
+#                  re-uploads the signed .exe, then downloads sha256sums.txt
+#                  (which already contains the macOS .pkg line written by
+#                  sign-macos), replaces the Windows .exe line with the
+#                  post-signing hash, and re-uploads. Serialized AFTER sign-macos
+#                  to avoid a --clobber race on sha256sums.txt (both jobs update
+#                  the same file; last writer wins without ordering). Tag-guarded
+#                  to avoid burning Azure signing quota. Separate from goreleaser
+#                  because azure/trusted-signing-action requires a Windows runner.
 #   build-macos  — runs on macos-latest; builds darwin/arm64 and darwin/amd64
 #                  natively with CGO_ENABLED=1 (required for systray/Cocoa tray
 #                  icon), runs lipo to produce a universal binary, then uploads
@@ -238,7 +243,11 @@ jobs:
   sign-windows:
     name: Sign Windows .exe (Azure Trusted Signing)
     runs-on: windows-latest
-    needs: [goreleaser]
+    needs: [goreleaser, sign-macos]
+    # Serialized after sign-macos so that when this job reads sha256sums.txt
+    # from the GitHub Release, the macOS .pkg line is already present.
+    # Both jobs do a read-modify-write on sha256sums.txt with --clobber; without
+    # ordering the later writer silently drops the earlier job's entry.
     # Guard: tag-only — never burn Azure signing quota on snapshot/dispatch runs.
     # azure/trusted-signing-action requires a Windows runner; this job is separate
     # from goreleaser (ubuntu-latest) for exactly that reason. ADR-041 G1/P0-3.
@@ -309,8 +318,7 @@ jobs:
       - name: Re-upload signed .exe to GitHub Release
         # Overwrites the unsigned .exe GoReleaser originally uploaded with the
         # signed version. --clobber replaces the existing asset in-place so the
-        # release asset URL is unchanged and the sha256sums.txt entry remains valid
-        # (the signing process does not change the file name, only the binary content).
+        # release asset URL is unchanged.
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         shell: bash
@@ -318,6 +326,57 @@ jobs:
           gh release upload "${{ github.ref_name }}" \
             "signed/${{ env.EXE_NAME }}" \
             --repo "${{ github.repository }}" \
+            --clobber
+
+      - name: Update Windows .exe SHA256 in sha256sums.txt
+        # Azure Trusted Signing modifies the .exe bytes (embeds Authenticode data),
+        # so the hash GoReleaser computed for the unsigned artifact is stale.
+        # This step: downloads sha256sums.txt from the release (which already
+        # contains the macOS .pkg line written by sign-macos, because sign-windows
+        # runs after sign-macos via needs: [goreleaser, sign-macos]), replaces
+        # only the Windows .exe line with the post-signing hash, and re-uploads.
+        # The macOS line is preserved verbatim — this is a read-modify-write on
+        # one line only, not a full file replacement. (Closes vault-mtg-tickets#254)
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        shell: pwsh
+        run: |
+          $tag = "${{ github.ref_name }}"
+          $exeName = "${{ env.EXE_NAME }}"
+          $repo = "${{ github.repository }}"
+
+          # Download the current sha256sums.txt (contains the macOS .pkg line).
+          gh release download $tag `
+            --pattern sha256sums.txt `
+            --repo $repo
+
+          # Compute SHA256 of the signed .exe (Windows-native, no sha256sum tool).
+          $hash = (Get-FileHash "signed\$exeName" -Algorithm SHA256).Hash.ToLower()
+          Write-Host "Signed .exe SHA256: $hash  $exeName"
+
+          # Replace the Windows .exe line in-place; preserve all other lines.
+          # The GoReleaser-generated line format is: "<hash>  <filename>"
+          # We match on the filename suffix so the replacement is idempotent.
+          $lines = Get-Content sha256sums.txt
+          $newLines = $lines | ForEach-Object {
+            if ($_ -match [regex]::Escape($exeName)) {
+              "$hash  $exeName"
+            } else {
+              $_
+            }
+          }
+          # If no line matched (e.g. GoReleaser omitted it), append a new line.
+          if (-not ($lines -match [regex]::Escape($exeName))) {
+            $newLines = @($newLines) + "$hash  $exeName"
+          }
+          $newLines | Set-Content sha256sums.txt -Encoding UTF8NoBOM
+
+          Write-Host "=== Updated sha256sums.txt ==="
+          Get-Content sha256sums.txt
+
+          # Re-upload; --clobber replaces the version uploaded by sign-macos.
+          gh release upload $tag sha256sums.txt `
+            --repo $repo `
             --clobber
 
 
