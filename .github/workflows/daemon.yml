@@ -171,6 +171,29 @@ jobs:
           MTGA_DAEMON_HEADLESS: "1"
         run: go test -v -race -tags integration -run TestDaemonBinarySmoke -timeout 5m ./internal/daemon/...
 
+      # ---------------------------------------------------------------------------
+      # CGO tray smoke — exercises the real cgo tray.go (//go:build cgo) instead
+      # of the !cgo stub. Catches regressions where CGO_ENABLED=0 silently selects
+      # the no-op stub and ships a tray-less binary (see ADR-041 G2, ticket #220).
+      #
+      # Seam for #221: the binary built two steps above (go build ./cmd/daemon)
+      # is the artifact the otool+nm binary-contract check (#221) will inspect.
+      # #221 adds a step here that runs otool -L and nm on that binary — no
+      # changes to this tray test step are needed when #221 lands.
+      #
+      # RULE-INFRA-01: starts continue-on-error: true; flip to false (remove) once
+      # this job is confirmed green on the first PR run.
+      # ---------------------------------------------------------------------------
+      - name: Run tray CGO test (real cgo tray.go)
+        # What this catches: tray_test.go exercising the !cgo stub — see ADR-041 G2
+        working-directory: services/daemon
+        continue-on-error: true
+        env:
+          GONOSUMDB: github.com/RdHamilton/vault-mtg
+          GOPRIVATE: github.com/RdHamilton/vault-mtg
+          CGO_ENABLED: "1"
+        run: go test -v -race -tags cgo -run TestTrayCGO ./internal/tray/...
+
   macos-install-test:
     name: macOS Install Script Tests
     runs-on: macos-latest
