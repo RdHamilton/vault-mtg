@@ -137,6 +137,10 @@ func readMemory(task C.mach_port_t, addr, size uint64) ([]byte, error) {
 //     - sample of GRP IDs found (first 10, sorted)
 //     This resolves H1 vs H2 without any live process contact.
 //
+//     IMPORTANT: delete the dump directory after analysis — it contains raw process
+//     memory (PII: card collection IDs, account data). Never commit or transmit
+//     the dump. Example: rm -rf /tmp/collection-dump
+//
 //  3. If a region returns >= minEntries hits with the current heuristic → H1 (region filter
 //     too strict; adjust minEntries or maxFillPct). Record the region address range and
 //     adjusted constants in this comment.

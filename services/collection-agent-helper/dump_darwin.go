@@ -22,6 +22,7 @@ type RegionManifestEntry struct {
 // It uses the same non-intrusive listReadableRegions + readMemory path as the
 // production scanner. No process suspension, no debugger attachment.
 func runDumpRegions(pid int, outdir string) error {
+	outdir = filepath.Clean(outdir)
 	if err := os.MkdirAll(outdir, 0o750); err != nil {
 		return fmt.Errorf("mkdir %s: %w", outdir, err)
 	}
@@ -76,7 +77,7 @@ func runDumpRegions(pid int, outdir string) error {
 	}
 
 	manifestPath := filepath.Join(outdir, "manifest.json")
-	mf, err := os.Create(manifestPath)
+	mf, err := os.OpenFile(manifestPath, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0o640)
 	if err != nil {
 		return fmt.Errorf("create manifest: %w", err)
 	}
@@ -91,5 +92,6 @@ func runDumpRegions(pid int, outdir string) error {
 	}
 
 	log.Printf("dump: complete — %d regions written to %s, manifest at %s", len(manifest), outdir, manifestPath)
+	log.Printf("IMPORTANT: delete %s after analysis — contains raw process memory (PII)", outdir)
 	return nil
 }
