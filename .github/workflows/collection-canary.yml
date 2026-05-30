@@ -46,10 +46,11 @@ permissions:
 jobs:
   canary:
     name: Collection-Scan Drift Canary
-    # ubuntu-latest is sufficient — the canary tests run against the committed
-    # fixture; no CGO or macOS APIs are required. The mem_darwin.go file is
-    # excluded from the build by its //go:build darwin guard.
-    runs-on: ubuntu-latest
+    # macos-latest required — CollectionSignatureVersion and scanProcess are
+    # defined in mem_darwin.go (//go:build darwin) and referenced by the canary
+    # test suite. The fixture-based tests still compile on darwin without a live
+    # MTGA process; CGO is needed for the Mach headers pulled in by mem_darwin.go.
+    runs-on: macos-latest
     timeout-minutes: 10
 
     steps:
