@@ -13,15 +13,26 @@
 # (daemon-release.yml) or the daemon CI pipeline (daemon.yml).
 #
 # Job matrix:
-#   install-lifecycle-macos   — macOS arm64 runner; exercises DRY_RUN install.sh,
-#                               plist assertions, reinstall, uninstall, and runs the
-#                               existing bats unit-test suite.
-#   install-lifecycle-windows — Windows amd64 runner; exercises install.ps1 +
-#                               uninstall.ps1 against a stub binary in DRY_RUN mode,
-#                               asserts Task Scheduler registration and removal.
-#   install-lifecycle-linux   — Ubuntu runner; asserts that no Linux installer
-#                               exists yet (AC3 gate) and scaffolds migration-scenario
-#                               stubs as TODO steps (pending #1763).
+#   install-lifecycle-macos      — macOS arm64 runner; exercises DRY_RUN install.sh,
+#                                  plist assertions, reinstall, uninstall, and runs the
+#                                  existing bats unit-test suite.  Kept as isolated
+#                                  independent checks (each step starts from known state).
+#   lifecycle-scenario-macos     — macOS arm64 runner; single ordered scenario that chains
+#                                  the full user journey: fresh install -> LaunchAgent
+#                                  assertion -> /health probe -> stub-BFF daemon_event ->
+#                                  reinstall-over-existing (config retained) -> uninstall ->
+#                                  post-uninstall assertions (no LaunchAgent, no binary).
+#                                  Added by #225 (ADR-041 P1-3).  Extensibility seam for
+#                                  #230 (upgrade-in-place) is the clearly-marked TODO at
+#                                  the end of the reinstall step.
+#                                  RULE-INFRA-01: continue-on-error: true on first green run;
+#                                  flip to hard-fail in follow-on PR after CI confirms green.
+#   install-lifecycle-windows    — Windows amd64 runner; exercises install.ps1 +
+#                                  uninstall.ps1 against a stub binary in DRY_RUN mode,
+#                                  asserts Task Scheduler registration and removal.
+#   install-lifecycle-linux      — Ubuntu runner; asserts that no Linux installer
+#                                  exists yet (AC3 gate) and scaffolds migration-scenario
+#                                  stubs as TODO steps (pending #1763).
 #
 # Migration-scenario steps (AC2 — install OLD mtga-companion daemon then run NEW
 # installer and assert Keychain copy / old-service removal / config dir migration)
@@ -487,6 +498,356 @@ jobs:
           echo "  assert old plist removed, new plist written, config dir migrated,"
           echo "  and Keychain entry copied old->new with old retained."
           echo "This step will be activated when PR #1761 lands."
+
+  # ---------------------------------------------------------------------------
+  # macOS full lifecycle scenario — ordered, chained, single journey (#225)
+  # ---------------------------------------------------------------------------
+  # This job is the ADR-041 P1-3 / G5 stub-BFF lifecycle scenario.
+  #
+  # Design: each step asserts the outcome of the PREVIOUS step is still in
+  # place before proceeding.  If any step fails the job fails and subsequent
+  # steps are not run (AC2).  This catches transition-state regressions that
+  # the independent steps in install-lifecycle-macos cannot see (e.g., reinstall
+  # clobbers a running daemon's config, uninstall leaves a LaunchAgent plist).
+  #
+  # The existing install-lifecycle-macos job is KEPT for its unit-style DRY_RUN
+  # isolation checks and bats suite.  This job adds the ordered journey on top.
+  #
+  # Extensibility seam for #230 (daemon upgrade-in-place):
+  #   The reinstall step is the seam.  #230 extends this job by adding an
+  #   "upgrade-from-binary" sub-scenario immediately after the reinstall
+  #   assertions — see the TODO marker in the reinstall step.  Do not
+  #   implement #230 here; Tim owns that ticket.
+  #
+  # RULE-INFRA-01: continue-on-error: true on initial landing.
+  #   Flip to hard-fail (remove continue-on-error or set false) in the
+  #   follow-on PR after this job has had its first confirmed green run.
+  lifecycle-scenario-macos:
+    name: "macOS — Full Lifecycle Scenario (install->event->reinstall->uninstall) [#225]"
+    runs-on: macos-latest
+    timeout-minutes: 20
+    continue-on-error: true   # RULE-INFRA-01: flip to false after first green run (see #225)
+
+    steps:
+      # -----------------------------------------------------------------------
+      - name: "[SETUP] Checkout repository"
+      # -----------------------------------------------------------------------
+        uses: actions/checkout@v6
+
+      # -----------------------------------------------------------------------
+      - name: "[SETUP] Set up Go"
+      # -----------------------------------------------------------------------
+        uses: actions/setup-go@v6
+        with:
+          go-version: '1.25'
+
+      # -----------------------------------------------------------------------
+      - name: "[SETUP] Configure private module access"
+      # -----------------------------------------------------------------------
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          git config --global url."https://${GITHUB_TOKEN}@github.com/".insteadOf "https://github.com/"
+
+      # -----------------------------------------------------------------------
+      - name: "[BUILD] Compile daemon binary (native arm64)"
+      # -----------------------------------------------------------------------
+        # CGO_ENABLED=0 matches the existing install-lifecycle-macos job pattern.
+        # The tray stub (tray_nocgo.go) ships for this runner; CGO=1 tray testing
+        # is covered in daemon.yml integration-smoke (G2 / P0-1).
+        working-directory: services/daemon
+        env:
+          CGO_ENABLED: '0'
+          GONOSUMDB: github.com/RdHamilton/vault-mtg
+          GOPRIVATE: github.com/RdHamilton/vault-mtg
+        run: |
+          go mod download
+          mkdir -p bin
+          go build -o bin/vaultmtg-daemon ./cmd/daemon
+          echo "PASS: daemon binary built"
+          ls -la bin/vaultmtg-daemon
+
+      # -----------------------------------------------------------------------
+      - name: "[BUILD] Substitute postinstall placeholders for pkgbuild"
+      # -----------------------------------------------------------------------
+        # pkgbuild validates the postinstall script's guard clause, which checks
+        # for un-substituted __PLACEHOLDER__ tokens.  Substitute with CI-safe
+        # values before building the .pkg.  Restored immediately after.
+        run: |
+          sed -i '' \
+            -e 's|__VAULTMTG_CLOUD_API_URL__|http://127.0.0.1:1/unused|g' \
+            -e 's|__CLERK_FRONTEND_API__|ci-noop|g' \
+            -e 's|__CLERK_PUBLISHABLE_KEY__|ci-noop|g' \
+            -e 's|__CLERK_OAUTH_CLIENT_ID__|ci-noop|g' \
+            services/daemon/install/macos/pkg/postinstall
+
+      # -----------------------------------------------------------------------
+      - name: "[BUILD] Build real .pkg artifact"
+      # -----------------------------------------------------------------------
+        env:
+          BINARY_PATH: ${{ github.workspace }}/services/daemon/bin/vaultmtg-daemon
+          VERSION: ci-test
+        run: |
+          bash services/daemon/install/macos/pkg/build-pkg.sh
+          ls -la vaultmtg-daemon-darwin-universal.pkg
+          echo "PASS: .pkg built"
+
+      # -----------------------------------------------------------------------
+      - name: "[RESTORE] Restore postinstall after sed substitution"
+      # -----------------------------------------------------------------------
+        run: git checkout services/daemon/install/macos/pkg/postinstall
+
+      # -----------------------------------------------------------------------
+      - name: "[SETUP] Stage stub MTGA log and pre-configure daemon"
+      # -----------------------------------------------------------------------
+        # Create a stub Player.log so the daemon's logreader can start polling
+        # without error.  The lifecycle_test.go Go integration test will overwrite
+        # daemon.json with its test config before starting the binary, so this
+        # pre-staged config is only used by the real-pkg postinstall script.
+        run: |
+          MTGA_LOG_DIR="$HOME/Library/Application Support/com.wizards.mtga/Logs/Logs"
+          mkdir -p "$MTGA_LOG_DIR"
+          touch "$MTGA_LOG_DIR/Player.log"
+          echo "PASS: stub Player.log at $MTGA_LOG_DIR/Player.log"
+
+          CONFIG_DIR="$HOME/.vaultmtg"
+          mkdir -p "$CONFIG_DIR"
+          cat > "$CONFIG_DIR/daemon.json" <<JSON
+          {
+            "cloud_api_url": "http://127.0.0.1:1/unused-in-ci",
+            "api_key": "ci-test-fake-key-not-real",
+            "sync_enabled": false,
+            "disable_update_check": true
+          }
+          JSON
+          echo "PASS: daemon.json pre-staged at $CONFIG_DIR/daemon.json"
+
+      # =======================================================================
+      # STEP 1 — Fresh install
+      # Asserts: binary placed, LaunchAgent plist written, LaunchAgent loaded.
+      # =======================================================================
+
+      # -----------------------------------------------------------------------
+      - name: "[STEP 1] FRESH INSTALL — installer -pkg"
+      # -----------------------------------------------------------------------
+        run: |
+          echo "=== [STEP 1] FRESH INSTALL ==="
+          sudo installer -pkg vaultmtg-daemon-darwin-universal.pkg -target /
+          echo "PASS: installer -pkg completed"
+
+      # -----------------------------------------------------------------------
+      - name: "[STEP 1] ASSERT — binary placed at /usr/local/bin"
+      # -----------------------------------------------------------------------
+        run: |
+          [ -f /usr/local/bin/vaultmtg-daemon ] || \
+            { echo "FAIL: binary not found at /usr/local/bin/vaultmtg-daemon"; exit 1; }
+          echo "PASS: /usr/local/bin/vaultmtg-daemon present"
+
+      # -----------------------------------------------------------------------
+      - name: "[STEP 1] ASSERT — LaunchAgent plist written"
+      # -----------------------------------------------------------------------
+        run: |
+          PLIST="$HOME/Library/LaunchAgents/com.vaultmtg.daemon.plist"
+          [ -f "$PLIST" ] || { echo "FAIL: plist not found at $PLIST"; exit 1; }
+          grep -q "com.vaultmtg.daemon" "$PLIST" || \
+            { echo "FAIL: plist missing Label"; exit 1; }
+          echo "PASS: LaunchAgent plist written at $PLIST"
+
+      # -----------------------------------------------------------------------
+      - name: "[STEP 1] ASSERT — LaunchAgent loaded (com.vaultmtg.daemon)"
+      # -----------------------------------------------------------------------
+        # The postinstall script calls launchctl bootstrap/load immediately after
+        # writing the plist.  Poll for up to 15s to allow for launchd scheduling.
+        run: |
+          deadline=$((SECONDS + 15))
+          while [ $SECONDS -lt $deadline ]; do
+            launchctl list com.vaultmtg.daemon >/dev/null 2>&1 && break
+            sleep 1
+          done
+          launchctl list com.vaultmtg.daemon || \
+            { echo "FAIL: com.vaultmtg.daemon not loaded after 15s"; exit 1; }
+          echo "PASS: com.vaultmtg.daemon loaded by launchd"
+
+      # =======================================================================
+      # STEP 2 — /health probe
+      # Asserts: daemon HTTP server is up and returns 200.
+      # =======================================================================
+
+      # -----------------------------------------------------------------------
+      - name: "[STEP 2] ASSERT — /health endpoint returns 200"
+      # -----------------------------------------------------------------------
+        # Poll 127.0.0.1:9001/health for up to 30s.  The daemon started via
+        # launchd in Step 1; allow for cold-start latency.
+        run: |
+          echo "=== [STEP 2] /health PROBE ==="
+          deadline=$((SECONDS + 30))
+          ok=0
+          while [ $SECONDS -lt $deadline ]; do
+            status=$(curl -s -o /dev/null -w "%{http_code}" http://127.0.0.1:9001/health 2>/dev/null || echo "000")
+            if [ "$status" = "200" ]; then
+              ok=1
+              break
+            fi
+            sleep 1
+          done
+          if [ "$ok" -ne 1 ]; then
+            echo "FAIL: /health did not return 200 within 30s"
+            echo "--- diagnostic: launchctl list com.vaultmtg.daemon ---"
+            launchctl list com.vaultmtg.daemon || true
+            echo "--- diagnostic: netstat -an | grep 9001 ---"
+            netstat -an | grep 9001 || true
+            exit 1
+          fi
+          echo "PASS: /health returned 200"
+
+      # =======================================================================
+      # STEP 3 — stub-BFF daemon_event delivery
+      # Asserts: daemon parses a synthetic MTGA log line and POSTs the event
+      #          to the stub BFF within 30s.
+      # Implementation: reuses TestMacOSDaemonEvent from lifecycle_test.go —
+      #   the same test that runs in the existing install-lifecycle-macos job
+      #   (Group A).  The test kills launchd-spawned daemon, takes over, then
+      #   restores state so Step 4 can run.
+      # =======================================================================
+
+      # -----------------------------------------------------------------------
+      - name: "[STEP 3] ASSERT — daemon_event arrives at stub BFF"
+      # -----------------------------------------------------------------------
+        working-directory: services/daemon
+        env:
+          GONOSUMDB: github.com/RdHamilton/vault-mtg
+          GOPRIVATE: github.com/RdHamilton/vault-mtg
+          MTGA_DAEMON_HEADLESS: "1"
+          CLERK_PUBLISHABLE_KEY: ""
+          CLERK_FRONTEND_API: ""
+          CLERK_OAUTH_CLIENT_ID: ""
+          DAEMON_BINARY_PATH: ${{ github.workspace }}/services/daemon/bin/vaultmtg-daemon
+        run: |
+          echo "=== [STEP 3] stub-BFF daemon_event assertion ==="
+          go test -v -tags "integration darwin" -run TestMacOSDaemonEvent -timeout 5m ./install/macos/...
+          echo "PASS: TestMacOSDaemonEvent passed"
+
+      # =======================================================================
+      # STEP 4 — Reinstall-over-existing (upgrade-class scenario)
+      # Asserts: re-running the installer over an existing installation retains
+      #          the config at ~/.vaultmtg/daemon.json (ADR-011-C) and leaves
+      #          the LaunchAgent plist intact with the correct Label.
+      #
+      # Extensibility seam for #230 (daemon upgrade-in-place test):
+      #   Tim's #230 extends this job by asserting that a binary-swap reinstall
+      #   (different version, same install script) leaves the daemon at the NEW
+      #   binary version while config is unchanged.  Add those assertions here
+      #   immediately after the "config retained" assertion below.
+      #   DO NOT implement #230 here — that is Tim's ticket.
+      # =======================================================================
+
+      # -----------------------------------------------------------------------
+      - name: "[STEP 4] REINSTALL-OVER-EXISTING — installer -pkg (upgrade-class)"
+      # -----------------------------------------------------------------------
+        # Capture config before reinstall; assert it is identical after.
+        run: |
+          echo "=== [STEP 4] REINSTALL-OVER-EXISTING ==="
+          CONFIG_FILE="$HOME/.vaultmtg/daemon.json"
+
+          # Record config fingerprint before reinstall.
+          config_before=$(cat "$CONFIG_FILE" 2>/dev/null || echo "__missing__")
+          echo "Config before reinstall (sha256): $(echo "$config_before" | shasum -a 256 | awk '{print $1}')"
+
+          # Re-run the installer over the existing installation.
+          sudo installer -pkg vaultmtg-daemon-darwin-universal.pkg -target /
+          echo "PASS: reinstall installer -pkg completed"
+
+          # Assert binary still present.
+          [ -f /usr/local/bin/vaultmtg-daemon ] || \
+            { echo "FAIL: binary missing after reinstall"; exit 1; }
+          echo "PASS: binary present after reinstall"
+
+          # Assert LaunchAgent plist still present with correct label.
+          PLIST="$HOME/Library/LaunchAgents/com.vaultmtg.daemon.plist"
+          [ -f "$PLIST" ] || { echo "FAIL: plist missing after reinstall"; exit 1; }
+          grep -q "com.vaultmtg.daemon" "$PLIST" || \
+            { echo "FAIL: plist label incorrect after reinstall"; exit 1; }
+          echo "PASS: LaunchAgent plist intact after reinstall"
+
+          # Assert config retained (ADR-011-C).
+          config_after=$(cat "$CONFIG_FILE" 2>/dev/null || echo "__missing__")
+          if [ "$config_before" != "$config_after" ]; then
+            echo "FAIL: daemon.json changed on reinstall — ADR-011-C config-retention violated"
+            echo "  before sha256: $(echo "$config_before" | shasum -a 256 | awk '{print $1}')"
+            echo "  after  sha256: $(echo "$config_after"  | shasum -a 256 | awk '{print $1}')"
+            exit 1
+          fi
+          echo "PASS: daemon.json unchanged after reinstall (ADR-011-C config-retention satisfied)"
+
+          # TODO(#230): Tim's upgrade-in-place test extends this scenario here.
+          # After swapping the binary to a new version and reinstalling, assert:
+          #   - daemon reports the NEW version via /health or binary --version
+          #   - config is still unchanged (ADR-011-C)
+          #   - LaunchAgent is still loaded with the new binary path
+          # See ticket #230 and ADR-041 G5 / Section 4 P2 for full spec.
+
+      # =======================================================================
+      # STEP 5 — Uninstall
+      # Asserts: uninstall.sh removes binary, plist, and unregisters LaunchAgent.
+      #          Config (~/.vaultmtg) is RETAINED (ADR-011-C).
+      # =======================================================================
+
+      # -----------------------------------------------------------------------
+      - name: "[STEP 5] UNINSTALL — run uninstall.sh"
+      # -----------------------------------------------------------------------
+        # Stub sudo to exec "$@" so `sudo rm` works without a password on the runner.
+        # The stub is the same pattern as the existing install-lifecycle-macos job.
+        run: |
+          echo "=== [STEP 5] UNINSTALL ==="
+          STUB_DIR=$(mktemp -d)
+          printf '#!/usr/bin/env bash\nexec "$@"\n' > "$STUB_DIR/sudo"
+          chmod +x "$STUB_DIR/sudo"
+          PATH="$STUB_DIR:$PATH" bash services/daemon/install/macos/uninstall.sh
+          echo "PASS: uninstall.sh completed"
+
+      # -----------------------------------------------------------------------
+      - name: "[STEP 5] ASSERT — no LaunchAgent plist after uninstall"
+      # -----------------------------------------------------------------------
+        run: |
+          PLIST="$HOME/Library/LaunchAgents/com.vaultmtg.daemon.plist"
+          if [ -f "$PLIST" ]; then
+            echo "FAIL: plist still present at $PLIST after uninstall"
+            exit 1
+          fi
+          echo "PASS: LaunchAgent plist removed after uninstall"
+
+      # -----------------------------------------------------------------------
+      - name: "[STEP 5] ASSERT — LaunchAgent unloaded after uninstall"
+      # -----------------------------------------------------------------------
+        run: |
+          if launchctl list com.vaultmtg.daemon >/dev/null 2>&1; then
+            echo "FAIL: com.vaultmtg.daemon still loaded after uninstall"
+            exit 1
+          fi
+          echo "PASS: com.vaultmtg.daemon no longer registered with launchd"
+
+      # -----------------------------------------------------------------------
+      - name: "[STEP 5] ASSERT — binary removed after uninstall"
+      # -----------------------------------------------------------------------
+        run: |
+          if [ -f /usr/local/bin/vaultmtg-daemon ]; then
+            echo "FAIL: /usr/local/bin/vaultmtg-daemon still present after uninstall"
+            exit 1
+          fi
+          echo "PASS: /usr/local/bin/vaultmtg-daemon removed"
+
+      # -----------------------------------------------------------------------
+      - name: "[STEP 5] ASSERT — config retained after uninstall (ADR-011-C)"
+      # -----------------------------------------------------------------------
+        # uninstall.sh deliberately leaves ~/.vaultmtg/daemon.json so users
+        # keep their config on the next install.  This is ADR-011-C.
+        run: |
+          if [ ! -d "$HOME/.vaultmtg" ]; then
+            echo "FAIL: ~/.vaultmtg removed by uninstall.sh — ADR-011-C violation"
+            exit 1
+          fi
+          echo "PASS: ~/.vaultmtg retained after uninstall (ADR-011-C satisfied)"
+          echo "PASS: Full lifecycle scenario complete — install->event->reinstall->uninstall"
 
   # ---------------------------------------------------------------------------
   # Windows install lifecycle
