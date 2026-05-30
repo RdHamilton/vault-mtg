@@ -54,3 +54,17 @@ func (r *ProjectionErrorsRepository) Insert(ctx context.Context, ins ProjectionE
 
 	return err
 }
+
+// CountProjectionErrors returns the total number of rows in the
+// projection_errors table. This is a global count (no account scoping) because
+// the endpoint is admin-only and backed by AdminTokenAuth.
+func (r *ProjectionErrorsRepository) CountProjectionErrors(ctx context.Context) (int64, error) {
+	const q = `SELECT COUNT(*) FROM projection_errors`
+
+	var n int64
+	if err := r.db.QueryRowContext(ctx, q).Scan(&n); err != nil {
+		return 0, err
+	}
+
+	return n, nil
+}
