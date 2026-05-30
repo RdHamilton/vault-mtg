@@ -85,7 +85,10 @@ jobs:
           git config --global url."https://${GITHUB_TOKEN}@github.com/".insteadOf "https://github.com/"
 
       - name: Install build dependencies
-        run: sudo apt-get update -qq && sudo apt-get install -y nsis libayatana-appindicator3-dev
+        # gcc-mingw-w64-x86-64: mingw-w64 cross-compiler required for CGO_ENABLED=1
+        # Windows/amd64 build. Without it, CGO falls back to the system gcc which
+        # cannot produce PE (Windows) object files.  vault-mtg-tickets#199.
+        run: sudo apt-get update -qq && sudo apt-get install -y nsis libayatana-appindicator3-dev gcc-mingw-w64-x86-64
 
       - name: Download Go dependencies
         working-directory: services/daemon
@@ -204,6 +207,34 @@ jobs:
           # for daemon-side crash capture. Empty for snapshot builds — leaves
           # Sentry disabled at runtime per sentryhook.Init contract. #1832.
           DEFAULT_SENTRY_DSN: ${{ steps.sentry_dsn.outputs.dsn }}
+
+      - name: Verify Windows systray symbols (CGO guard)
+        # What this catches: CGO_ENABLED flipped back to 0, CC misconfigured,
+        # or build-tag misrouting that selects tray_nocgo.go (//go:build !cgo)
+        # instead of tray.go (//go:build cgo). vault-mtg-tickets#199.
+        #
+        # GoReleaser writes the binary to dist/vaultmtg-daemon_windows_amd64_v1/
+        # (the path matches the "binary" field + GoReleaser's OS/arch matrix).
+        # We find it by glob so the path survives future GoReleaser layout changes.
+        run: |
+          set -euo pipefail
+          EXE=$(find dist -name 'vaultmtg-daemon.exe' | head -1)
+          if [[ -z "${EXE}" ]]; then
+            echo "ERROR: vaultmtg-daemon.exe not found under dist/ — GoReleaser build failed?" >&2
+            find dist -type f | head -20 >&2
+            exit 1
+          fi
+          echo "Checking systray symbols in: ${EXE}"
+          if ! go tool nm "${EXE}" 2>/dev/null | grep -qi "systray"; then
+            echo "ERROR: systray symbols missing from Windows binary." >&2
+            echo "The no-op stub (tray_nocgo.go) was compiled instead of the real tray (tray.go)." >&2
+            echo "Check CGO_ENABLED and CC in .goreleaser.yml and the apt-get step." >&2
+            exit 1
+          fi
+          echo "PASS: systray symbols found in ${EXE}"
+        env:
+          GONOSUMDB: github.com/RdHamilton/vault-mtg
+          GOPRIVATE: github.com/RdHamilton/vault-mtg
 
       - name: Rename GitHub Release to daemon/v* tag (ADR-023)
         # GoReleaser publishes the release at the bare semver tag (e.g.
