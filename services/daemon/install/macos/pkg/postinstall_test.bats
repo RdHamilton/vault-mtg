@@ -564,6 +564,54 @@ print('PASS: api_key, sync_enabled, account_id all preserved after cross-env rei
 
 # 15. Same-env reinstall: when cloud_api_url is already correct, keychain is
 #     NOT cleared and no fields are modified.
+#
+# 16. ADR-011-C guard: same-env reinstall leaves daemon.json byte-for-byte
+#     identical — postinstall must not call json.dump or any write on the
+#     same-env path.  SHA256 comparison is the authoritative check.
+@test "ADR-011-C: same-env reinstall is a daemon.json byte-exact no-op" {
+  # Pre-create config with the same URL TMP_SCRIPT bakes in so this is a
+  # same-env reinstall.  Use a fixed JSON string so the SHA is deterministic.
+  mkdir -p "${TEST_DIR}/.vaultmtg"
+  python3 -c "
+import json
+# Produce compact, deterministic JSON matching what a previous install wrote.
+data = {
+    'cloud_api_url': 'https://staging-api.vaultmtg.app/api/v1',
+    'api_key': 'preserve-me',
+    'account_id': 'user_adr011c',
+    'sync_enabled': True
+}
+print(json.dumps(data, indent=2))
+" > "${CONFIG_FILE}"
+
+  local sha_before
+  sha_before="$(shasum -a 256 "${CONFIG_FILE}" | cut -d' ' -f1)"
+
+  run env \
+    PATH="${STUB_DIR}:${PATH}" \
+    SUDO_USER="${REAL_USER}" \
+    BATS_TEST_TMPDIR="${BATS_TEST_TMPDIR}" \
+    bash "${TMP_SCRIPT}"
+
+  echo "status: ${status}"
+  echo "output: ${output}"
+  [ "${status}" -eq 0 ]
+
+  local sha_after
+  sha_after="$(shasum -a 256 "${CONFIG_FILE}" | cut -d' ' -f1)"
+
+  if [ "${sha_before}" != "${sha_after}" ]; then
+    echo "FAIL: daemon.json SHA256 changed on same-env reinstall (ADR-011-C violated)"
+    echo "  before: ${sha_before}"
+    echo "  after:  ${sha_after}"
+    echo "  file contents:"
+    cat "${CONFIG_FILE}"
+    false
+  fi
+  echo "PASS: daemon.json SHA256 unchanged on same-env reinstall (ADR-011-C satisfied)"
+  [[ "${output}" == *"cloud_api_url unchanged"* ]]
+}
+
 @test "same-env reinstall: keychain NOT cleared when cloud_api_url is unchanged" {
   local security_calls="${BATS_TEST_TMPDIR}/security_calls_15"
 
