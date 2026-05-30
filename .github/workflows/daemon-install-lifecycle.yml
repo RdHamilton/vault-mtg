@@ -20,11 +20,11 @@
 #   lifecycle-scenario-macos     — macOS arm64 runner; single ordered scenario that chains
 #                                  the full user journey: fresh install -> LaunchAgent
 #                                  assertion -> /health probe -> stub-BFF daemon_event ->
-#                                  reinstall-over-existing (config retained) -> uninstall ->
-#                                  post-uninstall assertions (no LaunchAgent, no binary).
-#                                  Added by #225 (ADR-041 P1-3).  Extensibility seam for
-#                                  #230 (upgrade-in-place) is the clearly-marked TODO at
-#                                  the end of the reinstall step.
+#                                  reinstall-over-existing (config retained) ->
+#                                  upgrade-in-place (new binary, /health version assert) ->
+#                                  uninstall -> post-uninstall assertions (no LaunchAgent,
+#                                  no binary).  Added by #225 (ADR-041 P1-3); upgrade-in-place
+#                                  STEP 4a added by #230 (ADR-041 G5 / Section 4 P2).
 #                                  RULE-INFRA-01: continue-on-error: true on first green run;
 #                                  flip to hard-fail in follow-on PR after CI confirms green.
 #   install-lifecycle-windows    — Windows amd64 runner; exercises install.ps1 +
@@ -500,7 +500,7 @@ jobs:
           echo "This step will be activated when PR #1761 lands."
 
   # ---------------------------------------------------------------------------
-  # macOS full lifecycle scenario — ordered, chained, single journey (#225)
+  # macOS full lifecycle scenario — ordered, chained, single journey (#225+#230)
   # ---------------------------------------------------------------------------
   # This job is the ADR-041 P1-3 / G5 stub-BFF lifecycle scenario.
   #
@@ -513,19 +513,19 @@ jobs:
   # The existing install-lifecycle-macos job is KEPT for its unit-style DRY_RUN
   # isolation checks and bats suite.  This job adds the ordered journey on top.
   #
-  # Extensibility seam for #230 (daemon upgrade-in-place):
-  #   The reinstall step is the seam.  #230 extends this job by adding an
-  #   "upgrade-from-binary" sub-scenario immediately after the reinstall
-  #   assertions — see the TODO marker in the reinstall step.  Do not
-  #   implement #230 here; Tim owns that ticket.
+  # #230 (upgrade-in-place) is implemented in STEP 4a, immediately after the
+  # STEP 4 reinstall assertions.  STEP 4a builds a second binary stamped
+  # Version=ci-upgrade-v2, packages it, installs without uninstalling first,
+  # and asserts /health reports the new version while config and LaunchAgent
+  # are retained (ADR-041 G5 / Section 4 P2, ADR-011-C).
   #
   # RULE-INFRA-01: continue-on-error: true on initial landing.
   #   Flip to hard-fail (remove continue-on-error or set false) in the
   #   follow-on PR after this job has had its first confirmed green run.
   lifecycle-scenario-macos:
-    name: "macOS — Full Lifecycle Scenario (install->event->reinstall->uninstall) [#225]"
+    name: "macOS — Full Lifecycle Scenario (install->event->reinstall->upgrade->uninstall) [#225+#230]"
     runs-on: macos-latest
-    timeout-minutes: 20
+    timeout-minutes: 25
     continue-on-error: true   # RULE-INFRA-01: flip to false after first green run (see #225)
 
     steps:
@@ -728,17 +728,15 @@ jobs:
           echo "PASS: TestMacOSDaemonEvent passed"
 
       # =======================================================================
-      # STEP 4 — Reinstall-over-existing (upgrade-class scenario)
-      # Asserts: re-running the installer over an existing installation retains
-      #          the config at ~/.vaultmtg/daemon.json (ADR-011-C) and leaves
+      # STEP 4 — Reinstall-over-existing (same-version idempotency check)
+      # Asserts: re-running the same-version installer over an existing installation
+      #          retains config at ~/.vaultmtg/daemon.json (ADR-011-C) and leaves
       #          the LaunchAgent plist intact with the correct Label.
       #
-      # Extensibility seam for #230 (daemon upgrade-in-place test):
-      #   Tim's #230 extends this job by asserting that a binary-swap reinstall
-      #   (different version, same install script) leaves the daemon at the NEW
-      #   binary version while config is unchanged.  Add those assertions here
-      #   immediately after the "config retained" assertion below.
-      #   DO NOT implement #230 here — that is Tim's ticket.
+      # STEP 4a (immediately after) is the upgrade-in-place scenario (#230):
+      #   builds a new binary stamped Version=ci-upgrade-v2 and installs it
+      #   without uninstalling first; asserts the new version, retained config,
+      #   and still-active LaunchAgent.
       # =======================================================================
 
       # -----------------------------------------------------------------------
@@ -779,12 +777,163 @@ jobs:
           fi
           echo "PASS: daemon.json unchanged after reinstall (ADR-011-C config-retention satisfied)"
 
-          # TODO(#230): Tim's upgrade-in-place test extends this scenario here.
-          # After swapping the binary to a new version and reinstalling, assert:
-          #   - daemon reports the NEW version via /health or binary --version
-          #   - config is still unchanged (ADR-011-C)
-          #   - LaunchAgent is still loaded with the new binary path
-          # See ticket #230 and ADR-041 G5 / Section 4 P2 for full spec.
+
+      # =======================================================================
+      # STEP 4a — Upgrade-in-place (#230, ADR-041 G5 / Section 4 P2)
+      # Asserts: installing a new binary version (.pkg) over the existing install
+      #   - replaces the old binary with the new version (no orphaned binary),
+      #   - daemon reports the NEW version via /health,
+      #   - config at ~/.vaultmtg/daemon.json is retained (ADR-011-C),
+      #   - LaunchAgent is still loaded after the installer runs.
+      #
+      # Strategy: build a second binary with -ldflags -X main.Version=ci-upgrade-v2
+      # (distinct from the "dev" version built in the initial BUILD step), package
+      # it into a fresh .pkg, install over the existing installation, then probe
+      # /health for the new version string.  No uninstall between old and new — the
+      # whole point is to verify the installer handles upgrade-in-place correctly.
+      #
+      # The LaunchAgent postinstall script calls launchctl bootout (to stop the old
+      # daemon) before launchctl bootstrap (to start the new one), so the version
+      # visible via /health must come from the newly-installed binary.
+      # =======================================================================
+
+      # -----------------------------------------------------------------------
+      - name: "[STEP 4a] BUILD — compile upgrade daemon binary (version=ci-upgrade-v2)"
+      # -----------------------------------------------------------------------
+        # Compiles a second binary stamped with Version=ci-upgrade-v2 so /health
+        # returns a distinct string that proves the upgrade replaced the old binary.
+        # CGO_ENABLED=0 matches the initial build step above.
+        working-directory: services/daemon
+        env:
+          CGO_ENABLED: '0'
+          GONOSUMDB: github.com/RdHamilton/vault-mtg
+          GOPRIVATE: github.com/RdHamilton/vault-mtg
+        run: |
+          echo "=== [STEP 4a] BUILD upgrade binary (version=ci-upgrade-v2) ==="
+          go build \
+            -ldflags "-X main.Version=ci-upgrade-v2" \
+            -o bin/vaultmtg-daemon-upgrade \
+            ./cmd/daemon
+          echo "PASS: upgrade binary built"
+          ls -la bin/vaultmtg-daemon-upgrade
+
+      # -----------------------------------------------------------------------
+      - name: "[STEP 4a] BUILD — substitute postinstall placeholders for upgrade .pkg"
+      # -----------------------------------------------------------------------
+        # Same substitution pattern as the initial BUILD step; required before
+        # pkgbuild validates the postinstall script guard clause.
+        run: |
+          sed -i '' \
+            -e 's|__VAULTMTG_CLOUD_API_URL__|http://127.0.0.1:1/unused|g' \
+            -e 's|__CLERK_FRONTEND_API__|ci-noop|g' \
+            -e 's|__CLERK_PUBLISHABLE_KEY__|ci-noop|g' \
+            -e 's|__CLERK_OAUTH_CLIENT_ID__|ci-noop|g' \
+            services/daemon/install/macos/pkg/postinstall
+
+      # -----------------------------------------------------------------------
+      - name: "[STEP 4a] BUILD — build upgrade .pkg artifact"
+      # -----------------------------------------------------------------------
+        # Produces vaultmtg-daemon-darwin-universal.pkg (same output name as
+        # the initial build; overwriting is intentional — the upgrade scenario
+        # installs this second .pkg over the already-installed daemon).
+        env:
+          BINARY_PATH: ${{ github.workspace }}/services/daemon/bin/vaultmtg-daemon-upgrade
+          VERSION: ci-upgrade-v2
+        run: |
+          bash services/daemon/install/macos/pkg/build-pkg.sh
+          ls -la vaultmtg-daemon-darwin-universal.pkg
+          echo "PASS: upgrade .pkg built"
+
+      # -----------------------------------------------------------------------
+      - name: "[STEP 4a] RESTORE — restore postinstall after sed substitution"
+      # -----------------------------------------------------------------------
+        run: git checkout services/daemon/install/macos/pkg/postinstall
+
+      # -----------------------------------------------------------------------
+      - name: "[STEP 4a] UPGRADE — install new .pkg over existing installation"
+      # -----------------------------------------------------------------------
+        # Record config fingerprint before the upgrade installer runs so the
+        # post-upgrade assertion can confirm it is unchanged.
+        run: |
+          echo "=== [STEP 4a] UPGRADE-IN-PLACE ==="
+          CONFIG_FILE="$HOME/.vaultmtg/daemon.json"
+          config_before_upgrade=$(cat "$CONFIG_FILE" 2>/dev/null || echo "__missing__")
+          echo "Config before upgrade (sha256): $(echo "$config_before_upgrade" | shasum -a 256 | awk '{print $1}')"
+
+          # Save fingerprint for the assertion step (written to a temp file so
+          # separate steps can read it without shell variable inheritance).
+          echo "$config_before_upgrade" > /tmp/vaultmtg-ci-config-before-upgrade
+
+          # Run the upgrade installer without uninstalling first — this is the
+          # upgrade-in-place scenario.  The postinstall script calls launchctl
+          # bootout on the running old daemon before bootstrapping the new one.
+          sudo installer -pkg vaultmtg-daemon-darwin-universal.pkg -target /
+          echo "PASS: upgrade installer -pkg completed"
+
+      # -----------------------------------------------------------------------
+      - name: "[STEP 4a] ASSERT — daemon reports NEW version via /health (ADR-041 G5)"
+      # -----------------------------------------------------------------------
+        # Poll /health for up to 30s.  The postinstall launchctl bootout/bootstrap
+        # cycle restarts the daemon with the new binary — allow for cold-start
+        # latency identical to the Step 2 /health probe.
+        # The /health JSON includes "version" (see localapi/server.go:healthResponse).
+        # We assert version == "ci-upgrade-v2" — the value stamped into the binary
+        # via -ldflags in the BUILD step above.
+        run: |
+          echo "=== [STEP 4a] ASSERT: /health reports ci-upgrade-v2 ==="
+          deadline=$((SECONDS + 30))
+          ok=0
+          while [ $SECONDS -lt $deadline ]; do
+            body=$(curl -s http://127.0.0.1:9001/health 2>/dev/null || echo "")
+            if [ -n "$body" ]; then
+              version=$(echo "$body" | python3 -c "import json,sys; d=json.load(sys.stdin); print(d.get('version',''))" 2>/dev/null || echo "")
+              if [ "$version" = "ci-upgrade-v2" ]; then
+                ok=1
+                echo "PASS: /health returned version=ci-upgrade-v2"
+                echo "  full response: $body"
+                break
+              fi
+              echo "  waiting — current version: $version (want ci-upgrade-v2)"
+            fi
+            sleep 1
+          done
+          if [ "$ok" -ne 1 ]; then
+            echo "FAIL: /health did not report ci-upgrade-v2 within 30s"
+            echo "--- diagnostic: launchctl list com.vaultmtg.daemon ---"
+            launchctl list com.vaultmtg.daemon || true
+            echo "--- diagnostic: /usr/local/bin/vaultmtg-daemon (binary timestamp) ---"
+            ls -la /usr/local/bin/vaultmtg-daemon || true
+            exit 1
+          fi
+
+      # -----------------------------------------------------------------------
+      - name: "[STEP 4a] ASSERT — config unchanged after upgrade (ADR-011-C)"
+      # -----------------------------------------------------------------------
+        # The upgrade installer must NOT overwrite ~/.vaultmtg/daemon.json.
+        # This mirrors the ADR-011-C config-retention contract from Step 4.
+        run: |
+          CONFIG_FILE="$HOME/.vaultmtg/daemon.json"
+          config_before_upgrade=$(cat /tmp/vaultmtg-ci-config-before-upgrade 2>/dev/null || echo "__missing__")
+          config_after_upgrade=$(cat "$CONFIG_FILE" 2>/dev/null || echo "__missing__")
+          if [ "$config_before_upgrade" != "$config_after_upgrade" ]; then
+            echo "FAIL: daemon.json changed on upgrade — ADR-011-C config-retention violated"
+            echo "  before sha256: $(echo "$config_before_upgrade" | shasum -a 256 | awk '{print $1}')"
+            echo "  after  sha256: $(echo "$config_after_upgrade"  | shasum -a 256 | awk '{print $1}')"
+            exit 1
+          fi
+          echo "PASS: daemon.json unchanged after upgrade (ADR-011-C config-retention satisfied)"
+
+      # -----------------------------------------------------------------------
+      - name: "[STEP 4a] ASSERT — LaunchAgent still loaded after upgrade"
+      # -----------------------------------------------------------------------
+        # The postinstall script re-bootstraps the LaunchAgent with the new binary.
+        # This assertion confirms the agent is registered and active — not orphaned
+        # from the bootout of the old daemon.
+        run: |
+          launchctl list com.vaultmtg.daemon || \
+            { echo "FAIL: com.vaultmtg.daemon not loaded after upgrade"; exit 1; }
+          echo "PASS: com.vaultmtg.daemon loaded after upgrade"
+          echo "PASS: Upgrade-in-place scenario complete (AC1+AC2+AC3 / #230)"
 
       # =======================================================================
       # STEP 5 — Uninstall
