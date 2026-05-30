@@ -59,8 +59,8 @@
 # before -- and is independent of -- the SHA-delta staleness logic (#119), which
 # is left untouched.
 #
-# STALENESS: SHA-DELTA CHECK (ticket #119)
-# -----------------------------------------
+# STALENESS: SHA-DELTA CHECK (tickets #119, #231)
+# ------------------------------------------------
 # When an APPROVED comment exists but predates the current HEAD (e.g., because
 # Lee ran update-branch to pull in main), the gate performs a SHA-delta check
 # before marking the verdict stale:
@@ -75,6 +75,10 @@
 #
 # This eliminates false-positive staleness on update-branch merge commits while
 # preserving gate integrity for real security changes.
+#
+# Ticket #231 (vault-mtg-tickets) is the canonical implementation ticket that
+# also ports this logic to mtga-companion-infra and updates the runbook to
+# reflect SHA-delta behaviour as the authoritative staleness rule.
 
 name: Security Review Gate (S-07)
 

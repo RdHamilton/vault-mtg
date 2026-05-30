@@ -1,0 +1,327 @@
+# security-review-gate-test.yml
+#
+# S-07 Gate Staleness Logic — Unit Tests
+#
+# PURPOSE
+# -------
+# Verifies the two critical properties of the SHA-delta staleness check in
+# security-review-gate.yml (ticket vault-mtg-tickets#231):
+#
+#   AC3: A verdict approved before an update-branch merge commit, where the
+#        merge commit touches ONLY non-S07-1A paths, keeps the gate GREEN.
+#        (No false-positive staleness on security-inert rebases.)
+#
+#   AC4: A verdict approved before a commit that touches an S07-1A path is
+#        correctly marked STALE. The gate stays RED and Sarah must re-review.
+#        (Gate integrity preserved for real security changes.)
+#
+# HOW IT WORKS
+# ------------
+# The test harness replicates the exact bash staleness-check logic from the
+# "Scan PR comments for security review verdict" step in security-review-gate.yml,
+# using injected synthetic commit lists and path sets rather than live GitHub API
+# calls. No real PR is required.
+#
+# Each test case:
+#   1. Sets VERDICT_TIMESTAMP (simulated Sarah approval time).
+#   2. Sets LAST_PUSH_TIMESTAMP (simulated update-branch commit time).
+#   3. Provides a COMMITS_AFTER list with associated file paths.
+#   4. Runs the delta check logic.
+#   5. Asserts the expected outcome (fresh or stale).
+#
+# TRIGGER
+# -------
+# Manual only (workflow_dispatch). Not triggered by push or pull_request --
+# this is a test harness, not a gate enforcement workflow.
+#
+# Runbook: vault-mtg-docs/engineering/runbooks/infra-security-review-gate.md
+# Ticket:  vault-mtg-tickets#231
+
+name: S-07 Gate Staleness Tests
+
+on:
+  workflow_dispatch:
+
+jobs:
+  test-staleness-logic:
+    name: Test SHA-Delta Staleness Logic
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      # -----------------------------------------------------------------------
+      # Shared helper: run the staleness delta check against a list of changed
+      # files (newline-separated) and the S-07 §1A trigger globs.
+      #
+      # Inputs (env vars expected by this step's logic, set per test case):
+      #   VERDICT_TIMESTAMP  -- ISO8601 UTC timestamp of the APPROVED comment
+      #   LAST_PUSH_TIMESTAMP -- ISO8601 UTC timestamp of the current HEAD commit
+      #   COMMIT_FILES        -- newline-separated list of files changed after verdict
+      #
+      # Outputs written to GITHUB_OUTPUT:
+      #   verdict_valid -- "true" (fresh) or "false" (stale)
+      # -----------------------------------------------------------------------
+
+      # -----------------------------------------------------------------------
+      # AC3: Security-inert update-branch merge commit must NOT stale the verdict
+      # -----------------------------------------------------------------------
+      - name: "AC3 setup: verdict before update-branch (non-1A files only)"
+        run: |
+          # Verdict posted at T=0; update-branch merge commit lands at T=+1m.
+          # The merge commit only touches non-S07 paths (docs, frontend assets).
+          echo "VERDICT_TIMESTAMP=2026-05-29T10:00:00Z"  >> "$GITHUB_ENV"
+          echo "LAST_PUSH_TIMESTAMP=2026-05-29T10:01:00Z" >> "$GITHUB_ENV"
+          # Newline-delimited: one file per "commit" (flat list for the check)
+          {
+            printf 'COMMIT_FILES<<EOF\n'
+            printf 'docs/changelog.md\n'
+            printf 'frontend/src/App.tsx\n'
+            printf 'README.md\n'
+            printf 'EOF\n'
+          } >> "$GITHUB_ENV"
+
+      - name: "AC3: run delta check — expect verdict_valid=true (gate stays green)"
+        id: ac3_check
+        env:
+          VERDICT_TIMESTAMP:   ${{ env.VERDICT_TIMESTAMP }}
+          LAST_PUSH_TIMESTAMP: ${{ env.LAST_PUSH_TIMESTAMP }}
+          COMMIT_FILES:        ${{ env.COMMIT_FILES }}
+        run: |
+          set -euo pipefail
+
+          # Replicate the fast-path / delta-path logic from security-review-gate.yml
+          # "Scan PR comments" step.
+
+          VERDICT_AFTER_PUSH=$(python3 -c "
+          from datetime import datetime, timezone
+          def p(t):
+              t = t.strip()
+              if t.endswith('Z'):
+                  t = t[:-1] + '+00:00'
+              return datetime.fromisoformat(t).astimezone(timezone.utc)
+          verdict = p('${VERDICT_TIMESTAMP}')
+          push   = p('${LAST_PUSH_TIMESTAMP}')
+          print('true' if verdict > push else 'false')
+          ")
+
+          echo "Verdict post-dates last push: ${VERDICT_AFTER_PUSH}"
+
+          if [ "${VERDICT_AFTER_PUSH}" = "true" ]; then
+            # Fast path -- verdict is genuinely newer; trivially fresh.
+            echo "verdict_valid=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          # Delta path: check changed files against S-07 §1A trigger globs.
+          TRIGGER_GLOBS=(
+            ".github/workflows/deploy-bff.yml"
+            ".github/workflows/deploy-spa.yml"
+            ".github/workflows/deploy-spa-staging.yml"
+            ".github/workflows/release.yml"
+            ".github/workflows/rollback.yml"
+            ".github/workflows/staging-deploy.yml"
+            ".github/workflows/daemon-release.yml"
+            ".github/workflows/frontend.yml"
+            "services/bff/cmd/"
+            "services/daemon/cmd/"
+            "scripts/deploy/"
+          )
+
+          S07_DELTA_FOUND=false
+
+          while IFS= read -r FILE; do
+            [ -z "${FILE}" ] && continue
+            for GLOB in "${TRIGGER_GLOBS[@]}"; do
+              if echo "${FILE}" | grep -qF "${GLOB}"; then
+                echo "S-07 §1A path match: ${FILE} matches ${GLOB}"
+                S07_DELTA_FOUND=true
+                break 2
+              fi
+            done
+          done <<< "${COMMIT_FILES}"
+
+          if [ "${S07_DELTA_FOUND}" = "true" ]; then
+            echo "Delta check: STALE"
+            echo "verdict_valid=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "Delta check: FRESH (no §1A paths in commits after verdict)"
+            echo "verdict_valid=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: "AC3: assert verdict_valid=true"
+        env:
+          RESULT: ${{ steps.ac3_check.outputs.verdict_valid }}
+        run: |
+          echo "AC3 result: verdict_valid=${RESULT}"
+          if [ "${RESULT}" != "true" ]; then
+            echo "FAIL: AC3 — expected verdict_valid=true (gate green after inert update-branch),"
+            echo "      but got verdict_valid=${RESULT}."
+            echo "      A security-inert merge commit must NOT invalidate Sarah's prior verdict."
+            exit 1
+          fi
+          echo "PASS: AC3 — security-inert update-branch does not stale the verdict."
+
+      # -----------------------------------------------------------------------
+      # AC4: Real S07-1A-path commit after verdict MUST stale the verdict
+      # -----------------------------------------------------------------------
+      - name: "AC4 setup: verdict before a real 1A-path commit"
+        run: |
+          # Verdict posted at T=0; engineer pushes a services/bff/cmd/ change at T=+2m.
+          echo "VERDICT_TIMESTAMP=2026-05-29T10:00:00Z"  >> "$GITHUB_ENV"
+          echo "LAST_PUSH_TIMESTAMP=2026-05-29T10:02:00Z" >> "$GITHUB_ENV"
+          {
+            printf 'COMMIT_FILES<<EOF\n'
+            printf 'services/bff/cmd/main.go\n'
+            printf 'services/bff/cmd/daemon_register.go\n'
+            printf 'EOF\n'
+          } >> "$GITHUB_ENV"
+
+      - name: "AC4: run delta check — expect verdict_valid=false (gate goes red)"
+        id: ac4_check
+        env:
+          VERDICT_TIMESTAMP:   ${{ env.VERDICT_TIMESTAMP }}
+          LAST_PUSH_TIMESTAMP: ${{ env.LAST_PUSH_TIMESTAMP }}
+          COMMIT_FILES:        ${{ env.COMMIT_FILES }}
+        run: |
+          set -euo pipefail
+
+          VERDICT_AFTER_PUSH=$(python3 -c "
+          from datetime import datetime, timezone
+          def p(t):
+              t = t.strip()
+              if t.endswith('Z'):
+                  t = t[:-1] + '+00:00'
+              return datetime.fromisoformat(t).astimezone(timezone.utc)
+          verdict = p('${VERDICT_TIMESTAMP}')
+          push   = p('${LAST_PUSH_TIMESTAMP}')
+          print('true' if verdict > push else 'false')
+          ")
+
+          echo "Verdict post-dates last push: ${VERDICT_AFTER_PUSH}"
+
+          if [ "${VERDICT_AFTER_PUSH}" = "true" ]; then
+            echo "verdict_valid=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          TRIGGER_GLOBS=(
+            ".github/workflows/deploy-bff.yml"
+            ".github/workflows/deploy-spa.yml"
+            ".github/workflows/deploy-spa-staging.yml"
+            ".github/workflows/release.yml"
+            ".github/workflows/rollback.yml"
+            ".github/workflows/staging-deploy.yml"
+            ".github/workflows/daemon-release.yml"
+            ".github/workflows/frontend.yml"
+            "services/bff/cmd/"
+            "services/daemon/cmd/"
+            "scripts/deploy/"
+          )
+
+          S07_DELTA_FOUND=false
+
+          while IFS= read -r FILE; do
+            [ -z "${FILE}" ] && continue
+            for GLOB in "${TRIGGER_GLOBS[@]}"; do
+              if echo "${FILE}" | grep -qF "${GLOB}"; then
+                echo "S-07 §1A path match: ${FILE} matches ${GLOB}"
+                S07_DELTA_FOUND=true
+                break 2
+              fi
+            done
+          done <<< "${COMMIT_FILES}"
+
+          if [ "${S07_DELTA_FOUND}" = "true" ]; then
+            echo "Delta check: STALE — §1A path(s) changed after verdict"
+            echo "verdict_valid=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "Delta check: FRESH"
+            echo "verdict_valid=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: "AC4: assert verdict_valid=false"
+        env:
+          RESULT: ${{ steps.ac4_check.outputs.verdict_valid }}
+        run: |
+          echo "AC4 result: verdict_valid=${RESULT}"
+          if [ "${RESULT}" != "false" ]; then
+            echo "FAIL: AC4 — expected verdict_valid=false (gate red after real 1A-path change),"
+            echo "      but got verdict_valid=${RESULT}."
+            echo "      A genuine S-07 §1A-path change after approval MUST invalidate the verdict."
+            exit 1
+          fi
+          echo "PASS: AC4 — real §1A-path change after verdict correctly stales approval."
+
+      # -----------------------------------------------------------------------
+      # AC3b: Fast path — verdict timestamp is NEWER than push (trivially fresh)
+      # -----------------------------------------------------------------------
+      - name: "AC3b setup: verdict newer than head commit (fast path)"
+        run: |
+          # Sarah posts verdict at T=+5m, head commit is at T=0.
+          echo "VERDICT_TIMESTAMP=2026-05-29T10:05:00Z"  >> "$GITHUB_ENV"
+          echo "LAST_PUSH_TIMESTAMP=2026-05-29T10:00:00Z" >> "$GITHUB_ENV"
+          {
+            printf 'COMMIT_FILES<<EOF\n'
+            printf 'services/bff/cmd/main.go\n'
+            printf 'EOF\n'
+          } >> "$GITHUB_ENV"
+
+      - name: "AC3b: run delta check — expect verdict_valid=true (fast path)"
+        id: ac3b_check
+        env:
+          VERDICT_TIMESTAMP:   ${{ env.VERDICT_TIMESTAMP }}
+          LAST_PUSH_TIMESTAMP: ${{ env.LAST_PUSH_TIMESTAMP }}
+          COMMIT_FILES:        ${{ env.COMMIT_FILES }}
+        run: |
+          set -euo pipefail
+
+          VERDICT_AFTER_PUSH=$(python3 -c "
+          from datetime import datetime, timezone
+          def p(t):
+              t = t.strip()
+              if t.endswith('Z'):
+                  t = t[:-1] + '+00:00'
+              return datetime.fromisoformat(t).astimezone(timezone.utc)
+          verdict = p('${VERDICT_TIMESTAMP}')
+          push   = p('${LAST_PUSH_TIMESTAMP}')
+          print('true' if verdict > push else 'false')
+          ")
+
+          echo "Verdict post-dates last push: ${VERDICT_AFTER_PUSH}"
+
+          if [ "${VERDICT_AFTER_PUSH}" = "true" ]; then
+            echo "Fast path: verdict is newer than head -- trivially fresh."
+            echo "verdict_valid=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          # Should not reach here in AC3b.
+          echo "verdict_valid=false" >> "$GITHUB_OUTPUT"
+
+      - name: "AC3b: assert verdict_valid=true (fast path)"
+        env:
+          RESULT: ${{ steps.ac3b_check.outputs.verdict_valid }}
+        run: |
+          echo "AC3b result: verdict_valid=${RESULT}"
+          if [ "${RESULT}" != "true" ]; then
+            echo "FAIL: AC3b — expected verdict_valid=true (fast path: verdict newer than push),"
+            echo "      but got verdict_valid=${RESULT}."
+            exit 1
+          fi
+          echo "PASS: AC3b — fast path correctly identifies fresh verdict."
+
+      # -----------------------------------------------------------------------
+      # Summary
+      # -----------------------------------------------------------------------
+      - name: Test summary
+        run: |
+          echo "======================================================"
+          echo "  S-07 Gate Staleness Tests: ALL PASSED"
+          echo "======================================================"
+          echo ""
+          echo "AC3 : security-inert update-branch does not stale verdict  PASS"
+          echo "AC3b: fast path (verdict newer than head) works correctly   PASS"
+          echo "AC4 : real §1A-path change after verdict stales correctly   PASS"
+          echo ""
+          echo "Gate integrity properties verified."
+          echo "Ticket: vault-mtg-tickets#231"
