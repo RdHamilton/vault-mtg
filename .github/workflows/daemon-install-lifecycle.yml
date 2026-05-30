@@ -788,7 +788,7 @@ jobs:
         # postinstall change correctly updates cloud_api_url but accidentally
         # drops or blanks an unrelated field.
         run: |
-          CONFIG_FILE="$HOME/.vaultmtg/daemon.json"
+          export CONFIG_FILE="$HOME/.vaultmtg/daemon.json"
           echo "=== [STEP 4b] ASSERT: named-field preservation after reinstall ==="
           echo "--- daemon.json contents ---"
           cat "$CONFIG_FILE"
@@ -796,26 +796,7 @@ jobs:
 
           # api_key: must be present (may be empty string for fresh CI install —
           # the daemon writes it on first auth; we assert the key exists in JSON).
-          python3 -c "
-import json, sys
-with open('${CONFIG_FILE}') as f:
-    d = json.load(f)
-assert 'api_key' in d, 'FAIL: api_key field missing from daemon.json after reinstall'
-print('PASS: api_key present =>', repr(d['api_key']))
-
-# account_id: may be absent on a fresh CI install (daemon writes it on first
-# auth); if present it must not be blank.
-if 'account_id' in d:
-    assert d['account_id'] != '', 'FAIL: account_id is blank after reinstall'
-    print('PASS: account_id preserved =>', repr(d['account_id']))
-else:
-    print('INFO: account_id not yet set (first install — daemon writes on first auth)')
-
-# sync_enabled: key must be present when it was written by the pre-stage step.
-assert 'sync_enabled' in d, 'FAIL: sync_enabled field missing from daemon.json after reinstall'
-print('PASS: sync_enabled preserved =>', d['sync_enabled'])
-print('PASS: all named fields verified (api_key, account_id, sync_enabled)')
-"
+          python3 services/daemon/install/assert_field_preservation.py
 
       # =======================================================================
       # STEP 4a — Upgrade-in-place (#230, ADR-041 G5 / Section 4 P2)

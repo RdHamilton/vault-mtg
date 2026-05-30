@@ -342,6 +342,43 @@ EOF
 }
 
 # ---------------------------------------------------------------------------
+# 7b. --dry-run flag — equivalent to DRY_RUN=1
+# ---------------------------------------------------------------------------
+@test "--dry-run flag: sudo and launchctl are not invoked (same as DRY_RUN=1)" {
+  local stub_dir
+  stub_dir="$(_make_stub_dir)"
+
+  cat > "${stub_dir}/uname" <<'EOF'
+#!/usr/bin/env bash
+echo "arm64"
+EOF
+  chmod +x "${stub_dir}/uname"
+
+  local fake_home
+  fake_home="$(mktemp -d)"
+
+  export BATS_TEST_TMPDIR
+
+  run env \
+    PATH="${stub_dir}:${PATH}" \
+    HOME="${fake_home}" \
+    RELEASE_TAG="daemon/v0.1.0" \
+    BATS_TEST_TMPDIR="${BATS_TEST_TMPDIR}" \
+    bash "${INSTALL_SH}" --dry-run <<< $'https://api.example.com\nfake-token\n'
+
+  echo "output: ${output}"
+  [ "${status}" -eq 0 ]
+
+  # Sentinel files must NOT exist (stub sudo/launchctl write them when called)
+  [ ! -f "${BATS_TEST_TMPDIR}/sudo_called" ]
+  [ ! -f "${BATS_TEST_TMPDIR}/launchctl_called" ]
+
+  # DRY_RUN output messages must be present
+  [[ "${output}" == *"[DRY_RUN] would install binary"* ]]
+  [[ "${output}" == *"[DRY_RUN] would run: launchctl"* ]]
+}
+
+# ---------------------------------------------------------------------------
 # 8. Reinstall with new BFF URL — cloud_api_url updated, api_key preserved
 # ---------------------------------------------------------------------------
 @test "reinstall: providing a new BFF URL updates cloud_api_url and preserves api_key" {

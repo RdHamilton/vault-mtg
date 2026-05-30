@@ -16,10 +16,15 @@
 set -euo pipefail
 
 # ---------------------------------------------------------------------------
-# DRY_RUN mode — set DRY_RUN=1 to skip sudo and launchctl calls.
-# Used by automated tests (bats) to exercise the script safely.
+# DRY_RUN mode — set DRY_RUN=1 or pass --dry-run to skip sudo/launchctl.
+# Used by automated tests (bats) and local verification to exercise the
+# script safely without touching the system.
 # ---------------------------------------------------------------------------
 DRY_RUN="${DRY_RUN:-}"
+for _arg in "$@"; do
+  if [[ "${_arg}" == "--dry-run" ]]; then DRY_RUN=1; fi
+done
+unset _arg
 
 # ---------------------------------------------------------------------------
 # Configuration — edit these for a specific release.
