@@ -60,7 +60,7 @@ func (r *QuestRepository) UpsertQuestProgress(ctx context.Context, u QuestProgre
 			ending_progress,
 			completed,
 			can_swap,
-			assigned_at,
+			first_seen_at,
 			last_seen_at
 		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $9)
 		ON CONFLICT (account_id, quest_id) DO UPDATE
@@ -78,7 +78,7 @@ func (r *QuestRepository) UpsertQuestProgress(ctx context.Context, u QuestProgre
 		u.Progress,  // $6 ending_progress
 		false,       // $7 completed — quest.progress event means it is still active
 		u.CanSwap,   // $8 can_swap
-		u.SeenAt,    // $9 assigned_at / last_seen_at
+		u.SeenAt,    // $9 first_seen_at / last_seen_at
 	)
 
 	return err
@@ -139,7 +139,7 @@ type QuestRow struct {
 	Completed        bool
 	CanSwap          bool
 	Rewards          *string
-	AssignedAt       time.Time
+	FirstSeenAt      time.Time
 	CompletedAt      *time.Time
 	LastSeenAt       *time.Time
 	Rerolled         bool
@@ -153,11 +153,11 @@ type QuestRow struct {
 // SPA only shows a handful at a time.
 func (r *QuestRepository) ListActiveByAccountID(ctx context.Context, accountID int64) ([]QuestRow, error) {
 	const q = `SELECT id, quest_id, quest_type, goal, starting_progress, ending_progress,
-	                  completed, can_swap, rewards, assigned_at, completed_at, last_seen_at,
+	                  completed, can_swap, rewards, first_seen_at, completed_at, last_seen_at,
 	                  rerolled, created_at, session_id, completion_source
 	           FROM quests
 	           WHERE account_id = $1 AND completed = FALSE
-	           ORDER BY assigned_at DESC, id DESC
+	           ORDER BY first_seen_at DESC, id DESC
 	           LIMIT 50`
 	return r.scanQuestRows(ctx, q, accountID)
 }
@@ -187,7 +187,7 @@ func (r *QuestRepository) ListHistoryByAccountID(ctx context.Context, accountID 
 		next++
 	}
 	q := `SELECT id, quest_id, quest_type, goal, starting_progress, ending_progress,
-	             completed, can_swap, rewards, assigned_at, completed_at, last_seen_at,
+	             completed, can_swap, rewards, first_seen_at, completed_at, last_seen_at,
 	             rerolled, created_at, session_id, completion_source
 	      FROM quests
 	      WHERE ` + strings.Join(clauses, " AND ") + `
@@ -231,10 +231,10 @@ func (r *QuestRepository) QuestStats(ctx context.Context, accountID int64, start
 	             COUNT(*) FILTER (WHERE completed = TRUE)                                     AS completed_quests,
 	             COUNT(*) FILTER (WHERE completed = FALSE)                                    AS active_quests,
 	             COUNT(*) FILTER (WHERE rerolled = TRUE)                                      AS reroll_count,
-	             COALESCE(AVG(EXTRACT(EPOCH FROM (completed_at - assigned_at)) * 1000)
+	             COALESCE(AVG(EXTRACT(EPOCH FROM (completed_at - first_seen_at)) * 1000)
 	                FILTER (WHERE completed_at IS NOT NULL), 0)::BIGINT                       AS avg_completion_ms
 	           FROM quests
-	           WHERE account_id = $1 AND assigned_at >= $2 AND assigned_at <= $3`
+	           WHERE account_id = $1 AND first_seen_at >= $2 AND first_seen_at <= $3`
 	var s QuestStatsAggregate
 	if err := r.db.QueryRowContext(ctx, q, accountID, start, end).Scan(
 		&s.TotalQuests, &s.CompletedQuests, &s.ActiveQuests,
@@ -255,7 +255,7 @@ func (r *QuestRepository) QuestStats(ctx context.Context, accountID int64, start
 // in ActiveQuestsResponse.last_updated. Returns the zero time + ok=false
 // when the account has no quests yet.
 func (r *QuestRepository) LastQuestSeenAt(ctx context.Context, accountID int64) (time.Time, bool, error) {
-	const q = `SELECT COALESCE(MAX(last_seen_at), MAX(assigned_at))
+	const q = `SELECT COALESCE(MAX(last_seen_at), MAX(first_seen_at))
 	           FROM quests
 	           WHERE account_id = $1`
 	var ts sql.NullTime
@@ -281,7 +281,7 @@ func (r *QuestRepository) scanQuestRows(ctx context.Context, q string, args ...a
 		var qr QuestRow
 		if err := rows.Scan(
 			&qr.ID, &qr.QuestID, &qr.QuestType, &qr.Goal, &qr.StartingProgress, &qr.EndingProgress,
-			&qr.Completed, &qr.CanSwap, &qr.Rewards, &qr.AssignedAt, &qr.CompletedAt, &qr.LastSeenAt,
+			&qr.Completed, &qr.CanSwap, &qr.Rewards, &qr.FirstSeenAt, &qr.CompletedAt, &qr.LastSeenAt,
 			&qr.Rerolled, &qr.CreatedAt, &qr.SessionID, &qr.CompletionSource,
 		); err != nil {
 			return nil, err

@@ -94,10 +94,10 @@ func TestQuestRepository_LastQuestSeenAt_NonNullTimestamp(t *testing.T) {
 	}
 }
 
-// TestQuestRepository_LastQuestSeenAt_NullLastSeenAtFallsBackToAssignedAt
+// TestQuestRepository_LastQuestSeenAt_NullLastSeenAtFallsBackToFirstSeenAt
 // verifies that when last_seen_at is NULL, the COALESCE falls back to
-// assigned_at and still returns ok=true.
-func TestQuestRepository_LastQuestSeenAt_NullLastSeenAtFallsBackToAssignedAt(t *testing.T) {
+// first_seen_at and still returns ok=true.
+func TestQuestRepository_LastQuestSeenAt_NullLastSeenAtFallsBackToFirstSeenAt(t *testing.T) {
 	db := openTestDB(t)
 	repo := repository.NewQuestRepository(db)
 
@@ -108,7 +108,7 @@ func TestQuestRepository_LastQuestSeenAt_NullLastSeenAtFallsBackToAssignedAt(t *
 
 	insertTestQuest(t, db, repo, accountID, questID, assignedAt)
 
-	// NULL out last_seen_at to exercise the COALESCE(MAX(last_seen_at), MAX(assigned_at)) fallback.
+	// NULL out last_seen_at to exercise the COALESCE(MAX(last_seen_at), MAX(first_seen_at)) fallback.
 	_, err := db.ExecContext(
 		context.Background(),
 		`UPDATE quests SET last_seen_at = NULL WHERE quest_id = $1 AND account_id = $2`,
@@ -123,7 +123,7 @@ func TestQuestRepository_LastQuestSeenAt_NullLastSeenAtFallsBackToAssignedAt(t *
 		t.Fatalf("LastQuestSeenAt: %v", err)
 	}
 	if !ok {
-		t.Fatal("expected ok=true when last_seen_at is NULL but assigned_at exists, got false")
+		t.Fatal("expected ok=true when last_seen_at is NULL but first_seen_at exists, got false")
 	}
 	if !got.Equal(assignedAt) {
 		t.Errorf("fallback timestamp mismatch: want %v, got %v", assignedAt, got)
@@ -147,7 +147,7 @@ func TestQuestRepository_UpsertQuestProgress_CrossTenantCollisionSucceeds(t *tes
 	accountA := insertTestAccount(t, db, fmt.Sprintf("quest-collision-a-%d", time.Now().UnixNano()))
 	accountB := insertTestAccount(t, db, fmt.Sprintf("quest-collision-b-%d", time.Now().UnixNano()))
 
-	// Use the exact same quest_id and assigned_at for both accounts —
+	// Use the exact same quest_id and first_seen_at for both accounts —
 	// this is precisely the collision that issue #1924 describes.
 	questID := "quest-shared-daily-001"
 	assignedAt := time.Date(2026, 5, 14, 12, 0, 0, 0, time.UTC)
@@ -186,14 +186,14 @@ func TestQuestRepository_UpsertQuestProgress_CrossTenantCollisionSucceeds(t *tes
 	var countA, countB int
 	if err := db.QueryRowContext(
 		ctx,
-		`SELECT COUNT(*) FROM quests WHERE account_id = $1 AND quest_id = $2 AND assigned_at = $3`,
+		`SELECT COUNT(*) FROM quests WHERE account_id = $1 AND quest_id = $2 AND first_seen_at = $3`,
 		accountA, questID, assignedAt,
 	).Scan(&countA); err != nil {
 		t.Fatalf("count query account A: %v", err)
 	}
 	if err := db.QueryRowContext(
 		ctx,
-		`SELECT COUNT(*) FROM quests WHERE account_id = $1 AND quest_id = $2 AND assigned_at = $3`,
+		`SELECT COUNT(*) FROM quests WHERE account_id = $1 AND quest_id = $2 AND first_seen_at = $3`,
 		accountB, questID, assignedAt,
 	).Scan(&countB); err != nil {
 		t.Fatalf("count query account B: %v", err)
@@ -271,7 +271,7 @@ func TestQuestRepository_UpsertQuestProgress_SameAccountIdempotent(t *testing.T)
 
 // TestQuestRepository_UpsertQuestProgress_CrossTenantDataIsolation verifies
 // that updating one account's quest row does not mutate the other account's
-// row, even when they share the same quest_id and assigned_at.
+// row, even when they share the same quest_id and first_seen_at.
 func TestQuestRepository_UpsertQuestProgress_CrossTenantDataIsolation(t *testing.T) {
 	db := openTestDB(t)
 	repo := repository.NewQuestRepository(db)
@@ -347,7 +347,7 @@ func TestQuestRepository_UpsertQuestProgress_CrossTenantDataIsolation(t *testing
 // timestamps produce exactly one row and update progress in place.
 //
 // This is the primary regression test for issue #204.  With the old 3-column
-// constraint (account_id, quest_id, assigned_at), each distinct seen_at caused
+// constraint (account_id, quest_id, first_seen_at), each distinct seen_at caused
 // a fresh INSERT, accumulating one duplicate row per sync cycle.  With the new
 // 2-column constraint (account_id, quest_id) all events collapse onto a single
 // row via ON CONFLICT DO UPDATE.
@@ -478,5 +478,60 @@ func TestQuestRepository_UpsertQuestProgress_CrossAccountDistinct(t *testing.T) 
 	}
 	if n := countQuestRows(t, db, accountB, questID); n != 1 {
 		t.Errorf("account B: expected 1 row, got %d", n)
+	}
+}
+
+// ─── Issue #236: first_seen_at column rename round-trip ──────────────────────
+
+// TestQuestRepository_FirstSeenAt_RoundTrips verifies that the renamed column
+// first_seen_at correctly stores and retrieves the timestamp written by
+// UpsertQuestProgress (via SeenAt), as read back through ListActiveByAccountID.
+//
+// This is the canonical regression test for migration 000097 — if the column
+// rename is missing or the SQL is not updated, the scan will fail or return a
+// zero time.
+func TestQuestRepository_FirstSeenAt_RoundTrips(t *testing.T) {
+	db := openTestDB(t)
+	repo := repository.NewQuestRepository(db)
+	ctx := context.Background()
+
+	accountID := insertTestAccount(t, db, fmt.Sprintf("quest-fsa-roundtrip-%d", time.Now().UnixNano()))
+	questID := fmt.Sprintf("quest-fsa-%d", time.Now().UnixNano())
+
+	firstSeenAt := time.Date(2026, 5, 30, 8, 0, 0, 0, time.UTC)
+
+	if err := repo.UpsertQuestProgress(ctx, repository.QuestProgressUpsert{
+		AccountID: accountID,
+		QuestID:   questID,
+		QuestName: "Win 5 Games",
+		Progress:  2,
+		Goal:      5,
+		CanSwap:   true,
+		SeenAt:    firstSeenAt,
+	}); err != nil {
+		t.Fatalf("UpsertQuestProgress: %v", err)
+	}
+
+	t.Cleanup(func() {
+		_, _ = db.ExecContext(ctx, `DELETE FROM quests WHERE account_id = $1 AND quest_id = $2`, accountID, questID)
+	})
+
+	rows, err := repo.ListActiveByAccountID(ctx, accountID)
+	if err != nil {
+		t.Fatalf("ListActiveByAccountID: %v", err)
+	}
+
+	var found bool
+	for _, row := range rows {
+		if row.QuestID == questID {
+			found = true
+			if !row.FirstSeenAt.Equal(firstSeenAt) {
+				t.Errorf("FirstSeenAt round-trip: want %v, got %v", firstSeenAt, row.FirstSeenAt)
+			}
+		}
+	}
+
+	if !found {
+		t.Errorf("quest %q not found in ListActiveByAccountID result", questID)
 	}
 }
