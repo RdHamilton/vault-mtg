@@ -252,7 +252,7 @@ func main() {
 
 	// systray.Run must own the main OS thread (macOS Cocoa requirement).
 	// onReady starts the daemon service in a goroutine; onQuit cancels the context.
-	app := tray.New("https://app.vaultmtg.app", pkce.OpenBrowser, func() {
+	app := tray.New("https://app.vaultmtg.app", Version, pkce.OpenBrowser, func() {
 		// Tell launchd the stop was intentional so it does not immediately
 		// respawn the process per KeepAlive=true in the plist. On non-macOS
 		// platforms stopLaunchAgent is a no-op.

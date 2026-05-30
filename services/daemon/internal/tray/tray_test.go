@@ -33,7 +33,7 @@ func TestStatusLabel(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 func newTestApp() *App {
-	return New("https://app.vaultmtg.app", func(string) error { return nil }, func() {})
+	return New("https://app.vaultmtg.app", "dev", func(string) error { return nil }, func() {})
 }
 
 func TestAppInitialStatus(t *testing.T) {
@@ -77,13 +77,27 @@ func TestAppSyncNowChannel_NonBlocking(t *testing.T) {
 
 func TestAppNew_SetsAppURL(t *testing.T) {
 	url := "https://app.vaultmtg.app"
-	a := New(url, nil, nil)
+	a := New(url, "dev", nil, nil)
 	assert.Equal(t, url, a.appURL)
+}
+
+// ---------------------------------------------------------------------------
+// About / Check for Updates (ticket #2156)
+// ---------------------------------------------------------------------------
+
+func TestAppNew_SetsVersion(t *testing.T) {
+	a := New("https://app.vaultmtg.app", "v0.3.4", nil, nil)
+	assert.Equal(t, "v0.3.4", a.version)
+}
+
+func TestAppNew_SetsVersionDev(t *testing.T) {
+	a := New("https://app.vaultmtg.app", "dev", nil, nil)
+	assert.Equal(t, "dev", a.version)
 }
 
 func TestAppQuitCallback(t *testing.T) {
 	called := false
-	a := New("https://app.vaultmtg.app", nil, func() { called = true })
+	a := New("https://app.vaultmtg.app", "dev", nil, func() { called = true })
 	// Simulate what onExit does inside Run.
 	if a.onQuit != nil {
 		a.onQuit()

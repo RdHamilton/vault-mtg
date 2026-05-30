@@ -27,7 +27,7 @@ import (
 // menu is initialised; all menu-item fields remain nil. Public state-mutation
 // methods must guard against nil menu pointers (they do — see tray.go).
 func newCGOTestApp() *App {
-	return New("https://app.vaultmtg.app", func(string) error { return nil }, func() {})
+	return New("https://app.vaultmtg.app", "v0.3.4-test", func(string) error { return nil }, func() {})
 }
 
 // TestTrayCGO_RealTrayAPIReachable is the primary AC1 test. It constructs
@@ -133,10 +133,76 @@ func TestTrayCGO_SetHelperInstalled_NoopWithoutMenu(t *testing.T) {
 // systray.Quit() (which requires systray.Run to have been called first).
 func TestTrayCGO_QuitCallback(t *testing.T) {
 	called := false
-	app := New("https://app.vaultmtg.app", nil, func() { called = true })
+	app := New("https://app.vaultmtg.app", "v0.3.4-test", nil, func() { called = true })
 	// Simulate the onExit callback path without calling systray.Quit.
 	if app.onQuit != nil {
 		app.onQuit()
 	}
 	assert.True(t, called)
+}
+
+// ---------------------------------------------------------------------------
+// About / Check for Updates (ticket #2156)
+// ---------------------------------------------------------------------------
+
+// TestTrayCGO_New_StoresVersion verifies that New() stores the version string
+// so it can be rendered in the "About" menu item label.
+func TestTrayCGO_New_StoresVersion(t *testing.T) {
+	app := New("https://app.vaultmtg.app", "v0.3.4", func(string) error { return nil }, func() {})
+	assert.Equal(t, "v0.3.4", app.version)
+}
+
+// TestTrayCGO_New_DefaultVersionDev verifies that an empty version string is
+// stored as-is (callers pass "dev" for local builds; no clamping here).
+func TestTrayCGO_New_DefaultVersionDev(t *testing.T) {
+	app := New("https://app.vaultmtg.app", "dev", func(string) error { return nil }, func() {})
+	assert.Equal(t, "dev", app.version)
+}
+
+// TestTrayCGO_AboutItem_NoopWithoutMenu verifies that the miAbout field is nil
+// before setup() has run (tests never call systray.Run) and that the App does
+// not panic when version is set but no real menu exists.
+func TestTrayCGO_AboutItem_NoopWithoutMenu(t *testing.T) {
+	app := newCGOTestApp()
+	// miAbout is nil pre-setup — must not panic when accessed indirectly.
+	assert.Nil(t, app.miAbout)
+	assert.Equal(t, "v0.3.4-test", app.version)
+}
+
+// TestTrayCGO_CheckForUpdatesItem_NoopWithoutMenu verifies that miCheckForUpdates
+// is nil before setup() has run and that no panic occurs.
+func TestTrayCGO_CheckForUpdatesItem_NoopWithoutMenu(t *testing.T) {
+	app := newCGOTestApp()
+	assert.Nil(t, app.miCheckForUpdates)
+}
+
+// TestTrayCGO_OpenURLCalled_OnCheckForUpdates verifies that openURL is invoked
+// with the GitHub Releases URL when the check-for-updates action is triggered.
+// We test this via openCheckForUpdates() which is the extracted helper the loop
+// goroutine calls on click.
+func TestTrayCGO_OpenURLCalled_OnCheckForUpdates(t *testing.T) {
+	var gotURL string
+	app := New("https://app.vaultmtg.app", "v0.3.4", func(u string) error {
+		gotURL = u
+		return nil
+	}, func() {})
+
+	app.openCheckForUpdates()
+
+	assert.Equal(t, "https://github.com/RdHamilton/vault-mtg/releases?q=daemon", gotURL)
+}
+
+// TestTrayCGO_CheckForUpdates_URLIsVaultMTGRepo verifies the exact URL constant
+// to prevent accidental references to the legacy repo slug (pre-rename).
+func TestTrayCGO_CheckForUpdates_URLIsVaultMTGRepo(t *testing.T) {
+	var gotURL string
+	app := New("https://app.vaultmtg.app", "dev", func(u string) error {
+		gotURL = u
+		return nil
+	}, func() {})
+
+	app.openCheckForUpdates()
+
+	assert.Contains(t, gotURL, "RdHamilton/vault-mtg", "URL must reference the vault-mtg repo")
+	assert.NotContains(t, gotURL, "mtga-companion", "legacy repo slug must not appear in Check for Updates URL")
 }
