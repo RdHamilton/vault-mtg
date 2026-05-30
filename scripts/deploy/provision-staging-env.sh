@@ -45,7 +45,7 @@
 #   /vaultmtg/app/staging/db-endpoint
 #   /vaultmtg/app/staging/db-name
 #   /vaultmtg/app/staging/resend-api-key          (SecureString, --with-decryption)
-#   /vaultmtg/app/staging/sentry-bff-dsn
+#   /vaultmtg/app/staging/sentry-bff-dsn          (SecureString, --with-decryption)
 #   /vaultmtg/app/staging/discord-bot-token       (SecureString, --with-decryption)
 #   /vaultmtg/app/staging/discord-guild-id
 #   /vaultmtg/app/staging/mailchimp-api-key       (SecureString, --with-decryption)
@@ -228,7 +228,7 @@ echo "DATABASE_URL provisioned (credentials spliced from Secrets Manager under p
 
 # VaultMTG service keys
 write_param RESEND_API_KEY          "$SSM_VAULTMTG_STAGING_RESEND_API_KEY"         --with-decryption
-write_param SENTRY_DSN              "$SSM_VAULTMTG_STAGING_SENTRY_DSN"
+write_param SENTRY_DSN              "$SSM_VAULTMTG_STAGING_SENTRY_DSN"            --with-decryption
 write_param DISCORD_BOT_TOKEN       "$SSM_VAULTMTG_STAGING_DISCORD_BOT_TOKEN"      --with-decryption
 write_param DISCORD_GUILD_ID        "$SSM_VAULTMTG_STAGING_DISCORD_GUILD_ID"
 write_param MAILCHIMP_API_KEY       "$SSM_VAULTMTG_STAGING_MAILCHIMP_API_KEY"      --with-decryption
