@@ -88,11 +88,25 @@ echo "[postinstall] clearing quarantine attribute on ${BINARY_PATH}"
 xattr -dr com.apple.quarantine "${BINARY_PATH}" || true
 
 # ---------------------------------------------------------------------------
-# 2. Write daemon.json with cloud_api_url (required field).
-#    Only written on a fresh install — skip if the file already exists so
-#    re-installs do not clobber the user's existing api_key / daemon_jwt.
-#    Use install(1) so file ownership is set to the real user, not root.
+# 2. Write / update daemon.json with cloud_api_url.
+#
+#    Fresh install (file absent):
+#      Write a minimal config with cloud_api_url + sync_enabled.
+#
+#    Reinstall / upgrade (file exists):
+#      Read the existing cloud_api_url.  If it differs from the baked-in
+#      CLOUD_API_URL (cross-env reinstall — e.g. staging -> prod), clear
+#      the stale keychain credential (api-key) and update cloud_api_url
+#      in-place, preserving all other fields (api_key, account_id, etc.).
+#
+#    Use install(1) for new files so ownership is set to the real user,
+#    not root.  In-place patching with python3 is done as the real user via
+#    su/sudo to avoid root-owned config that the daemon (running as the user)
+#    cannot write later.
 # ---------------------------------------------------------------------------
+KEYCHAIN_SERVICE="com.vaultmtg.daemon"
+KEYCHAIN_ACCOUNT="api-key"
+
 install -d -m 755 -o "${REAL_USER}" "${CONFIG_DIR}"
 if [[ ! -f "${CONFIG_FILE}" ]]; then
   echo "[postinstall] writing ${CONFIG_FILE}"
@@ -103,6 +117,46 @@ if [[ ! -f "${CONFIG_FILE}" ]]; then
   "sync_enabled": true
 }
 JSON
+else
+  # Config file exists — check whether cloud_api_url has changed (env-mismatch).
+  EXISTING_URL=$(python3 -c "
+import json, sys
+try:
+    with open('${CONFIG_FILE}') as f:
+        d = json.load(f)
+    print(d.get('cloud_api_url', ''))
+except Exception:
+    print('')
+" 2>/dev/null) || EXISTING_URL=""
+
+  if [[ -n "${EXISTING_URL}" && "${EXISTING_URL}" != "${CLOUD_API_URL}" ]]; then
+    echo "[postinstall] cloud_api_url mismatch — cross-env reinstall detected"
+    echo "[postinstall]   old: ${EXISTING_URL}"
+    echo "[postinstall]   new: ${CLOUD_API_URL}"
+
+    # Clear the stale keychain credential so the daemon doesn't try to auth
+    # against the wrong environment with an old api_key (#194).
+    echo "[postinstall] clearing stale keychain entry (${KEYCHAIN_SERVICE}/${KEYCHAIN_ACCOUNT})"
+    security delete-generic-password \
+      -s "${KEYCHAIN_SERVICE}" \
+      -a "${KEYCHAIN_ACCOUNT}" 2>/dev/null || true
+    echo "[postinstall] keychain entry cleared (or was already absent)"
+
+    # Update cloud_api_url in-place, preserving all other fields.
+    python3 - "${CONFIG_FILE}" "${CLOUD_API_URL}" <<'PYEOF'
+import json, sys
+path, new_url = sys.argv[1], sys.argv[2]
+with open(path) as f:
+    data = json.load(f)
+data['cloud_api_url'] = new_url
+with open(path, 'w') as f:
+    json.dump(data, f, indent=2)
+    f.write('\n')
+PYEOF
+    echo "[postinstall] cloud_api_url updated in ${CONFIG_FILE}"
+  else
+    echo "[postinstall] cloud_api_url unchanged — preserving existing config"
+  fi
 fi
 
 # ---------------------------------------------------------------------------

@@ -142,6 +142,8 @@ builds:
     mod_timestamp: "{{ .CommitTimestamp }}"
     # Windows NSIS installer -- compiled after the Windows amd64 binary is built.
     # makensis is available on ubuntu runners via apt; skipped in snapshot mode.
+    # /DCLOUD_API_URL bakes the BFF endpoint into the installer so the env-mismatch
+    # guard in installer.nsi can detect cross-env reinstalls (#194).
     hooks:
       post:
         - cmd: >
@@ -151,6 +153,7 @@ builds:
             makensis
             -DVERSION={{ .Env.PLAIN_VERSION }}
             "-DBINARY_PATH={{ .Path }}"
+            "-DCLOUD_API_URL={{ .Env.DEFAULT_CLOUD_API_URL }}"
             services/daemon/install/windows/nsis/installer.nsi'
           env:
             - IS_SNAPSHOT={{ .IsSnapshot }}
