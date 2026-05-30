@@ -262,13 +262,24 @@ setup() {
 }
 
 # ---------------------------------------------------------------------------
-# 7. daemon.json is NOT overwritten on reinstall
+# 7. daemon.json: same-env reinstall — existing fields preserved, no overwrite
+#
+#    When the existing cloud_api_url matches the baked-in value (same-env
+#    reinstall), the config is not overwritten and other fields are retained.
 # ---------------------------------------------------------------------------
-@test "daemon.json: existing config is not overwritten on reinstall" {
-  # Pre-create config with a different URL
+@test "daemon.json: same-env reinstall preserves existing fields" {
+  # Pre-create config with the SAME URL that TMP_SCRIPT bakes in so this is a
+  # same-env reinstall (no mismatch).  Extra fields must be preserved.
+  # _make_test_script defaults to https://staging-api.vaultmtg.app/api/v1.
   mkdir -p "${TEST_DIR}/.vaultmtg"
-  echo '{"cloud_api_url":"https://original.example.com","sync_enabled":true}' \
-    > "${CONFIG_FILE}"
+  python3 -c "
+import json
+print(json.dumps({
+    'cloud_api_url': 'https://staging-api.vaultmtg.app/api/v1',
+    'api_key': 'my-existing-key',
+    'sync_enabled': True
+}, indent=2))
+" > "${CONFIG_FILE}"
 
   run env \
     PATH="${STUB_DIR}:${PATH}" \
@@ -281,10 +292,20 @@ setup() {
   [ "${status}" -eq 0 ]
   [ -f "${CONFIG_FILE}" ]
 
-  grep -q "original.example.com" "${CONFIG_FILE}"
-  # New URL must NOT have replaced the old one
-  run grep -c "staging-api.vaultmtg.app" "${CONFIG_FILE}"
-  [ "${output}" = "0" ]
+  # cloud_api_url is unchanged (same-env path).
+  python3 -c "
+import json
+with open('${CONFIG_FILE}') as f:
+    d = json.load(f)
+assert d['cloud_api_url'] == 'https://staging-api.vaultmtg.app/api/v1', \
+    'FAIL: cloud_api_url changed on same-env reinstall'
+assert d.get('api_key') == 'my-existing-key', \
+    'FAIL: api_key not preserved: ' + repr(d.get('api_key'))
+assert d.get('sync_enabled') == True, \
+    'FAIL: sync_enabled not preserved'
+print('PASS: same-env reinstall preserved all fields')
+"
+  [[ "${output}" == *"cloud_api_url unchanged"* ]]
 }
 
 # ---------------------------------------------------------------------------
@@ -463,4 +484,189 @@ EOF
   calls=$(cat "${call_count_file}")
   echo "curl call count: ${calls}"
   [ "${calls}" -eq 5 ]
+}
+
+# ---------------------------------------------------------------------------
+# Tests for cross-env reinstall guard (vault-mtg-tickets#194)
+# ---------------------------------------------------------------------------
+
+# 14. Cross-env reinstall: when existing cloud_api_url differs from the baked-in
+#     value, the keychain entry is cleared and cloud_api_url is updated in-place
+#     while other fields (api_key, sync_enabled) are preserved.
+@test "cross-env reinstall: keychain cleared and cloud_api_url updated when URL changes" {
+  local security_calls="${BATS_TEST_TMPDIR}/security_calls_14"
+
+  # Override security stub to record calls.
+  cat > "${STUB_DIR}/security" <<EOF
+#!/usr/bin/env bash
+echo "\$*" >> "${security_calls}"
+exit 0
+EOF
+  chmod +x "${STUB_DIR}/security"
+
+  # Pre-create config with an OLD URL and extra fields that must be preserved.
+  mkdir -p "${TEST_DIR}/.vaultmtg"
+  python3 -c "
+import json
+data = {
+  'cloud_api_url': 'https://old-staging-api.example.com/api/v1',
+  'api_key': 'my-existing-api-key',
+  'sync_enabled': True,
+  'account_id': 'user_abc123'
+}
+print(json.dumps(data, indent=2))
+" > "${CONFIG_FILE}"
+
+  run env \
+    PATH="${STUB_DIR}:${PATH}" \
+    SUDO_USER="${REAL_USER}" \
+    BATS_TEST_TMPDIR="${BATS_TEST_TMPDIR}" \
+    bash "${TMP_SCRIPT}"
+
+  echo "status: ${status}"
+  echo "output: ${output}"
+  [ "${status}" -eq 0 ]
+
+  # Security delete-generic-password must have been called (keychain cleared).
+  [ -f "${security_calls}" ]
+  grep -q "delete-generic-password" "${security_calls}"
+  grep -q "com.vaultmtg.daemon" "${security_calls}"
+  grep -q "api-key" "${security_calls}"
+
+  # cloud_api_url must now be the new (baked-in) value.
+  python3 -c "
+import json
+with open('${CONFIG_FILE}') as f:
+    d = json.load(f)
+assert d['cloud_api_url'] == 'https://staging-api.vaultmtg.app/api/v1', \
+    'FAIL: cloud_api_url not updated: ' + repr(d['cloud_api_url'])
+print('PASS: cloud_api_url updated to new value')
+"
+
+  # Other fields must be preserved by name.
+  python3 -c "
+import json
+with open('${CONFIG_FILE}') as f:
+    d = json.load(f)
+assert d.get('api_key') == 'my-existing-api-key', \
+    'FAIL: api_key changed: ' + repr(d.get('api_key'))
+assert d.get('sync_enabled') == True, \
+    'FAIL: sync_enabled changed: ' + repr(d.get('sync_enabled'))
+assert d.get('account_id') == 'user_abc123', \
+    'FAIL: account_id changed: ' + repr(d.get('account_id'))
+print('PASS: api_key, sync_enabled, account_id all preserved after cross-env reinstall')
+"
+
+  [[ "${output}" == *"cross-env reinstall detected"* ]]
+  [[ "${output}" == *"keychain entry cleared"* ]]
+  [[ "${output}" == *"cloud_api_url updated"* ]]
+}
+
+# 15. Same-env reinstall: when cloud_api_url is already correct, keychain is
+#     NOT cleared and no fields are modified.
+#
+# 16. ADR-011-C guard: same-env reinstall leaves daemon.json byte-for-byte
+#     identical — postinstall must not call json.dump or any write on the
+#     same-env path.  SHA256 comparison is the authoritative check.
+@test "ADR-011-C: same-env reinstall is a daemon.json byte-exact no-op" {
+  # Pre-create config with the same URL TMP_SCRIPT bakes in so this is a
+  # same-env reinstall.  Use a fixed JSON string so the SHA is deterministic.
+  mkdir -p "${TEST_DIR}/.vaultmtg"
+  python3 -c "
+import json
+# Produce compact, deterministic JSON matching what a previous install wrote.
+data = {
+    'cloud_api_url': 'https://staging-api.vaultmtg.app/api/v1',
+    'api_key': 'preserve-me',
+    'account_id': 'user_adr011c',
+    'sync_enabled': True
+}
+print(json.dumps(data, indent=2))
+" > "${CONFIG_FILE}"
+
+  local sha_before
+  sha_before="$(shasum -a 256 "${CONFIG_FILE}" | cut -d' ' -f1)"
+
+  run env \
+    PATH="${STUB_DIR}:${PATH}" \
+    SUDO_USER="${REAL_USER}" \
+    BATS_TEST_TMPDIR="${BATS_TEST_TMPDIR}" \
+    bash "${TMP_SCRIPT}"
+
+  echo "status: ${status}"
+  echo "output: ${output}"
+  [ "${status}" -eq 0 ]
+
+  local sha_after
+  sha_after="$(shasum -a 256 "${CONFIG_FILE}" | cut -d' ' -f1)"
+
+  if [ "${sha_before}" != "${sha_after}" ]; then
+    echo "FAIL: daemon.json SHA256 changed on same-env reinstall (ADR-011-C violated)"
+    echo "  before: ${sha_before}"
+    echo "  after:  ${sha_after}"
+    echo "  file contents:"
+    cat "${CONFIG_FILE}"
+    false
+  fi
+  echo "PASS: daemon.json SHA256 unchanged on same-env reinstall (ADR-011-C satisfied)"
+  [[ "${output}" == *"cloud_api_url unchanged"* ]]
+}
+
+@test "same-env reinstall: keychain NOT cleared when cloud_api_url is unchanged" {
+  local security_calls="${BATS_TEST_TMPDIR}/security_calls_15"
+
+  cat > "${STUB_DIR}/security" <<EOF
+#!/usr/bin/env bash
+echo "\$*" >> "${security_calls}"
+exit 0
+EOF
+  chmod +x "${STUB_DIR}/security"
+
+  # Pre-create config with the SAME URL that TMP_SCRIPT will bake in.
+  # _make_test_script uses https://staging-api.vaultmtg.app/api/v1 by default.
+  mkdir -p "${TEST_DIR}/.vaultmtg"
+  python3 -c "
+import json
+data = {
+  'cloud_api_url': 'https://staging-api.vaultmtg.app/api/v1',
+  'api_key': 'original-key',
+  'sync_enabled': False
+}
+print(json.dumps(data, indent=2))
+" > "${CONFIG_FILE}"
+  local original_content
+  original_content="$(cat "${CONFIG_FILE}")"
+
+  run env \
+    PATH="${STUB_DIR}:${PATH}" \
+    SUDO_USER="${REAL_USER}" \
+    BATS_TEST_TMPDIR="${BATS_TEST_TMPDIR}" \
+    bash "${TMP_SCRIPT}"
+
+  echo "status: ${status}"
+  echo "output: ${output}"
+  [ "${status}" -eq 0 ]
+
+  # Security must NOT have been called for a keychain delete.
+  if [ -f "${security_calls}" ]; then
+    run grep "delete-generic-password" "${security_calls}"
+    [ "${status}" -ne 0 ]
+  fi
+
+  # Config must be unchanged.
+  local new_content
+  new_content="$(cat "${CONFIG_FILE}")"
+
+  python3 -c "
+import json
+with open('${CONFIG_FILE}') as f:
+    d = json.load(f)
+assert d.get('api_key') == 'original-key', \
+    'FAIL: api_key changed on same-env reinstall: ' + repr(d.get('api_key'))
+assert d.get('sync_enabled') == False, \
+    'FAIL: sync_enabled changed on same-env reinstall: ' + repr(d.get('sync_enabled'))
+print('PASS: api_key and sync_enabled unchanged on same-env reinstall')
+"
+
+  [[ "${output}" == *"cloud_api_url unchanged"* ]]
 }

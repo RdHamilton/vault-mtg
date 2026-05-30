@@ -26,6 +26,17 @@
   !define BINARY_PATH "bin\vaultmtg-daemon-windows-amd64.exe"
 !endif
 
+; CLOUD_API_URL is the BFF endpoint baked in at build time via /DCLOUD_API_URL=
+; on the makensis command line.  The installer uses this value to:
+;   1. Detect a cross-env reinstall (stored URL != new URL) and clear the stale
+;      Windows Credential Manager entry so the daemon doesn't auth against the
+;      wrong environment (#194).
+;   2. Write / update cloud_api_url in daemon.json during install.
+; Default is empty so a developer build with no /D flag still compiles.
+!ifndef CLOUD_API_URL
+  !define CLOUD_API_URL ""
+!endif
+
 ;----------------------------------------------------------------------
 ; General attributes
 ;----------------------------------------------------------------------
@@ -82,14 +93,50 @@ Section "Install" SecInstall
       CopyFiles "$APPDATA\mtga-companion\daemon.json" "$APPDATA\vaultmtg\daemon.json"
   ConfigMigrationDone:
 
+  ; --- Cross-env reinstall guard (#194) ----------------------------------------
+  ; If daemon.json already exists AND CLOUD_API_URL was supplied at build time,
+  ; compare the stored cloud_api_url to the baked-in value.  On a mismatch (e.g.
+  ; staging → prod reinstall) clear the stale Windows Credential Manager entry
+  ; and update cloud_api_url in-place, preserving all other JSON fields.
+  ;
+  ; Implementation uses the .ps1 temp-file pattern (Ray correction #1) to avoid
+  ; NSIS/PowerShell quote-nesting issues — same approach as the health-check block.
+  ; $$ = NSIS escape for a literal dollar sign in the written PowerShell script.
+  IfFileExists "$APPDATA\vaultmtg\daemon.json" CheckEnvMismatch SkipEnvMismatch
+  CheckEnvMismatch:
+    FileOpen  $2 "$TEMP\vaultmtg-env-check.ps1" w
+    FileWrite $2 '$$configFile = "$${Env:APPDATA}\vaultmtg\daemon.json"$\n'
+    FileWrite $2 '$$newUrl     = "${CLOUD_API_URL}"$\n'
+    FileWrite $2 'if ([string]::IsNullOrEmpty($$newUrl)) { exit 0 }$\n'
+    FileWrite $2 'try {$\n'
+    FileWrite $2 '    $$data = Get-Content $$configFile -Raw | ConvertFrom-Json$\n'
+    FileWrite $2 '    $$oldUrl = $$data.cloud_api_url$\n'
+    FileWrite $2 '    if ($$oldUrl -and $$oldUrl -ne $$newUrl) {$\n'
+    FileWrite $2 '        Write-Host "cross-env reinstall: old=$${oldUrl} new=$${newUrl}"$\n'
+    FileWrite $2 '        cmdkey /delete:vaultmtg-daemon-api-key 2>$$null$\n'
+    FileWrite $2 '        $$data.cloud_api_url = $$newUrl$\n'
+    FileWrite $2 '        $$data | ConvertTo-Json -Depth 10 | Set-Content $$configFile -Encoding UTF8$\n'
+    FileWrite $2 '        Write-Host "cloud_api_url updated and stale credential cleared"$\n'
+    FileWrite $2 '    } else {$\n'
+    FileWrite $2 '        Write-Host "cloud_api_url unchanged — preserving existing config"$\n'
+    FileWrite $2 '    }$\n'
+    FileWrite $2 '} catch {$\n'
+    FileWrite $2 '    Write-Host "env-check: could not read daemon.json ($${_}) — skipping"$\n'
+    FileWrite $2 '}$\n'
+    FileClose $2
+    ExecWait 'powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "$TEMP\vaultmtg-env-check.ps1"'
+    Delete "$TEMP\vaultmtg-env-check.ps1"
+  SkipEnvMismatch:
+
   ; Write a minimal daemon.json if one does not already exist.
-  ; The daemon's first-run flow (issue #1643) will populate cloud_api_url and
-  ; api_key on first launch; we write an empty skeleton so the file exists and
-  ; is valid JSON from day one.
+  ; When CLOUD_API_URL is supplied at build time it is written into the skeleton
+  ; so the daemon can reach the correct BFF from first launch.
+  ; The daemon's first-run flow (issue #1643) will populate api_key on first
+  ; launch; we write a skeleton so the file exists and is valid JSON from day one.
   IfFileExists "$APPDATA\vaultmtg\daemon.json" SkipWriteConfig WriteConfig
   WriteConfig:
     FileOpen  $0 "$APPDATA\vaultmtg\daemon.json" w
-    FileWrite $0 '{$\n  "cloud_api_url": "",$\n  "api_key": ""$\n}$\n'
+    FileWrite $0 '{$\n  "cloud_api_url": "${CLOUD_API_URL}",$\n  "api_key": ""$\n}$\n'
     FileClose $0
   SkipWriteConfig:
 

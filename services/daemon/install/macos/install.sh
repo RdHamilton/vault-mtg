@@ -16,10 +16,15 @@
 set -euo pipefail
 
 # ---------------------------------------------------------------------------
-# DRY_RUN mode — set DRY_RUN=1 to skip sudo and launchctl calls.
-# Used by automated tests (bats) to exercise the script safely.
+# DRY_RUN mode — set DRY_RUN=1 or pass --dry-run to skip sudo/launchctl.
+# Used by automated tests (bats) and local verification to exercise the
+# script safely without touching the system.
 # ---------------------------------------------------------------------------
 DRY_RUN="${DRY_RUN:-}"
+for _arg in "$@"; do
+  if [[ "${_arg}" == "--dry-run" ]]; then DRY_RUN=1; fi
+done
+unset _arg
 
 # ---------------------------------------------------------------------------
 # Configuration — edit these for a specific release.
@@ -150,7 +155,27 @@ print(json.dumps({'cloud_api_url': sys.argv[1], 'api_key': sys.argv[2]}, indent=
   chmod 600 "${CONFIG_FILE}"
   echo "Config written: ${CONFIG_FILE}"
 else
-  echo "Config already exists, skipping: ${CONFIG_FILE}"
+  # Config exists (reinstall path) — always write cloud_api_url because the
+  # installer is invoked for a specific environment (staging vs prod).
+  # All other fields (api_key, account_id, daemon_jwt, etc.) are preserved.
+  echo ""
+  printf "Enter BFF URL (leave blank to keep existing): "
+  read -r BFF_URL_INPUT || BFF_URL_INPUT=""
+  if [[ -n "${BFF_URL_INPUT}" ]]; then
+    python3 - "${CONFIG_FILE}" "${BFF_URL_INPUT}" <<'PYEOF'
+import json, sys
+path, new_url = sys.argv[1], sys.argv[2]
+with open(path) as f:
+    data = json.load(f)
+data['cloud_api_url'] = new_url
+with open(path, 'w') as f:
+    json.dump(data, f, indent=2)
+    f.write('\n')
+PYEOF
+    echo "Config updated (cloud_api_url): ${CONFIG_FILE}"
+  else
+    echo "Config already exists, skipping: ${CONFIG_FILE}"
+  fi
 fi
 
 # ---------------------------------------------------------------------------

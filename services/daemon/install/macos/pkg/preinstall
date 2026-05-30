@@ -1,0 +1,24 @@
+#!/usr/bin/env bash
+# preinstall — runs before pkgbuild places files at their install locations.
+#
+# Purpose (vault-mtg-tickets#194): atomically remove /Applications/VaultMTG.app
+# before the new version is written, so:
+#   - No stale bundle files persist from a prior install (avoids Gatekeeper
+#     confusion from a partially-replaced signed bundle).
+#   - The install is atomic from the user's perspective: old bundle gone,
+#     new bundle placed cleanly by pkgbuild's package root in one step.
+#
+# All failures are non-fatal (|| true) so the install is not blocked when the
+# app bundle is absent (fresh install path).
+
+set -euo pipefail
+
+APP_BUNDLE_PATH="/Applications/VaultMTG.app"
+
+if [[ -d "${APP_BUNDLE_PATH}" ]]; then
+  echo "[preinstall] removing existing launcher bundle: ${APP_BUNDLE_PATH}"
+  rm -rf "${APP_BUNDLE_PATH}" || true
+  echo "[preinstall] launcher bundle removed"
+else
+  echo "[preinstall] no existing launcher bundle found — fresh install"
+fi

@@ -261,9 +261,22 @@ func TestMacOSDaemonEvent(t *testing.T) {
 
 	killExistingDaemon(t)
 
+	// ── Save daemon.json before overwriting so STEP 4 reinstall (same-env) sees
+	// the pre-test URL and postinstall's same-env guard leaves the file unchanged.
+	// ADR-011-C: reinstalling the same package must be a daemon.json no-op.
+	cfgPath := configPath()
+	originalCfg, readErr := os.ReadFile(cfgPath)
+	t.Cleanup(func() {
+		if readErr == nil {
+			// Restore the config that existed before this test ran.  Ignore
+			// errors — a missing file is fine (fresh-install scenario).
+			_ = os.WriteFile(cfgPath, originalCfg, 0o600)
+			t.Logf("restored daemon.json at %s (ADR-011-C: same-env reinstall guard)", cfgPath)
+		}
+	})
+
 	// ── Write test daemon config ──────────────────────────────────────────────
 
-	cfgPath := configPath()
 	lp := logPath()
 	writeDaemonConfig(t, cfgPath, srv.URL, lp)
 

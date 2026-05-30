@@ -340,3 +340,103 @@ EOF
   [[ "${output}" == *"[DRY_RUN] would install binary"* ]]
   [[ "${output}" == *"[DRY_RUN] would run: launchctl"* ]]
 }
+
+# ---------------------------------------------------------------------------
+# 7b. --dry-run flag — equivalent to DRY_RUN=1
+# ---------------------------------------------------------------------------
+@test "--dry-run flag: sudo and launchctl are not invoked (same as DRY_RUN=1)" {
+  local stub_dir
+  stub_dir="$(_make_stub_dir)"
+
+  cat > "${stub_dir}/uname" <<'EOF'
+#!/usr/bin/env bash
+echo "arm64"
+EOF
+  chmod +x "${stub_dir}/uname"
+
+  local fake_home
+  fake_home="$(mktemp -d)"
+
+  export BATS_TEST_TMPDIR
+
+  run env \
+    PATH="${stub_dir}:${PATH}" \
+    HOME="${fake_home}" \
+    RELEASE_TAG="daemon/v0.1.0" \
+    BATS_TEST_TMPDIR="${BATS_TEST_TMPDIR}" \
+    bash "${INSTALL_SH}" --dry-run <<< $'https://api.example.com\nfake-token\n'
+
+  echo "output: ${output}"
+  [ "${status}" -eq 0 ]
+
+  # Sentinel files must NOT exist (stub sudo/launchctl write them when called)
+  [ ! -f "${BATS_TEST_TMPDIR}/sudo_called" ]
+  [ ! -f "${BATS_TEST_TMPDIR}/launchctl_called" ]
+
+  # DRY_RUN output messages must be present
+  [[ "${output}" == *"[DRY_RUN] would install binary"* ]]
+  [[ "${output}" == *"[DRY_RUN] would run: launchctl"* ]]
+}
+
+# ---------------------------------------------------------------------------
+# 8. Reinstall with new BFF URL — cloud_api_url updated, api_key preserved
+# ---------------------------------------------------------------------------
+@test "reinstall: providing a new BFF URL updates cloud_api_url and preserves api_key" {
+  local stub_dir
+  stub_dir="$(_make_stub_dir)"
+
+  cat > "${stub_dir}/uname" <<'EOF'
+#!/usr/bin/env bash
+echo "arm64"
+EOF
+  chmod +x "${stub_dir}/uname"
+
+  local fake_home
+  fake_home="$(mktemp -d)"
+
+  # Pre-populate config with an old URL and an existing api_key.
+  local config_dir="${fake_home}/.vaultmtg"
+  mkdir -p "${config_dir}"
+  local config_file="${config_dir}/daemon.json"
+  python3 -c "
+import json
+print(json.dumps({
+  'cloud_api_url': 'https://old-api.example.com/api/v1',
+  'api_key': 'my-precious-api-key',
+  'sync_enabled': True
+}, indent=2))
+" > "${config_file}"
+
+  # Provide a new BFF URL via stdin (install.sh reads it via `read`).
+  run env \
+    PATH="${stub_dir}:${PATH}" \
+    HOME="${fake_home}" \
+    RELEASE_TAG="daemon/v0.1.0" \
+    DRY_RUN=1 \
+    bash "${INSTALL_SH}" <<< $'https://new-api.example.com/api/v1\n'
+
+  echo "output: ${output}"
+  [ "${status}" -eq 0 ]
+
+  # cloud_api_url must be updated.
+  python3 -c "
+import json
+with open('${config_file}') as f:
+    d = json.load(f)
+assert d['cloud_api_url'] == 'https://new-api.example.com/api/v1', \
+    'FAIL: cloud_api_url not updated: ' + repr(d['cloud_api_url'])
+print('PASS: cloud_api_url updated')
+"
+
+  # api_key must be preserved (not blanked or removed).
+  python3 -c "
+import json
+with open('${config_file}') as f:
+    d = json.load(f)
+assert d.get('api_key') == 'my-precious-api-key', \
+    'FAIL: api_key not preserved: ' + repr(d.get('api_key'))
+print('PASS: api_key preserved across reinstall')
+"
+
+  [[ "${output}" == *"Config updated (cloud_api_url)"* ]]
+}

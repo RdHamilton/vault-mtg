@@ -311,8 +311,9 @@ jobs:
           mkdir -p "$CONFIG_DIR"
           cat > "$CONFIG_DIR/daemon.json" <<JSON
           {
-            "cloud_api_url": "http://127.0.0.1:1/unused-in-ci",
+            "cloud_api_url": "http://127.0.0.1:1/unused",
             "api_key": "ci-test-fake-key-not-real",
+            "account_id": "ci-lifecycle-test",
             "sync_enabled": false,
             "disable_update_check": true
           }
@@ -616,7 +617,7 @@ jobs:
           mkdir -p "$CONFIG_DIR"
           cat > "$CONFIG_DIR/daemon.json" <<JSON
           {
-            "cloud_api_url": "http://127.0.0.1:1/unused-in-ci",
+            "cloud_api_url": "http://127.0.0.1:1/unused",
             "api_key": "ci-test-fake-key-not-real",
             "account_id": "ci-lifecycle-test",
             "sync_enabled": false,
@@ -703,6 +704,36 @@ jobs:
           fi
           echo "PASS: /health returned 200"
 
+      # -----------------------------------------------------------------------
+      - name: "[STEP 2b] SEED — inject api_key into daemon.json to simulate first-auth (#194)"
+      # -----------------------------------------------------------------------
+        # DEFECT 4 fix: the daemon normalizes daemon.json on startup, adding
+        # default fields but writing api_key as "".  STEP 4b (AC7 / ticket #194)
+        # asserts that api_key survives a same-env reinstall, so the field must be
+        # present BEFORE TestMacOSDaemonEvent's t.Cleanup saves a snapshot.
+        #
+        # We inject api_key here — after STEP 2 confirms the daemon is healthy and
+        # has had time to write its startup defaults — to simulate an authenticated
+        # daemon (api_key is normally set by the BFF on first registration, then
+        # stored by the daemon).  TestMacOSDaemonEvent's t.Cleanup will then restore
+        # a config that includes api_key, STEP 4 same-env reinstall leaves it intact,
+        # and STEP 4b assertion passes.
+        run: |
+          CONFIG_FILE="$HOME/.vaultmtg/daemon.json"
+          python3 - "$CONFIG_FILE" <<'PYEOF'
+          import json, sys
+          path = sys.argv[1]
+          with open(path) as f:
+              d = json.load(f)
+          d['api_key'] = 'ci-seeded-api-key-for-step4b'
+          with open(path, 'w') as f:
+              json.dump(d, f, indent=2)
+              f.write('\n')
+          PYEOF
+          echo "PASS: api_key seeded into $CONFIG_FILE"
+          python3 -c "import json; d=json.load(open('$CONFIG_FILE')); assert 'api_key' in d and d['api_key'] != '', 'FAIL: api_key not seeded'"
+          echo "PASS: api_key seed verified"
+
       # =======================================================================
       # STEP 3 — stub-BFF daemon_event delivery
       # Asserts: daemon parses a synthetic MTGA log line and POSTs the event
@@ -780,6 +811,23 @@ jobs:
           fi
           echo "PASS: daemon.json unchanged after reinstall (ADR-011-C config-retention satisfied)"
 
+      # -----------------------------------------------------------------------
+      - name: "[STEP 4b] ASSERT — api_key, account_id, sync_enabled preserved by name after reinstall (#194)"
+      # -----------------------------------------------------------------------
+        # Ray correction #4: assert field preservation BY NAME via jq/python3,
+        # not by sha256 comparison.  This catches the case where a future
+        # postinstall change correctly updates cloud_api_url but accidentally
+        # drops or blanks an unrelated field.
+        run: |
+          export CONFIG_FILE="$HOME/.vaultmtg/daemon.json"
+          echo "=== [STEP 4b] ASSERT: named-field preservation after reinstall ==="
+          echo "--- daemon.json contents ---"
+          cat "$CONFIG_FILE"
+          echo ""
+
+          # api_key: must be present (may be empty string for fresh CI install —
+          # the daemon writes it on first auth; we assert the key exists in JSON).
+          python3 services/daemon/install/assert_field_preservation.py
 
       # =======================================================================
       # STEP 4a — Upgrade-in-place (#230, ADR-041 G5 / Section 4 P2)
@@ -1419,7 +1467,9 @@ jobs:
             Write-Error "FAIL: daemon binary not found at $binaryPath"
             exit 1
           }
-          makensis "/DVERSION=ci-test" "/DBINARY_PATH=$binaryPath" services\daemon\install\windows\nsis\installer.nsi
+          # /DCLOUD_API_URL mirrors the goreleaser hook so CI builds exercise
+          # the env-mismatch guard introduced in #194.
+          makensis "/DVERSION=ci-test" "/DBINARY_PATH=$binaryPath" "/DCLOUD_API_URL=http://127.0.0.1:1/unused-in-ci" services\daemon\install\windows\nsis\installer.nsi
           if ($LASTEXITCODE -ne 0) {
             Write-Error "makensis failed with exit code $LASTEXITCODE"
             exit 1
