@@ -1,0 +1,23 @@
+{
+  "type": "match.completed",
+  "account_id": "test-account-001",
+  "event_id": "11111111-0000-0000-0000-000000000001",
+  "session_id": "22222222-0000-0000-0000-000000000001",
+  "sequence": 1,
+  "occurred_at": "2026-05-01T10:00:00Z",
+  "payload": {
+    "match_id": "00000000-0000-4000-8000-000000000001",
+    "winning_team_id": 1,
+    "result_list": [
+      {"scope": "MatchScope_Game", "result": "ResultType_WinLoss", "winning_team_id": 1, "reason": "ResultReason_Game"},
+      {"scope": "MatchScope_Game", "result": "ResultType_WinLoss", "winning_team_id": 2, "reason": "ResultReason_Game"},
+      {"scope": "MatchScope_Match", "result": "ResultType_WinLoss", "winning_team_id": 1, "reason": "ResultReason_Game"}
+    ],
+    "format": "Ladder",
+    "opponent_name": "Opponent#00002",
+    "result": "win",
+    "player_team_id": 1,
+    "player_wins": 1,
+    "opponent_wins": 1
+  }
+}

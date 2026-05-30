@@ -1,0 +1,18 @@
+{
+  "type": "inventory.updated",
+  "account_id": "test-account-001",
+  "event_id": "11111111-0000-0000-0000-000000000010",
+  "session_id": "22222222-0000-0000-0000-000000000001",
+  "sequence": 10,
+  "occurred_at": "2026-05-01T10:40:00Z",
+  "payload": {
+    "gems": 2135,
+    "gold": 76875,
+    "total_vault_progress": 144,
+    "wild_card_commons": 39,
+    "wild_card_uncommons": 25,
+    "wild_card_rares": 9,
+    "wild_card_mythics": 20,
+    "boosters": []
+  }
+}

@@ -1,0 +1,18 @@
+{
+  "quests": [
+    {
+      "quest_id": "00000001-0000-4000-8000-000000000001",
+      "quest_name": "Simic Evolution",
+      "progress": 3,
+      "goal": 30,
+      "can_swap": true
+    },
+    {
+      "quest_id": "00000001-0000-4000-8000-000000000002",
+      "quest_name": "Orzhov Advokist",
+      "progress": 6,
+      "goal": 20,
+      "can_swap": true
+    }
+  ]
+}

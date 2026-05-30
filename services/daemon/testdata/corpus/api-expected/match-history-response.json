@@ -1,0 +1,15 @@
+{
+  "Matches": [
+    {
+      "ID": "00000000-0000-4000-8000-000000000001",
+      "Format": "Ladder",
+      "Result": "win",
+      "PlayerWins": 1,
+      "OpponentWins": 1
+    }
+  ],
+  "HasMore": false,
+  "NextCursorTS": "",
+  "NextCursorID": "",
+  "Limit": 20
+}

@@ -1,0 +1,18 @@
+{
+  "cards": [
+    {
+      "arena_id": 67108,
+      "name": "Test Card A",
+      "set_code": "FIN",
+      "rarity": "common",
+      "color_identity": ["U"]
+    },
+    {
+      "arena_id": 67128,
+      "name": "Test Card B",
+      "set_code": "FIN",
+      "rarity": "uncommon",
+      "color_identity": ["G"]
+    }
+  ]
+}
