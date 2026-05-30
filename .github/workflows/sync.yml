@@ -61,6 +61,17 @@ jobs:
           GOPRIVATE: github.com/RdHamilton/vault-mtg
         run: go test -race ./...
 
+      - name: "[ADR-042 Layer 2] Scryfall ingest-path contract gate (advisory)"
+        continue-on-error: true
+        env:
+          GONOSUMDB: github.com/RdHamilton/vault-mtg
+          GOPRIVATE: github.com/RdHamilton/vault-mtg
+        run: go test -race -run 'TestContractGate_' -v ./internal/scryfall/
+        # Advisory until vault-mtg-tickets#249 flips this to hard-fail.
+        # The contract-gate tests validate three structural invariants of the
+        # Scryfall HTTP client seam (injectable base URL, Timeout:0 on bulk
+        # client, two-hop flow) per ADR-042 RULE-INFRA-01.
+
       - name: Vet
         env:
           GONOSUMDB: github.com/RdHamilton/vault-mtg
