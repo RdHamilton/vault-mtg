@@ -87,14 +87,13 @@ jobs:
       # Runs the TestContractEmit_* suite which round-trips every event class
       # through the real parsers + dispatch.BuildEvent and validates payload
       # shapes against the committed corpus fixtures.
-      # continue-on-error: true per RULE-INFRA-01 (soft-fail until two green
-      # main runs). Flipped to hard-fail by vault-mtg-tickets#249.
+      # Hard-fail enabled per RULE-INFRA-01 after two consecutive green main
+      # runs (vault-mtg-tickets#249, runs 26675001966 + 26686491394).
       - name: Contract/serialisation gate (ADR-042 Layer 2)
         working-directory: services/daemon
         env:
           GONOSUMDB: github.com/RdHamilton/vault-mtg
           GOPRIVATE: github.com/RdHamilton/vault-mtg
-        continue-on-error: true
         run: go test -v -run TestContractEmit ./internal/logreader/...
 
       # Run services/contract tests — the contract package has no dependencies on the daemon

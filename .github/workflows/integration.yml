@@ -60,11 +60,8 @@ jobs:
       run: go test -v -run Integration -coverprofile=coverage-integration.out -covermode=atomic ./...
 
     - name: Run Layer 3a projection integration tests
-      # RULE-INFRA-01 / ADR-042: advisory gate — continue-on-error at step
-      # level only.  Checkout, Go setup, and dep-download above remain
-      # hard-required.  Ticket #249 flips this step to hard-fail after two
-      # green runs on main.
-      continue-on-error: true
+      # RULE-INFRA-01 / ADR-042: hard-fail enabled after two consecutive green
+      # runs (vault-mtg-tickets#249, runs 26678898798 + 26686145566).
       working-directory: services/bff
       env:
         DATABASE_URL: postgres://mtga:mtga@localhost:5432/mtga_test?sslmode=disable
@@ -73,11 +70,9 @@ jobs:
       run: go test -v -tags integration -run TestProjectionIntegration -coverprofile=coverage-integration-proj.out -covermode=atomic ./...
 
     - name: Run Layer 3b sync integration smoke
-      # RULE-INFRA-01 / ADR-042: advisory gate — continue-on-error at step
-      # level only. Checkout, Go setup, and dep-download above remain
-      # hard-required. Ticket #249 flips this step to hard-fail after two
-      # green runs on main. Closes #185 (data-pipeline-integration-smoke gap).
-      continue-on-error: true
+      # RULE-INFRA-01 / ADR-042: hard-fail enabled after two consecutive green
+      # runs (vault-mtg-tickets#249, runs 26678898798 + 26686145566).
+      # Closes #185 (data-pipeline-integration-smoke gap).
       working-directory: services/bff
       env:
         DATABASE_URL: postgres://mtga:mtga@localhost:5432/mtga_test?sslmode=disable
