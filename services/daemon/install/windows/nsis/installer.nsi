@@ -114,6 +114,13 @@ Section "Install" SecInstall
   ; Start the daemon immediately without requiring a logoff/logon.
   ExecWait 'schtasks /Run /TN "VaultMTG-Daemon"'
 
+  ; Create a Start-menu shortcut so the user can relaunch the daemon after
+  ; exiting the tray without opening a terminal (AC5 / ticket #278).
+  ; The shortcut launches the daemon binary directly; the Scheduled Task handles
+  ; auto-start at logon — the shortcut is the manual-relaunch affordance.
+  CreateDirectory "$SMPROGRAMS\VaultMTG"
+  CreateShortCut "$SMPROGRAMS\VaultMTG\VaultMTG Daemon.lnk" "$INSTDIR\vaultmtg-daemon.exe"
+
   ; Post-install health check (issue #2131).
   ; Poll GET http://127.0.0.1:9001/health for up to 15 s (5 attempts x 3 s delay).
   ; A healthy response has HTTP 200 with a non-empty "account_id" field, confirming
@@ -179,6 +186,10 @@ Section "Uninstall"
   ; Also remove the legacy MTGA-Companion-Daemon task if still present.
   ExecWait 'schtasks /End /TN "MTGA-Companion-Daemon"'
   ExecWait 'schtasks /Delete /TN "MTGA-Companion-Daemon" /F'
+
+  ; Remove Start-menu shortcut created during install (ticket #278).
+  Delete "$SMPROGRAMS\VaultMTG\VaultMTG Daemon.lnk"
+  RMDir  "$SMPROGRAMS\VaultMTG"
 
   ; Remove binary and uninstaller.
   Delete "$INSTDIR\vaultmtg-daemon.exe"

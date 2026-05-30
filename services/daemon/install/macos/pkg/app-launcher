@@ -1,0 +1,18 @@
+#!/usr/bin/env bash
+# VaultMTG.app launcher — re-enables and re-bootstraps the VaultMTG daemon.
+# This script is the CFBundleExecutable for /Applications/VaultMTG.app.
+# It is NOT the daemon process itself; it exits as soon as launchctl returns.
+
+set -euo pipefail
+
+PLIST_LABEL="com.vaultmtg.daemon"
+UID_VAL="$(id -u)"
+PLIST_PATH="${HOME}/Library/LaunchAgents/${PLIST_LABEL}.plist"
+TARGET="gui/${UID_VAL}/${PLIST_LABEL}"
+USER_DOMAIN="gui/${UID_VAL}"
+
+# Step 1: clear any disabled flag from a prior `launchctl bootout`.
+launchctl enable "${TARGET}" 2>/dev/null || true
+
+# Step 2: bootstrap the LaunchAgent so launchd starts the daemon.
+launchctl bootstrap "${USER_DOMAIN}" "${PLIST_PATH}" 2>/dev/null || true

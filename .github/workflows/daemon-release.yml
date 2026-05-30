@@ -717,6 +717,7 @@ jobs:
       - name: Create .pkg installer
         env:
           INSTALLER_IDENTITY: ${{ secrets.APPLE_INSTALLER_IDENTITY }}
+          SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
           # rc/alpha/beta/pre tags ship the staging build, which must point at the
           # Clerk Staging instance.  Stable tags ship the production build,
           # which points at the Clerk Production instance.  The split mirrors the
@@ -759,6 +760,41 @@ jobs:
             grep -n '__[A-Z_]*__' "$SCRIPTS_DIR/postinstall" >&2
             exit 1
           fi
+
+          # ------------------------------------------------------------------
+          # Build and sign the VaultMTG.app launcher bundle (ADR-036 I-8, #278).
+          # The .app is a thin shell-script launcher placed in /Applications.
+          # It must be codesigned with Developer ID Application (SIGNING_IDENTITY)
+          # before pkgbuild embeds it in the .pkg, so the bundle passes Gatekeeper
+          # when the installer places it on the user's system.
+          # ------------------------------------------------------------------
+          APP_BUNDLE="pkg-root/Applications/VaultMTG.app"
+          APP_MACOS="${APP_BUNDLE}/Contents/MacOS"
+          mkdir -p "${APP_MACOS}"
+
+          # Info.plist — sourced from the static file in the repo to avoid
+          # embedding XML heredocs in YAML (actionlint SC syntax-check failure).
+          cp services/daemon/install/macos/pkg/app-Info.plist \
+            "${APP_BUNDLE}/Contents/Info.plist"
+
+          # Launcher shell script (CFBundleExecutable) — sourced from the
+          # static file in the repo for the same reason as Info.plist above.
+          cp services/daemon/install/macos/pkg/app-launcher \
+            "${APP_MACOS}/vaultmtg-launcher"
+          chmod 755 "${APP_MACOS}/vaultmtg-launcher"
+
+          # Sign the .app bundle with Developer ID Application before pkgbuild
+          # embeds it. pkgbuild wraps the already-signed bundle; the outer .pkg
+          # receives the Developer ID Installer signature separately.
+          codesign \
+            --force \
+            --deep \
+            --options runtime \
+            --sign "$SIGNING_IDENTITY" \
+            --timestamp \
+            "${APP_BUNDLE}"
+          codesign --verify --verbose "${APP_BUNDLE}"
+          echo "PASS: VaultMTG.app signed."
 
           pkgbuild \
             --root pkg-root \

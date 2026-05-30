@@ -427,17 +427,14 @@ jobs:
       # -----------------------------------------------------------------------
       - name: "[LIFECYCLE] UNINSTALL — run uninstall.sh"
       # -----------------------------------------------------------------------
-        # Stub sudo to exec "$@" so sudo rm -f /usr/local/bin/vaultmtg-daemon
-        # becomes rm -f /usr/local/bin/vaultmtg-daemon, which succeeds because the
-        # GitHub runner installed the file there with passwordless sudo.
+        # The .pkg was installed via `sudo installer -pkg`, so /Applications/VaultMTG.app
+        # is owned by root.  A non-root sudo stub (exec "$@") cannot delete those files
+        # — Permission denied.  GitHub Actions runners have passwordless sudo, so we
+        # call the script directly; the real `sudo rm` inside uninstall.sh gets root
+        # without prompting.
         # Note: Bob's #48 owns uninstall.sh + uninstall_test.bats — do not edit those files.
         run: |
-          STUB_DIR=$(mktemp -d)
-          # exec "$@" passes all args (including `rm`) through as-is.
-          # shift; "$@" was wrong: it dropped `rm`, leaving `-f` as $1 → exit 127.
-          printf '#!/usr/bin/env bash\nexec "$@"\n' > "$STUB_DIR/sudo"
-          chmod +x "$STUB_DIR/sudo"
-          PATH="$STUB_DIR:$PATH" bash services/daemon/install/macos/uninstall.sh
+          bash services/daemon/install/macos/uninstall.sh
           echo "PASS: uninstall.sh completed"
 
       # -----------------------------------------------------------------------
@@ -604,6 +601,11 @@ jobs:
         # without error.  The lifecycle_test.go Go integration test will overwrite
         # daemon.json with its test config before starting the binary, so this
         # pre-staged config is only used by the real-pkg postinstall script.
+        #
+        # account_id is pre-staged so the postinstall health-check (which polls
+        # /health and asserts account_id is non-empty) succeeds in CI without
+        # real Clerk credentials.  The daemon reads account_id from daemon.json
+        # on startup and returns it verbatim in the /health JSON.
         run: |
           MTGA_LOG_DIR="$HOME/Library/Application Support/com.wizards.mtga/Logs/Logs"
           mkdir -p "$MTGA_LOG_DIR"
@@ -616,6 +618,7 @@ jobs:
           {
             "cloud_api_url": "http://127.0.0.1:1/unused-in-ci",
             "api_key": "ci-test-fake-key-not-real",
+            "account_id": "ci-lifecycle-test",
             "sync_enabled": false,
             "disable_update_check": true
           }
@@ -944,14 +947,13 @@ jobs:
       # -----------------------------------------------------------------------
       - name: "[STEP 5] UNINSTALL — run uninstall.sh"
       # -----------------------------------------------------------------------
-        # Stub sudo to exec "$@" so `sudo rm` works without a password on the runner.
-        # The stub is the same pattern as the existing install-lifecycle-macos job.
+        # The .pkg was installed via `sudo installer -pkg`, so /Applications/VaultMTG.app
+        # is owned by root.  A non-root sudo stub cannot delete those files.
+        # GitHub Actions runners have passwordless sudo; the real `sudo rm` inside
+        # uninstall.sh gets root without prompting — no stub needed.
         run: |
           echo "=== [STEP 5] UNINSTALL ==="
-          STUB_DIR=$(mktemp -d)
-          printf '#!/usr/bin/env bash\nexec "$@"\n' > "$STUB_DIR/sudo"
-          chmod +x "$STUB_DIR/sudo"
-          PATH="$STUB_DIR:$PATH" bash services/daemon/install/macos/uninstall.sh
+          bash services/daemon/install/macos/uninstall.sh
           echo "PASS: uninstall.sh completed"
 
       # -----------------------------------------------------------------------

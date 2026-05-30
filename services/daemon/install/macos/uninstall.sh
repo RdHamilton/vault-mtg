@@ -37,6 +37,11 @@ BINARY_NAME="vaultmtg-daemon"
 # ADR-022 Phase 2: legacy binary name — removed on the upgrader path.
 BINARY_NAME_LEGACY="mtga-companion-daemon"
 
+# ADR-036 I-4 / I-9: single source of truth for the launcher app bundle path.
+# Must stay in sync with APP_BUNDLE_PATH in build-pkg.sh and appBundlePath in
+# launchagent_darwin.go.  Never copy-paste this path.
+APP_BUNDLE_PATH="/Applications/VaultMTG.app"
+
 # ADR-022 Phase 2: new label.
 PLIST_LABEL="com.vaultmtg.daemon"
 # Legacy label — also unloaded when present.
@@ -104,6 +109,19 @@ if [[ -f "${LEGACY_BINARY_PATH}" ]]; then
   echo "Legacy binary removed."
 else
   echo "Legacy binary not found (${LEGACY_BINARY_PATH}), skipping."
+fi
+
+# ---------------------------------------------------------------------------
+# Remove the VaultMTG.app launcher bundle (ADR-036 I-9, ticket #278).
+# The bundle is placed in /Applications by the .pkg installer; sudo is required
+# because /Applications is owned by root on stock macOS.
+# ---------------------------------------------------------------------------
+if [[ -d "${APP_BUNDLE_PATH}" ]]; then
+  echo "Removing launcher bundle: ${APP_BUNDLE_PATH} (may prompt for sudo)..."
+  sudo rm -rf "${APP_BUNDLE_PATH}"
+  echo "Launcher bundle removed."
+else
+  echo "Launcher bundle not found (${APP_BUNDLE_PATH}), skipping."
 fi
 
 # ---------------------------------------------------------------------------
