@@ -1,0 +1,26 @@
+{
+  "type": "quest.progress",
+  "account_id": "test-account-001",
+  "event_id": "11111111-0000-0000-0000-000000000004",
+  "session_id": "22222222-0000-0000-0000-000000000001",
+  "sequence": 4,
+  "occurred_at": "2026-05-01T10:15:00Z",
+  "payload": {
+    "quests": [
+      {
+        "quest_id": "00000001-0000-4000-8000-000000000001",
+        "quest_name": "Simic Evolution",
+        "progress": 3,
+        "goal": 30,
+        "can_swap": true
+      },
+      {
+        "quest_id": "00000001-0000-4000-8000-000000000002",
+        "quest_name": "Orzhov Advokist",
+        "progress": 6,
+        "goal": 20,
+        "can_swap": true
+      }
+    ]
+  }
+}

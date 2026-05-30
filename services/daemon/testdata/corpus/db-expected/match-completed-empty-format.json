@@ -1,0 +1,12 @@
+{
+  "ID": "00000000-0000-4000-8000-000000000002",
+  "AccountID": 1,
+  "EventID": "11111111-0000-0000-0000-000000000002",
+  "EventName": "",
+  "Format": "Unknown",
+  "Result": "win",
+  "PlayerWins": 1,
+  "OpponentWins": 0,
+  "OpponentName": "Opponent#00002",
+  "PlayerTeamID": 1
+}

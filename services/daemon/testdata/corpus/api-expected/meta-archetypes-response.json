@@ -1,0 +1,11 @@
+{
+  "archetypes": [
+    {
+      "archetype_id": "55555555-0000-0000-0000-000000000001",
+      "name": "Test Archetype A",
+      "format": "Standard",
+      "win_rate": 0.52,
+      "games_played": 100
+    }
+  ]
+}

@@ -1,0 +1,33 @@
+{
+  "type": "collection.updated",
+  "account_id": "test-account-001",
+  "event_id": "11111111-0000-0000-0000-000000000008",
+  "session_id": "22222222-0000-0000-0000-000000000001",
+  "sequence": 8,
+  "occurred_at": "2026-05-01T10:30:00Z",
+  "payload": {
+    "cards": [
+      {"arena_id": 67108, "count": 4},
+      {"arena_id": 67128, "count": 1},
+      {"arena_id": 67272, "count": 1},
+      {"arena_id": 67440, "count": 1},
+      {"arena_id": 67588, "count": 1},
+      {"arena_id": 73778, "count": 4},
+      {"arena_id": 73780, "count": 4},
+      {"arena_id": 73782, "count": 4},
+      {"arena_id": 73784, "count": 4},
+      {"arena_id": 73786, "count": 4},
+      {"arena_id": 77460, "count": 1},
+      {"arena_id": 77461, "count": 1},
+      {"arena_id": 77462, "count": 1},
+      {"arena_id": 77463, "count": 1},
+      {"arena_id": 77464, "count": 1},
+      {"arena_id": 79426, "count": 1},
+      {"arena_id": 79431, "count": 1},
+      {"arena_id": 79465, "count": 1},
+      {"arena_id": 79466, "count": 1},
+      {"arena_id": 79467, "count": 1}
+    ],
+    "is_delta": false
+  }
+}

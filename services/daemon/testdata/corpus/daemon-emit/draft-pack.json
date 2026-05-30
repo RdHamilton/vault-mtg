@@ -1,0 +1,14 @@
+{
+  "type": "draft.pack",
+  "account_id": "test-account-001",
+  "event_id": "11111111-0000-0000-0000-000000000006",
+  "session_id": "22222222-0000-0000-0000-000000000001",
+  "sequence": 6,
+  "occurred_at": "2026-05-01T10:25:00Z",
+  "payload": {
+    "draft_id": "44444444-0000-0000-0000-000000000001",
+    "set_code": "FIN",
+    "pack_number": 1,
+    "pick_number": 1
+  }
+}

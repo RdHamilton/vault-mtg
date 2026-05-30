@@ -1,0 +1,30 @@
+{
+  "type": "deck.updated",
+  "account_id": "test-account-001",
+  "event_id": "11111111-0000-0000-0000-000000000009",
+  "session_id": "22222222-0000-0000-0000-000000000001",
+  "sequence": 9,
+  "occurred_at": "2026-05-01T10:35:00Z",
+  "payload": {
+    "deck_id": "33333333-0000-4000-8000-000000000001",
+    "name": "Test Deck A",
+    "format": "Standard",
+    "cards": [
+      {"arena_id": 67108, "quantity": 4},
+      {"arena_id": 67128, "quantity": 4},
+      {"arena_id": 67272, "quantity": 4},
+      {"arena_id": 67440, "quantity": 4},
+      {"arena_id": 67588, "quantity": 4},
+      {"arena_id": 73778, "quantity": 4},
+      {"arena_id": 73780, "quantity": 4},
+      {"arena_id": 73782, "quantity": 4},
+      {"arena_id": 73784, "quantity": 4},
+      {"arena_id": 73786, "quantity": 4},
+      {"arena_id": 77460, "quantity": 4},
+      {"arena_id": 77461, "quantity": 4},
+      {"arena_id": 77462, "quantity": 4},
+      {"arena_id": 77463, "quantity": 4},
+      {"arena_id": 77464, "quantity": 2}
+    ]
+  }
+}

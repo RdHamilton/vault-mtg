@@ -1,0 +1,22 @@
+{
+  "deck_id": "33333333-0000-4000-8000-000000000001",
+  "name": "Test Deck A",
+  "format": "Standard",
+  "cards": [
+    {"arena_id": 67108, "quantity": 4},
+    {"arena_id": 67128, "quantity": 4},
+    {"arena_id": 67272, "quantity": 4},
+    {"arena_id": 67440, "quantity": 4},
+    {"arena_id": 67588, "quantity": 4},
+    {"arena_id": 73778, "quantity": 4},
+    {"arena_id": 73780, "quantity": 4},
+    {"arena_id": 73782, "quantity": 4},
+    {"arena_id": 73784, "quantity": 4},
+    {"arena_id": 73786, "quantity": 4},
+    {"arena_id": 77460, "quantity": 4},
+    {"arena_id": 77461, "quantity": 4},
+    {"arena_id": 77462, "quantity": 4},
+    {"arena_id": 77463, "quantity": 4},
+    {"arena_id": 77464, "quantity": 2}
+  ]
+}

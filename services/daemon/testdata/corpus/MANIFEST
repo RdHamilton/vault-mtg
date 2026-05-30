@@ -1,0 +1,29 @@
+file | event_class | provenance | pii_status | mtga_version
+player-log/match-completed.log | match.completed | FORMAT-CONFIRMED | sanitized — all IDs are stable fakes; no real player data | 2026.59.20.4846.1277160
+player-log/quest-progress.log | quest.progress | REAL — derived from quest_progress_2026.59.20.log session capture | sanitized — questId UUIDs replaced with stable fakes (000...001, 000...002); tileResourceId and treasureResourceId stripped | 2026.59.20.4846.1277160
+player-log/draft-pack.log | draft.pack | FORMAT-CONFIRMED | sanitized — GRP IDs are real card IDs (non-PII per ADR-041); CourseName is real event identifier | 2026.59.20.4846.1277160
+player-log/draft-pick.log | draft.pick | FORMAT-CONFIRMED | sanitized — GRP IDs are real card IDs (non-PII per ADR-041); CourseName is real event identifier | 2026.59.20.4846.1277160
+player-log/collection-updated.log | collection.updated | FORMAT-CONFIRMED | sanitized — GRP IDs and counts are non-PII per ADR-041 risk assessment | 2026.59.20.4846.1277160
+player-log/deck-updated.log | deck.updated | FORMAT-CONFIRMED | sanitized — DeckId replaced with stable fake UUID; Name replaced with "Test Deck A"; GRP IDs are non-PII | 2026.59.20.4846.1277160
+player-log/inventory-updated.log | inventory.updated | REAL — derived from inventory_updated_2026.59.20.log session capture | sanitized — Cosmetics block removed; SeqId removed; Changes removed; Gem/Gold/WildCard counts are real game values (non-PII) | 2026.59.20.4846.1277160
+player-log/player-authenticated.log | player.authenticated | FORMAT-CONFIRMED | sanitized — all IDs (userId, clientId, sessionId) are stable fakes; screenName is fake | 2026.59.20.4846.1277160
+daemon-emit/match-completed.json | match.completed | FORMAT-CONFIRMED | sanitized — all UUIDs are stable fakes; OpponentName is fake | 2026.59.20.4846.1277160
+daemon-emit/match-completed-empty-format.json | match.completed | FORMAT-CONFIRMED (variant: format="") | sanitized — all UUIDs are stable fakes | 2026.59.20.4846.1277160
+daemon-emit/match-completed-missing-id.json | match.completed | FORMAT-CONFIRMED (variant: match_id="") | sanitized — all UUIDs are stable fakes | 2026.59.20.4846.1277160
+daemon-emit/quest-progress.json | quest.progress | REAL-DERIVED | sanitized — questId UUIDs are stable fakes; quest names derived from locKey resolution | 2026.59.20.4846.1277160
+daemon-emit/quest-progress-duplicate.json | quest.progress | REAL-DERIVED (variant: same questId, higher progress) | sanitized — questId UUIDs are stable fakes | 2026.59.20.4846.1277160
+daemon-emit/draft-pack.json | draft.pack | FORMAT-CONFIRMED | sanitized — draft_id is stable fake; set_code is real event identifier | 2026.59.20.4846.1277160
+daemon-emit/draft-pick.json | draft.pick | FORMAT-CONFIRMED | sanitized — draft_id is stable fake; set_code is real event identifier | 2026.59.20.4846.1277160
+daemon-emit/collection-updated.json | collection.updated | FORMAT-CONFIRMED | sanitized — GRP IDs and counts are non-PII per ADR-041 | 2026.59.20.4846.1277160
+daemon-emit/deck-updated.json | deck.updated | FORMAT-CONFIRMED | sanitized — deck_id is stable fake; name is "Test Deck A" | 2026.59.20.4846.1277160
+daemon-emit/inventory-updated.json | inventory.updated | REAL-DERIVED | sanitized — Gem/Gold/WildCard counts are real game values (non-PII); boosters empty | 2026.59.20.4846.1277160
+db-expected/match-completed.json | match.completed | SYNTHETIC — derived from daemon-emit fixture | N/A — no PII; AccountID is test integer 1 | N/A
+db-expected/match-completed-empty-format.json | match.completed | SYNTHETIC (variant: Format="Unknown") | N/A — no PII | N/A
+db-expected/quest-progress.json | quest.progress | SYNTHETIC — derived from daemon-emit fixture | N/A — no PII | N/A
+db-expected/quest-upsert-result.json | quest.progress | SYNTHETIC (upsert idempotency: progress=5 after duplicate) | N/A — no PII | N/A
+db-expected/deck-updated.json | deck.updated | SYNTHETIC — derived from daemon-emit fixture | N/A — no PII | N/A
+api-expected/match-history-response.json | match.completed | SYNTHETIC — matchListResponse shape | N/A — no PII | N/A
+api-expected/quest-history-response.json | quest.progress | SYNTHETIC — quest list response shape | N/A — no PII | N/A
+api-expected/deck-response.json | deck.updated | SYNTHETIC — deck response shape | N/A — no PII | N/A
+api-expected/meta-archetypes-response.json | meta | SYNTHETIC — /meta archetypes response shape | N/A — no PII | N/A
+api-expected/set-cards-response.json | cards | SYNTHETIC — /cards response shape | N/A — no PII | N/A
