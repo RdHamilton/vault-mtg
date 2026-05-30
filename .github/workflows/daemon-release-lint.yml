@@ -1,0 +1,45 @@
+# daemon-release-lint.yml — Structural lint for daemon-release.yml
+#
+# Asserts that every job using azure/trusted-signing-action runs on a
+# windows-* runner. The Azure Trusted Signing action requires a Windows
+# environment; running it on ubuntu-* or macos-* silently fails or errors.
+#
+# This check was added as a follow-up to the v0.3.4 release incident
+# (vault-mtg-tickets#70, 2026-05-29) where the signing action ran on a
+# non-Windows runner.
+#
+# Triggers on any PR that modifies daemon-release.yml. The lint script
+# reads the file directly from the checkout — no external tooling required.
+#
+# S-07 note: this workflow file is in .github/workflows/ — Sarah security
+# review is required for any PR that modifies this file.
+
+name: daemon-release lint
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - '.github/workflows/daemon-release.yml'
+      - '.github/workflows/daemon-release-lint.yml'
+      - 'scripts/lint-azure-signing-runner.py'
+
+concurrency:
+  group: daemon-release-lint-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  azure-signing-runner-check:
+    name: "Lint: azure/trusted-signing-action must run on windows-* only"
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Assert Azure Trusted Signing action only runs on windows-* jobs
+        run: python3 scripts/lint-azure-signing-runner.py .github/workflows/daemon-release.yml
