@@ -96,6 +96,30 @@ jobs:
           GOPRIVATE: github.com/RdHamilton/vault-mtg
         run: go test -v -run TestContractEmit ./internal/logreader/...
 
+      # ADR-042 Layer 4: daemon dispatch wire smoke.
+      # Verifies that dispatch.Dispatcher.Send produces a valid HTTP POST that
+      # a BFF-compatible ingest handler accepts with 202, and that the
+      # match.completed payload round-trips through the full
+      # logreader.ParseMatchCompletedEntry → dispatch.BuildEvent → Dispatcher.Send
+      # pipeline with the correct event type, accountID, and MatchID.
+      #
+      # Module-boundary note: the test lives in services/daemon/internal/daemon
+      # (alongside smoke_test.go and match_result_wiring_test.go) but uses an
+      # inline httptest.Server stub rather than the real BFF handlers.IngestHandler
+      # because Go's internal package rule prevents cross-module imports of
+      # services/bff/internal/... and services/daemon/internal/... simultaneously.
+      # The real IngestHandler is exercised by TestProjectionIntegration in
+      # services/bff/integration_test.go (authoritative DB gate, Layer 3).
+      #
+      # No -race flag: the httptest.Server is single-threaded and race adds ~30s;
+      # the unit step above already runs with -race on the full package set.
+      - name: Ingest wire smoke (ADR-042 Layer 4)
+        working-directory: services/daemon
+        env:
+          GONOSUMDB: github.com/RdHamilton/vault-mtg
+          GOPRIVATE: github.com/RdHamilton/vault-mtg
+        run: go test -v -tags integration -run TestIngestSmoke ./internal/daemon/...
+
       # Run services/contract tests — the contract package has no dependencies on the daemon
       # module, so it is tested independently to catch marshal/unmarshal regressions (#2089).
       - name: Run contract tests
