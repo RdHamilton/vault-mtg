@@ -21,11 +21,12 @@ const colorSymbols: Record<string, string> = {
   G: 'G',
 };
 
-// Viability badge styling
+// Viability badge styling — uses design-system CSS custom properties
+// so the palette resolves from the token layer (no raw hex).
 const viabilityStyles: Record<string, { bg: string; text: string }> = {
-  strong: { bg: '#22c55e', text: '#fff' },
-  viable: { bg: '#eab308', text: '#000' },
-  weak: { bg: '#ef4444', text: '#fff' },
+  strong: { bg: 'var(--vault-success)', text: 'var(--vault-fg-inverse)' },
+  viable: { bg: 'var(--vault-warning)', text: 'var(--vault-fg-inverse)' },
+  weak:   { bg: 'var(--vault-danger)',  text: 'var(--vault-fg-inverse)' },
 };
 
 export default function DeckSuggestionCard({

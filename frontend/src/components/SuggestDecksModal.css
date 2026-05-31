@@ -140,11 +140,12 @@
 
 /* Individual suggestion card */
 .deck-suggestion-card {
-  background: rgba(255, 255, 255, 0.03);
-  border: 1px solid var(--border-color);
-  border-radius: 8px;
+  background: var(--bg-raised);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
   overflow: hidden;
-  transition: all 0.2s;
+  transition: var(--transition-fast);
+  box-shadow: var(--shadow-inset-vault);
 }
 
 .deck-suggestion-card:hover {
@@ -389,15 +390,20 @@
   flex: 1;
   padding: 10px 16px;
   border: none;
-  border-radius: 6px;
+  border-radius: var(--radius-md);
   font-weight: 600;
   cursor: pointer;
-  transition: all 0.2s;
+  transition: var(--transition-fast);
 }
 
 .action-btn:disabled {
   opacity: 0.5;
   cursor: not-allowed;
+}
+
+.action-btn:focus-visible {
+  outline: 2px solid var(--vault-sapphire-dark);
+  outline-offset: 2px;
 }
 
 .use-deck-btn {

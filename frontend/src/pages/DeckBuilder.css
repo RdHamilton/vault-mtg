@@ -191,21 +191,26 @@
   padding: 0.5rem 1rem;
   background: var(--bg-raised);
   border: 1px solid var(--border);
-  border-radius: 6px;
+  border-radius: var(--radius-md);
   color: var(--fg);
   font-size: 0.875rem;
   cursor: pointer;
-  transition: all 0.2s;
+  transition: var(--transition-fast);
   display: flex;
   align-items: center;
   gap: 0.5rem;
 }
 
 .action-button:hover {
-  background: var(--border);
-  border-color: var(--fg-muted);
+  background: var(--bg-overlay);
+  border-color: var(--accent);
   transform: translateY(-2px);
-  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.3);
+  box-shadow: var(--shadow-md);
+}
+
+.action-button:focus-visible {
+  outline: 2px solid var(--vault-sapphire-dark);
+  outline-offset: 2px;
 }
 
 .action-button.active {

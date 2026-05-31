@@ -65,12 +65,12 @@ button {
   background-color: var(--vault-sapphire);
   color: var(--vault-fg-inverse);
   border: none;
-  border-radius: 4px;
+  border-radius: var(--radius-md);
   padding: 8px 16px;
   font-size: 14px;
   font-weight: 500;
   cursor: pointer;
-  transition: background-color 0.2s;
+  transition: var(--transition-fast);
 }
 
 button:hover {
@@ -78,7 +78,12 @@ button:hover {
 }
 
 button:active {
-  background-color: var(--vault-sapphire-dark);
+  background-color: var(--accent-press);
+}
+
+button:focus-visible {
+  outline: 2px solid var(--vault-sapphire-dark);
+  outline-offset: 2px;
 }
 
 table {

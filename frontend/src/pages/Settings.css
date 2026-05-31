@@ -186,34 +186,44 @@
   padding: 10px 16px;
   background-color: var(--accent);
   border: none;
-  border-radius: 6px;
-  color: var(--fg);
+  border-radius: var(--radius-md);
+  color: var(--fg-inverse);
   font-size: 14px;
   font-weight: 500;
   cursor: pointer;
-  transition: all 0.2s;
+  transition: var(--transition-fast);
 }
 
 .action-button:hover {
   background-color: var(--accent-press);
-  box-shadow: 0 2px 8px rgba(74, 158, 255, 0.3);
+  box-shadow: var(--shadow-sapphire-vault);
+}
+
+.action-button:focus-visible {
+  outline: 2px solid var(--vault-sapphire-dark);
+  outline-offset: 2px;
 }
 
 .danger-button {
   padding: 10px 16px;
-  background-color: #ff7d7d;
+  background-color: var(--danger);
   border: none;
-  border-radius: 6px;
+  border-radius: var(--radius-md);
   color: var(--fg);
   font-size: 14px;
   font-weight: 500;
   cursor: pointer;
-  transition: all 0.2s;
+  transition: var(--transition-fast);
 }
 
 .danger-button:hover {
   background-color: var(--danger);
-  box-shadow: 0 2px 8px rgba(255, 125, 125, 0.3);
+  box-shadow: var(--shadow-md);
+}
+
+.danger-button:focus-visible {
+  outline: 2px solid var(--vault-danger);
+  outline-offset: 2px;
 }
 
 .about-content {
@@ -255,34 +265,44 @@
   padding: 12px 24px;
   background-color: var(--accent);
   border: none;
-  border-radius: 6px;
-  color: var(--fg);
+  border-radius: var(--radius-md);
+  color: var(--fg-inverse);
   font-size: 14px;
   font-weight: 600;
   cursor: pointer;
-  transition: all 0.2s;
+  transition: var(--transition-fast);
 }
 
 .primary-button:hover {
   background-color: var(--accent-press);
-  box-shadow: 0 2px 8px rgba(74, 158, 255, 0.3);
+  box-shadow: var(--shadow-sapphire-vault);
+}
+
+.primary-button:focus-visible {
+  outline: 2px solid var(--vault-sapphire-dark);
+  outline-offset: 2px;
 }
 
 .secondary-button {
   padding: 12px 24px;
-  background-color: var(--border);
+  background-color: var(--bg-raised);
   border: 1px solid var(--border);
-  border-radius: 6px;
+  border-radius: var(--radius-md);
   color: var(--fg);
   font-size: 14px;
   font-weight: 600;
   cursor: pointer;
-  transition: all 0.2s;
+  transition: var(--transition-fast);
 }
 
 .secondary-button:hover {
-  background-color: var(--border);
-  border-color: var(--border);
+  background-color: var(--bg-overlay);
+  border-color: var(--accent);
+}
+
+.secondary-button:focus-visible {
+  outline: 2px solid var(--vault-sapphire-dark);
+  outline-offset: 2px;
 }
 
 /* Daemon Connection Status Styles */

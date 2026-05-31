@@ -1,18 +1,19 @@
 .recommendation-card {
-  background: var(--card-bg);
-  border-radius: 8px;
+  background: var(--bg-raised);
+  border-radius: var(--radius-md);
   overflow: hidden;
-  transition: all 0.2s ease;
-  border: 1px solid var(--border-color);
+  transition: var(--transition-fast);
+  border: 1px solid var(--border);
+  box-shadow: var(--shadow-inset-vault);
 }
 
 .recommendation-card:hover {
-  border-color: var(--accent-color);
+  border-color: var(--accent);
 }
 
 .recommendation-card.expanded {
-  border-color: var(--accent-color);
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+  border-color: var(--accent);
+  box-shadow: var(--shadow-md);
 }
 
 /* Main recommendation row */
@@ -122,23 +123,33 @@
 }
 
 .add-rec-button {
-  background: var(--accent-color);
-  color: var(--fg);
+  background: var(--accent);
+  color: var(--fg-inverse);
 }
 
 .add-rec-button:hover {
   background: var(--accent-hover);
 }
 
+.add-rec-button:focus-visible {
+  outline: 2px solid var(--vault-sapphire-dark);
+  outline-offset: 2px;
+}
+
 .explain-button {
-  background: var(--secondary-bg);
-  color: var(--text-secondary);
+  background: var(--bg-overlay);
+  color: var(--fg-secondary);
 }
 
 .explain-button:hover,
 .explain-button.active {
-  background: var(--secondary-hover);
-  color: var(--text-primary);
+  background: var(--bg-overlay);
+  color: var(--fg);
+}
+
+.explain-button:focus-visible {
+  outline: 2px solid var(--vault-sapphire-dark);
+  outline-offset: 2px;
 }
 
 /* Expanded details section */
