@@ -63,7 +63,7 @@ select:focus, input:focus {
 
 button {
   background-color: var(--vault-sapphire);
-  color: var(--vault-fg);
+  color: var(--vault-fg-inverse);
   border: none;
   border-radius: 4px;
   padding: 8px 16px;
