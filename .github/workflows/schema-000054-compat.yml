@@ -1,0 +1,123 @@
+name: Schema-000054-Compat
+
+# ---------------------------------------------------------------------------
+# vault-mtg-tickets#193 — Schema-compatibility CI job
+#
+# WHY THIS JOB EXISTS
+# -------------------
+# Production databases are initialized from migration 000054 (the consolidated
+# schema) and then apply 000055 onward. They never had migrations 000001–000053
+# applied. The standard integration test suite (integration.yml) runs against a
+# DB that received every migration in sequence from 000001, which means tables
+# that were created and then dropped in the incremental path (e.g. `cards`,
+# created in 000001 and dropped in 000025) may silently satisfy queries that
+# would fail in production. This discrepancy caused GAP-S1 through GAP-S4:
+# stale LEFT JOIN / FROM cards queries passed CI while failing in prod.
+#
+# This job initialises a fresh DB from migration 000054 ONLY (via
+# `migrate force 53` on an empty database, then `migrate up`), then runs the
+# repository-level integration tests. Any query that references a table not
+# present in the 000054-only schema will fail here before it reaches main.
+#
+# SCOPE
+# -----
+# - Required check on PRs that touch services/bff/internal/storage/repository/
+#   or services/bff/internal/storage/migrations/ (path-filtered below).
+# - Runs repository-level tests only (not the full integration suite) to keep
+#   the job fast.
+# - Does NOT replace the existing incremental-path integration test job in
+#   integration.yml.
+# ---------------------------------------------------------------------------
+
+on:
+  pull_request:
+    branches: [ main ]
+    paths:
+      - 'services/bff/internal/storage/repository/**'
+      - 'services/bff/internal/storage/migrations/**'
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  schema-000054-compat:
+    name: Schema-000054-compat — repository tests on consolidated schema
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    services:
+      postgres:
+        image: pgvector/pgvector:pg16
+        env:
+          POSTGRES_USER: mtga
+          POSTGRES_PASSWORD: mtga
+          POSTGRES_DB: mtga_compat_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+
+      - name: Set up Go
+        uses: actions/setup-go@v6
+        with:
+          go-version: '1.25'
+
+      - name: Download dependencies
+        working-directory: services/bff
+        env:
+          GONOSUMDB: github.com/RdHamilton/vault-mtg
+          GOPRIVATE: github.com/RdHamilton/vault-mtg
+        run: go mod download
+
+      - name: Cache migrate CLI binary
+        id: cache-migrate
+        uses: actions/cache@v5
+        with:
+          path: ~/go/bin/migrate
+          key: migrate-cli-${{ runner.os }}-v4.18.3
+
+      - name: Install golang-migrate CLI
+        if: steps.cache-migrate.outputs.cache-hit != 'true'
+        env:
+          GONOSUMDB: github.com/RdHamilton/vault-mtg
+          GOPRIVATE: github.com/RdHamilton/vault-mtg
+        run: go install -tags 'postgres' github.com/golang-migrate/migrate/v4/cmd/migrate@v4.18.3
+
+      # ---------------------------------------------------------------------------
+      # Initialise the DB from migration 000054 only (the consolidated schema).
+      # `migrate force 53` marks the empty database as being at version 53 without
+      # running any SQL, so the subsequent `migrate up` starts from 000054.
+      # This reproduces the production initialisation path: a DB that was never
+      # created via the 000001–000053 incremental history.
+      # ---------------------------------------------------------------------------
+      - name: Initialise DB from migration 000054 (consolidated schema)
+        env:
+          DB_URL: "postgres://mtga:mtga@localhost:5432/mtga_compat_test?sslmode=disable"
+          MIGRATIONS_PATH: services/bff/internal/storage/migrations/postgres
+        run: |
+          # Force the migration tracker to version 53 on the empty DB (no SQL executed).
+          # The `up` command then applies only 000054 onward — matching production init.
+          migrate -path "$MIGRATIONS_PATH" -database "$DB_URL" force 53
+          migrate -path "$MIGRATIONS_PATH" -database "$DB_URL" up
+
+      - name: Run repository integration tests against 000054-only schema
+        working-directory: services/bff
+        env:
+          DATABASE_URL: postgres://mtga:mtga@localhost:5432/mtga_compat_test?sslmode=disable
+          GONOSUMDB: github.com/RdHamilton/vault-mtg
+          GOPRIVATE: github.com/RdHamilton/vault-mtg
+        run: |
+          echo "[schema-000054-compat] Running repository tests against consolidated-schema DB."
+          echo "Any failure here means a query references a table absent from the 000054-only schema."
+          go test -v ./internal/storage/repository/...
