@@ -43,7 +43,6 @@
     }
   },
   "devDependencies": {
-    "@chromatic-com/playwright": "^0.13.4",
     "@eslint/js": "^9.39.1",
     "@playwright/test": "^1.56.1",
     "@sentry/vite-plugin": "^5.3.0",
