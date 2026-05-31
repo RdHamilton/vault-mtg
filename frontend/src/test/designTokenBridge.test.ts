@@ -1,23 +1,17 @@
 /**
- * Design-token bridge guard test — #309 Pass A.
+ * Design-token bridge guard test — updated for #339 Pass C.
  *
- * Pass A ports the design-system SEMANTIC LAYER (--fg/--bg/--accent/--border/…)
- * into index.css as the canonical vocabulary, and adds a TEMPORARY legacy-alias
- * bridge so the ~600 component references to undefined legacy names
- * (--text-primary, --border-color, --accent-color, …) resolve to the new
- * sapphire palette instead of their hardcoded hex fallbacks.
+ * Pass A (#309) installed the TEMPORARY legacy-alias bridge so ~600 component
+ * references to undefined legacy names resolved to the sapphire palette.
+ * Pass C (#339) migrated every call-site to the canonical semantic tokens
+ * (--fg/--bg/--accent/--border/…) and deleted the bridge block from index.css.
  *
- * This test is the executable enforcement of that contract:
- *   1. Every custom property referenced by component CSS via var() is DEFINED
- *      somewhere in index.css — except a documented allowlist of genuinely
- *      categorical / data-viz accents that Pass A intentionally leaves alone
- *      (Ray ruling #2 / Option B).
- *   2. Every alias/token DEFINED in index.css whose value is itself a var()
- *      points at a property that is also defined (no dangling pointer — catches
- *      a bridge entry whose target token was renamed or removed).
- *
- * When the Pass-B follow-up rewrites call-sites onto the canonical names and
- * deletes the bridge, this test continues to guarantee no reference dangles.
+ * This test now enforces the post-bridge contract:
+ *   1. The canonical semantic layer tokens are defined in index.css.
+ *   2. No legacy alias names remain in component CSS (the bridge is gone;
+ *      any stray reference would silently fall back to its hex default).
+ *   3. Every var()-valued definition in index.css points at a defined property
+ *      (no dangling pointers — catches regressions if a primitive is renamed).
  */
 import { describe, it, expect } from 'vitest';
 import { readFileSync, readdirSync, statSync } from 'node:fs';
@@ -30,8 +24,8 @@ const INDEX_CSS = join(SRC_DIR, 'index.css');
 /**
  * Genuinely categorical / data-viz accents that need distinct hues to stay
  * legible. Per Ray's APPROVE-WITH-CHANGES (#309) ruling #2 (Option B), these
- * are intentionally NOT bridged to the brand palette and keep their per-site
- * hex fallbacks. Listed explicitly so the omission is deliberate, not accidental.
+ * are intentionally NOT mapped to the brand palette. Listed explicitly so the
+ * omission is deliberate, not accidental.
  */
 const CATEGORICAL_ALLOWLIST = new Set([
   '--bar-bg',
@@ -41,6 +35,58 @@ const CATEGORICAL_ALLOWLIST = new Set([
   '--meta-color',
   '--personal-bg',
   '--personal-color',
+]);
+
+/**
+ * Legacy alias names that lived in the #309 bridge block. After #339 these must
+ * NOT appear in any component CSS file — they are undefined and would silently
+ * fall back to whatever hex default the var() author wrote.
+ */
+const LEGACY_ALIAS_NAMES = new Set([
+  '--text-primary',
+  '--color-text-primary',
+  '--color-text',
+  '--text-secondary',
+  '--color-text-secondary',
+  '--text-muted',
+  '--text-tertiary',
+  '--color-text-muted',
+  '--bg-primary',
+  '--background-color',
+  '--bg-secondary',
+  '--card-bg',
+  '--card-bg-dark',
+  '--surface-color',
+  '--color-surface',
+  '--bg-tertiary',
+  '--color-surface-elevated',
+  '--bg-hover',
+  '--bg-sunken',
+  '--border-color',
+  '--color-border',
+  '--border-hover',
+  '--focus-ring',
+  '--accent-color',
+  '--color-accent',
+  '--color-primary',
+  '--accent-rgb',
+  '--secondary-bg',
+  '--secondary-hover',
+  '--error-color',
+  '--color-error',
+  '--loss-color',
+  '--error-bg',
+  '--success-color',
+  '--color-success',
+  '--win-color',
+  '--success-bg',
+  '--warning-color',
+  '--info-color',
+  '--info-bg',
+  '--tier-1-color',
+  '--tier-2-color',
+  '--tier-3-color',
+  '--tier-4-color',
 ]);
 
 function listCssFiles(dir: string): string[] {
@@ -75,7 +121,7 @@ function definedVars(css: string): Set<string> {
   return names;
 }
 
-describe('#309 Pass A — design-token bridge', () => {
+describe('#339 — bridge removed, canonical tokens only', () => {
   const indexCss = readFileSync(INDEX_CSS, 'utf8');
   const defined = definedVars(indexCss);
 
@@ -91,6 +137,8 @@ describe('#309 Pass A — design-token bridge', () => {
       '--accent',
       '--accent-hover',
       '--accent-press',
+      '--accent-dim',
+      '--accent-dim-hover',
       '--success',
       '--danger',
       '--warning',
@@ -100,7 +148,29 @@ describe('#309 Pass A — design-token bridge', () => {
     }
   });
 
-  it('bridges every legacy alias used by component CSS (except categorical accents)', () => {
+  it('legacy-alias bridge block is gone from index.css', () => {
+    const legacyStillDefined = [...LEGACY_ALIAS_NAMES].filter((name) => defined.has(name));
+    expect(
+      legacyStillDefined,
+      `legacy alias(es) still defined in index.css (bridge not fully removed): ${legacyStillDefined.join(', ')}`,
+    ).toEqual([]);
+  });
+
+  it('no component CSS references legacy alias names (bridge is gone — stray references silently fall back to hex)', () => {
+    const componentFiles = listCssFiles(SRC_DIR).filter((f) => f !== INDEX_CSS);
+    const offenders: string[] = [];
+    for (const f of componentFiles) {
+      const refs = referencedVars(readFileSync(f, 'utf8'));
+      const stray = [...refs].filter((name) => LEGACY_ALIAS_NAMES.has(name));
+      if (stray.length) offenders.push(`${f}: ${stray.join(', ')}`);
+    }
+    expect(
+      offenders,
+      `component CSS still references legacy aliases (migrate to canonical --fg/--bg/--accent/--border tokens): ${offenders.join('; ')}`,
+    ).toEqual([]);
+  });
+
+  it('all component CSS var() references resolve (except categorical accents)', () => {
     const componentFiles = listCssFiles(SRC_DIR).filter((f) => f !== INDEX_CSS);
     const referenced = new Set<string>();
     for (const f of componentFiles) {
@@ -113,14 +183,12 @@ describe('#309 Pass A — design-token bridge', () => {
 
     expect(
       unresolved,
-      `these custom properties are referenced by component CSS but not defined in index.css ` +
-        `(would render via hardcoded hex fallback / pre-#298 palette): ${unresolved.join(', ')}`,
+      `custom properties referenced by component CSS but not defined in index.css ` +
+        `(would render via hardcoded hex fallback): ${unresolved.join(', ')}`,
     ).toEqual([]);
   });
 
-  it('has no dangling bridge pointer (every var()-valued definition targets a defined property)', () => {
-    // Properties whose value is a single var(--target) reference. The target
-    // must itself be defined in index.css.
+  it('has no dangling pointer in index.css (every var()-valued definition targets a defined property)', () => {
     const re = /^\s*(--[a-zA-Z0-9-]+)\s*:\s*var\(\s*(--[a-zA-Z0-9-]+)/gm;
     const dangling: string[] = [];
     let m: RegExpExecArray | null;
@@ -128,6 +196,6 @@ describe('#309 Pass A — design-token bridge', () => {
       const [, name, target] = m;
       if (!defined.has(target)) dangling.push(`${name} -> ${target}`);
     }
-    expect(dangling, `bridge pointers with undefined targets: ${dangling.join(', ')}`).toEqual([]);
+    expect(dangling, `index.css pointers with undefined targets: ${dangling.join(', ')}`).toEqual([]);
   });
 });

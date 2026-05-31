@@ -16,8 +16,8 @@
 }
 
 .onboarding-modal {
-  background-color: var(--bg-primary);
-  border: 1px solid var(--border-color);
+  background-color: var(--bg);
+  border: 1px solid var(--border);
   border-radius: 16px;
   width: 100%;
   max-width: 560px;
@@ -44,20 +44,20 @@
   align-items: center;
   justify-content: space-between;
   padding: 20px 24px 16px;
-  border-bottom: 1px solid var(--border-color);
+  border-bottom: 1px solid var(--border);
 }
 
 .onboarding-modal-title {
   margin: 0;
   font-size: 18px;
   font-weight: 700;
-  color: var(--text-primary);
+  color: var(--fg);
 }
 
 .onboarding-modal-close {
   background: none;
   border: none;
-  color: var(--text-secondary);
+  color: var(--fg-secondary);
   font-size: 22px;
   line-height: 1;
   cursor: pointer;
@@ -67,8 +67,8 @@
 }
 
 .onboarding-modal-close:hover {
-  color: var(--text-primary);
-  background-color: var(--bg-hover);
+  color: var(--fg);
+  background-color: var(--bg-overlay);
 }
 
 /* Step indicator */
@@ -78,7 +78,7 @@
   justify-content: center;
   gap: 0;
   padding: 16px 24px;
-  border-bottom: 1px solid var(--border-color);
+  border-bottom: 1px solid var(--border);
 }
 
 .onboarding-step-pip {
@@ -98,7 +98,7 @@
   left: 50%;
   right: -50%;
   height: 2px;
-  background-color: var(--border-color);
+  background-color: var(--border);
   z-index: 0;
 }
 
@@ -110,14 +110,14 @@
   width: 28px;
   height: 28px;
   border-radius: 50%;
-  border: 2px solid var(--border-color);
-  background-color: var(--bg-primary);
+  border: 2px solid var(--border);
+  background-color: var(--bg);
   display: flex;
   align-items: center;
   justify-content: center;
   font-size: 12px;
   font-weight: 600;
-  color: var(--text-secondary);
+  color: var(--fg-secondary);
   z-index: 1;
   position: relative;
   transition: all 0.2s ease;
@@ -137,7 +137,7 @@
 
 .onboarding-step-pip-label {
   font-size: 11px;
-  color: var(--text-secondary);
+  color: var(--fg-secondary);
   font-weight: 500;
   text-transform: uppercase;
   letter-spacing: 0.05em;
@@ -188,14 +188,14 @@
   margin: 0;
   font-size: 20px;
   font-weight: 700;
-  color: var(--text-primary);
+  color: var(--fg);
   text-align: center;
 }
 
 .onboarding-step-description {
   margin: 0;
   font-size: 14px;
-  color: var(--text-secondary);
+  color: var(--fg-secondary);
   line-height: 1.6;
   text-align: center;
   max-width: 440px;
@@ -216,8 +216,8 @@
 }
 
 .onboarding-platform {
-  background-color: var(--bg-secondary);
-  border: 1px solid var(--border-color);
+  background-color: var(--bg-raised);
+  border: 1px solid var(--border);
   border-radius: 10px;
   padding: 16px;
 }
@@ -230,7 +230,7 @@
 }
 
 .onboarding-platform-icon {
-  color: var(--text-secondary);
+  color: var(--fg-secondary);
   display: flex;
   align-items: center;
 }
@@ -238,7 +238,7 @@
 .onboarding-platform-name {
   font-size: 14px;
   font-weight: 600;
-  color: var(--text-primary);
+  color: var(--fg);
 }
 
 .onboarding-install-steps {
@@ -249,7 +249,7 @@
 
 .onboarding-install-steps li {
   font-size: 13px;
-  color: var(--text-secondary);
+  color: var(--fg-secondary);
   line-height: 1.5;
   margin-bottom: 6px;
 }
@@ -262,10 +262,10 @@
   font-family: ui-monospace, SFMono-Regular, monospace;
   font-size: 12px;
   background-color: rgba(255, 255, 255, 0.05);
-  border: 1px solid var(--border-color);
+  border: 1px solid var(--border);
   border-radius: 4px;
   padding: 1px 5px;
-  color: var(--text-primary);
+  color: var(--fg);
 }
 
 /* Action buttons */
@@ -314,14 +314,14 @@
 
 .onboarding-btn--ghost {
   background-color: transparent;
-  color: var(--text-secondary);
-  border: 1px solid var(--border-color);
+  color: var(--fg-secondary);
+  border: 1px solid var(--border);
 }
 
 .onboarding-btn--ghost:hover {
-  color: var(--text-primary);
-  background-color: var(--bg-hover);
-  border-color: var(--border-hover);
+  color: var(--fg);
+  background-color: var(--bg-overlay);
+  border-color: var(--vault-sapphire-dark);
 }
 
 /* Spinner for step 3 polling */

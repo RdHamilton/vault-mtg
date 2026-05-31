@@ -29,14 +29,14 @@
   align-items: center;
   gap: 0.75rem;
   flex-wrap: wrap;
-  color: var(--color-text-secondary);
+  color: var(--fg-secondary);
   font-size: 0.875rem;
 }
 
 .draft-live-set {
   font-weight: 600;
-  color: var(--color-accent);
-  background: var(--color-surface-elevated);
+  color: var(--accent);
+  background: var(--bg-overlay);
   padding: 0.2rem 0.5rem;
   border-radius: 4px;
   font-size: 0.8rem;
@@ -44,11 +44,11 @@
 }
 
 .draft-live-format {
-  color: var(--color-text-muted);
+  color: var(--fg-muted);
 }
 
 .draft-live-progress {
-  color: var(--color-text-muted);
+  color: var(--fg-muted);
 }
 
 /* Stream status indicator */
@@ -110,7 +110,7 @@
 
 .draft-live-waiting,
 .draft-live-ratings-error {
-  color: var(--color-text-muted);
+  color: var(--fg-muted);
   font-size: 0.875rem;
   padding: 1rem 0;
 }
@@ -122,8 +122,8 @@
 /* Card tiles */
 .draft-live-card {
   position: relative;
-  background: var(--color-surface);
-  border: 1px solid var(--color-border);
+  background: var(--bg-raised);
+  border: 1px solid var(--border);
   border-radius: 8px;
   padding: 0.75rem;
   display: flex;
@@ -135,19 +135,19 @@
 .draft-live-card--top {
   border-color: var(--warning);
   box-shadow: 0 0 0 2px rgba(245, 158, 11, 0.35);
-  background: var(--color-surface-elevated);
+  background: var(--bg-overlay);
 }
 
 .draft-live-card-name {
   font-size: 0.875rem;
   font-weight: 500;
-  color: var(--color-text);
+  color: var(--fg);
   line-height: 1.3;
 }
 
 .draft-live-gihwr {
   font-size: 0.75rem;
-  color: var(--color-text-muted);
+  color: var(--fg-muted);
 }
 
 .draft-live-top-badge {
@@ -200,14 +200,14 @@
 
 /* Pick history */
 .draft-live-history-section {
-  background: var(--color-surface);
-  border: 1px solid var(--color-border);
+  background: var(--bg-raised);
+  border: 1px solid var(--border);
   border-radius: 8px;
   padding: 1rem;
 }
 
 .draft-live-no-picks {
-  color: var(--color-text-muted);
+  color: var(--fg-muted);
   font-size: 0.875rem;
   margin: 0;
 }
@@ -227,12 +227,12 @@
   gap: 0.5rem;
   padding: 0.4rem 0.5rem;
   border-radius: 4px;
-  background: var(--color-surface-elevated);
+  background: var(--bg-overlay);
 }
 
 .draft-live-history-name {
   font-size: 0.8rem;
-  color: var(--color-text);
+  color: var(--fg);
   flex: 1;
   min-width: 0;
   overflow: hidden;

@@ -1,5 +1,5 @@
 .ml-suggestions-panel {
-  background: var(--bg-secondary);
+  background: var(--bg-raised);
   border-radius: 8px;
   padding: 16px;
   min-height: 200px;
@@ -10,14 +10,14 @@
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  color: var(--text-secondary);
+  color: var(--fg-secondary);
 }
 
 .ml-suggestions-panel .loading-spinner {
   width: 24px;
   height: 24px;
-  border: 2px solid var(--border-color);
-  border-top-color: var(--accent-color);
+  border: 2px solid var(--border);
+  border-top-color: var(--accent);
   border-radius: 50%;
   animation: spin 1s linear infinite;
 }
@@ -38,7 +38,7 @@
 .ml-suggestions-panel .suggestions-header h3 {
   margin: 0;
   font-size: 1.1rem;
-  color: var(--text-primary);
+  color: var(--fg);
 }
 
 .ml-suggestions-panel .header-controls {
@@ -48,47 +48,47 @@
 }
 
 .ml-suggestions-panel .type-filter {
-  background: var(--bg-tertiary);
-  border: 1px solid var(--border-color);
+  background: var(--bg-overlay);
+  border: 1px solid var(--border);
   border-radius: 4px;
   padding: 4px 8px;
-  color: var(--text-primary);
+  color: var(--fg);
   font-size: 0.85rem;
 }
 
 .ml-suggestions-panel .type-filter:focus-visible {
-  outline: 2px solid var(--accent-color);
+  outline: 2px solid var(--accent);
   outline-offset: 2px;
 }
 
 .ml-suggestions-panel .close-button {
   background: none;
   border: none;
-  color: var(--text-secondary);
+  color: var(--fg-secondary);
   font-size: 1.2rem;
   cursor: pointer;
   padding: 2px 6px;
 }
 
 .ml-suggestions-panel .close-button:hover {
-  color: var(--text-primary);
+  color: var(--fg);
 }
 
 .ml-suggestions-panel .close-button:focus-visible {
-  outline: 2px solid var(--accent-color);
+  outline: 2px solid var(--accent);
   outline-offset: 2px;
 }
 
 .ml-suggestions-panel .error-banner {
   background: rgba(243, 139, 168, 0.15);
-  border: 1px solid var(--error-color);
+  border: 1px solid var(--danger);
   border-radius: 4px;
   padding: 8px 12px;
   margin-bottom: 12px;
   display: flex;
   justify-content: space-between;
   align-items: center;
-  color: var(--error-color);
+  color: var(--danger);
   font-size: 0.9rem;
 }
 
@@ -101,7 +101,7 @@
 }
 
 .ml-suggestions-panel .error-banner button:focus-visible {
-  outline: 2px solid var(--error-color);
+  outline: 2px solid var(--danger);
   outline-offset: 2px;
 }
 
@@ -113,8 +113,8 @@
 }
 
 .ml-suggestions-panel .generate-btn {
-  background: var(--accent-color);
-  color: var(--bg-primary);
+  background: var(--accent);
+  color: var(--bg);
   border: none;
   border-radius: 4px;
   padding: 8px 16px;
@@ -133,7 +133,7 @@
 }
 
 .ml-suggestions-panel .generate-btn:focus-visible {
-  outline: 2px solid var(--accent-color);
+  outline: 2px solid var(--accent);
   outline-offset: 2px;
 }
 
@@ -141,7 +141,7 @@
   display: flex;
   align-items: center;
   gap: 4px;
-  color: var(--text-secondary);
+  color: var(--fg-secondary);
   font-size: 0.85rem;
   cursor: pointer;
 }
@@ -154,7 +154,7 @@
 
 .ml-suggestions-panel .empty-state {
   text-align: center;
-  color: var(--text-secondary);
+  color: var(--fg-secondary);
   padding: 24px;
 }
 
@@ -168,15 +168,15 @@
 }
 
 .ml-suggestion-item {
-  background: var(--bg-tertiary);
-  border: 1px solid var(--border-color);
+  background: var(--bg-overlay);
+  border: 1px solid var(--border);
   border-radius: 6px;
   overflow: hidden;
   transition: border-color 0.2s;
 }
 
 .ml-suggestion-item:hover {
-  border-color: var(--accent-color);
+  border-color: var(--accent);
 }
 
 .ml-suggestion-item.dismissed {
@@ -184,7 +184,7 @@
 }
 
 .ml-suggestion-item.applied {
-  border-color: var(--success-color);
+  border-color: var(--success);
 }
 
 .ml-suggestion-item .suggestion-main {
@@ -216,7 +216,7 @@
 .ml-suggestion-item .suggestion-title {
   margin: 0;
   font-size: 0.95rem;
-  color: var(--text-primary);
+  color: var(--fg);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -231,24 +231,24 @@
 
 .ml-suggestion-item .confidence-badge.text-green-400 {
   background: rgba(166, 227, 161, 0.15);
-  color: var(--success-color);
+  color: var(--success);
 }
 
 .ml-suggestion-item .confidence-badge.text-blue-400 {
   background: rgba(137, 180, 250, 0.15);
-  color: var(--accent-color);
+  color: var(--accent);
 }
 
 .ml-suggestion-item .confidence-badge.text-yellow-400 {
   background: rgba(249, 226, 175, 0.15);
-  color: var(--warning-color);
+  color: var(--warning);
 }
 
 .ml-suggestion-item .suggestion-meta-row {
   display: flex;
   gap: 12px;
   font-size: 0.8rem;
-  color: var(--text-secondary);
+  color: var(--fg-secondary);
 }
 
 .ml-suggestion-item .win-rate-change {
@@ -256,15 +256,15 @@
 }
 
 .ml-suggestion-item .win-rate-change.positive {
-  color: var(--success-color);
+  color: var(--success);
 }
 
 .ml-suggestion-item .win-rate-change.negative {
-  color: var(--error-color);
+  color: var(--danger);
 }
 
 .ml-suggestion-item .expand-icon {
-  color: var(--text-secondary);
+  color: var(--fg-secondary);
   font-size: 0.75rem;
   transition: transform 0.2s;
 }
@@ -275,12 +275,12 @@
 
 .ml-suggestion-item .suggestion-details {
   padding: 0 12px 12px;
-  border-top: 1px solid var(--border-color);
+  border-top: 1px solid var(--border);
 }
 
 .ml-suggestion-item .suggestion-description {
   margin: 12px 0;
-  color: var(--text-secondary);
+  color: var(--fg-secondary);
   font-size: 0.9rem;
   line-height: 1.5;
 }
@@ -296,16 +296,16 @@
 }
 
 .ml-suggestion-item .swap-from {
-  color: var(--error-color);
+  color: var(--danger);
   text-decoration: line-through;
 }
 
 .ml-suggestion-item .swap-arrow {
-  color: var(--text-secondary);
+  color: var(--fg-secondary);
 }
 
 .ml-suggestion-item .swap-to {
-  color: var(--success-color);
+  color: var(--success);
   font-weight: 500;
 }
 
@@ -316,7 +316,7 @@
 .ml-suggestion-item .reasoning-list h5 {
   margin: 0 0 8px;
   font-size: 0.85rem;
-  color: var(--text-primary);
+  color: var(--fg);
 }
 
 .ml-suggestion-item .reasoning-list ul {
@@ -326,12 +326,12 @@
 
 .ml-suggestion-item .reason-item {
   font-size: 0.85rem;
-  color: var(--text-secondary);
+  color: var(--fg-secondary);
   margin-bottom: 4px;
 }
 
 .ml-suggestion-item .reason-type {
-  color: var(--accent-color);
+  color: var(--accent);
   margin-right: 4px;
   text-transform: capitalize;
 }
@@ -340,7 +340,7 @@
   display: flex;
   gap: 16px;
   font-size: 0.8rem;
-  color: var(--text-secondary);
+  color: var(--fg-secondary);
   margin-top: 12px;
 }
 
@@ -349,12 +349,12 @@
   gap: 8px;
   margin-top: 12px;
   padding-top: 12px;
-  border-top: 1px solid var(--border-color);
+  border-top: 1px solid var(--border);
 }
 
 .ml-suggestion-item .apply-btn {
-  background: var(--success-color);
-  color: var(--bg-primary);
+  background: var(--success);
+  color: var(--bg);
   border: none;
   border-radius: 4px;
   padding: 6px 12px;
@@ -368,28 +368,28 @@
 }
 
 .ml-suggestion-item .apply-btn:focus-visible {
-  outline: 2px solid var(--success-color);
+  outline: 2px solid var(--success);
   outline-offset: 2px;
 }
 
 .ml-suggestion-item .dismiss-btn {
   background: transparent;
-  border: 1px solid var(--border-color);
+  border: 1px solid var(--border);
   border-radius: 4px;
   padding: 6px 12px;
   font-size: 0.85rem;
-  color: var(--text-secondary);
+  color: var(--fg-secondary);
   cursor: pointer;
   transition: border-color 0.2s, color 0.2s;
 }
 
 .ml-suggestion-item .dismiss-btn:hover {
-  border-color: var(--error-color);
-  color: var(--error-color);
+  border-color: var(--danger);
+  color: var(--danger);
 }
 
 .ml-suggestion-item .dismiss-btn:focus-visible {
-  outline: 2px solid var(--accent-color);
+  outline: 2px solid var(--accent);
   outline-offset: 2px;
 }
 
@@ -397,7 +397,7 @@
 .generation-progress-container {
   flex: 1;
   padding: 12px;
-  background: var(--bg-primary);
+  background: var(--bg);
   border-radius: 8px;
-  border: 1px solid var(--border-color);
+  border: 1px solid var(--border);
 }

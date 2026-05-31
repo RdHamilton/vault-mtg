@@ -1,5 +1,5 @@
 .temporal-trends {
-  background-color: var(--bg-secondary);
+  background-color: var(--bg-raised);
   border-radius: 8px;
   padding: 16px;
   margin-bottom: 16px;
@@ -14,16 +14,16 @@
   justify-content: center;
   min-height: 200px;
   gap: 12px;
-  color: var(--color-text-secondary);
+  color: var(--fg-secondary);
 }
 
 .temporal-trends--error {
-  color: var(--color-error);
+  color: var(--danger);
 }
 
 .temporal-trends--error button {
   padding: 8px 16px;
-  background-color: var(--color-primary);
+  background-color: var(--accent);
   border: none;
   border-radius: 4px;
   color: white;
@@ -33,8 +33,8 @@
 .temporal-trends__spinner {
   width: 24px;
   height: 24px;
-  border: 2px solid var(--color-text-secondary);
-  border-top-color: var(--color-primary);
+  border: 2px solid var(--fg-secondary);
+  border-top-color: var(--accent);
   border-radius: 50%;
   animation: spin 1s linear infinite;
 }
@@ -55,7 +55,7 @@
 .temporal-trends__header h3 {
   margin: 0;
   font-size: 1.1rem;
-  color: var(--color-text-primary);
+  color: var(--fg);
 }
 
 .temporal-trends__controls {
@@ -65,10 +65,10 @@
 
 .temporal-trends__select {
   padding: 6px 12px;
-  background-color: var(--bg-tertiary);
-  border: 1px solid var(--border-color);
+  background-color: var(--bg-overlay);
+  border: 1px solid var(--border);
   border-radius: 4px;
-  color: var(--color-text-primary);
+  color: var(--fg);
   font-size: 0.875rem;
   cursor: pointer;
 }
@@ -76,17 +76,17 @@
 .temporal-trends__refresh {
   padding: 6px 12px;
   background-color: transparent;
-  border: 1px solid var(--border-color);
+  border: 1px solid var(--border);
   border-radius: 4px;
-  color: var(--color-text-secondary);
+  color: var(--fg-secondary);
   font-size: 0.875rem;
   cursor: pointer;
   transition: all 0.2s ease;
 }
 
 .temporal-trends__refresh:hover {
-  background-color: var(--bg-tertiary);
-  color: var(--color-text-primary);
+  background-color: var(--bg-overlay);
+  color: var(--fg);
 }
 
 .temporal-trends__summary {
@@ -95,7 +95,7 @@
   gap: 16px;
   margin-bottom: 20px;
   padding: 16px;
-  background-color: var(--bg-tertiary);
+  background-color: var(--bg-overlay);
   border-radius: 6px;
 }
 
@@ -115,12 +115,12 @@
 .temporal-trends__stat-value {
   font-size: 1.5rem;
   font-weight: bold;
-  color: var(--color-primary);
+  color: var(--accent);
 }
 
 .temporal-trends__stat-label {
   font-size: 0.75rem;
-  color: var(--color-text-secondary);
+  color: var(--fg-secondary);
   margin-top: 4px;
 }
 
@@ -131,7 +131,7 @@
 .temporal-trends__chart h4 {
   margin: 0 0 12px 0;
   font-size: 0.95rem;
-  color: var(--color-text-primary);
+  color: var(--fg);
   display: flex;
   align-items: center;
   gap: 8px;
@@ -140,7 +140,7 @@
 .temporal-trends__mastered {
   font-size: 0.75rem;
   padding: 2px 8px;
-  background-color: var(--color-success);
+  background-color: var(--success);
   color: var(--vault-fg-inverse);
   border-radius: 10px;
   font-weight: normal;
@@ -150,7 +150,7 @@
   text-align: center;
   margin-top: 8px;
   font-size: 0.875rem;
-  color: var(--color-text-secondary);
+  color: var(--fg-secondary);
 }
 
 /* Custom tooltip styling for recharts */
@@ -159,17 +159,17 @@
 }
 
 .recharts-default-tooltip {
-  background-color: var(--bg-tertiary) !important;
-  border: 1px solid var(--border-color) !important;
+  background-color: var(--bg-overlay) !important;
+  border: 1px solid var(--border) !important;
   border-radius: 4px;
 }
 
 .recharts-tooltip-label {
-  color: var(--color-text-primary) !important;
+  color: var(--fg) !important;
   font-weight: bold;
   margin-bottom: 4px;
 }
 
 .recharts-tooltip-item {
-  color: var(--color-text-secondary) !important;
+  color: var(--fg-secondary) !important;
 }

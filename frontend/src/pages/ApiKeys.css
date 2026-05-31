@@ -4,7 +4,7 @@
 }
 
 .api-keys-description {
-  color: var(--color-text-secondary);
+  color: var(--fg-secondary);
   font-size: 14px;
   margin-top: 0.5rem;
   max-width: 600px;

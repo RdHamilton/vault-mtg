@@ -1,8 +1,8 @@
 .suggestions-panel {
-  background: var(--card-bg);
+  background: var(--bg-raised);
   border-radius: 8px;
   padding: 16px;
-  color: var(--text-primary);
+  color: var(--fg);
 }
 
 .suggestions-panel.loading {
@@ -55,7 +55,7 @@
   border: 1px solid rgba(255, 255, 255, 0.1);
   border-radius: 6px;
   padding: 6px 10px;
-  color: var(--text-primary);
+  color: var(--fg);
   font-size: 0.875rem;
   cursor: pointer;
 }
@@ -67,7 +67,7 @@
 .close-button {
   background: transparent;
   border: none;
-  color: var(--text-secondary);
+  color: var(--fg-secondary);
   font-size: 1.25rem;
   cursor: pointer;
   padding: 4px 8px;
@@ -75,7 +75,7 @@
 }
 
 .close-button:hover {
-  color: var(--text-primary);
+  color: var(--fg);
   background: rgba(255, 255, 255, 0.1);
 }
 
@@ -136,7 +136,7 @@
   align-items: center;
   gap: 6px;
   font-size: 0.875rem;
-  color: var(--text-secondary);
+  color: var(--fg-secondary);
   cursor: pointer;
 }
 
@@ -153,7 +153,7 @@
 .empty-state {
   text-align: center;
   padding: 32px;
-  color: var(--text-secondary);
+  color: var(--fg-secondary);
 }
 
 .empty-state p {
@@ -245,11 +245,11 @@
 
 .suggestion-type {
   font-size: 0.75rem;
-  color: var(--text-secondary);
+  color: var(--fg-secondary);
 }
 
 .expand-icon {
-  color: var(--text-secondary);
+  color: var(--fg-secondary);
   font-size: 0.75rem;
   transition: transform 0.2s ease;
 }
@@ -267,7 +267,7 @@
   margin: 12px 0;
   font-size: 0.875rem;
   line-height: 1.5;
-  color: var(--text-primary);
+  color: var(--fg);
 }
 
 .suggestion-meta {
@@ -282,7 +282,7 @@
 }
 
 .suggestion-meta .date {
-  color: var(--text-secondary);
+  color: var(--fg-secondary);
 }
 
 /* Priority colors from API */
@@ -310,7 +310,7 @@
 .dismiss-btn {
   background: transparent;
   border: 1px solid rgba(255, 255, 255, 0.2);
-  color: var(--text-secondary);
+  color: var(--fg-secondary);
   padding: 6px 12px;
   border-radius: 4px;
   cursor: pointer;
@@ -319,5 +319,5 @@
 
 .dismiss-btn:hover {
   background: rgba(255, 255, 255, 0.05);
-  color: var(--text-primary);
+  color: var(--fg);
 }

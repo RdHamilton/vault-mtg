@@ -39,13 +39,13 @@
 
 .progress-bar-label {
   font-size: 12px;
-  color: var(--text-secondary);
+  color: var(--fg-secondary);
   font-weight: 500;
 }
 
 .progress-bar-percentage {
   font-size: 12px;
-  color: var(--text-primary);
+  color: var(--fg);
   font-weight: 600;
   font-variant-numeric: tabular-nums;
 }
@@ -53,7 +53,7 @@
 /* Track and fill */
 .progress-bar-track {
   width: 100%;
-  background-color: var(--bg-tertiary);
+  background-color: var(--bg-overlay);
   border-radius: 4px;
   overflow: hidden;
 }
@@ -116,19 +116,19 @@
 
 .progress-bar-detail {
   font-size: 11px;
-  color: var(--text-secondary);
+  color: var(--fg-secondary);
 }
 
 .progress-bar-time {
   font-size: 11px;
-  color: var(--text-tertiary);
+  color: var(--fg-muted);
   font-style: italic;
 }
 
 .progress-bar-cancel {
   background: transparent;
-  border: 1px solid var(--border-color);
-  color: var(--text-secondary);
+  border: 1px solid var(--border);
+  color: var(--fg-secondary);
   padding: 2px 8px;
   border-radius: 4px;
   font-size: 11px;
@@ -137,12 +137,12 @@
 }
 
 .progress-bar-cancel:hover {
-  background-color: var(--bg-hover);
-  color: var(--text-primary);
-  border-color: var(--border-hover);
+  background-color: var(--bg-overlay);
+  color: var(--fg);
+  border-color: var(--vault-sapphire-dark);
 }
 
 .progress-bar-cancel:focus {
-  outline: 2px solid var(--focus-ring);
+  outline: 2px solid var(--vault-sapphire-dark);
   outline-offset: 2px;
 }

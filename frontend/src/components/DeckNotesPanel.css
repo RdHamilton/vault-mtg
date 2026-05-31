@@ -1,8 +1,8 @@
 .deck-notes-panel {
-  background: var(--card-bg);
+  background: var(--bg-raised);
   border-radius: 8px;
   padding: 16px;
-  color: var(--text-primary);
+  color: var(--fg);
 }
 
 .deck-notes-panel.loading {
@@ -55,7 +55,7 @@
   border: 1px solid rgba(255, 255, 255, 0.1);
   border-radius: 6px;
   padding: 6px 10px;
-  color: var(--text-primary);
+  color: var(--fg);
   font-size: 0.875rem;
   cursor: pointer;
 }
@@ -67,7 +67,7 @@
 .close-button {
   background: transparent;
   border: none;
-  color: var(--text-secondary);
+  color: var(--fg-secondary);
   font-size: 1.25rem;
   cursor: pointer;
   padding: 4px 8px;
@@ -75,7 +75,7 @@
 }
 
 .close-button:hover {
-  color: var(--text-primary);
+  color: var(--fg);
   background: rgba(255, 255, 255, 0.1);
 }
 
@@ -137,7 +137,7 @@
   border: 1px solid rgba(255, 255, 255, 0.1);
   border-radius: 4px;
   padding: 10px;
-  color: var(--text-primary);
+  color: var(--fg);
   font-size: 0.875rem;
   resize: vertical;
   min-height: 80px;
@@ -162,7 +162,7 @@
   border: 1px solid rgba(255, 255, 255, 0.1);
   border-radius: 4px;
   padding: 6px 10px;
-  color: var(--text-primary);
+  color: var(--fg);
   font-size: 0.875rem;
 }
 
@@ -174,7 +174,7 @@
 .cancel-btn {
   background: transparent;
   border: 1px solid rgba(255, 255, 255, 0.2);
-  color: var(--text-secondary);
+  color: var(--fg-secondary);
   padding: 6px 16px;
   border-radius: 4px;
   cursor: pointer;
@@ -214,7 +214,7 @@
 .empty-state {
   text-align: center;
   padding: 32px;
-  color: var(--text-secondary);
+  color: var(--fg-secondary);
 }
 
 .empty-state p {
@@ -245,7 +245,7 @@
 
 .note-date {
   font-size: 0.75rem;
-  color: var(--text-secondary);
+  color: var(--fg-secondary);
 }
 
 .note-content {

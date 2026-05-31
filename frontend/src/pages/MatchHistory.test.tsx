@@ -33,13 +33,15 @@ describe('MatchHistory CSS — design token compliance (#312)', () => {
     expect(css).not.toMatch(/border-left:\s*3px solid #ff7d7d/);
   });
 
-  it('record-value background uses --accent-rgb token, not hardcoded legacy blue', () => {
-    expect(css).toContain('rgba(var(--accent-rgb), 0.1)');
+  it('record-value background uses --accent-dim token, not hardcoded legacy blue (#339)', () => {
+    expect(css).toContain('background: var(--accent-dim)');
     expect(css).not.toContain('rgba(74, 158, 255');
+    expect(css).not.toContain('rgba(var(--accent-rgb)');
   });
 
-  it('notes-btn hover uses --accent-rgb token, not hardcoded legacy blue', () => {
-    expect(css).toContain('rgba(var(--accent-rgb), 0.2)');
+  it('notes-btn hover uses --accent-dim-hover token, not hardcoded legacy blue (#339)', () => {
+    expect(css).toContain('background-color: var(--accent-dim-hover)');
+    expect(css).not.toContain('rgba(var(--accent-rgb)');
   });
 
   it('comparison-panel-container uses canonical --bg-raised token, not legacy alias', () => {

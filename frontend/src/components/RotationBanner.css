@@ -77,13 +77,13 @@
   margin: 0;
   font-size: 14px;
   font-weight: 600;
-  color: var(--text-primary);
+  color: var(--fg);
 }
 
 .rotation-banner__subtitle {
   margin: 2px 0 0;
   font-size: 12px;
-  color: var(--text-secondary);
+  color: var(--fg-secondary);
 }
 
 .rotation-banner__actions {
@@ -99,7 +99,7 @@
   border-radius: 4px;
   padding: 6px 12px;
   font-size: 12px;
-  color: var(--text-primary);
+  color: var(--fg);
   cursor: pointer;
   transition: background 0.2s;
 }
@@ -134,7 +134,7 @@
   margin: 0 0 8px;
   font-size: 12px;
   font-weight: 600;
-  color: var(--text-secondary);
+  color: var(--fg-secondary);
   text-transform: uppercase;
   letter-spacing: 0.5px;
 }
@@ -157,16 +157,16 @@
 
 .rotation-banner__set-code {
   font-weight: 600;
-  color: var(--text-primary);
+  color: var(--fg);
   min-width: 40px;
 }
 
 .rotation-banner__set-name {
-  color: var(--text-secondary);
+  color: var(--fg-secondary);
 }
 
 .rotation-banner__deck-link {
-  color: var(--text-primary);
+  color: var(--fg);
   text-decoration: none;
   flex: 1;
   min-width: 0;
@@ -181,7 +181,7 @@
 
 .rotation-banner__deck-impact {
   font-size: 12px;
-  color: var(--text-secondary);
+  color: var(--fg-secondary);
   flex-shrink: 0;
 }
 
@@ -190,7 +190,7 @@
 }
 
 .rotation-banner__deck--more a {
-  color: var(--accent-color);
+  color: var(--accent);
   text-decoration: none;
   font-size: 12px;
 }
@@ -233,12 +233,12 @@
 .rotation-banner--compact .rotation-banner__text {
   flex: 1;
   font-size: 13px;
-  color: var(--text-primary);
+  color: var(--fg);
 }
 
 .rotation-banner--compact .rotation-banner__link {
   font-size: 12px;
-  color: var(--accent-color);
+  color: var(--accent);
   text-decoration: none;
 }
 
