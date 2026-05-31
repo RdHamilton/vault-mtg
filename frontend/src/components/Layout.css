@@ -95,10 +95,23 @@
 }
 
 .tab.active {
-  color: var(--accent);
+  color: var(--fg); /* #320 WCAG: --accent on blended bg = 4.48:1 FAIL; --fg = 13.67:1 PASS */
   border-bottom-color: var(--accent);
   background-color: var(--accent-dim);
   font-weight: 600;
+}
+
+/* AC2 (#320): focus rings for nav interactive elements (WCAG AA non-text contrast) */
+.tab:focus-visible,
+.sub-tab:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+
+.nav-brand:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+  border-radius: var(--radius-sm);
 }
 
 .sub-tab-bar {

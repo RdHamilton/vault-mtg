@@ -49,6 +49,12 @@
   color: var(--fg-inverse);
 }
 
+/* AC2 (#320): keyboard focus ring on CTA link (WCAG AA non-text contrast) */
+.empty-state-cta:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
 /* Variant: coming-soon — muted, no CTA */
 .empty-state--coming-soon .empty-state-icon {
   opacity: 0.4;

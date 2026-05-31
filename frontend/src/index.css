@@ -27,7 +27,7 @@
   /* ---- Text ---- */
   --vault-fg:               #F1F5F9;   /* primary — 15.8:1 */
   --vault-fg-secondary:     #94A3B8;   /* secondary — 7.2:1 */
-  --vault-fg-muted:         #4E6080;   /* metadata — 4.6:1 */
+  --vault-fg-muted:         #7890AA;   /* metadata — 5.19:1 on bg-raised, 5.74:1 on bg (#320 WCAG fix) */
   --vault-fg-inverse:       #0D1117;   /* text on sapphire buttons */
 
   /* ---- Semantic States ---- */

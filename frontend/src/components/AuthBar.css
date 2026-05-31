@@ -37,9 +37,15 @@
 
 .auth-btn-signup {
   background-color: var(--accent);
-  color: var(--fg);
+  color: var(--fg-inverse); /* #320 WCAG: --fg on --accent = 3.05:1 FAIL; --fg-inverse = 5.66:1 PASS */
 }
 
 .auth-btn-signup:hover {
   background-color: var(--accent-press);
+}
+
+/* AC2 (#320): keyboard focus rings on auth buttons (WCAG AA non-text contrast) */
+.auth-btn:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
 }
