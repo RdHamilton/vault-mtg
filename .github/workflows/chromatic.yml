@@ -20,6 +20,14 @@ on:
     branches: [main]
     # No path filter -- the job must always run on PRs so the required status
     # check is always emitted (even when zero frontend files changed).
+    #
+    # 'labeled'/'unlabeled' are added on top of the default
+    # opened/synchronize/reopened so that applying (or removing) the
+    # 'brand-approved' label re-runs this workflow. That re-run is what flips
+    # the required check from red to green for verified brand PRs (see the
+    # 'Run Chromatic' step). Without these types, adding a label would NOT
+    # re-trigger the check and the auto-accept path would never fire.
+    types: [opened, synchronize, reopened, labeled, unlabeled]
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -101,15 +109,41 @@ jobs:
 
       - name: Run Chromatic
         # This step is the visual regression gate. It fails CI when unreviewed visual
-        # changes are detected, forcing a human review on the Chromatic dashboard.
+        # changes are detected, forcing a review before the status check passes.
         #
-        # On pushes to main: --auto-accept-changes is passed so that merged snapshots
-        # automatically become the new baseline. This is the standard Chromatic pattern
-        # for keeping main in sync as the reference baseline.
+        # Three cases, in order:
         #
-        # On pull_request events: --auto-accept-changes is NOT passed, so any visual
-        # difference detected against the main baseline requires human review on the
-        # Chromatic dashboard before the status check passes.
+        # 1. Push to main: --auto-accept-changes is passed so that merged snapshots
+        #    automatically become the new baseline. This is the standard Chromatic
+        #    pattern for keeping main in sync as the reference baseline. This path is
+        #    selected purely on github.event_name == 'push', so a label NEVER affects
+        #    a main push.
+        #
+        # 2. Pull request carrying the 'brand-approved' label: --auto-accept-changes is
+        #    passed so the build accepts ALL detected visual changes and exits 0,
+        #    turning the required check GREEN without anyone touching the Chromatic
+        #    dashboard. This is for Epic B brand PRs, which produce intentional visual
+        #    diffs from applying the frozen design-system tokens
+        #    (frontend/src/index.css <- "Ray Hamilton Engineering Design System/
+        #    colors_and_type.css"). The safety here is CODE REVIEW, not human visual
+        #    inspection on the dashboard.
+        #
+        #    IMPORTANT: --auto-accept-changes accepts EVERY visual change in the build.
+        #    The 'brand-approved' label therefore MUST mean "a reviewer has verified
+        #    that every visual change in this PR is an intentional, design-system-
+        #    matching brand change." Never apply the label blind. Only a reviewer who
+        #    has diffed the PR's CSS against the frozen colors_and_type.css applies it.
+        #    See docs/engineering/reference/storybook-spike.md ("brand-approved
+        #    auto-accept") for the contract.
+        #
+        # 3. Any other pull request (no 'brand-approved' label): --auto-accept-changes
+        #    is NOT passed, so any visual difference detected against the main baseline
+        #    keeps the check red until the changes are accepted on the Chromatic
+        #    dashboard -- unchanged from prior behavior.
+        #
+        # The label is read from the pull_request event payload. On push events
+        # github.event.pull_request is null, so the contains() check is false and the
+        # auto-accept path is unreachable outside of a labeled PR.
         #
         # REQUIRES: CHROMATIC_PROJECT_TOKEN secret must be set in GitHub Actions secrets.
         # To provision:
@@ -123,10 +157,20 @@ jobs:
           steps.token_check.outputs.has_token == 'true'
         env:
           CHROMATIC_PROJECT_TOKEN: ${{ secrets.CHROMATIC_PROJECT_TOKEN }}
+          # Resolved by the Actions expression engine, not shell. 'true' only when a
+          # PR event carries the 'brand-approved' label; '' (falsey) on push or
+          # unlabeled PRs.
+          BRAND_APPROVED: ${{ contains(github.event.pull_request.labels.*.name, 'brand-approved') }}
         run: |
           if [ "${{ github.event_name }}" = "push" ]; then
+            # Case 1: main push -- refresh the baseline.
+            npx chromatic --storybook-build-dir=storybook-static --only-changed --auto-accept-changes
+          elif [ "$BRAND_APPROVED" = "true" ]; then
+            # Case 2: reviewer-verified brand PR -- accept the intentional diffs.
+            echo "brand-approved label present: auto-accepting reviewer-verified brand visual changes."
             npx chromatic --storybook-build-dir=storybook-static --only-changed --auto-accept-changes
           else
+            # Case 3: ordinary PR -- strict, requires acceptance before the check passes.
             npx chromatic --storybook-build-dir=storybook-static --only-changed
           fi
         working-directory: frontend
