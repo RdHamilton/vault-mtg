@@ -18,6 +18,14 @@ const META_FORMATS = [
   { value: 'modern', label: 'Modern' },
 ] as const;
 
+/** Known data sources for all supported formats. */
+const META_SOURCES = ['MTGGoldfish', 'MTGTop8'];
+
+/** Returns true when `format` is one of the formats tracked by our data sources. */
+function isFormatSupported(format: string): boolean {
+  return META_FORMATS.some((f) => f.value === format);
+}
+
 // One week in milliseconds for stale data detection (#738)
 const ONE_WEEK_MS = 7 * 24 * 60 * 60 * 1000;
 
@@ -93,7 +101,10 @@ async function getMetaDashboard(format: string): Promise<gui.MetaDashboardRespon
     format,
     totalArchetypes: archetypes.length,
     lastUpdated: new Date().toISOString(),
-    sources: [],
+    // Populate sources from the known list for all supported formats.
+    // The /meta/archetypes endpoint returns only archetype rows, not metadata;
+    // the Refresh endpoint does return sources but is only called on demand.
+    sources: isFormatSupported(format) ? META_SOURCES : [],
     convertValues: () => ({}),
   };
 }
@@ -458,24 +469,37 @@ export default function Meta() {
             </div>
           )}
 
-          {/* No data message */}
+          {/* Empty-state: only shown when there are no archetypes AND no tournaments.
+              Semantics: distinguish a supported format with no data yet
+              (transient — data pipeline will populate it) from a genuinely
+              unsupported format.  The `data-empty-reason` attribute lets
+              tests and monitoring distinguish the two cases even when the
+              visible copy is identical. */}
           {(!dashboardData.archetypes || dashboardData.archetypes.length === 0) &&
            (!dashboardData.tournaments || dashboardData.tournaments.length === 0) && (
-            <div className="no-data">
-              <div className="no-data-icon">📭</div>
-              <h3>No Meta Data Available</h3>
-              <p>
-                Unable to fetch metagame data for {format}. This could be because:
-              </p>
-              <ul>
-                <li>The format is not supported by our data sources</li>
-                <li>There was a network error fetching the data</li>
-                <li>The data sources are temporarily unavailable</li>
-              </ul>
-              <button onClick={handleRefresh} className="retry-button">
-                Try Again
-              </button>
-            </div>
+            isFormatSupported(format) ? (
+              <div className="no-data" data-empty-reason="format_supported_no_data">
+                <div className="no-data-icon">⏳</div>
+                <h3>Metagame Data Coming Soon</h3>
+                <p>
+                  <strong>{META_FORMATS.find((f) => f.value === format)?.label ?? format}</strong> is
+                  a supported format. Archetype data hasn't been scraped yet — check back after the
+                  next data refresh, or trigger one manually.
+                </p>
+                <button onClick={handleRefresh} className="retry-button">
+                  Refresh Now
+                </button>
+              </div>
+            ) : (
+              <div className="no-data" data-empty-reason="format_unsupported">
+                <div className="no-data-icon">🚫</div>
+                <h3>Format Not Supported</h3>
+                <p>
+                  Metagame data is not available for <strong>{format}</strong>. Our data sources
+                  ({META_SOURCES.join(', ')}) do not cover this format.
+                </p>
+              </div>
+            )
           )}
         </div>
       )}
