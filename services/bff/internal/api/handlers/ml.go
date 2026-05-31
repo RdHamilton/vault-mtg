@@ -9,15 +9,15 @@
 //   GET    /api/v1/decks/{deckId}/synergy-report             synergy report
 //   GET    /api/v1/cards/{cardId}/synergies?format=&limit=   per-card synergies
 //   GET    /api/v1/ml/combinations?card1=&card2=&format=     exact pair lookup
-//   POST   /api/v1/ml/process-history?format=&days=          STUB
+//   POST   /api/v1/ml/process-history?format=&days=          pair stats writer
 //   GET    /api/v1/ml/play-patterns[?account_id=]            play patterns read
 //   POST   /api/v1/ml/play-patterns/update[?account_id=]     STUB upsert
 //   DELETE /api/v1/ml/learned-data                           account-scoped wipe
 //
 // All routes guarded by DaemonAPIKeyAuth. Account ownership is enforced in
 // the repository layer (joins on decks.account_id). Generate-suggestions
-// and process-history are documented STUBs — the real ML pipeline lives
-// outside this PR.
+// is a documented STUB — the real ML pipeline lives outside this PR.
+// Process-history is now a real synchronous writer (see ProcessMatchHistory).
 //
 // Three of the eleven endpoints (list / generate / dismiss) are aliases for
 // NotesRepository methods that PR #7 already wired under
@@ -49,12 +49,13 @@ type mlSuggestionsReader interface {
 }
 
 // mlReader is the new MLRepository surface: synergy + play-patterns + apply
-// + clear.
+// + clear + pair stats writer.
 type mlReader interface {
 	ApplySuggestion(ctx context.Context, accountID, suggestionID int64) (bool, error)
 	SynergyReport(ctx context.Context, accountID int64, deckID string) (*repository.SynergyReportRow, error)
 	CardSynergies(ctx context.Context, cardID int, format string, limit int) ([]repository.CardCombinationStatsRow, error)
 	CombinationStats(ctx context.Context, card1, card2 int, format string) (*repository.CardCombinationStatsRow, error)
+	ComputeAndWritePairStats(ctx context.Context, accountID int64, format string, days int, matchCap int) (*repository.ProcessHistoryResult, error)
 	PlayPatterns(ctx context.Context, accountIDText string) (*repository.UserPlayPatternsRow, error)
 	UpsertPlayPatternsStub(ctx context.Context, accountIDText string) (*repository.UserPlayPatternsRow, error)
 	ClearLearnedDataForAccount(ctx context.Context, accountID int64, accountIDText string) error
@@ -180,6 +181,15 @@ type userPlayPatternsResponse struct {
 type mlStatusResponse struct {
 	Status  string `json:"status"`
 	Message string `json:"message"`
+}
+
+// processHistoryResponse is the structured response for
+// POST /api/v1/ml/process-history once the real writer runs.
+type processHistoryResponse struct {
+	Status           string `json:"status"`
+	PairsWritten     int    `json:"pairs_written"`
+	MatchesProcessed int    `json:"matches_processed"`
+	Truncated        bool   `json:"truncated"`
 }
 
 // ─── ml_suggestions list / generate / dismiss / apply ────────────────────────
@@ -399,16 +409,46 @@ func (h *MLHandler) CombinationStats(w http.ResponseWriter, r *http.Request) {
 
 // ProcessMatchHistory handles POST /api/v1/ml/process-history?format=&days=.
 //
-// STUB: the real pipeline ingests match history into card_combination_stats
-// via the analytics worker. Returns a structured ok payload so the SPA
-// progress UI can render.
+// Reads unprocessed matches for the authenticated account, computes card-pair
+// win-rate statistics (games_together / wins_together), and upserts them into
+// card_combination_stats as global (deck_id = NULL) rows.
+//
+// A hard cap of 1000 matches per call prevents timeouts on large accounts.
+// When the cap is reached the response includes truncated: true; callers
+// should re-invoke until truncated is false to process remaining history.
+//
+// Query params:
+//
+//	?format= — optional; filters matches by format (default: all formats)
+//	?days=   — look-back window in days (default: 30)
 func (h *MLHandler) ProcessMatchHistory(w http.ResponseWriter, r *http.Request) {
-	if _, _, ok := h.resolveAccount(w, r, "ProcessMatchHistory"); !ok {
+	accountID, _, ok := h.resolveAccount(w, r, "ProcessMatchHistory")
+	if !ok {
 		return
 	}
-	writeMatchesJSON(w, mlStatusResponse{
-		Status:  "queued",
-		Message: "Match history processing is queued. The analytics pipeline will populate synergy data on its next run.",
+
+	format := strings.TrimSpace(r.URL.Query().Get("format"))
+
+	days := 30
+	if v := strings.TrimSpace(r.URL.Query().Get("days")); v != "" {
+		if n, err := strconv.Atoi(v); err == nil && n > 0 {
+			days = n
+		}
+	}
+
+	const matchCap = 1000
+	result, err := h.ml.ComputeAndWritePairStats(r.Context(), accountID, format, days, matchCap)
+	if err != nil {
+		log.Printf("[MLHandler.ProcessMatchHistory] accountID=%d days=%d: %v", accountID, days, err)
+		writeJSONError(w, "internal server error", http.StatusInternalServerError)
+		return
+	}
+
+	writeMatchesJSON(w, processHistoryResponse{
+		Status:           "ok",
+		PairsWritten:     result.PairsWritten,
+		MatchesProcessed: result.MatchesProcessed,
+		Truncated:        result.Truncated,
 	})
 }
 
