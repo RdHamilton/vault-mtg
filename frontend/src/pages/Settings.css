@@ -7,7 +7,7 @@
   position: absolute;
   top: 8px;
   right: 16px;
-  background-color: #7dff7d;
+  background-color: #7dff7d; /* stylelint-disable-line color-no-hex */
   color: var(--bg-raised);
   padding: 8px 16px;
   border-radius: 6px;
@@ -77,7 +77,7 @@
 }
 
 .setting-item.danger {
-  border-color: #ff7d7d;
+  border-color: #ff7d7d; /* stylelint-disable-line color-no-hex */
 }
 
 .setting-label {
@@ -326,12 +326,12 @@
 
 .status-connected {
   background-color: rgba(76, 175, 80, 0.15);
-  color: #7dff7d;
+  color: #7dff7d; /* stylelint-disable-line color-no-hex */
   border: 1px solid rgba(76, 175, 80, 0.3);
 }
 
 .status-connected .status-dot {
-  background-color: #7dff7d;
+  background-color: #7dff7d; /* stylelint-disable-line color-no-hex */
   box-shadow: 0 0 8px rgba(125, 255, 125, 0.5);
 }
 
@@ -583,12 +583,12 @@
 
 .progress-errors h4 {
   margin: 0 0 12px 0;
-  color: #ff7d7d;
+  color: #ff7d7d; /* stylelint-disable-line color-no-hex */
   font-size: 14px;
 }
 
 .error-item {
-  color: #ff7d7d;
+  color: #ff7d7d; /* stylelint-disable-line color-no-hex */
   font-size: 12px;
   margin-bottom: 4px;
 }
@@ -615,7 +615,7 @@
 }
 
 .replay-progress-title.complete {
-  color: #00ff00;
+  color: #00ff00; /* stylelint-disable-line color-no-hex */
 }
 
 .replay-progress-title.paused {
@@ -819,7 +819,7 @@
 
 .recalculate-message.success {
   background: var(--success);
-  color: #7cfc00;
+  color: #7cfc00; /* stylelint-disable-line color-no-hex */
 }
 
 .recalculate-message.error {

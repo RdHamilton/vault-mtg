@@ -104,11 +104,11 @@
 }
 
 .metric-value.error-value {
-  color: #ff7d7d;
+  color: #ff7d7d; /* stylelint-disable-line color-no-hex */
 }
 
 .metric-value.success-value {
-  color: #7dff7d;
+  color: #7dff7d; /* stylelint-disable-line color-no-hex */
 }
 
 /* Latency Stats */

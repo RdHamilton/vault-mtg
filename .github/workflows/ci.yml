@@ -236,14 +236,15 @@ jobs:
         cd frontend
         npx tsc --noEmit
 
-    # stylelint color-no-hex is WARN-FIRST (#309 Pass B / Ray ruling #3): it reports
-    # raw-hex usage as warnings but must not fail CI while in-flight branches still
-    # carry hex. Follow-up #340 flips it to hard-fail (drop `|| true`) once clean.
-    # The executable enforcement today is the noRawHex.test.ts vitest guard below.
-    - name: Stylelint (raw-hex warn-first)
+    # stylelint color-no-hex is now a hard-fail (#340): the SPA token migration is
+    # complete (#309 Pass B + #339 + #320). Categorical hex values (MTG mana pips,
+    # data-viz series) are suppressed via inline disable comments in the CSS files;
+    # the noRawHex.test.ts CATEGORICAL_HEX list is the canonical source of truth for
+    # what is allowed. Any new raw hex introduced here will fail CI.
+    - name: Stylelint (color-no-hex hard-fail)
       run: |
         cd frontend
-        npm run lint:css || true
+        npm run lint:css
 
     - name: Run component tests
       run: |

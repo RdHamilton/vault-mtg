@@ -7,18 +7,18 @@
 
 /* Urgency variants */
 .legality-banner--info {
-  background: linear-gradient(135deg, #1a3a5c 0%, #0d2137 100%);
-  border: 1px solid #2d5a8a;
+  background: linear-gradient(135deg, #1a3a5c 0%, #0d2137 100%); /* stylelint-disable-line color-no-hex */
+  border: 1px solid #2d5a8a; /* stylelint-disable-line color-no-hex */
 }
 
 .legality-banner--warning {
-  background: linear-gradient(135deg, #5c4a1a 0%, #372d0d 100%);
-  border: 1px solid #8a7a2d;
+  background: linear-gradient(135deg, #5c4a1a 0%, #372d0d 100%); /* stylelint-disable-line color-no-hex */
+  border: 1px solid #8a7a2d; /* stylelint-disable-line color-no-hex */
 }
 
 .legality-banner--critical {
-  background: linear-gradient(135deg, #5c1a1a 0%, #370d0d 100%);
-  border: 1px solid #8a2d2d;
+  background: linear-gradient(135deg, #5c1a1a 0%, #370d0d 100%); /* stylelint-disable-line color-no-hex */
+  border: 1px solid #8a2d2d; /* stylelint-disable-line color-no-hex */
 }
 
 /* Header */

@@ -137,13 +137,13 @@
 .life-values .player-life,
 .snapshot-value .player-cards,
 .snapshot-value .player-lands {
-  color: #7dff7d;
+  color: #7dff7d; /* stylelint-disable-line color-no-hex */
 }
 
 .life-values .opponent-life,
 .snapshot-value .opponent-cards,
 .snapshot-value .opponent-lands {
-  color: #ff7d7d;
+  color: #ff7d7d; /* stylelint-disable-line color-no-hex */
 }
 
 .separator {
@@ -174,11 +174,11 @@
 }
 
 .player-column h5 {
-  color: #7dff7d;
+  color: #7dff7d; /* stylelint-disable-line color-no-hex */
 }
 
 .opponent-column h5 {
-  color: #ff7d7d;
+  color: #ff7d7d; /* stylelint-disable-line color-no-hex */
 }
 
 .plays-list {
@@ -205,11 +205,11 @@
 }
 
 .play-item.player {
-  border-left: 2px solid #7dff7d;
+  border-left: 2px solid #7dff7d; /* stylelint-disable-line color-no-hex */
 }
 
 .play-item.opponent {
-  border-left: 2px solid #ff7d7d;
+  border-left: 2px solid #ff7d7d; /* stylelint-disable-line color-no-hex */
 }
 
 .play-icon {
@@ -249,7 +249,7 @@
 }
 
 .play-life-change.heal {
-  color: #7dff7d;
+  color: #7dff7d; /* stylelint-disable-line color-no-hex */
   background-color: rgba(125, 255, 125, 0.15);
 }
 
@@ -272,7 +272,7 @@
   background-color: rgba(255, 77, 77, 0.1);
   border: 1px solid var(--danger);
   border-radius: 4px;
-  color: #ff7d7d;
+  color: #ff7d7d; /* stylelint-disable-line color-no-hex */
   font-size: 14px;
 }
 

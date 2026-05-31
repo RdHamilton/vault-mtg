@@ -187,11 +187,11 @@
   font-size: 0.8rem;
 }
 
-.mana-w { background: #f9faf4; color: var(--border); }
-.mana-u { background: #0e68ab; color: var(--fg); }
-.mana-b { background: #150b00; color: var(--fg); border: 1px solid var(--border); }
+.mana-w { background: #f9faf4; color: var(--border); } /* stylelint-disable-line color-no-hex */
+.mana-u { background: #0e68ab; color: var(--fg); } /* stylelint-disable-line color-no-hex */
+.mana-b { background: #150b00; color: var(--fg); border: 1px solid var(--border); } /* stylelint-disable-line color-no-hex */
 .mana-r { background: var(--danger); color: var(--fg); }
-.mana-g { background: #00733e; color: var(--fg); }
+.mana-g { background: #00733e; color: var(--fg); } /* stylelint-disable-line color-no-hex */
 
 .suggestion-name {
   flex: 1;

@@ -124,7 +124,7 @@
 }
 
 .collection-value .price-value {
-  color: #90ee90;
+  color: #90ee90; /* stylelint-disable-line color-no-hex */
   font-weight: 700;
 }
 
@@ -416,7 +416,7 @@
   top: 8px;
   right: 8px;
   background: rgba(0, 100, 0, 0.9);
-  color: #90ee90;
+  color: #90ee90; /* stylelint-disable-line color-no-hex */
   padding: 4px 8px;
   border-radius: 4px;
   font-weight: 600;

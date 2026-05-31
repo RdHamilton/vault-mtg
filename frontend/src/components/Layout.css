@@ -175,7 +175,7 @@
 }
 
 .status-badge-compact.status-connected .status-dot-compact {
-  background-color: #7dff7d;
+  background-color: #7dff7d; /* stylelint-disable-line color-no-hex */
   box-shadow: 0 0 10px rgba(34, 197, 94, 0.4);
 }
 

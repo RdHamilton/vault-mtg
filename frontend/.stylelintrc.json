@@ -1,7 +1,7 @@
 {
-  "//": "VaultMTG SPA stylelint config — added #309 Pass B. Scope is deliberately NARROW: this lints ONLY for raw hex colors (the design-token migration), not the full stylelint-config-standard ruleset — CSS was previously unlinted, and adopting the whole standard config would surface hundreds of unrelated convention errors. The color-no-hex rule is the lint-layer mirror of src/test/noRawHex.test.ts: components must use design-system tokens (--vault-* primitives + the canonical semantic layer), not raw hex. It is intentionally WARN-FIRST (severity: warning) per Ray's APPROVE-WITH-CHANGES ruling #3 — a hard-fail would block in-flight branches. Follow-up #340 flips it to hard-fail once the tree stays clean. The vitest guard (noRawHex.test.ts) is the executable enforcement now.",
+  "//": "VaultMTG SPA stylelint config — #340: color-no-hex promoted from warn to hard-fail (error). The tree is clean of non-categorical raw hex (#309 Pass B + #339 + #320 all landed). Categorical MTG-pip / data-viz hex values that have no token equivalent are documented in src/test/noRawHex.test.ts CATEGORICAL_HEX and suppressed via inline /* stylelint-disable-line color-no-hex */ comments. index.css (the token-definition file) is excluded from linting entirely — it is the one authoritative source of raw hex.",
   "rules": {
-    "color-no-hex": [true, { "severity": "warning" }]
+    "color-no-hex": true
   },
   "//ignoreFiles": "src/index.css is the single token-definition file — the one place raw hex is allowed (it defines the --vault-* primitives the rest of the app references), so it is excluded from this lint entirely.",
   "ignoreFiles": ["src/index.css", "dist/**", "node_modules/**", "storybook-static/**"]

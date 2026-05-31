@@ -267,7 +267,7 @@
 }
 
 .picks-title.best {
-  color: #44ff88;
+  color: #44ff88; /* stylelint-disable-line color-no-hex */
 }
 
 .picks-title.worst {
@@ -289,7 +289,7 @@
 
 .pick-item.best {
   background: rgba(68, 255, 136, 0.1);
-  border-left: 3px solid #44ff88;
+  border-left: 3px solid #44ff88; /* stylelint-disable-line color-no-hex */
   color: var(--fg);
 }
 

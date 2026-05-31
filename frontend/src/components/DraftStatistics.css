@@ -32,7 +32,7 @@
 }
 
 .statistics-error {
-  color: #ff7d7d;
+  color: #ff7d7d; /* stylelint-disable-line color-no-hex */
 }
 
 /* Summary Stats Grid */

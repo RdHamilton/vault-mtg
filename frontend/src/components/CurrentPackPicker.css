@@ -221,17 +221,17 @@
 }
 
 .color-indicator.color-w {
-    background: #f9faf4;
+    background: #f9faf4; /* stylelint-disable-line color-no-hex */
     color: var(--vault-border);
 }
 
 .color-indicator.color-u {
-    background: #0e68ab;
+    background: #0e68ab; /* stylelint-disable-line color-no-hex */
     color: var(--fg-inverse);
 }
 
 .color-indicator.color-b {
-    background: #150b00;
+    background: #150b00; /* stylelint-disable-line color-no-hex */
     color: var(--fg);
     border: 1px solid var(--vault-border);
 }
@@ -242,7 +242,7 @@
 }
 
 .color-indicator.color-g {
-    background: #00733e;
+    background: #00733e; /* stylelint-disable-line color-no-hex */
     color: var(--fg-inverse);
 }
 

@@ -321,7 +321,7 @@
 }
 
 .picked-marker {
-    color: #44ff88;
+    color: #44ff88; /* stylelint-disable-line color-no-hex */
     font-weight: 700;
 }
 
@@ -401,7 +401,7 @@
 }
 
 .tier-list-error p:first-child {
-    color: #ff8844;
+    color: #ff8844; /* stylelint-disable-line color-no-hex */
     font-weight: 600;
     margin-bottom: 8px;
 }

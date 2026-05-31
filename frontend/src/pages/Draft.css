@@ -34,7 +34,7 @@
 }
 
 .draft-picks {
-    color: #44ff88;
+    color: #44ff88; /* stylelint-disable-line color-no-hex */
 }
 
 .draft-content {
@@ -92,12 +92,12 @@
 }
 
 .card-item.picked {
-    border-color: #44ff88;
+    border-color: #44ff88; /* stylelint-disable-line color-no-hex */
     box-shadow: 0 0 8px rgba(68, 255, 136, 0.6);
 }
 
 .card-item.picked:hover {
-    border-color: #44ff88;
+    border-color: #44ff88; /* stylelint-disable-line color-no-hex */
     box-shadow: 0 4px 16px rgba(68, 255, 136, 0.8);
 }
 
@@ -134,7 +134,7 @@
     position: absolute;
     top: 4px;
     right: 4px;
-    background-color: #44ff88;
+    background-color: #44ff88; /* stylelint-disable-line color-no-hex */
     color: var(--bg-raised);
     width: 20px;
     height: 20px;
@@ -218,7 +218,7 @@
 }
 
 .pick-history-item.best-pick-highlight .pick-number {
-    color: #44ff88;
+    color: #44ff88; /* stylelint-disable-line color-no-hex */
     font-weight: 700;
 }
 
@@ -254,7 +254,7 @@
 .pick-history-item img {
     width: 100%;
     border-radius: 6px;
-    border: 2px solid #44ff88;
+    border: 2px solid #44ff88; /* stylelint-disable-line color-no-hex */
     box-shadow: 0 2px 6px rgba(68, 255, 136, 0.3);
 }
 
@@ -629,11 +629,11 @@
 }
 
 .quality-a-plus {
-    background: linear-gradient(135deg, var(--warning) 0%, #ffed4e 100%); /* Gold */
+    background: linear-gradient(135deg, var(--warning) 0%, #ffed4e 100%); /* Gold */ /* stylelint-disable-line color-no-hex */
 }
 
 .quality-a {
-    background: linear-gradient(135deg, #44ff88 0%, #66ffaa 100%); /* Green */
+    background: linear-gradient(135deg, #44ff88 0%, #66ffaa 100%); /* Green */ /* stylelint-disable-line color-no-hex */
 }
 
 .quality-b {
@@ -641,15 +641,15 @@
 }
 
 .quality-c {
-    background: linear-gradient(135deg, var(--warning) 0%, #ffbb66 100%); /* Orange */
+    background: linear-gradient(135deg, var(--warning) 0%, #ffbb66 100%); /* Orange */ /* stylelint-disable-line color-no-hex */
 }
 
 .quality-d {
-    background: linear-gradient(135deg, #ff8844 0%, #ff9966 100%); /* Dark Orange */
+    background: linear-gradient(135deg, #ff8844 0%, #ff9966 100%); /* Dark Orange */ /* stylelint-disable-line color-no-hex */
 }
 
 .quality-f {
-    background: linear-gradient(135deg, var(--danger) 0%, #ff6666 100%); /* Red */
+    background: linear-gradient(135deg, var(--danger) 0%, #ff6666 100%); /* Red */ /* stylelint-disable-line color-no-hex */
 }
 
 .quality-n-a {
@@ -672,7 +672,7 @@
 }
 
 .tier-s {
-    background: linear-gradient(135deg, var(--warning) 0%, #ffed4e 100%); /* Gold */
+    background: linear-gradient(135deg, var(--warning) 0%, #ffed4e 100%); /* Gold */ /* stylelint-disable-line color-no-hex */
 }
 
 .tier-a {
@@ -680,7 +680,7 @@
 }
 
 .tier-b {
-    background: linear-gradient(135deg, #cd7f32 0%, #e69559 100%); /* Bronze */
+    background: linear-gradient(135deg, #cd7f32 0%, #e69559 100%); /* Bronze */ /* stylelint-disable-line color-no-hex */
 }
 
 .tier-c {
@@ -688,11 +688,11 @@
 }
 
 .tier-d {
-    background: linear-gradient(135deg, #ff8844 0%, #ff9966 100%); /* Orange */
+    background: linear-gradient(135deg, #ff8844 0%, #ff9966 100%); /* Orange */ /* stylelint-disable-line color-no-hex */
 }
 
 .tier-f {
-    background: linear-gradient(135deg, var(--danger) 0%, #ff6666 100%); /* Red */
+    background: linear-gradient(135deg, var(--danger) 0%, #ff6666 100%); /* Red */ /* stylelint-disable-line color-no-hex */
 }
 
 /* Pick Quality Tooltip */
@@ -941,11 +941,11 @@
 }
 
 .replay-btn.replay-resume {
-    border-color: #44ff88;
+    border-color: #44ff88; /* stylelint-disable-line color-no-hex */
 }
 
 .replay-btn.replay-resume:hover {
-    background-color: #44ff88;
+    background-color: #44ff88; /* stylelint-disable-line color-no-hex */
     color: var(--bg-raised);
 }
 

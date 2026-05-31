@@ -98,8 +98,8 @@
 
 .count-badge.sideboard {
   background: rgba(156, 39, 176, 0.2);
-  color: #ba68c8;
-  border: 1px solid #ba68c8;
+  color: #ba68c8; /* stylelint-disable-line color-no-hex */
+  border: 1px solid #ba68c8; /* stylelint-disable-line color-no-hex */
 }
 
 /* Statistics */
@@ -461,13 +461,13 @@
 .sideboard-header h3 {
   margin: 0;
   font-size: 1.25rem;
-  color: #ba68c8;
+  color: #ba68c8; /* stylelint-disable-line color-no-hex */
 }
 
 .toggle-sideboard {
   background: none;
   border: none;
-  color: #ba68c8;
+  color: #ba68c8; /* stylelint-disable-line color-no-hex */
   font-size: 1.125rem;
   cursor: pointer;
   padding: 0.25rem 0.5rem;

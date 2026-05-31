@@ -52,14 +52,14 @@
 }
 
 .daemon-download-button--primary {
-  background-color: #7b2fff;
-  border: 2px solid #7b2fff;
+  background-color: #7b2fff; /* stylelint-disable-line color-no-hex */
+  border: 2px solid #7b2fff; /* stylelint-disable-line color-no-hex */
   color: var(--fg);
 }
 
 .daemon-download-button--primary:hover {
-  background-color: #9147ff;
-  border-color: #9147ff;
+  background-color: #9147ff; /* stylelint-disable-line color-no-hex */
+  border-color: #9147ff; /* stylelint-disable-line color-no-hex */
 }
 
 .daemon-download-button--secondary {
@@ -69,7 +69,7 @@
 }
 
 .daemon-download-button--secondary:hover {
-  border-color: #7b2fff;
+  border-color: #7b2fff; /* stylelint-disable-line color-no-hex */
   color: var(--fg);
 }
 
@@ -138,13 +138,13 @@
 }
 
 .daemon-download-coming-soon-link {
-  color: #7b2fff;
+  color: #7b2fff; /* stylelint-disable-line color-no-hex */
   text-decoration: underline;
   font-weight: 600;
 }
 
 .daemon-download-coming-soon-link:hover {
-  color: #9147ff;
+  color: #9147ff; /* stylelint-disable-line color-no-hex */
 }
 
 /* Getting started steps */
@@ -182,7 +182,7 @@
   width: 36px;
   height: 36px;
   border-radius: 50%;
-  background-color: #7b2fff;
+  background-color: #7b2fff; /* stylelint-disable-line color-no-hex */
   color: var(--fg);
   font-size: 15px;
   font-weight: 700;

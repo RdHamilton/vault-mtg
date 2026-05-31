@@ -118,7 +118,7 @@
 }
 
 .tier-badge.tier-s {
-  background: linear-gradient(135deg, var(--warning) 0%, #ffed4e 100%);
+  background: linear-gradient(135deg, var(--warning) 0%, #ffed4e 100%); /* stylelint-disable-line color-no-hex */
 }
 
 .tier-badge.tier-a\+ {
@@ -126,7 +126,7 @@
 }
 
 .tier-badge.tier-a {
-  background: linear-gradient(135deg, #44ff88 0%, #66ffaa 100%);
+  background: linear-gradient(135deg, #44ff88 0%, #66ffaa 100%); /* stylelint-disable-line color-no-hex */
 }
 
 .tier-badge.tier-b {
@@ -134,15 +134,15 @@
 }
 
 .tier-badge.tier-c {
-  background: linear-gradient(135deg, var(--warning) 0%, #ffbb66 100%);
+  background: linear-gradient(135deg, var(--warning) 0%, #ffbb66 100%); /* stylelint-disable-line color-no-hex */
 }
 
 .tier-badge.tier-d {
-  background: linear-gradient(135deg, #ff8844 0%, #ff9966 100%);
+  background: linear-gradient(135deg, #ff8844 0%, #ff9966 100%); /* stylelint-disable-line color-no-hex */
 }
 
 .tier-badge.tier-f {
-  background: linear-gradient(135deg, var(--danger) 0%, #ff6666 100%);
+  background: linear-gradient(135deg, var(--danger) 0%, #ff6666 100%); /* stylelint-disable-line color-no-hex */
 }
 
 .missing-card-gihwr {
@@ -163,7 +163,7 @@
 }
 
 .missing-card-wheel:not(:empty) {
-  color: #44ff88;
+  color: #44ff88; /* stylelint-disable-line color-no-hex */
 }
 
 /* Highlight rows by tier */

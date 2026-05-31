@@ -182,7 +182,7 @@
 }
 
 .source-badge.import {
-  background: #9c27b0;
+  background: #9c27b0; /* stylelint-disable-line color-no-hex */
   color: var(--fg);
 }
 

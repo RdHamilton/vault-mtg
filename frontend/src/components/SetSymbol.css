@@ -57,11 +57,11 @@
 .set-symbol-text.set-symbol-rare {
   filter: none;
   color: var(--warning);
-  background-color: #3a3520;
+  background-color: #3a3520; /* stylelint-disable-line color-no-hex */
 }
 
 .set-symbol-text.set-symbol-mythic {
   filter: none;
-  color: #ff6b00;
-  background-color: #3a2520;
+  color: #ff6b00; /* stylelint-disable-line color-no-hex */
+  background-color: #3a2520; /* stylelint-disable-line color-no-hex */
 }

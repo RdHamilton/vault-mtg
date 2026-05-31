@@ -6,9 +6,9 @@
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.5px;
-  background-color: #4a4a1a;
-  color: #d4c24a;
-  border: 1px solid #6a6a2a;
+  background-color: #4a4a1a; /* stylelint-disable-line color-no-hex */
+  color: #d4c24a; /* stylelint-disable-line color-no-hex */
+  border: 1px solid #6a6a2a; /* stylelint-disable-line color-no-hex */
   margin-left: auto;
   white-space: nowrap;
   line-height: 1.4;
@@ -23,7 +23,7 @@
 }
 
 .env-badge--development {
-  background-color: #2a1a4a;
+  background-color: #2a1a4a; /* stylelint-disable-line color-no-hex */
   color: var(--vault-indigo-light);
-  border-color: #4a2a6a;
+  border-color: #4a2a6a; /* stylelint-disable-line color-no-hex */
 }

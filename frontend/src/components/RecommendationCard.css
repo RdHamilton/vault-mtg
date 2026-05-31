@@ -298,16 +298,16 @@
 
 .source-value.source-ml {
   background: var(--ml-bg, rgba(156, 39, 176, 0.2));
-  color: var(--ml-color, #ce93d8);
+  color: var(--ml-color, #ce93d8); /* stylelint-disable-line color-no-hex */
 }
 
 .source-value.source-meta {
   background: var(--meta-bg, rgba(33, 150, 243, 0.2));
-  color: var(--meta-color, #64b5f6);
+  color: var(--meta-color, #64b5f6); /* stylelint-disable-line color-no-hex */
 }
 
 .source-value.source-personal {
   background: var(--personal-bg, rgba(76, 175, 80, 0.2));
-  color: var(--personal-color, #81c784);
+  color: var(--personal-color, #81c784); /* stylelint-disable-line color-no-hex */
 }
 

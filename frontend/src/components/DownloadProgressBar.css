@@ -34,7 +34,7 @@
 }
 
 .download-progress-fill.complete {
-  background: linear-gradient(90deg, #4aff4a, #6bff6b);
+  background: linear-gradient(90deg, #4aff4a, #6bff6b); /* stylelint-disable-line color-no-hex */
 }
 
 @keyframes pulse-progress {

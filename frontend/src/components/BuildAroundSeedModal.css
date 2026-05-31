@@ -106,12 +106,12 @@
   box-shadow: 0 0 6px rgba(99, 102, 241, 0.5);
 }
 
-.color-filter-btn.mana-w { background: #f9faf4; color: var(--border); }
-.color-filter-btn.mana-u { background: #0e68ab; color: var(--fg); }
-.color-filter-btn.mana-b { background: #150b00; color: var(--fg); border-color: var(--border); }
+.color-filter-btn.mana-w { background: #f9faf4; color: var(--border); } /* stylelint-disable-line color-no-hex */
+.color-filter-btn.mana-u { background: #0e68ab; color: var(--fg); } /* stylelint-disable-line color-no-hex */
+.color-filter-btn.mana-b { background: #150b00; color: var(--fg); border-color: var(--border); } /* stylelint-disable-line color-no-hex */
 .color-filter-btn.mana-b.active { border-color: var(--accent); }
 .color-filter-btn.mana-r { background: var(--danger); color: var(--fg); }
-.color-filter-btn.mana-g { background: #00733e; color: var(--fg); }
+.color-filter-btn.mana-g { background: #00733e; color: var(--fg); } /* stylelint-disable-line color-no-hex */
 
 .type-filter-btn {
   padding: 4px 8px;
@@ -229,11 +229,11 @@
   font-size: 0.7rem;
 }
 
-.mana-w { background: #f9faf4; color: var(--border); }
-.mana-u { background: #0e68ab; color: var(--fg); }
-.mana-b { background: #150b00; color: var(--fg); border: 1px solid var(--border); }
+.mana-w { background: #f9faf4; color: var(--border); } /* stylelint-disable-line color-no-hex */
+.mana-u { background: #0e68ab; color: var(--fg); } /* stylelint-disable-line color-no-hex */
+.mana-b { background: #150b00; color: var(--fg); border: 1px solid var(--border); } /* stylelint-disable-line color-no-hex */
 .mana-r { background: var(--danger); color: var(--fg); }
-.mana-g { background: #00733e; color: var(--fg); }
+.mana-g { background: #00733e; color: var(--fg); } /* stylelint-disable-line color-no-hex */
 
 /* Selected Card Section */
 .selected-card-section {
@@ -431,10 +431,10 @@
   font-weight: 600;
 }
 
-.wildcard-badge.common { background: #4b5563; color: var(--fg); }
+.wildcard-badge.common { background: #4b5563; color: var(--fg); } /* stylelint-disable-line color-no-hex */
 .wildcard-badge.uncommon { background: var(--fg-muted); color: var(--fg); }
-.wildcard-badge.rare { background: #d4af37; color: var(--vault-fg-inverse); }
-.wildcard-badge.mythic { background: #dc7e0e; color: var(--fg); }
+.wildcard-badge.rare { background: #d4af37; color: var(--vault-fg-inverse); } /* stylelint-disable-line color-no-hex */
+.wildcard-badge.mythic { background: #dc7e0e; color: var(--fg); } /* stylelint-disable-line color-no-hex */
 
 /* Suggestions Grid */
 .suggestions-grid {
@@ -1217,7 +1217,7 @@
 }
 
 .score-bar.quality-bar {
-  background: linear-gradient(90deg, #ec4899, #f472b6);
+  background: linear-gradient(90deg, #ec4899, #f472b6); /* stylelint-disable-line color-no-hex */
 }
 
 .score-value {
@@ -1493,7 +1493,7 @@
 }
 
 .archetype-btn.combo:hover {
-  border-color: #a855f7;
+  border-color: #a855f7; /* stylelint-disable-line color-no-hex */
   box-shadow: 0 4px 12px rgba(168, 85, 247, 0.2);
 }
 

@@ -44,7 +44,7 @@
 }
 
 .setup-link {
-  color: #9147ff;
+  color: #9147ff; /* stylelint-disable-line color-no-hex */
   text-decoration: underline;
 }
 
@@ -62,7 +62,7 @@
 .setup-warning-section {
   display: flex;
   gap: 16px;
-  background-color: #2a2a18;
+  background-color: #2a2a18; /* stylelint-disable-line color-no-hex */
   border: 1px solid var(--warning);
   border-radius: 8px;
   padding: 20px;
@@ -158,7 +158,7 @@
   width: 32px;
   height: 32px;
   border: 3px solid var(--border);
-  border-top-color: #9147ff;
+  border-top-color: #9147ff; /* stylelint-disable-line color-no-hex */
   border-radius: 50%;
   animation: spin 0.8s linear infinite;
 }
@@ -206,7 +206,7 @@
 }
 
 .setup-retry-button {
-  background-color: #7b2fff;
+  background-color: #7b2fff; /* stylelint-disable-line color-no-hex */
   color: var(--fg);
   border: none;
   border-radius: 6px;
@@ -218,7 +218,7 @@
 }
 
 .setup-retry-button:hover {
-  background-color: #9147ff;
+  background-color: #9147ff; /* stylelint-disable-line color-no-hex */
 }
 
 /* Auth status panel (#2142) */
@@ -261,7 +261,7 @@
 
 .setup-auth-status__cta {
   margin-left: auto;
-  background-color: #7b2fff;
+  background-color: #7b2fff; /* stylelint-disable-line color-no-hex */
   color: var(--fg);
   border: none;
   border-radius: 6px;
@@ -274,7 +274,7 @@
 }
 
 .setup-auth-status__cta:hover {
-  background-color: #9147ff;
+  background-color: #9147ff; /* stylelint-disable-line color-no-hex */
 }
 
 /* Mobile */

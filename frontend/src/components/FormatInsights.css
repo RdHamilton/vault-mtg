@@ -63,7 +63,7 @@
 }
 
 .insights-error {
-  color: #ff7d7d;
+  color: #ff7d7d; /* stylelint-disable-line color-no-hex */
 }
 
 /* Insights Sections */
@@ -398,7 +398,7 @@
 .gihwr-value {
   font-size: 1rem;
   font-weight: 700;
-  color: #7dff7d;
+  color: #7dff7d; /* stylelint-disable-line color-no-hex */
 }
 
 .gihwr-label {
@@ -430,8 +430,8 @@
 
 .btn-close-archetype {
   background-color: var(--border);
-  color: #ff7d7d;
-  border: 1px solid #ff7d7d;
+  color: #ff7d7d; /* stylelint-disable-line color-no-hex */
+  border: 1px solid #ff7d7d; /* stylelint-disable-line color-no-hex */
   padding: 4px 12px;
   border-radius: 4px;
   cursor: pointer;
@@ -440,7 +440,7 @@
 }
 
 .btn-close-archetype:hover {
-  background-color: #ff7d7d;
+  background-color: #ff7d7d; /* stylelint-disable-line color-no-hex */
   color: var(--bg-raised);
 }
 

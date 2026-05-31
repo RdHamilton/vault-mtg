@@ -6,7 +6,7 @@
   border-radius: 6px;
   background-color: rgba(255, 193, 7, 0.12);
   border: 1px solid rgba(255, 193, 7, 0.4);
-  color: #c9a840;
+  color: #c9a840; /* stylelint-disable-line color-no-hex */
   font-size: 0.8rem;
   line-height: 1.4;
   margin-bottom: 0.75rem;

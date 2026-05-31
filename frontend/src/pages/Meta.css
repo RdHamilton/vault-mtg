@@ -211,7 +211,7 @@
 
 .tier-3 {
   background: rgba(205, 127, 50, 0.2);
-  color: #cd7f32;
+  color: #cd7f32; /* stylelint-disable-line color-no-hex */
 }
 
 .tier-4 {
@@ -291,17 +291,17 @@
 }
 
 .color-w {
-  background: #f8f6d8;
+  background: #f8f6d8; /* stylelint-disable-line color-no-hex */
   color: var(--border);
 }
 
 .color-u {
-  background: #0e68ab;
+  background: #0e68ab; /* stylelint-disable-line color-no-hex */
   color: var(--fg);
 }
 
 .color-b {
-  background: #150b00;
+  background: #150b00; /* stylelint-disable-line color-no-hex */
   color: var(--fg-secondary);
   border: 1px solid var(--border);
 }
@@ -312,7 +312,7 @@
 }
 
 .color-g {
-  background: #00733e;
+  background: #00733e; /* stylelint-disable-line color-no-hex */
   color: var(--fg);
 }
 
