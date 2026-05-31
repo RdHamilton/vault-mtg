@@ -4,8 +4,8 @@
   height: 100vh;
   margin: 0;
   padding: 0;
-  background-color: #1e1e1e;
-  color: #ffffff;
+  background-color: var(--vault-bg);
+  color: var(--vault-fg);
 }
 
 /* Common Components */
@@ -21,7 +21,7 @@
   font-size: 24px;
   font-weight: 600;
   margin-bottom: 16px;
-  color: #ffffff;
+  color: var(--vault-fg);
 }
 
 .filter-row {
@@ -40,30 +40,30 @@
 .filter-label {
   font-size: 14px;
   font-weight: 600;
-  color: #ffffff;
+  color: var(--vault-fg);
 }
 
 select, input {
-  background-color: #2d2d2d;
-  color: #ffffff;
-  border: 1px solid #3d3d3d;
+  background-color: var(--vault-bg-raised);
+  color: var(--vault-fg);
+  border: 1px solid var(--vault-border);
   border-radius: 4px;
   padding: 8px 12px;
   font-size: 14px;
 }
 
 select:hover, input:hover {
-  border-color: #4a9eff;
+  border-color: var(--vault-sapphire);
 }
 
 select:focus, input:focus {
   outline: none;
-  border-color: #4a9eff;
+  border-color: var(--vault-sapphire);
 }
 
 button {
-  background-color: #4a9eff;
-  color: #ffffff;
+  background-color: var(--vault-sapphire);
+  color: var(--vault-fg-inverse);
   border: none;
   border-radius: 4px;
   padding: 8px 16px;
@@ -74,11 +74,11 @@ button {
 }
 
 button:hover {
-  background-color: #3d8fe5;
+  background-color: var(--vault-sapphire-light);
 }
 
 button:active {
-  background-color: #357cd8;
+  background-color: var(--vault-sapphire-dark);
 }
 
 table {
@@ -88,35 +88,35 @@ table {
 }
 
 th {
-  background-color: #2d2d2d;
-  color: #ffffff;
+  background-color: var(--vault-bg-raised);
+  color: var(--vault-fg);
   font-weight: 600;
   text-align: left;
   padding: 12px;
-  border-bottom: 2px solid #3d3d3d;
+  border-bottom: 2px solid var(--vault-border);
 }
 
 td {
   padding: 12px;
-  border-bottom: 1px solid #3d3d3d;
+  border-bottom: 1px solid var(--vault-border);
 }
 
 tr:hover {
-  background-color: #2d2d2d;
+  background-color: var(--vault-bg-raised);
 }
 
 .no-data {
   text-align: center;
   padding: 48px;
-  color: #aaaaaa;
+  color: var(--vault-fg-secondary);
   font-size: 16px;
 }
 
 .error {
-  color: #ff6b6b;
+  color: var(--vault-danger);
   padding: 16px;
-  background-color: #2d2d2d;
-  border: 1px solid #ff6b6b;
+  background-color: var(--vault-bg-raised);
+  border: 1px solid var(--vault-danger);
   border-radius: 4px;
   margin: 16px 0;
 }
