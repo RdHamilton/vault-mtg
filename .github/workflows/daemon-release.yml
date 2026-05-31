@@ -52,6 +52,7 @@ on:
 permissions:
   contents: write
   actions: write
+  id-token: write  # required for OIDC assume-role (BFF SSM update step, vault-mtg-tickets#167)
 
 jobs:
   goreleaser:
@@ -995,6 +996,57 @@ jobs:
           gh workflow run deploy-spa-staging.yml \
             --ref main \
             --repo "${{ github.repository }}"
+
+      - name: Update BFF_DAEMON_LATEST_VERSION + BFF_DAEMON_RELEASED_AT in SSM
+        # Runs on every daemon/v* tag (stable and pre-release) so the BFF
+        # GET /api/v1/daemon/version endpoint always reflects the latest published
+        # release. No pre-release guard — even rc/alpha/beta releases should update
+        # staging BFF; the stable-release update is the authoritative prod fix.
+        #
+        # Uses OIDC to assume the vaultmtg-daemon-release-ssm-updater role
+        # (CFN: mtga-companion-infra/cloudformation/daemon-release-ssm-role.yml).
+        # That role grants ssm:PutParameter on exactly the four param ARNs
+        # (two envs x two keys) — no long-lived IAM key required.
+        # vault-mtg-tickets#167 AC3.
+        id: ssm-update
+        uses: aws-actions/configure-aws-credentials@v6
+        with:
+          role-to-assume: arn:aws:iam::901347789205:role/vaultmtg-daemon-release-ssm-updater
+          aws-region: us-east-1
+
+      - name: Write daemon version params to SSM
+        # Derives the bare semver from the daemon/v* tag name (strips "daemon/v" prefix).
+        # publishedAt is read from the GitHub Release metadata for this tag so
+        # the timestamp is authoritative even if the workflow is re-triggered.
+        # Both params are written as plain String type (not SecureString) — they
+        # contain no secrets, only version and timestamp strings.
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          TAG="${GITHUB_REF#refs/tags/}"
+          VERSION="${TAG#daemon/v}"
+          RELEASED_AT=$(gh release view "${TAG}" \
+            --repo "${{ github.repository }}" \
+            --json publishedAt \
+            --jq '.publishedAt')
+
+          echo "Updating BFF SSM params: version=${VERSION} released_at=${RELEASED_AT}"
+
+          for ENV in staging production; do
+            aws ssm put-parameter \
+              --name "/vaultmtg/app/${ENV}/BFF_DAEMON_LATEST_VERSION" \
+              --value "${VERSION}" \
+              --type String \
+              --overwrite \
+              --region us-east-1
+            aws ssm put-parameter \
+              --name "/vaultmtg/app/${ENV}/BFF_DAEMON_RELEASED_AT" \
+              --value "${RELEASED_AT}" \
+              --type String \
+              --overwrite \
+              --region us-east-1
+            echo "PASS: updated /vaultmtg/app/${ENV}/ BFF_DAEMON_LATEST_VERSION=${VERSION} BFF_DAEMON_RELEASED_AT=${RELEASED_AT}"
+          done
 
 
   # ---------------------------------------------------------------------------
