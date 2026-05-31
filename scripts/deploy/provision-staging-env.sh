@@ -51,6 +51,8 @@
 #   /vaultmtg/app/staging/mailchimp-api-key       (SecureString, --with-decryption)
 #   /vaultmtg/app/staging/mailchimp-list-id
 #   /vaultmtg/app/staging/crisp-website-id
+#   /vaultmtg/app/staging/BFF_DAEMON_LATEST_VERSION  (String, plain — semver e.g. 0.3.5)
+#   /vaultmtg/app/staging/BFF_DAEMON_RELEASED_AT     (String, plain — RFC3339 timestamp)
 #
 # Any new parameter added here MUST also be granted in the provisioner
 # role's StagingProvisioningSSMRead policy in
@@ -234,6 +236,11 @@ write_param DISCORD_GUILD_ID        "$SSM_VAULTMTG_STAGING_DISCORD_GUILD_ID"
 write_param MAILCHIMP_API_KEY       "$SSM_VAULTMTG_STAGING_MAILCHIMP_API_KEY"      --with-decryption
 write_param MAILCHIMP_LIST_ID       "$SSM_VAULTMTG_STAGING_MAILCHIMP_LIST_ID"
 write_param CRISP_WEBSITE_ID        "$SSM_VAULTMTG_STAGING_CRISP_WEBSITE_ID"
+
+# Daemon version metadata — lets BFF serve correct data from
+# GET /api/v1/daemon/version instead of falling back to the 0.1.0 default.
+write_param BFF_DAEMON_LATEST_VERSION "$SSM_STAGING_BFF_DAEMON_LATEST_VERSION"
+write_param BFF_DAEMON_RELEASED_AT    "$SSM_STAGING_BFF_DAEMON_RELEASED_AT"
 
 chmod 600 "$ENV_FILE"
 echo "Staging env provisioned at ${ENV_FILE}."
