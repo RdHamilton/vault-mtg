@@ -5,12 +5,14 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"log"
 	"net/http"
 	"sync"
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/posthog/posthog-go"
 	"golang.org/x/crypto/bcrypt"
 
@@ -205,6 +207,26 @@ func (h *DaemonRegisterHandler) Register(w http.ResponseWriter, r *http.Request)
 		reqBody.DeviceID = uuid.NewString()
 	}
 
+	// Already-paired, non-revoked device re-register guard (P0 fix):
+	// If the (account_id, device_id) pair already has an active row,
+	// return 200 + empty api_key so the daemon reuses its keychain copy.
+	// Skipping bcrypt mint and UpsertKey prevents the UNIQUE(account_id,
+	// device_id) violation (pg 23505) that previously caused HTTP 500.
+	// Per daemon consumer contract (main.go:677-685): 200+empty api_key
+	// means "already registered, reuse keychain copy".
+	if existing != nil && existing.RevokedAt == nil {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		if err := json.NewEncoder(w).Encode(daemonRegisterResponse{
+			APIKey:    "",
+			AccountID: accountID,
+			DeviceID:  existing.DeviceID,
+		}); err != nil {
+			log.Printf("[daemon_register] encode (active re-register): %v", err)
+		}
+		return
+	}
+
 	// Generate a new candidate key: "sk_live_" + 32 random bytes hex-encoded.
 	rawBytes := make([]byte, 32)
 	if _, err := rand.Read(rawBytes); err != nil {
@@ -241,6 +263,26 @@ func (h *DaemonRegisterHandler) Register(w http.ResponseWriter, r *http.Request)
 
 	rec, created, err := h.repo.UpsertKey(r.Context(), accountID, string(hash), keyPrefix, reqBody.DeviceID, reqBody.Platform, reqBody.DaemonVer)
 	if err != nil {
+		// Defense-in-depth: if a concurrent first-pair race caused a pg 23505
+		// unique-violation on (account_id, device_id), re-fetch the row the
+		// concurrent winner just inserted and return 200+empty rather than 500.
+		// This closes the TOCTOU gap between GetByAccountAndDevice and UpsertKey.
+		var pgErr *pgconn.PgError
+		if errors.As(err, &pgErr) && pgErr.Code == "23505" {
+			refetched, fetchErr := h.repo.GetByAccountAndDevice(r.Context(), accountID, reqBody.DeviceID)
+			if fetchErr == nil && refetched != nil && refetched.RevokedAt == nil {
+				w.Header().Set("Content-Type", "application/json")
+				w.WriteHeader(http.StatusOK)
+				if encErr := json.NewEncoder(w).Encode(daemonRegisterResponse{
+					APIKey:    "",
+					AccountID: accountID,
+					DeviceID:  refetched.DeviceID,
+				}); encErr != nil {
+					log.Printf("[daemon_register] encode (23505 re-fetch): %v", encErr)
+				}
+				return
+			}
+		}
 		log.Printf("[daemon_register] UpsertKey account=%s: %v", accountID, err)
 		writeJSONError(w, "internal server error", http.StatusInternalServerError)
 		return

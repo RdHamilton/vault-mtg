@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/posthog/posthog-go"
 
 	"github.com/RdHamilton/vault-mtg/services/bff/internal/api/handlers"
@@ -37,6 +38,11 @@ type stubDaemonAPIKeyRepo struct {
 	// resurrection guard rewrites device_id="" so the ADR-028 first-pair
 	// path mints a new UUID).
 	upsertCalls []upsertCall
+
+	// upsertErrOnce, when set, causes the first UpsertKey call to return
+	// this error and then clears itself. Used to simulate the concurrent
+	// first-pair 23505 race in the defense-in-depth test.
+	upsertErrOnce error
 }
 
 type upsertCall struct {
@@ -46,6 +52,11 @@ type upsertCall struct {
 
 func (s *stubDaemonAPIKeyRepo) UpsertKey(_ context.Context, accountID, keyHash, keyPrefix, deviceID, platform, daemonVer string) (*repository.DaemonAPIKey, bool, error) {
 	s.upsertCalls = append(s.upsertCalls, upsertCall{AccountID: accountID, DeviceID: deviceID})
+	if s.upsertErrOnce != nil {
+		err := s.upsertErrOnce
+		s.upsertErrOnce = nil
+		return nil, false, err
+	}
 	if s.err != nil {
 		return nil, false, s.err
 	}
@@ -469,19 +480,21 @@ func TestDaemonRegister_RevokedRowResurrectionGuard(t *testing.T) {
 	}
 }
 
-// TestDaemonRegister_ActiveRowReplay_PassesThroughDeviceID verifies the
-// guard is narrow: an ACTIVE (non-revoked) existing row for the same
-// (account, device) submission must NOT trigger the rewrite — the
-// UNIQUE(account_id, device_id) constraint will trip and surface as the
-// duplicate-key error that #2631 owns mapping to 409. The guard only fires
-// on revoked rows.
-func TestDaemonRegister_ActiveRowReplay_PassesThroughDeviceID(t *testing.T) {
-	activeDeviceID := "550e8400-e29b-41d4-a716-446655440100"
+// TestDaemonRegister_ExistingActiveDevice_Returns200Empty is the primary
+// regression test for the P0 fix: an already-paired, non-revoked
+// (account_id, device_id) re-registering (reinstall/upgrade) MUST receive
+// HTTP 200 with an empty api_key and the existing device_id echoed back.
+// UpsertKey must NOT be called — skipping it avoids the UNIQUE(account_id,
+// device_id) violation (pg 23505) that previously caused HTTP 500.
+// The daemon consumer (main.go:677-685) treats 200+empty api_key as
+// "already registered, reuse keychain copy".
+func TestDaemonRegister_ExistingActiveDevice_Returns200Empty(t *testing.T) {
+	const activeDeviceID = "550e8400-e29b-41d4-a716-446655440100"
 	repo := &stubDaemonAPIKeyRepo{
 		existingByDevice: map[string]*repository.DaemonAPIKey{
 			activeDeviceID: {
 				ID:        "uuid-active",
-				AccountID: "user_active",
+				AccountID: "user_active_200",
 				DeviceID:  activeDeviceID,
 				RevokedAt: nil,
 			},
@@ -489,7 +502,7 @@ func TestDaemonRegister_ActiveRowReplay_PassesThroughDeviceID(t *testing.T) {
 	}
 	h := handlers.NewDaemonRegisterHandler(repo, nil)
 
-	req := newRegisterRequestWithBody("user_active", map[string]string{
+	req := newRegisterRequestWithBody("user_active_200", map[string]string{
 		"device_id":  activeDeviceID,
 		"platform":   "darwin",
 		"daemon_ver": "0.3.3",
@@ -497,12 +510,133 @@ func TestDaemonRegister_ActiveRowReplay_PassesThroughDeviceID(t *testing.T) {
 	rr := httptest.NewRecorder()
 	h.Register(rr, req)
 
-	if len(repo.upsertCalls) != 1 {
-		t.Fatalf("expected exactly 1 UpsertKey call, got %d", len(repo.upsertCalls))
+	// Primary assertion: must be 200, not 500.
+	if rr.Code != http.StatusOK {
+		t.Fatalf("expected 200 for active device re-register, got %d: %s", rr.Code, rr.Body.String())
 	}
-	if repo.upsertCalls[0].DeviceID != activeDeviceID {
-		t.Errorf("active row replay MUST pass device_id through unchanged; got %q", repo.upsertCalls[0].DeviceID)
+
+	var resp map[string]any
+	if err := json.NewDecoder(rr.Body).Decode(&resp); err != nil {
+		t.Fatalf("decode: %v", err)
 	}
+
+	// api_key must be empty (daemon uses keychain copy).
+	apiKey, _ := resp["api_key"].(string)
+	if apiKey != "" {
+		t.Errorf("active device re-register: api_key must be empty, got %q", apiKey)
+	}
+
+	// device_id must be echoed from the existing row per ADR-034 §1.
+	deviceID, _ := resp["device_id"].(string)
+	if deviceID != activeDeviceID {
+		t.Errorf("active device re-register: device_id must equal existing row value %q, got %q", activeDeviceID, deviceID)
+	}
+
+	// UpsertKey must NOT have been called — calling it would hit the UNIQUE
+	// constraint and produce the 500 this fix addresses.
+	if len(repo.upsertCalls) != 0 {
+		t.Errorf("active device re-register: UpsertKey must NOT be called, got %d call(s)", len(repo.upsertCalls))
+	}
+}
+
+// TestDaemonRegister_Concurrent23505Race_Returns200Empty is the defense-in-depth
+// test: if two goroutines race to register the same (account_id, device_id) for
+// the first time and UpsertKey returns a pg 23505 unique-violation (the primary
+// fix's GetByAccountAndDevice guard missed the window), the handler MUST re-fetch
+// the existing row and return 200+empty rather than surfacing the 500.
+// This guards against the concurrent first-pair window left open by the TOCTOU
+// gap between GetByAccountAndDevice and UpsertKey.
+func TestDaemonRegister_Concurrent23505Race_Returns200Empty(t *testing.T) {
+	const raceDeviceID = "550e8400-e29b-41d4-a716-446655440111"
+
+	// Simulate: GetByAccountAndDevice returns not-found on the first call
+	// (so the primary guard doesn't fire), then UpsertKey returns 23505
+	// (concurrent winner just inserted the row), then GetByAccountAndDevice
+	// returns the now-existing active row on the second call.
+	//
+	// The stub's existingByDevice map is used for both the pre-check and
+	// the re-fetch. We leave it nil for the first call by using a custom
+	// stub that tracks call count.
+	existing := &repository.DaemonAPIKey{
+		ID:        "uuid-race-winner",
+		AccountID: "user_race",
+		DeviceID:  raceDeviceID,
+		RevokedAt: nil,
+	}
+
+	pg23505 := &pgconn.PgError{Code: "23505"}
+
+	// To test the 23505 defense-in-depth path specifically, we need a stub
+	// where GetByAccountAndDevice returns not-found initially (so the primary
+	// guard doesn't fire) but the row exists after UpsertKey fails 23505.
+	countRepo := &countingDaemonAPIKeyRepo{
+		deviceID:  raceDeviceID,
+		existing:  existing,
+		upsertErr: pg23505,
+	}
+	h := handlers.NewDaemonRegisterHandler(countRepo, nil)
+
+	req := newRegisterRequestWithBody("user_race", map[string]string{
+		"device_id":  raceDeviceID,
+		"platform":   "darwin",
+		"daemon_ver": "0.3.3",
+	})
+	rr := httptest.NewRecorder()
+	h.Register(rr, req)
+
+	// Defense-in-depth: 23505 must map to 200+empty, not 500.
+	if rr.Code != http.StatusOK {
+		t.Fatalf("concurrent 23505 race: expected 200, got %d: %s", rr.Code, rr.Body.String())
+	}
+
+	var resp map[string]any
+	if err := json.NewDecoder(rr.Body).Decode(&resp); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+
+	apiKey, _ := resp["api_key"].(string)
+	if apiKey != "" {
+		t.Errorf("concurrent 23505 race: api_key must be empty, got %q", apiKey)
+	}
+
+	deviceID, _ := resp["device_id"].(string)
+	if deviceID != raceDeviceID {
+		t.Errorf("concurrent 23505 race: device_id must equal existing row value %q, got %q", raceDeviceID, deviceID)
+	}
+}
+
+// countingDaemonAPIKeyRepo is a test-only stub that returns ErrDaemonAPIKeyNotFound
+// on the first GetByAccountAndDevice call (simulating the pre-UpsertKey check
+// seeing no row) and then returns an existing row on subsequent calls (simulating
+// the row that a concurrent winner just inserted). This lets the defense-in-depth
+// 23505 path be tested independently of the primary guard.
+type countingDaemonAPIKeyRepo struct {
+	deviceID     string
+	existing     *repository.DaemonAPIKey
+	upsertErr    error
+	getCallCount int
+	upsertCalls  []upsertCall
+}
+
+func (c *countingDaemonAPIKeyRepo) UpsertKey(_ context.Context, accountID, _, _, deviceID, _, _ string) (*repository.DaemonAPIKey, bool, error) {
+	c.upsertCalls = append(c.upsertCalls, upsertCall{AccountID: accountID, DeviceID: deviceID})
+	if c.upsertErr != nil {
+		return nil, false, c.upsertErr
+	}
+	return c.existing, true, nil
+}
+
+func (c *countingDaemonAPIKeyRepo) GetByAccountAndDevice(_ context.Context, _, deviceID string) (*repository.DaemonAPIKey, error) {
+	c.getCallCount++
+	// First call: simulate pre-UpsertKey check sees no row yet.
+	if c.getCallCount == 1 {
+		return nil, repository.ErrDaemonAPIKeyNotFound
+	}
+	// Subsequent calls: the concurrent winner has inserted the row.
+	if deviceID == c.deviceID {
+		return c.existing, nil
+	}
+	return nil, repository.ErrDaemonAPIKeyNotFound
 }
 
 // TestDaemonRegister_DeviceIDEchoedOn201 verifies that a 201 response body
