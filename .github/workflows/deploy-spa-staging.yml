@@ -16,6 +16,11 @@ jobs:
     name: Build and Deploy Staging SPA
     runs-on: ubuntu-latest
     environment: staging
+    # Hard cap prevents the "Install Playwright browsers" step from hanging the runner
+    # for GitHub's default 6-hour job timeout when ubuntu-latest 24.04 (≥20260525.161)
+    # causes apt-get's needrestart post-install hook to block in non-interactive CI.
+    # 20 min is generous: build+deploy typically completes in ~5 min; smoke suite adds ~2 min.
+    timeout-minutes: 20
 
     steps:
       - name: Checkout code
@@ -31,6 +36,19 @@ jobs:
       - name: Install dependencies
         working-directory: frontend
         run: npm ci
+
+      # Cache Playwright browser binaries keyed on package-lock.json so the
+      # 173 MB Chromium zip is only re-downloaded when playwright version changes.
+      # Mirrors the pattern in e2e-smoke-staging.yml.
+      - name: Cache Playwright browsers
+        id: playwright-cache
+        uses: actions/cache@v5
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-staging-${{ runner.os }}-${{ hashFiles('frontend/package-lock.json') }}
+          restore-keys: |
+            playwright-staging-${{ runner.os }}-
+            playwright-${{ runner.os }}-
 
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v6
@@ -112,9 +130,23 @@ jobs:
           echo "Staging SPA smoke check failed after 60s"
           exit 1
 
-      - name: Install Playwright browsers
+      # On ubuntu-latest 24.04 (≥20260525.161) the apt-get needrestart post-install hook
+      # hangs indefinitely in CI without DEBIAN_FRONTEND=noninteractive. Split into two
+      # conditional steps (cache-miss = full install; cache-hit = system deps only)
+      # so we never pay the binary download cost on a warm runner.
+      - name: Install Playwright browsers (cache miss — full install)
+        if: steps.playwright-cache.outputs.cache-hit != 'true'
         working-directory: frontend
         run: npx playwright install chromium --with-deps
+        env:
+          DEBIAN_FRONTEND: noninteractive
+
+      - name: Install Playwright system dependencies (cache hit)
+        if: steps.playwright-cache.outputs.cache-hit == 'true'
+        working-directory: frontend
+        run: npx playwright install-deps chromium
+        env:
+          DEBIAN_FRONTEND: noninteractive
 
       - name: Run SPA browser smoke suite
         working-directory: frontend
