@@ -117,6 +117,46 @@ func TestHandlePick_AttachesPackCardsWhenAligned(t *testing.T) {
 	}
 }
 
+// TestPremierSessionKeyedByDraftID verifies that when CourseName is empty
+// (the Premier case — Draft.Notify carries no CourseName), a pack and a pick
+// sharing the same DraftID correlate to ONE session keyed by that DraftID.
+// Without the sessionKey() fallback the pick would not find the pack's session.
+func TestPremierSessionKeyedByDraftID(t *testing.T) {
+	s := draftstate.New()
+	const draftID = "62a14a91-bb89-470a-a7c0-6ad8d7ddf227"
+
+	s.HandlePack(&logreader.DraftPackPayload{
+		CourseName: "",
+		DraftID:    draftID,
+		DraftPack:  logreader.DraftPackDetail{PackCards: []int{100, 200, 300}, SelfPick: 1},
+	})
+	s.HandlePick(&logreader.DraftPickPayload{
+		CourseName:  "",
+		DraftID:     draftID,
+		PickedCards: []int{200},
+		PackNumber:  0,
+		PickNumber:  0,
+	})
+
+	if got := len(s.Sessions()); got != 1 {
+		t.Fatalf("expected exactly 1 session keyed by draftId, got %d", got)
+	}
+	sess, ok := s.Get("current")
+	if !ok {
+		t.Fatal("expected a current session")
+	}
+	if sess.CourseName != draftID {
+		t.Errorf("session key = %q, want draftId %q", sess.CourseName, draftID)
+	}
+	if len(sess.Picks) != 1 || sess.Picks[0].Picked != 200 {
+		t.Errorf("pick not attached to draftId-keyed session: %+v", sess.Picks)
+	}
+	// PackCards attached because pick aligns with the in-flight pack.
+	if len(sess.Picks[0].PackCards) != 3 {
+		t.Errorf("PackCards not attached: %v", sess.Picks[0].PackCards)
+	}
+}
+
 func TestHandlePick_RecordsEvenWithoutPrecedingPack(t *testing.T) {
 	s := draftstate.New()
 	s.HandlePick(&logreader.DraftPickPayload{

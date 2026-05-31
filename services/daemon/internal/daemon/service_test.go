@@ -646,8 +646,9 @@ func TestRunSendsHeartbeatWhenAccountIDSet(t *testing.T) {
 }
 
 // TestHandleEntry_PlayerAuthenticatedCachesMtgaUserID verifies that processing
-// a player.authenticated log entry caches the MTGA account ID so that
+// a player.authenticated log entry caches the MTGA client ID so that
 // subsequent match.completed parsing can identify the local player's team.
+// In 2026.59.20 the authenticateResponse uses clientId (not accountId/userId).
 func TestHandleEntry_PlayerAuthenticatedCachesMtgaUserID(t *testing.T) {
 	var received contract.DaemonEvent
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -666,20 +667,22 @@ func TestHandleEntry_PlayerAuthenticatedCachesMtgaUserID(t *testing.T) {
 	}
 	svc := New(cfg)
 
-	// Simulate the player.authenticated log entry emitted by Arena.
+	// Simulate the player.authenticated log entry emitted by Arena 2026.59.20.
+	// authenticateResponse has clientId, sessionId, screenName — no accountId.
 	authEntry := &logreader.LogEntry{
 		IsJSON: true,
 		JSON: map[string]interface{}{
 			"authenticateResponse": map[string]interface{}{
-				"accountId":  "WTC_12345678",
+				"clientId":   "FAKEPLAYER0000000000000001",
+				"sessionId":  "00000000-0000-4000-8000-000000000030",
 				"screenName": "TestPlayer",
 			},
 		},
 	}
 
 	require.NoError(t, svc.handleEntry(context.Background(), authEntry))
-	assert.Equal(t, "WTC_12345678", svc.mtgaUserID,
-		"mtgaUserID must be cached after player.authenticated")
+	assert.Equal(t, "FAKEPLAYER0000000000000001", svc.mtgaUserID,
+		"mtgaUserID must be cached from clientId after player.authenticated")
 	assert.Equal(t, "player.authenticated", received.Type)
 }
 

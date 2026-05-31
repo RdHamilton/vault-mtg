@@ -37,7 +37,9 @@ type SetCardRow struct {
 	TypeLine      string
 	Colors        string // JSON array TEXT
 	ColorIdentity string
-	ImageURIs     string
+	ImageURL      string
+	ImageURLSmall string
+	ImageURLArt   string
 	Power         *string
 	Toughness     *string
 	PriceUSD      *float64
@@ -69,7 +71,7 @@ func (r *CardsRepository) SearchCards(ctx context.Context, query, setCode string
 	             COALESCE(c.rarity, ''), COALESCE(c.mana_cost, ''),
 	             COALESCE(c.cmc, 0), COALESCE(c.types, ''),
 	             COALESCE(c.colors, '[]'), '' AS color_identity,
-	             '{}' AS image_uris,
+	             COALESCE(c.image_url,''), COALESCE(c.image_url_small,''), COALESCE(c.image_url_art,''),
 	             c.power, c.toughness,
 	             c.price_usd, c.price_usd_foil, c.price_eur,
 	             EXTRACT(EPOCH FROM c.prices_updated_at)::BIGINT
@@ -90,7 +92,7 @@ func (r *CardsRepository) CardByArenaID(ctx context.Context, arenaID int) (*SetC
 	                  COALESCE(c.rarity, ''), COALESCE(c.mana_cost, ''),
 	                  COALESCE(c.cmc, 0), COALESCE(c.types, ''),
 	                  COALESCE(c.colors, '[]'), '' AS color_identity,
-	                  '{}' AS image_uris,
+	                  COALESCE(c.image_url,''), COALESCE(c.image_url_small,''), COALESCE(c.image_url_art,''),
 	                  c.power, c.toughness,
 	                  c.price_usd, c.price_usd_foil, c.price_eur,
 	                  EXTRACT(EPOCH FROM c.prices_updated_at)::BIGINT
@@ -115,7 +117,7 @@ func (r *CardsRepository) CardsBySetCode(ctx context.Context, setCode string) ([
 	                  COALESCE(c.rarity, ''), COALESCE(c.mana_cost, ''),
 	                  COALESCE(c.cmc, 0), COALESCE(c.types, ''),
 	                  COALESCE(c.colors, '[]'), '' AS color_identity,
-	                  '{}' AS image_uris,
+	                  COALESCE(c.image_url,''), COALESCE(c.image_url_small,''), COALESCE(c.image_url_art,''),
 	                  c.power, c.toughness,
 	                  c.price_usd, c.price_usd_foil, c.price_eur,
 	                  EXTRACT(EPOCH FROM c.prices_updated_at)::BIGINT
@@ -158,7 +160,7 @@ func (r *CardsRepository) SearchCardsWithCollection(ctx context.Context, account
 	             COALESCE(c.rarity, ''), COALESCE(c.mana_cost, ''),
 	             COALESCE(c.cmc, 0), COALESCE(c.types, ''),
 	             COALESCE(c.colors, '[]'), '' AS color_identity,
-	             '{}' AS image_uris,
+	             COALESCE(c.image_url,''), COALESCE(c.image_url_small,''), COALESCE(c.image_url_art,''),
 	             c.power, c.toughness,
 	             c.price_usd, c.price_usd_foil, c.price_eur,
 	             EXTRACT(EPOCH FROM c.prices_updated_at)::BIGINT,
@@ -182,7 +184,8 @@ func (r *CardsRepository) SearchCardsWithCollection(ctx context.Context, account
 		if err := rows.Scan(
 			&row.ArenaID, &row.CardID, &row.Name, &row.SetCode, &row.SetName,
 			&row.Rarity, &row.ManaCost, &row.CMC, &row.TypeLine,
-			&row.Colors, &row.ColorIdentity, &row.ImageURIs,
+			&row.Colors, &row.ColorIdentity,
+			&row.ImageURL, &row.ImageURLSmall, &row.ImageURLArt,
 			&row.Power, &row.Toughness,
 			&row.PriceUSD, &row.PriceUSDFoil, &row.PriceEUR, &row.PricesUpdated,
 			&row.Quantity,
@@ -523,7 +526,8 @@ func (r *CardsRepository) scanSetCardRows(ctx context.Context, q string, args ..
 		if err := rows.Scan(
 			&row.ArenaID, &row.CardID, &row.Name, &row.SetCode, &row.SetName,
 			&row.Rarity, &row.ManaCost, &row.CMC, &row.TypeLine,
-			&row.Colors, &row.ColorIdentity, &row.ImageURIs,
+			&row.Colors, &row.ColorIdentity,
+			&row.ImageURL, &row.ImageURLSmall, &row.ImageURLArt,
 			&row.Power, &row.Toughness,
 			&row.PriceUSD, &row.PriceUSDFoil, &row.PriceEUR, &row.PricesUpdated,
 		); err != nil {

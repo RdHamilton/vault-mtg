@@ -219,3 +219,77 @@ func TestCardsRepository_CardsBySetCode_CaseInsensitive(t *testing.T) {
 		t.Fatal("expected at least 1 row for uppercase set code SC4")
 	}
 }
+
+// TestCardsRepository_ImageURLsPopulated verifies that the 3 discrete image URL
+// columns (image_url, image_url_small, image_url_art) are returned by all card
+// read paths instead of the retired '{}' blob.
+func TestCardsRepository_ImageURLsPopulated(t *testing.T) {
+	db := openTestDB(t)
+	repo := repository.NewCardsRepository(db)
+	ctx := context.Background()
+
+	seedSet(t, "img1", "Image Test Set")
+	seedSetCard(t, 710001, "img1", "Image Test Card", "rare")
+
+	t.Run("SearchCards returns image URLs", func(t *testing.T) {
+		rows, err := repo.SearchCards(ctx, "Image Test Card", "img1", 10)
+		if err != nil {
+			t.Fatalf("SearchCards: %v", err)
+		}
+		if len(rows) == 0 {
+			t.Fatal("expected at least 1 row")
+		}
+		assertImageURLs(t, rows[0])
+	})
+
+	t.Run("CardByArenaID returns image URLs", func(t *testing.T) {
+		row, err := repo.CardByArenaID(ctx, 710001)
+		if err != nil {
+			t.Fatalf("CardByArenaID: %v", err)
+		}
+		if row == nil {
+			t.Fatal("expected non-nil row")
+		}
+		assertImageURLs(t, *row)
+	})
+
+	t.Run("CardsBySetCode returns image URLs", func(t *testing.T) {
+		rows, err := repo.CardsBySetCode(ctx, "img1")
+		if err != nil {
+			t.Fatalf("CardsBySetCode: %v", err)
+		}
+		if len(rows) == 0 {
+			t.Fatal("expected at least 1 row")
+		}
+		assertImageURLs(t, rows[0])
+	})
+
+	t.Run("SearchCardsWithCollection returns image URLs", func(t *testing.T) {
+		rows, err := repo.SearchCardsWithCollection(ctx, 0, "Image Test Card", []string{"img1"}, 10)
+		if err != nil {
+			t.Fatalf("SearchCardsWithCollection: %v", err)
+		}
+		if len(rows) == 0 {
+			t.Fatal("expected at least 1 row")
+		}
+		assertImageURLs(t, rows[0].SetCardRow)
+	})
+}
+
+// assertImageURLs fails t if any of the 3 image URL fields are empty or still
+// hold the retired '{}' sentinel value.
+func assertImageURLs(t *testing.T, row repository.SetCardRow) {
+	t.Helper()
+	if row.ImageURL == "" {
+		t.Errorf("ImageURL must not be empty; got SetCardRow: %+v", row)
+	}
+	if row.ImageURLSmall == "" {
+		t.Errorf("ImageURLSmall must not be empty; got SetCardRow: %+v", row)
+	}
+	if row.ImageURLArt == "" {
+		t.Errorf("ImageURLArt must not be empty; got SetCardRow: %+v", row)
+	}
+	if row.ImageURL == "{}" || row.ImageURLSmall == "{}" || row.ImageURLArt == "{}" {
+		t.Errorf("image URL field still holds retired '{}' sentinel; got SetCardRow: %+v", row)
+	}
+}

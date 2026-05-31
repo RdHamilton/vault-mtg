@@ -38,7 +38,9 @@ func loadRealFixture(t *testing.T, filename string) *LogEntry {
 
 // TestRealFixture_Authenticate_2026_59_20 asserts that the authenticate fixture
 // parses as JSON and contains the expected authenticateResponse structure.
-// Wire format: {"authenticateResponse":{"screenName":...,"userId":...,...}}
+// Wire format (2026.59.20): {"authenticateResponse":{"clientId":...,"sessionId":...,"screenName":...}}
+// There is NO "userId" or "accountId" key — clientId is the player join key.
+// clientId equals reservedPlayers[].userId in matchGameRoomStateChangedEvent.
 func TestRealFixture_Authenticate_2026_59_20(t *testing.T) {
 	entry := loadRealFixture(t, "authenticate_2026.59.20.log")
 
@@ -49,10 +51,11 @@ func TestRealFixture_Authenticate_2026_59_20(t *testing.T) {
 	screenName, _ := authResp["screenName"].(string)
 	assert.NotEmpty(t, screenName, "screenName must be non-empty")
 
-	// All four fields present in the 2026.59.20 wire format.
-	assert.NotEmpty(t, authResp["userId"], "userId must be present")
-	assert.NotEmpty(t, authResp["clientId"], "clientId must be present")
+	// Real 2026.59.20 wire format: clientId and sessionId present, no userId/accountId.
+	assert.NotEmpty(t, authResp["clientId"], "clientId must be present (join key for match events)")
 	assert.NotEmpty(t, authResp["sessionId"], "sessionId must be present")
+	assert.Nil(t, authResp["userId"], "userId must NOT be present in real 2026.59.20 wire format")
+	assert.Nil(t, authResp["accountId"], "accountId must NOT be present in real 2026.59.20 wire format")
 }
 
 // ---------------------------------------------------------------------------
@@ -179,32 +182,38 @@ func TestRealFixture_MatchCompleted_2026_59_20(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 // TestRealFixture_DraftPack_2026_59_20 asserts that the draft_pack fixture
-// parses correctly.  GRP IDs are real card IDs from the MTGA card database
-// (non-PII per ADR-041).
+// parses correctly.  Promoted to REAL Premier Draft.Notify shape (#338) from
+// the 2026.59.20 Premier capture.  GRP IDs are real card IDs from the MTGA
+// card database (non-PII per ADR-041); the draftId is a sanitized stable fake.
 func TestRealFixture_DraftPack_2026_59_20(t *testing.T) {
 	entry := loadRealFixture(t, "draft_pack_2026.59.20.log")
 
-	_, hasDraftPack := entry.JSON["draftPack"]
-	require.True(t, hasDraftPack, "draft_pack fixture must contain draftPack key")
+	_, hasDraftID := entry.JSON["draftId"]
+	require.True(t, hasDraftID, "Premier draft_pack fixture must contain draftId key")
+	_, hasPackCards := entry.JSON["PackCards"]
+	require.True(t, hasPackCards, "Premier draft_pack fixture must contain PackCards key")
 
-	p, err := ParseDraftPack(entry)
+	p, err := ParsePremierDraftNotify(entry)
 	require.NoError(t, err)
 	require.NotNil(t, p)
 
-	assert.Equal(t, "PremierDraft_FIN", p.CourseName)
+	assert.Equal(t, "00000000-0000-4000-8000-0000000003a8", p.DraftID)
+	// Premier carries no CourseName.
+	assert.Equal(t, "", p.CourseName)
+	// Pack 1 / Pick 1 → cumulative 1-based SelfPick = 1.
 	assert.Equal(t, 1, p.DraftPack.SelfPick)
 
-	// Pack contains 13 real card GRP IDs.
-	require.Len(t, p.DraftPack.PackCards, 13)
+	// Pack contains 14 real card GRP IDs (real Premier pack-1-pick-1).
+	require.Len(t, p.DraftPack.PackCards, 14)
 
-	// Spot-check a sample of known GRP IDs from the fixture.
+	// Spot-check a sample of known GRP IDs from the real corpus.
 	packSet := make(map[int]bool, len(p.DraftPack.PackCards))
 	for _, id := range p.DraftPack.PackCards {
 		packSet[id] = true
 	}
-	assert.True(t, packSet[67108], "GRP 67108 must be present in pack")
-	assert.True(t, packSet[77460], "GRP 77460 must be present in pack")
-	assert.True(t, packSet[73778], "GRP 73778 must be present in pack")
+	assert.True(t, packSet[102614], "GRP 102614 must be present in pack")
+	assert.True(t, packSet[102647], "GRP 102647 must be present in pack")
+	assert.True(t, packSet[102714], "GRP 102714 must be present in pack")
 }
 
 // ---------------------------------------------------------------------------
@@ -212,22 +221,27 @@ func TestRealFixture_DraftPack_2026_59_20(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 // TestRealFixture_DraftPick_2026_59_20 asserts that the draft_pick fixture
-// parses correctly.  Pick 0 of pack 0 — the player picked GRP 67108.
+// parses correctly.  Promoted to REAL Premier EventPlayerDraftMakePick shape
+// (#338) from the 2026.59.20 Premier capture: pack 1 / pick 1 (0-based 0/0) —
+// the player picked GRP 102647.  draftId is a sanitized stable fake.
 func TestRealFixture_DraftPick_2026_59_20(t *testing.T) {
 	entry := loadRealFixture(t, "draft_pick_2026.59.20.log")
 
-	_, hasPicked := entry.JSON["pickedCards"]
-	require.True(t, hasPicked, "draft_pick fixture must contain pickedCards key")
+	req, hasReq := entry.JSON["request"].(string)
+	require.True(t, hasReq, "Premier draft_pick fixture must contain request string")
+	require.Contains(t, req, `"DraftId"`, "request must carry inner DraftId")
 
-	p, err := ParseDraftPick(entry)
+	p, err := ParsePremierDraftMakePick(entry)
 	require.NoError(t, err)
 	require.NotNil(t, p)
 
-	assert.Equal(t, "PremierDraft_FIN", p.CourseName)
+	assert.Equal(t, "00000000-0000-4000-8000-0000000003a8", p.DraftID)
+	// Premier carries no CourseName.
+	assert.Equal(t, "", p.CourseName)
 	assert.Equal(t, 0, p.PackNumber)
 	assert.Equal(t, 0, p.PickNumber)
 	require.Len(t, p.PickedCards, 1)
-	assert.Equal(t, 67108, p.PickedCards[0])
+	assert.Equal(t, 102647, p.PickedCards[0])
 }
 
 // ---------------------------------------------------------------------------

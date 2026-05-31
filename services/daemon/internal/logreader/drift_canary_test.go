@@ -34,7 +34,9 @@ func isRecognized(entry *LogEntry) bool {
 		IsCollectionEntry(entry) ||
 		isAuthenticateEntry(entry) ||
 		isDraftPackEntry(entry) ||
-		isDraftPickEntry(entry)
+		isDraftPickEntry(entry) ||
+		isPremierDraftNotifyEntry(entry) ||
+		isPremierDraftMakePickEntry(entry)
 }
 
 // isAuthenticateEntry returns true when the entry carries an
@@ -63,6 +65,30 @@ func isDraftPickEntry(entry *LogEntry) bool {
 	}
 	_, ok := entry.JSON["pickedCards"]
 	return ok
+}
+
+// isPremierDraftNotifyEntry returns true for a Premier Draft.Notify line
+// (draftId + PackCards), the #338 wire format.
+func isPremierDraftNotifyEntry(entry *LogEntry) bool {
+	if entry == nil || !entry.IsJSON {
+		return false
+	}
+	_, hasDraftID := entry.JSON["draftId"]
+	_, hasPackCards := entry.JSON["PackCards"]
+	return hasDraftID && hasPackCards
+}
+
+// isPremierDraftMakePickEntry returns true for a Premier
+// EventPlayerDraftMakePick line (id + request string carrying DraftId).
+func isPremierDraftMakePickEntry(entry *LogEntry) bool {
+	if entry == nil || !entry.IsJSON {
+		return false
+	}
+	if _, ok := entry.JSON["id"]; !ok {
+		return false
+	}
+	req, ok := entry.JSON["request"].(string)
+	return ok && strings.Contains(req, `"DraftId"`)
 }
 
 // TestParserDriftCanary_RealFixture_2026_59_20 parses every fixture file in

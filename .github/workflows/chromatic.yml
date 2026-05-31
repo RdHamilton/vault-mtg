@@ -72,7 +72,7 @@ jobs:
         if: steps.changes.outputs.frontend_changed == 'true'
         uses: actions/setup-node@v6
         with:
-          node-version: '20'
+          node-version: '24'
           cache: 'npm'
           cache-dependency-path: frontend/package-lock.json
 
@@ -121,10 +121,12 @@ jobs:
         if: >
           steps.changes.outputs.frontend_changed == 'true' &&
           steps.token_check.outputs.has_token == 'true'
+        env:
+          CHROMATIC_PROJECT_TOKEN: ${{ secrets.CHROMATIC_PROJECT_TOKEN }}
         run: |
           if [ "${{ github.event_name }}" = "push" ]; then
-            npx chromatic --storybook-build-dir=storybook-static --project-token=${{ secrets.CHROMATIC_PROJECT_TOKEN }} --auto-accept-changes
+            npx chromatic --storybook-build-dir=storybook-static --only-changed --auto-accept-changes
           else
-            npx chromatic --storybook-build-dir=storybook-static --project-token=${{ secrets.CHROMATIC_PROJECT_TOKEN }}
+            npx chromatic --storybook-build-dir=storybook-static --only-changed
           fi
         working-directory: frontend
