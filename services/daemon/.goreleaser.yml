@@ -145,6 +145,30 @@ builds:
     # /DCLOUD_API_URL bakes the BFF endpoint into the installer so the env-mismatch
     # guard in installer.nsi can detect cross-env reinstalls (#194).
     hooks:
+      pre:
+        # Embed the VaultMTG app icon into the Windows .exe (#307).
+        # goversioninfo is a pure-Go preprocessor: it reads versioninfo.json and
+        # produces a COFF resource file (resource.syso) next to package main.  The
+        # Go linker auto-links any *.syso in the main package directory, so the
+        # .ico becomes the Explorer/taskbar icon of vaultmtg-daemon.exe.  No CGO
+        # is involved — this works regardless of the CGO_ENABLED setting above.
+        #
+        # TARGET-scoped (builds[].hooks.pre), NOT a top-level `before` hook:
+        # GoReleaser FREE `before` hooks are GLOBAL and run once for all targets;
+        # builds[].hooks honor the {{ .Os }} template so the .syso is generated
+        # only for the windows target.  A .syso for the wrong GOOS would be a
+        # link error on darwin (the darwin binary is built by build-macos, not
+        # GoReleaser, so this is belt-and-suspenders).
+        - cmd: >
+            bash -c '[ "${TARGET_GOOS}" != "windows" ] && exit 0;
+            command -v goversioninfo >/dev/null 2>&1 || {
+            echo "goversioninfo not installed - skipping .exe icon embed"; exit 0; };
+            goversioninfo
+            -icon services/daemon/install/icons/vaultmtg.ico
+            -o services/daemon/cmd/daemon/resource.syso
+            services/daemon/cmd/daemon/versioninfo.json'
+          env:
+            - TARGET_GOOS={{ .Os }}
       post:
         - cmd: >
             bash -c '[ "${IS_SNAPSHOT}" = "true" ] && exit 0;

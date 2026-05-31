@@ -103,6 +103,8 @@ cat > "${APP_CONTENTS}/Info.plist" << 'INFOPLIST'
 <dict>
   <key>CFBundleExecutable</key>
   <string>vaultmtg-launcher</string>
+  <key>CFBundleIconFile</key>
+  <string>vaultmtg</string>
   <key>CFBundleIdentifier</key>
   <string>com.vaultmtg.launcher</string>
   <key>CFBundleName</key>
@@ -152,6 +154,14 @@ launchctl enable "${TARGET}" 2>/dev/null || true
 launchctl bootstrap "${USER_DOMAIN}" "${PLIST_PATH}" 2>/dev/null || true
 LAUNCHER
 chmod 755 "${APP_MACOS}/vaultmtg-launcher"
+
+# App icon (#307) — Contents/Resources/vaultmtg.icns paired with the
+# CFBundleIconFile=vaultmtg key in Info.plist above. This is what gives
+# VaultMTG.app its Finder/Dock icon. pkgbuild has no --icon flag; the icon
+# ships inside the embedded .app bundle, not on the .pkg itself.
+APP_RESOURCES="${APP_CONTENTS}/Resources"
+mkdir -p "${APP_RESOURCES}"
+cp "${SCRIPT_DIR}/../../icons/vaultmtg.icns" "${APP_RESOURCES}/vaultmtg.icns"
 
 # DRY_RUN: pkg-root is now populated — print layout and exit without
 # calling pkgbuild or hdiutil (neither is required for layout assertions).
