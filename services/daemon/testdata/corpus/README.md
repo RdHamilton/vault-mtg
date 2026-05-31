@@ -42,8 +42,6 @@ Promoted to REAL / REAL-DERIVED from the 2026-05-31 Premier-draft session captur
 
 - `player-log/match-completed.log` → REAL
 - `player-log/player-authenticated.log` → REAL (CORRECTED `{clientId,sessionId,screenName}` shape; `clientId == reservedPlayers[].userId`; no invented `userId`/`accountId` key)
-- `player-log/draft-pack.log` → REAL (Premier `Draft.Notify`)
-- `player-log/draft-pick.log` → REAL (Premier `EventPlayerDraftMakePick` request)
 - `player-log/deck-updated.log` → REAL
 - `daemon-emit/match-completed.json` (+ `-empty-format`, `-missing-id` variants) → REAL-DERIVED (run through `logreader.ParseMatchCompletedEntry`)
 - `daemon-emit/deck-updated.json` → REAL-DERIVED (run through `logreader.ParseDeckEntry`)
@@ -51,7 +49,7 @@ Promoted to REAL / REAL-DERIVED from the 2026-05-31 Premier-draft session captur
 Still FORMAT-CONFIRMED (could NOT be promoted from this capture):
 
 - `player-log/collection-updated.log` + `daemon-emit/collection-updated.json` — the capture contains **no** `PlayerInventoryGetPlayerCardsV3` collection snapshot (player did not open the collection screen). Awaits a capture exercising the collection surface.
-- `daemon-emit/draft-pack.json` + `daemon-emit/draft-pick.json` — **GATED on the Premier draft classifier/parser fix.** The daemon classifier keys `draft.pack`/`draft.pick` on top-level `draftPack`/`pickedCards` (0 occurrences — real Premier pack is `Draft.Notify`, real pick is `EventPlayerDraftMakePick`) and the daemon emits the full `DraftPackPayload`/`DraftPickPayload`, not the synthetic `{draft_id,set_code,...}` shape these fixtures still carry. Regenerating now would lock a misclassified/empty fixture, so these are intentionally left until the draft-parser fix (sibling of #336) lands. The Premier player-log sources ARE promoted to REAL above.
+- `player-log/draft-pack.log` + `player-log/draft-pick.log` + `daemon-emit/draft-pack.json` + `daemon-emit/draft-pick.json` — **GATED on the Premier draft classifier/parser fix.** The Layer-2 contract gate parses the player-log draft fixtures through `ParseDraftPack`/`ParseDraftPick`, which require the top-level `draftPack`/`pickedCards` keys; the daemon classifier gates on those same keys. In the Premier capture those keys appear 0 times — the real Premier pack is `Draft.Notify {draftId,SelfPick,SelfPack,PackCards}` and the real pick is the `EventPlayerDraftMakePick` request — so neither the player-log nor the daemon-emit draft fixtures can be promoted without diverging from (or breaking) the current parser. They are intentionally left until the draft-parser fix (sibling of #336) lands. The real Premier draft shapes are captured under `catalog/samples/` and documented in the taxonomy report.
 
 Note: BotDraft (QuickDraft) draft support is a separate daemon gap tracked by #337 — its raw shapes are catalogued in `tools/fixture-extractor` catalog output (axes `api-request/api-response BotDraftDraftPick`, `json-key DraftPack`), not promoted here.
 
