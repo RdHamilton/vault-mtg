@@ -80,3 +80,38 @@ The Chromatic workflow (`.github/workflows/chromatic.yml`) behaves as follows:
 - **Token set, unreviewed visual changes detected**: Chromatic exits with a non-zero code, CI fails. A human must review and approve/reject changes on the Chromatic dashboard before the PR can merge.
 
 This makes Chromatic a real visual regression gate, not a pass-through.
+
+## `brand-approved` Auto-Accept (Epic B brand PRs)
+
+Epic B brand PRs apply the frozen design-system tokens (`frontend/src/index.css`
+sourced from "Ray Hamilton Engineering Design System/colors_and_type.css"). These
+produce **intentional** Chromatic visual diffs across nearly every story, which
+would otherwise require accepting each one on the Chromatic dashboard.
+
+To keep these PRs out of the per-PR dashboard-accept loop, the workflow supports a
+**`brand-approved`** label:
+
+- When a PR carries the `brand-approved` label, the `Run Chromatic` step adds
+  `--auto-accept-changes`, so Chromatic accepts **all** detected visual changes for
+  that build, exits 0, and the required `Chromatic Visual Tests` check goes **green**
+  — without anyone opening the Chromatic dashboard.
+- Applying or removing the label re-runs the workflow (the `pull_request` trigger
+  includes the `labeled`/`unlabeled` types), so the check re-evaluates as soon as a
+  reviewer labels the PR.
+- A PR **without** the label is unchanged: detected visual changes keep the check red
+  until they are accepted on the dashboard.
+- `main` pushes are unaffected — the auto-accept-on-push baseline path is selected on
+  `github.event_name == 'push'` only, never on a label.
+
+### Label contract — the safety is code review, not visual inspection
+
+`--auto-accept-changes` accepts **every** visual change in the build with no
+per-snapshot inspection. The `brand-approved` label therefore means, exactly:
+
+> A reviewer has verified that **every** visual change in this PR is an intentional,
+> design-system-matching brand change — by diffing the PR's CSS against the frozen
+> `colors_and_type.css` — and accepts all of them sight-unseen on the dashboard.
+
+**Never apply `brand-approved` blind.** Only a reviewer who has completed the CSS-vs-
+design-system review applies it. On Epic B, that reviewer is Lee. Once labeled, the
+re-run clears the Chromatic gate and the PR can merge.
