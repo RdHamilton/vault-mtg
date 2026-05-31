@@ -1,150 +1,120 @@
-package dbconn_test
+package dbconn
 
 import (
+	"context"
+	"errors"
 	"strings"
 	"testing"
 
-	"github.com/RdHamilton/vault-mtg/services/sync/internal/dbconn"
+	"github.com/aws/aws-sdk-go-v2/aws"
+	"github.com/aws/aws-sdk-go-v2/service/ssm"
+	"github.com/aws/aws-sdk-go-v2/service/ssm/types"
 )
 
-func validConfig() dbconn.Config {
-	return dbconn.Config{
-		Host:     "mydb.us-east-1.rds.amazonaws.com",
-		Port:     "5432",
-		DBName:   "mtga",
-		User:     "mtga_sync",
-		Password: "fake-password",
-	}
-}
-
-func TestBuildPasswordDSN_Success(t *testing.T) {
-	cfg := validConfig()
-
-	dsn, err := dbconn.BuildPasswordDSN(cfg)
-	if err != nil {
-		t.Fatalf("BuildPasswordDSN: %v", err)
-	}
-
-	if !strings.Contains(dsn, "host=mydb.us-east-1.rds.amazonaws.com") {
-		t.Errorf("DSN missing host: %s", dsn)
-	}
-
-	if !strings.Contains(dsn, "port=5432") {
-		t.Errorf("DSN missing port: %s", dsn)
-	}
-
-	if !strings.Contains(dsn, "user=mtga_sync") {
-		t.Errorf("DSN missing user: %s", dsn)
-	}
-
-	if !strings.Contains(dsn, "password=fake-password") {
-		t.Errorf("DSN missing password: %s", dsn)
-	}
-
-	if !strings.Contains(dsn, "dbname=mtga") {
-		t.Errorf("DSN missing dbname: %s", dsn)
-	}
-
-	if !strings.Contains(dsn, "sslmode=require") {
-		t.Errorf("DSN missing sslmode=require: %s", dsn)
-	}
-}
-
-func TestBuildPasswordDSN_DefaultPort(t *testing.T) {
-	cfg := validConfig()
-	cfg.Port = "" // omit port — should default to 5432
-
-	dsn, err := dbconn.BuildPasswordDSN(cfg)
-	if err != nil {
-		t.Fatalf("BuildPasswordDSN: %v", err)
-	}
-
-	if !strings.Contains(dsn, "port=5432") {
-		t.Errorf("expected default port 5432 in DSN: %s", dsn)
-	}
-}
-
-func TestBuildPasswordDSN_MissingHost(t *testing.T) {
-	cfg := validConfig()
-	cfg.Host = ""
-
-	_, err := dbconn.BuildPasswordDSN(cfg)
-	if err == nil {
-		t.Fatal("expected error when Host is empty")
-	}
-
-	if !strings.Contains(err.Error(), "DB_HOST") {
-		t.Errorf("expected error to mention DB_HOST, got: %v", err)
-	}
-}
-
-func TestBuildPasswordDSN_MissingDBName(t *testing.T) {
-	cfg := validConfig()
-	cfg.DBName = ""
-
-	_, err := dbconn.BuildPasswordDSN(cfg)
-	if err == nil {
-		t.Fatal("expected error when DBName is empty")
-	}
-
-	if !strings.Contains(err.Error(), "DB_NAME") {
-		t.Errorf("expected error to mention DB_NAME, got: %v", err)
-	}
-}
-
-func TestBuildPasswordDSN_MissingUser(t *testing.T) {
-	cfg := validConfig()
-	cfg.User = ""
-
-	_, err := dbconn.BuildPasswordDSN(cfg)
-	if err == nil {
-		t.Fatal("expected error when User is empty")
-	}
-
-	if !strings.Contains(err.Error(), "DB_USER") {
-		t.Errorf("expected error to mention DB_USER, got: %v", err)
-	}
-}
-
-func TestBuildPasswordDSN_MissingPassword(t *testing.T) {
-	cfg := validConfig()
-	cfg.Password = ""
-
-	_, err := dbconn.BuildPasswordDSN(cfg)
-	if err == nil {
-		t.Fatal("expected error when Password is empty")
-	}
-
-	if !strings.Contains(err.Error(), "DB_PASSWORD") {
-		t.Errorf("expected error to mention DB_PASSWORD, got: %v", err)
-	}
-}
-
-func TestConfig_Validate_AllFieldsRequired(t *testing.T) {
-	cases := []struct {
+func TestValidate(t *testing.T) {
+	tests := []struct {
 		name    string
-		mutate  func(c *dbconn.Config)
-		wantMsg string
+		cfg     Config
+		wantErr string
 	}{
-		{"empty host", func(c *dbconn.Config) { c.Host = "" }, "DB_HOST"},
-		{"empty dbname", func(c *dbconn.Config) { c.DBName = "" }, "DB_NAME"},
-		{"empty user", func(c *dbconn.Config) { c.User = "" }, "DB_USER"},
-		{"empty password", func(c *dbconn.Config) { c.Password = "" }, "DB_PASSWORD"},
+		{"valid", Config{Host: "h", DBName: "d", User: "u", Password: "p"}, ""},
+		{"no host", Config{DBName: "d", User: "u", Password: "p"}, "DB_HOST"},
+		{"no dbname", Config{Host: "h", User: "u", Password: "p"}, "DB_NAME"},
+		{"no user", Config{Host: "h", DBName: "d", Password: "p"}, "DB_USER"},
+		{"no password", Config{Host: "h", DBName: "d", User: "u"}, "password"},
 	}
-
-	for _, tc := range cases {
+	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			cfg := validConfig()
-			tc.mutate(&cfg)
-
-			err := cfg.Validate()
-			if err == nil {
-				t.Fatalf("expected error for %s", tc.name)
+			err := tc.cfg.Validate()
+			if tc.wantErr == "" {
+				if err != nil {
+					t.Fatalf("unexpected error: %v", err)
+				}
+				return
 			}
-
-			if !strings.Contains(err.Error(), tc.wantMsg) {
-				t.Errorf("error %q should mention %q", err.Error(), tc.wantMsg)
+			if err == nil || !strings.Contains(err.Error(), tc.wantErr) {
+				t.Fatalf("want error containing %q, got %v", tc.wantErr, err)
 			}
 		})
+	}
+}
+
+func TestBuildPasswordDSN(t *testing.T) {
+	dsn, err := BuildPasswordDSN(Config{Host: "rds.example", DBName: "mtga", User: "mtga_sync", Password: "p@ss word"})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	for _, want := range []string{"host=rds.example", "port=5432", "user=mtga_sync", "password=p@ss word", "dbname=mtga", "sslmode=require"} {
+		if !strings.Contains(dsn, want) {
+			t.Errorf("DSN missing %q: %s", want, dsn)
+		}
+	}
+}
+
+func TestBuildPasswordDSN_CustomPort(t *testing.T) {
+	dsn, err := BuildPasswordDSN(Config{Host: "h", DBName: "d", User: "u", Password: "p", Port: "6543"})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !strings.Contains(dsn, "port=6543") {
+		t.Errorf("expected custom port, got %s", dsn)
+	}
+}
+
+// fakeSSM implements ssmGetter.
+type fakeSSM struct {
+	value        *string
+	err          error
+	gotName      string
+	gotDecrypted bool
+}
+
+func (f *fakeSSM) GetParameter(_ context.Context, in *ssm.GetParameterInput, _ ...func(*ssm.Options)) (*ssm.GetParameterOutput, error) {
+	if in.Name != nil {
+		f.gotName = *in.Name
+	}
+	if in.WithDecryption != nil {
+		f.gotDecrypted = *in.WithDecryption
+	}
+	if f.err != nil {
+		return nil, f.err
+	}
+	return &ssm.GetParameterOutput{Parameter: &types.Parameter{Value: f.value}}, nil
+}
+
+func TestFetchSecureString_Success(t *testing.T) {
+	fake := &fakeSSM{value: aws.String("s3cr3t")}
+	got, err := FetchSecureString(context.Background(), fake, "/vaultmtg/app/production/sync-db-password")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if got != "s3cr3t" {
+		t.Errorf("value: got %q", got)
+	}
+	if fake.gotName != "/vaultmtg/app/production/sync-db-password" {
+		t.Errorf("name: got %q", fake.gotName)
+	}
+	if !fake.gotDecrypted {
+		t.Error("WithDecryption must be true")
+	}
+}
+
+func TestFetchSecureString_EmptyPath(t *testing.T) {
+	if _, err := FetchSecureString(context.Background(), &fakeSSM{}, ""); err == nil {
+		t.Fatal("expected error for empty path")
+	}
+}
+
+func TestFetchSecureString_APIError(t *testing.T) {
+	fake := &fakeSSM{err: errors.New("access denied")}
+	if _, err := FetchSecureString(context.Background(), fake, "/p"); err == nil {
+		t.Fatal("expected error from API failure")
+	}
+}
+
+func TestFetchSecureString_NoValue(t *testing.T) {
+	fake := &fakeSSM{value: nil}
+	if _, err := FetchSecureString(context.Background(), fake, "/p"); err == nil {
+		t.Fatal("expected error when parameter has no value")
 	}
 }

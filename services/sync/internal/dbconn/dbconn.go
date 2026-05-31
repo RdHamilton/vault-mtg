@@ -1,27 +1,30 @@
-// Package dbconn provides helpers for connecting to RDS PostgreSQL
-// using a password supplied at runtime via the Lambda environment.
+// Package dbconn provides helpers for connecting to RDS PostgreSQL.
 //
-// The sync Lambda authenticates to RDS with a static password fetched
-// from SSM Parameter Store at stack-update time (resolved into the
-// Lambda's DB_PASSWORD environment variable). The mtga_sync DB role
-// has no other privileges than the application-level grants required
-// to write card_ratings / cards / draft_* — there is no human
-// path through this credential and no PII flows through it.
+// The sync Lambda fetches the DB password from an SSM SecureString parameter
+// at runtime (WithDecryption=true), mirroring the vaultmtg-meta-scrape pattern
+// introduced in #177. The plaintext password never appears in the Lambda
+// configuration, CloudFormation state, or `aws lambda get-function-configuration`
+// output. See #341 and ADR-035.
 //
-// (PR #2650 left as a forensic record of the IAM-auth attempt; see
-// ADR-035 for the architectural decision context.)
+// (PR #2650 is the forensic record of the prior IAM-auth attempt.)
 package dbconn
 
-import "fmt"
+import (
+	"context"
+	"fmt"
 
-// Config holds the RDS connection parameters read from environment variables.
-// All fields are required.
+	"github.com/aws/aws-sdk-go-v2/aws"
+	"github.com/aws/aws-sdk-go-v2/service/ssm"
+)
+
+// Config holds the RDS connection parameters. Password is supplied separately
+// (fetched from SSM SecureString at runtime) rather than read from the environment.
 type Config struct {
 	Host     string // DB_HOST
 	Port     string // DB_PORT (default "5432")
 	DBName   string // DB_NAME
 	User     string // DB_USER
-	Password string // DB_PASSWORD
+	Password string // fetched from SSM SecureString at runtime
 }
 
 // Validate returns an error if any required field is empty.
@@ -39,7 +42,7 @@ func (c Config) Validate() error {
 	}
 
 	if c.Password == "" {
-		return fmt.Errorf("DB_PASSWORD is required")
+		return fmt.Errorf("DB password is required")
 	}
 
 	return nil
@@ -70,4 +73,31 @@ func BuildPasswordDSN(cfg Config) (string, error) {
 		"host=%s port=%s user=%s password=%s dbname=%s sslmode=require",
 		cfg.Host, cfg.port(), cfg.User, cfg.Password, cfg.DBName,
 	), nil
+}
+
+// ssmGetter is the subset of the SSM client used to read a parameter. *ssm.Client
+// satisfies it; tests inject a stub.
+type ssmGetter interface {
+	GetParameter(ctx context.Context, params *ssm.GetParameterInput, optFns ...func(*ssm.Options)) (*ssm.GetParameterOutput, error)
+}
+
+// FetchSecureString reads and decrypts a SecureString SSM parameter. It returns
+// an error when the path is empty or the parameter has no value. WithDecryption
+// is always true, so the role must hold ssm:GetParameter on the param plus
+// kms:Decrypt on its CMK.
+func FetchSecureString(ctx context.Context, client ssmGetter, path string) (string, error) {
+	if path == "" {
+		return "", fmt.Errorf("DB_PASSWORD_SSM_PATH is required")
+	}
+	out, err := client.GetParameter(ctx, &ssm.GetParameterInput{
+		Name:           aws.String(path),
+		WithDecryption: aws.Bool(true),
+	})
+	if err != nil {
+		return "", fmt.Errorf("get SSM parameter %q: %w", path, err)
+	}
+	if out.Parameter == nil || out.Parameter.Value == nil || *out.Parameter.Value == "" {
+		return "", fmt.Errorf("SSM parameter %q has no value", path)
+	}
+	return *out.Parameter.Value, nil
 }
