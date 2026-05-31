@@ -9,45 +9,6 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// TestParseDraftPackFromFile reads testdata/draft_pack.log and verifies the
-// parsed DraftPackPayload has the expected structure.
-func TestParseDraftPackFromFile(t *testing.T) {
-	raw, err := os.ReadFile("testdata/draft_pack.log")
-	require.NoError(t, err)
-
-	entry := &LogEntry{Raw: string(raw)}
-	entry.parseJSON()
-	require.True(t, entry.IsJSON, "draft_pack.log must parse as JSON")
-
-	p, err := ParseDraftPack(entry)
-	require.NoError(t, err)
-	require.NotNil(t, p)
-
-	assert.Equal(t, "PremierDraft_BLB", p.CourseName)
-	assert.Equal(t, 1, p.DraftPack.SelfPick)
-	assert.Equal(t, []int{12345, 67890, 11111, 22222, 33333}, p.DraftPack.PackCards)
-}
-
-// TestParseDraftPickFromFile reads testdata/draft_pick.log and verifies the
-// parsed DraftPickPayload has the expected structure.
-func TestParseDraftPickFromFile(t *testing.T) {
-	raw, err := os.ReadFile("testdata/draft_pick.log")
-	require.NoError(t, err)
-
-	entry := &LogEntry{Raw: string(raw)}
-	entry.parseJSON()
-	require.True(t, entry.IsJSON, "draft_pick.log must parse as JSON")
-
-	p, err := ParseDraftPick(entry)
-	require.NoError(t, err)
-	require.NotNil(t, p)
-
-	assert.Equal(t, "PremierDraft_BLB", p.CourseName)
-	assert.Equal(t, []int{12345}, p.PickedCards)
-	assert.Equal(t, 0, p.PackNumber)
-	assert.Equal(t, 3, p.PickNumber)
-}
-
 // TestParseMatchCompletedFromFile reads testdata/match_completed.log and verifies
 // the parsed MatchCompletedPayload with the local player ID resolved.
 //

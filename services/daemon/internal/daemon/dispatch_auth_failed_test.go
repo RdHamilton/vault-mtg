@@ -251,7 +251,7 @@ func captureAuthFailedViaRefresher(t *testing.T, reauthErr error, wantReason str
 	// Trigger the BFF send (returns 401) → keychainRefresherAdapter fires.
 	entry := &logreader.LogEntry{
 		IsJSON: true,
-		JSON:   map[string]interface{}{"draftPack": []interface{}{"card1"}},
+		JSON:   map[string]interface{}{"CurrentModule": "BotDraft", "Payload": `{"EventName":"QuickDraft_SOS_20260526","PackNumber":0,"PickNumber":0,"DraftPack":["102704"]}`},
 	}
 
 	if err := svc.handleEntry(context.Background(), entry); err != nil {

@@ -12,8 +12,10 @@
 //
 // The daemon currently classifies and forwards the following event types:
 //
-//   - draft.pack    — BotDraft_DraftPack / HumanDraft_Notify; key: "draftPack"
-//   - draft.pick    — BotDraft_DraftPickResp; key: "pickedCards"
+//   - draft.pack    — Premier Draft.Notify (draftId+PackCards, #338) OR BotDraft
+//     status pack (CurrentModule=BotDraft + stringified Payload, #337)
+//   - draft.pick    — Premier EventPlayerDraftMakePick (request w/ DraftId, #338)
+//     OR BotDraftDraftPick (request w/ PickInfo, #337)
 //   - draft.started — scene transition to "Draft"; key: "toSceneName"=="Draft"
 //   - draft.ended   — scene transition away from "Draft"; key: "fromSceneName"=="Draft"
 //   - match.completed — CurrentEventState == "MatchCompleted"

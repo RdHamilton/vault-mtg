@@ -33,8 +33,8 @@ func isRecognized(entry *LogEntry) bool {
 		IsMatchCompletedEntry(entry) ||
 		IsCollectionEntry(entry) ||
 		isAuthenticateEntry(entry) ||
-		isDraftPackEntry(entry) ||
-		isDraftPickEntry(entry) ||
+		isBotDraftPackEntry(entry) ||
+		isBotDraftPickEntry(entry) ||
 		isPremierDraftNotifyEntry(entry) ||
 		isPremierDraftMakePickEntry(entry)
 }
@@ -49,22 +49,28 @@ func isAuthenticateEntry(entry *LogEntry) bool {
 	return ok
 }
 
-// isDraftPackEntry returns true when the entry carries a "draftPack" key.
-func isDraftPackEntry(entry *LogEntry) bool {
+// isBotDraftPackEntry returns true for a BotDraft (QuickDraft) pack line —
+// CurrentModule="BotDraft" with a stringified Payload envelope (#337).
+func isBotDraftPackEntry(entry *LogEntry) bool {
 	if entry == nil || !entry.IsJSON {
 		return false
 	}
-	_, ok := entry.JSON["draftPack"]
-	return ok
+	mod, ok := entry.JSON["CurrentModule"].(string)
+	if !ok || mod != "BotDraft" {
+		return false
+	}
+	_, hasPayload := entry.JSON["Payload"].(string)
+	return hasPayload
 }
 
-// isDraftPickEntry returns true when the entry carries a "pickedCards" key.
-func isDraftPickEntry(entry *LogEntry) bool {
+// isBotDraftPickEntry returns true for a BotDraftDraftPick line — a "request"
+// JSON string carrying a PickInfo block (#337).
+func isBotDraftPickEntry(entry *LogEntry) bool {
 	if entry == nil || !entry.IsJSON {
 		return false
 	}
-	_, ok := entry.JSON["pickedCards"]
-	return ok
+	req, ok := entry.JSON["request"].(string)
+	return ok && strings.Contains(req, `"PickInfo"`)
 }
 
 // isPremierDraftNotifyEntry returns true for a Premier Draft.Notify line

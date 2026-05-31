@@ -274,7 +274,7 @@ func TestDaemonBinarySmoke(t *testing.T) {
 	// The daemon's poller reads newline-terminated JSON from the log file.
 	// This entry matches the structure expected by classifyEntry → handleEntry.
 
-	draftPackLine := `{"draftPack":{"PackCards":[11001,22002,33003],"SelfPick":1},"CourseName":"PremierDraft_BLB"}` + "\n"
+	draftPackLine := `{"CurrentModule":"BotDraft","Payload":"{\"EventName\":\"QuickDraft_SOS_20260526\",\"PackNumber\":0,\"PickNumber\":0,\"DraftPack\":[\"11001\",\"22002\",\"33003\"]}"}` + "\n"
 	logF, err = os.OpenFile(logPath, os.O_APPEND|os.O_WRONLY, 0o644)
 	require.NoError(t, err)
 	_, err = logF.WriteString(draftPackLine)
@@ -484,7 +484,7 @@ func TestDaemonReinstallStaleAuthSmoke(t *testing.T) {
 	// Write a heartbeat-triggering log entry so the daemon has something to
 	// dispatch. In practice the heartbeat ticker (30 s) also fires — but we
 	// accelerate by writing a draft.pack entry that triggers immediate dispatch.
-	draftPackLine := `{"draftPack":{"PackCards":[11001,22002],"SelfPick":1},"CourseName":"PremierDraft_BLB"}` + "\n"
+	draftPackLine := `{"CurrentModule":"BotDraft","Payload":"{\"EventName\":\"QuickDraft_SOS_20260526\",\"PackNumber\":0,\"PickNumber\":0,\"DraftPack\":[\"11001\",\"22002\"]}"}` + "\n"
 	logF, err = os.OpenFile(logPath, os.O_APPEND|os.O_WRONLY, 0o644)
 	require.NoError(t, err)
 	_, err = logF.WriteString(draftPackLine)
