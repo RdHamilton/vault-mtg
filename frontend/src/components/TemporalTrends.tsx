@@ -123,11 +123,11 @@ const TemporalTrends: React.FC<TemporalTrendsProps> = ({
   const getDirectionColor = (direction: string): string => {
     switch (direction) {
       case 'improving':
-        return 'var(--color-success)';
+        return 'var(--success)';
       case 'declining':
-        return 'var(--color-error)';
+        return 'var(--danger)';
       default:
-        return 'var(--color-text-secondary)';
+        return 'var(--fg-secondary)';
     }
   };
 

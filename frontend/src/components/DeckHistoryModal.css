@@ -1,5 +1,5 @@
 .deck-history-modal {
-  background: var(--surface-color);
+  background: var(--bg-raised);
   border-radius: 8px;
   width: 90%;
   max-width: 900px;
@@ -13,7 +13,7 @@
   justify-content: space-between;
   align-items: center;
   padding: 16px 20px;
-  border-bottom: 1px solid var(--border-color);
+  border-bottom: 1px solid var(--border);
 }
 
 .deck-history-modal .modal-header h2 {
@@ -34,7 +34,7 @@
   justify-content: flex-end;
   gap: 12px;
   padding: 16px 20px;
-  border-top: 1px solid var(--border-color);
+  border-top: 1px solid var(--border);
 }
 
 .deck-history-modal .close-button {
@@ -42,12 +42,12 @@
   border: none;
   font-size: 1.5rem;
   cursor: pointer;
-  color: var(--text-secondary);
+  color: var(--fg-secondary);
   padding: 0 4px;
 }
 
 .deck-history-modal .close-button:hover {
-  color: var(--text-primary);
+  color: var(--fg);
 }
 
 /* Layout */
@@ -60,7 +60,7 @@
 
 /* Version list */
 .deck-history-modal .version-list {
-  border-right: 1px solid var(--border-color);
+  border-right: 1px solid var(--border);
   padding-right: 20px;
   overflow-y: auto;
   max-height: 500px;
@@ -70,7 +70,7 @@
   margin: 0 0 12px 0;
   font-size: 0.875rem;
   font-weight: 600;
-  color: var(--text-secondary);
+  color: var(--fg-secondary);
   text-transform: uppercase;
 }
 
@@ -79,18 +79,18 @@
   border-radius: 6px;
   cursor: pointer;
   margin-bottom: 8px;
-  background: var(--background-color);
+  background: var(--bg);
   border: 1px solid transparent;
   transition: all 0.15s ease;
 }
 
 .deck-history-modal .version-item:hover {
-  border-color: var(--border-color);
+  border-color: var(--border);
 }
 
 .deck-history-modal .version-item.selected {
-  border-color: var(--accent-color);
-  background: rgba(var(--accent-rgb), 0.1);
+  border-color: var(--accent);
+  background: var(--accent-dim);
 }
 
 .deck-history-modal .version-header {
@@ -108,19 +108,19 @@
 .deck-history-modal .current-badge {
   font-size: 0.7rem;
   font-weight: 500;
-  color: var(--accent-color);
+  color: var(--accent);
 }
 
 .deck-history-modal .version-name {
   font-size: 0.75rem;
-  color: var(--text-secondary);
+  color: var(--fg-secondary);
   cursor: pointer;
   padding: 2px 6px;
   border-radius: 4px;
 }
 
 .deck-history-modal .version-name:hover {
-  background: var(--surface-color);
+  background: var(--bg-raised);
 }
 
 .deck-history-modal .name-edit {
@@ -131,17 +131,17 @@
 .deck-history-modal .name-edit input {
   padding: 2px 6px;
   font-size: 0.75rem;
-  border: 1px solid var(--border-color);
+  border: 1px solid var(--border);
   border-radius: 4px;
-  background: var(--background-color);
-  color: var(--text-primary);
+  background: var(--bg);
+  color: var(--fg);
   width: 100px;
 }
 
 .deck-history-modal .name-edit button {
   padding: 2px 8px;
   font-size: 0.75rem;
-  background: var(--accent-color);
+  background: var(--accent);
   color: white;
   border: none;
   border-radius: 4px;
@@ -158,7 +158,7 @@
 .deck-history-modal .version-date,
 .deck-history-modal .version-stats {
   font-size: 0.75rem;
-  color: var(--text-secondary);
+  color: var(--fg-secondary);
   line-height: 1.3;
 }
 
@@ -181,7 +181,7 @@
 
 .deck-history-modal .restore-button {
   padding: 8px 16px;
-  background: var(--accent-color);
+  background: var(--accent);
   color: white;
   border: none;
   border-radius: 6px;
@@ -206,7 +206,7 @@
 }
 
 .deck-history-modal .stat {
-  background: var(--background-color);
+  background: var(--bg);
   padding: 12px 16px;
   border-radius: 6px;
   text-align: center;
@@ -215,7 +215,7 @@
 .deck-history-modal .stat-label {
   display: block;
   font-size: 0.75rem;
-  color: var(--text-secondary);
+  color: var(--fg-secondary);
   margin-bottom: 4px;
   text-transform: uppercase;
   letter-spacing: 0.5px;
@@ -231,7 +231,7 @@
 .deck-history-modal .version-diff h4 {
   margin: 0 0 12px 0;
   font-size: 0.875rem;
-  color: var(--text-secondary);
+  color: var(--fg-secondary);
 }
 
 .deck-history-modal .diff-section {
@@ -255,28 +255,28 @@
 }
 
 .deck-history-modal .diff-section.added h5 {
-  color: var(--win-color);
+  color: var(--success);
 }
 
 .deck-history-modal .diff-section.added li {
-  color: var(--win-color);
+  color: var(--success);
 }
 
 .deck-history-modal .diff-section.removed h5 {
-  color: var(--loss-color);
+  color: var(--danger);
 }
 
 .deck-history-modal .diff-section.removed li {
-  color: var(--loss-color);
+  color: var(--danger);
 }
 
 .deck-history-modal .diff-section.changed h5 {
-  color: var(--text-secondary);
+  color: var(--fg-secondary);
 }
 
 .deck-history-modal .no-changes,
 .deck-history-modal .no-diff {
-  color: var(--text-secondary);
+  color: var(--fg-secondary);
   font-style: italic;
   font-size: 0.875rem;
 }
@@ -285,7 +285,7 @@
 .deck-history-modal .empty-state {
   text-align: center;
   padding: 40px;
-  color: var(--text-secondary);
+  color: var(--fg-secondary);
 }
 
 .deck-history-modal .empty-state .hint {
@@ -296,25 +296,25 @@
 /* Error */
 .deck-history-modal .error-message {
   background: rgba(244, 67, 54, 0.1);
-  border: 1px solid var(--loss-color);
+  border: 1px solid var(--danger);
   border-radius: 6px;
   padding: 16px;
-  color: var(--loss-color);
+  color: var(--danger);
 }
 
 /* Footer buttons */
 .deck-history-modal .cancel-button {
   padding: 10px 20px;
-  background: var(--background-color);
-  color: var(--text-primary);
-  border: 1px solid var(--border-color);
+  background: var(--bg);
+  color: var(--fg);
+  border: 1px solid var(--border);
   border-radius: 6px;
   cursor: pointer;
   font-weight: 500;
 }
 
 .deck-history-modal .cancel-button:hover {
-  background: var(--surface-color);
+  background: var(--bg-raised);
 }
 
 /* Responsive */
@@ -325,7 +325,7 @@
 
   .deck-history-modal .version-list {
     border-right: none;
-    border-bottom: 1px solid var(--border-color);
+    border-bottom: 1px solid var(--border);
     padding-right: 0;
     padding-bottom: 16px;
     max-height: 200px;

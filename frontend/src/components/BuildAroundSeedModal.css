@@ -14,7 +14,7 @@
 
 /* Modal container */
 .build-around-modal {
-  background: var(--bg-primary);
+  background: var(--bg);
   border-radius: 12px;
   width: 90%;
   max-width: 700px;
@@ -23,7 +23,7 @@
   display: flex;
   flex-direction: column;
   box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5);
-  border: 1px solid var(--border-color);
+  border: 1px solid var(--border);
 }
 
 /* Header */
@@ -32,13 +32,13 @@
   justify-content: space-between;
   align-items: center;
   padding: 16px 20px;
-  border-bottom: 1px solid var(--border-color);
+  border-bottom: 1px solid var(--border);
 }
 
 .build-around-header h2 {
   margin: 0;
   font-size: 1.5rem;
-  color: var(--text-primary);
+  color: var(--fg);
 }
 
 /* Content area */
@@ -72,7 +72,7 @@
 }
 
 .seed-search-filters .filter-label {
-  color: var(--text-secondary);
+  color: var(--fg-secondary);
   font-size: 0.8rem;
   min-width: 50px;
 }
@@ -102,23 +102,23 @@
 
 .color-filter-btn.active {
   opacity: 1;
-  border-color: var(--accent-color);
+  border-color: var(--accent);
   box-shadow: 0 0 6px rgba(99, 102, 241, 0.5);
 }
 
 .color-filter-btn.mana-w { background: #f9faf4; color: var(--border); }
 .color-filter-btn.mana-u { background: #0e68ab; color: var(--fg); }
 .color-filter-btn.mana-b { background: #150b00; color: var(--fg); border-color: var(--border); }
-.color-filter-btn.mana-b.active { border-color: var(--accent-color); }
+.color-filter-btn.mana-b.active { border-color: var(--accent); }
 .color-filter-btn.mana-r { background: var(--danger); color: var(--fg); }
 .color-filter-btn.mana-g { background: #00733e; color: var(--fg); }
 
 .type-filter-btn {
   padding: 4px 8px;
   border-radius: 4px;
-  border: 1px solid var(--border-color);
+  border: 1px solid var(--border);
   background: transparent;
-  color: var(--text-secondary);
+  color: var(--fg-secondary);
   font-size: 0.75rem;
   cursor: pointer;
   transition: all 0.15s;
@@ -126,12 +126,12 @@
 
 .type-filter-btn:hover {
   background: rgba(255, 255, 255, 0.05);
-  color: var(--text-primary);
+  color: var(--fg);
 }
 
 .type-filter-btn.active {
-  background: var(--accent-color);
-  border-color: var(--accent-color);
+  background: var(--accent);
+  border-color: var(--accent);
   color: var(--fg);
 }
 
@@ -144,23 +144,23 @@
   flex: 1;
   padding: 12px 16px;
   background: rgba(255, 255, 255, 0.05);
-  border: 1px solid var(--border-color);
+  border: 1px solid var(--border);
   border-radius: 8px;
-  color: var(--text-primary);
+  color: var(--fg);
   font-size: 1rem;
 }
 
 .search-input:focus {
   outline: none;
-  border-color: var(--accent-color);
+  border-color: var(--accent);
 }
 
 .clear-button {
   padding: 8px 16px;
   background: rgba(255, 255, 255, 0.1);
-  border: 1px solid var(--border-color);
+  border: 1px solid var(--border);
   border-radius: 6px;
-  color: var(--text-secondary);
+  color: var(--fg-secondary);
   cursor: pointer;
 }
 
@@ -170,7 +170,7 @@
 
 .searching-indicator {
   padding: 8px;
-  color: var(--text-secondary);
+  color: var(--fg-secondary);
   font-size: 0.875rem;
 }
 
@@ -180,8 +180,8 @@
   top: 100%;
   left: 0;
   right: 0;
-  background: var(--bg-secondary);
-  border: 1px solid var(--border-color);
+  background: var(--bg-raised);
+  border: 1px solid var(--border);
   border-radius: 8px;
   margin-top: 4px;
   max-height: 300px;
@@ -204,11 +204,11 @@
 
 .result-name {
   flex: 1;
-  color: var(--text-primary);
+  color: var(--fg);
 }
 
 .result-type {
-  color: var(--text-secondary);
+  color: var(--fg-secondary);
   font-size: 0.8rem;
 }
 
@@ -266,7 +266,7 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  color: var(--text-secondary);
+  color: var(--fg-secondary);
   text-align: center;
   padding: 12px;
   font-size: 0.9rem;
@@ -274,11 +274,11 @@
 
 .selected-card-info h3 {
   margin: 0 0 8px 0;
-  color: var(--text-primary);
+  color: var(--fg);
 }
 
 .selected-type {
-  color: var(--text-secondary);
+  color: var(--fg-secondary);
   margin: 0 0 8px 0;
 }
 
@@ -291,7 +291,7 @@
   display: flex;
   align-items: center;
   gap: 8px;
-  color: var(--text-secondary);
+  color: var(--fg-secondary);
   cursor: pointer;
 }
 
@@ -302,7 +302,7 @@
 
 .build-button {
   padding: 12px 24px;
-  background: var(--accent-color);
+  background: var(--accent);
   border: none;
   border-radius: 8px;
   color: white;
@@ -325,13 +325,13 @@
 .build-around-error {
   text-align: center;
   padding: 40px;
-  color: var(--error-color);
+  color: var(--danger);
 }
 
 .build-around-error button {
   margin-top: 16px;
   padding: 8px 16px;
-  background: var(--accent-color);
+  background: var(--accent);
   color: white;
   border: none;
   border-radius: 6px;
@@ -361,7 +361,7 @@
 
 .summary-header h3 {
   margin: 0;
-  color: var(--text-primary);
+  color: var(--fg);
 }
 
 .summary-stats {
@@ -379,12 +379,12 @@
 .stat-value {
   font-size: 1.5rem;
   font-weight: bold;
-  color: var(--text-primary);
+  color: var(--fg);
 }
 
 .stat-label {
   font-size: 0.75rem;
-  color: var(--text-secondary);
+  color: var(--fg-secondary);
 }
 
 .themes-section {
@@ -397,7 +397,7 @@
 .theme-tag {
   padding: 4px 10px;
   background: rgba(34, 197, 94, 0.15);
-  color: var(--success-color);
+  color: var(--success);
   border-radius: 4px;
   font-size: 0.8rem;
 }
@@ -405,7 +405,7 @@
 .keyword-tag {
   padding: 4px 10px;
   background: rgba(99, 102, 241, 0.15);
-  color: var(--accent-color);
+  color: var(--accent);
   border-radius: 4px;
   font-size: 0.8rem;
 }
@@ -416,11 +416,11 @@
   gap: 8px;
   margin-top: 16px;
   padding-top: 12px;
-  border-top: 1px solid var(--border-color);
+  border-top: 1px solid var(--border);
 }
 
 .cost-label {
-  color: var(--text-secondary);
+  color: var(--fg-secondary);
   font-size: 0.875rem;
 }
 
@@ -451,10 +451,10 @@
 
 .card-category h4 {
   margin: 0 0 12px 0;
-  color: var(--text-secondary);
+  color: var(--fg-secondary);
   font-size: 0.875rem;
   padding-bottom: 8px;
-  border-bottom: 1px solid var(--border-color);
+  border-bottom: 1px solid var(--border);
 }
 
 .card-list {
@@ -476,17 +476,17 @@
 
 .suggestion-card .card-name {
   flex: 1;
-  color: var(--text-primary);
+  color: var(--fg);
   font-size: 0.85rem;
 }
 
 .suggestion-card .card-mana {
-  color: var(--text-secondary);
+  color: var(--fg-secondary);
   font-size: 0.75rem;
 }
 
 .land-card .land-quantity {
-  color: var(--accent-color);
+  color: var(--accent);
   font-weight: 600;
 }
 
@@ -500,12 +500,12 @@
 
 .ownership-badge.owned {
   background: rgba(34, 197, 94, 0.2);
-  color: var(--success-color);
+  color: var(--success);
 }
 
 .ownership-badge.needed {
   background: rgba(239, 68, 68, 0.2);
-  color: var(--error-color);
+  color: var(--danger);
 }
 
 /* Action Buttons */
@@ -513,7 +513,7 @@
   display: flex;
   gap: 12px;
   padding-top: 16px;
-  border-top: 1px solid var(--border-color);
+  border-top: 1px solid var(--border);
 }
 
 .action-btn {
@@ -532,7 +532,7 @@
 }
 
 .apply-btn {
-  background: var(--accent-color);
+  background: var(--accent);
   color: white;
 }
 
@@ -542,8 +542,8 @@
 
 .cancel-btn {
   background: rgba(255, 255, 255, 0.1);
-  color: var(--text-primary);
-  border: 1px solid var(--border-color);
+  color: var(--fg);
+  border: 1px solid var(--border);
 }
 
 .cancel-btn:hover:not(:disabled) {
@@ -554,7 +554,7 @@
 .build-around-modal .close-button {
   background: none;
   border: none;
-  color: var(--text-secondary);
+  color: var(--fg-secondary);
   font-size: 1.5rem;
   cursor: pointer;
   padding: 4px 8px;
@@ -564,7 +564,7 @@
 
 .build-around-modal .close-button:hover {
   background: rgba(255, 255, 255, 0.1);
-  color: var(--text-primary);
+  color: var(--fg);
 }
 
 /* Iterative Mode Styles */
@@ -585,13 +585,13 @@
 .slots-remaining {
   font-size: 1rem;
   font-weight: 600;
-  color: var(--text-primary);
+  color: var(--fg);
 }
 
 .loading-indicator {
   text-align: center;
   padding: 40px;
-  color: var(--text-secondary);
+  color: var(--fg-secondary);
 }
 
 /* Iterative Suggestions */
@@ -601,7 +601,7 @@
 
 .iterative-suggestions h3 {
   margin: 0 0 12px 0;
-  color: var(--text-secondary);
+  color: var(--fg-secondary);
   font-size: 0.9rem;
 }
 
@@ -645,13 +645,13 @@
 }
 
 .clickable-suggestion-card .suggestion-placeholder .card-name {
-  color: var(--text-primary);
+  color: var(--fg);
   font-size: 0.85rem;
   font-weight: 500;
 }
 
 .clickable-suggestion-card .suggestion-placeholder .card-mana {
-  color: var(--text-secondary);
+  color: var(--fg-secondary);
   font-size: 0.75rem;
 }
 
@@ -668,7 +668,7 @@
 }
 
 .suggestion-overlay .card-name {
-  color: var(--text-primary);
+  color: var(--fg);
   font-size: 0.75rem;
   font-weight: 500;
   white-space: nowrap;
@@ -686,7 +686,7 @@
 
 .live-deck-analysis h4 {
   margin: 0 0 12px 0;
-  color: var(--text-primary);
+  color: var(--fg);
   font-size: 1rem;
 }
 
@@ -694,7 +694,7 @@
   display: flex;
   gap: 24px;
   margin-bottom: 12px;
-  color: var(--text-secondary);
+  color: var(--fg-secondary);
   font-size: 0.9rem;
 }
 
@@ -704,13 +704,13 @@
   flex-wrap: wrap;
   align-items: center;
   gap: 8px;
-  color: var(--text-secondary);
+  color: var(--fg-secondary);
   font-size: 0.85rem;
   margin-top: 8px;
 }
 
 .curve-label {
-  color: var(--text-secondary);
+  color: var(--fg-secondary);
   font-weight: 500;
 }
 
@@ -722,7 +722,7 @@
 
 .curve-item {
   background: rgba(99, 102, 241, 0.15);
-  color: var(--accent-color);
+  color: var(--accent);
   padding: 2px 8px;
   border-radius: 4px;
   font-size: 0.8rem;
@@ -733,7 +733,7 @@
 .card-mana-cost {
   font-family: monospace;
   font-size: 0.75rem;
-  color: var(--text-secondary);
+  color: var(--fg-secondary);
   margin-left: auto;
   padding-right: 8px;
 }
@@ -748,7 +748,7 @@
 
 .land-suggestions-preview h4 {
   margin: 0 0 8px 0;
-  color: var(--text-secondary);
+  color: var(--fg-secondary);
   font-size: 0.875rem;
 }
 
@@ -762,7 +762,7 @@
   padding: 4px 10px;
   background: rgba(0, 0, 0, 0.2);
   border-radius: 4px;
-  color: var(--text-primary);
+  color: var(--fg);
   font-size: 0.8rem;
 }
 
@@ -781,7 +781,7 @@
 }
 
 .build-button.primary {
-  background: var(--accent-color);
+  background: var(--accent);
 }
 
 .build-button.primary:hover:not(:disabled) {
@@ -790,7 +790,7 @@
 
 .build-button.secondary {
   background: rgba(255, 255, 255, 0.1);
-  border: 1px solid var(--border-color);
+  border: 1px solid var(--border);
 }
 
 .build-button.secondary:hover:not(:disabled) {
@@ -809,7 +809,7 @@
 
 .current-deck-cards h4 {
   margin: 0 0 12px 0;
-  color: var(--text-primary);
+  color: var(--fg);
   font-size: 0.9rem;
 }
 
@@ -829,14 +829,14 @@
 }
 
 .deck-card-item .card-quantity {
-  color: var(--accent-color);
+  color: var(--accent);
   font-weight: 600;
   min-width: 24px;
 }
 
 .deck-card-item .card-name {
   flex: 1;
-  color: var(--text-primary);
+  color: var(--fg);
   font-size: 0.85rem;
 }
 
@@ -845,7 +845,7 @@
   height: 24px;
   border: none;
   background: rgba(239, 68, 68, 0.2);
-  color: var(--error-color);
+  color: var(--danger);
   border-radius: 4px;
   cursor: pointer;
   font-size: 1.2rem;
@@ -861,7 +861,7 @@
 /* Helper text for disabled buttons */
 .suggestions-actions .helper-text {
   margin: 8px 0 0 0;
-  color: var(--warning-color);
+  color: var(--warning);
   font-size: 0.85rem;
   text-align: center;
 }
@@ -1031,12 +1031,12 @@
 }
 
 .copy-modal {
-  background: var(--bg-primary);
+  background: var(--bg);
   border-radius: 12px;
   width: 90%;
   max-width: 400px;
   box-shadow: 0 8px 32px rgba(0, 0, 0, 0.6);
-  border: 1px solid var(--border-color);
+  border: 1px solid var(--border);
   overflow: hidden;
 }
 
@@ -1045,13 +1045,13 @@
   justify-content: space-between;
   align-items: center;
   padding: 12px 16px;
-  border-bottom: 1px solid var(--border-color);
+  border-bottom: 1px solid var(--border);
 }
 
 .copy-modal-header h3 {
   margin: 0;
   font-size: 1.1rem;
-  color: var(--text-primary);
+  color: var(--fg);
 }
 
 .copy-modal-content {
@@ -1075,13 +1075,13 @@
 
 .copy-modal-type {
   margin: 0;
-  color: var(--text-secondary);
+  color: var(--fg-secondary);
   font-size: 0.9rem;
 }
 
 .copy-modal-reasoning {
   margin: 0;
-  color: var(--text-secondary);
+  color: var(--fg-secondary);
   font-size: 0.85rem;
   font-style: italic;
 }
@@ -1108,11 +1108,11 @@
   gap: 8px;
   padding: 12px 16px;
   background: rgba(0, 0, 0, 0.2);
-  border-top: 1px solid var(--border-color);
+  border-top: 1px solid var(--border);
 }
 
 .copy-modal-label {
-  color: var(--text-secondary);
+  color: var(--fg-secondary);
   font-size: 0.9rem;
   margin-right: 8px;
 }
@@ -1120,9 +1120,9 @@
 .copy-count-btn {
   width: 48px;
   height: 40px;
-  border: 2px solid var(--border-color);
-  background: var(--bg-secondary);
-  color: var(--text-primary);
+  border: 2px solid var(--border);
+  background: var(--bg-raised);
+  color: var(--fg);
   border-radius: 8px;
   font-size: 1.1rem;
   font-weight: 600;
@@ -1131,13 +1131,13 @@
 }
 
 .copy-count-btn:hover:not(:disabled) {
-  border-color: var(--accent-color);
+  border-color: var(--accent);
   background: rgba(99, 102, 241, 0.2);
 }
 
 .copy-count-btn.primary {
-  background: var(--accent-color);
-  border-color: var(--accent-color);
+  background: var(--accent);
+  border-color: var(--accent);
 }
 
 .copy-count-btn.primary:hover:not(:disabled) {
@@ -1155,7 +1155,7 @@
   padding: 12px;
   border: none;
   background: transparent;
-  color: var(--text-secondary);
+  color: var(--fg-secondary);
   font-size: 0.9rem;
   cursor: pointer;
   transition: background 0.2s;
@@ -1272,7 +1272,7 @@
 .details-toggle {
   background: none;
   border: none;
-  color: var(--accent-color);
+  color: var(--accent);
   font-size: 0.85rem;
   cursor: pointer;
   padding: 4px 0;
@@ -1313,7 +1313,7 @@
 .modal-score-breakdown h4 {
   margin: 0 0 8px 0;
   font-size: 0.85rem;
-  color: var(--text-secondary);
+  color: var(--fg-secondary);
 }
 
 .modal-score-grid {
@@ -1332,19 +1332,19 @@
 
 .modal-score-name {
   font-size: 0.8rem;
-  color: var(--text-secondary);
+  color: var(--fg-secondary);
 }
 
 .modal-score-percent {
   font-size: 0.8rem;
   font-weight: 600;
-  color: var(--accent-color);
+  color: var(--accent);
 }
 
 .modal-synergy-details h4 {
   margin: 0 0 8px 0;
   font-size: 0.85rem;
-  color: var(--text-secondary);
+  color: var(--fg-secondary);
 }
 
 .modal-synergy-list {
@@ -1382,12 +1382,12 @@
 .modal-synergy-item .synergy-name {
   font-size: 0.85rem;
   font-weight: 600;
-  color: var(--text-primary);
+  color: var(--fg);
 }
 
 .modal-synergy-item .synergy-desc {
   font-size: 0.75rem;
-  color: var(--text-secondary);
+  color: var(--fg-secondary);
   margin-top: 2px;
 }
 
@@ -1413,7 +1413,7 @@
 
 .seed-card-preview h3 {
   margin: 0;
-  color: var(--text-primary);
+  color: var(--fg);
   font-size: 1.1rem;
 }
 
@@ -1431,7 +1431,7 @@
 
 .archetype-instructions {
   margin: 0;
-  color: var(--text-secondary);
+  color: var(--fg-secondary);
   text-align: center;
   font-size: 0.95rem;
 }
@@ -1454,7 +1454,7 @@
   gap: 16px;
   padding: 16px;
   background: rgba(255, 255, 255, 0.03);
-  border: 2px solid var(--border-color);
+  border: 2px solid var(--border);
   border-radius: 12px;
   cursor: pointer;
   transition: all 0.2s;
@@ -1463,7 +1463,7 @@
 
 .archetype-btn:hover {
   background: rgba(255, 255, 255, 0.06);
-  border-color: var(--accent-color);
+  border-color: var(--accent);
   transform: translateY(-2px);
 }
 
@@ -1518,13 +1518,13 @@
 
 .archetype-info h4 {
   margin: 0 0 4px 0;
-  color: var(--text-primary);
+  color: var(--fg);
   font-size: 1.1rem;
 }
 
 .archetype-info p {
   margin: 0 0 8px 0;
-  color: var(--text-secondary);
+  color: var(--fg-secondary);
   font-size: 0.85rem;
   line-height: 1.4;
 }
@@ -1536,7 +1536,7 @@
 
 .archetype-stats span {
   font-size: 0.75rem;
-  color: var(--accent-color);
+  color: var(--accent);
   background: rgba(99, 102, 241, 0.1);
   padding: 2px 8px;
   border-radius: 4px;
@@ -1548,7 +1548,7 @@
   justify-content: center;
   gap: 16px;
   padding-top: 12px;
-  border-top: 1px solid var(--border-color);
+  border-top: 1px solid var(--border);
 }
 
 /* Generated Deck Mode */
@@ -1574,13 +1574,13 @@
 
 .strategy-header h3 {
   margin: 0;
-  color: var(--text-primary);
+  color: var(--fg);
   font-size: 1.2rem;
 }
 
 .strategy-summary {
   margin: 0 0 16px 0;
-  color: var(--text-primary);
+  color: var(--fg);
   font-size: 1rem;
   font-weight: 500;
   line-height: 1.5;
@@ -1600,7 +1600,7 @@
 
 .strategy-section h4 {
   margin: 0 0 8px 0;
-  color: var(--accent-color);
+  color: var(--accent);
   font-size: 0.85rem;
   text-transform: uppercase;
   letter-spacing: 0.5px;
@@ -1608,7 +1608,7 @@
 
 .strategy-section p {
   margin: 0;
-  color: var(--text-secondary);
+  color: var(--fg-secondary);
   font-size: 0.9rem;
   line-height: 1.4;
 }
@@ -1637,7 +1637,7 @@
 .pros-cons-list li {
   margin: 4px 0;
   font-size: 0.85rem;
-  color: var(--text-secondary);
+  color: var(--fg-secondary);
   position: relative;
 }
 
@@ -1676,13 +1676,13 @@
 
 /* Curve Visualization */
 .curve-visualization {
-  border-top: 1px solid var(--border-color);
+  border-top: 1px solid var(--border);
   padding-top: 16px;
 }
 
 .curve-visualization h4 {
   margin: 0 0 12px 0;
-  color: var(--text-secondary);
+  color: var(--fg-secondary);
   font-size: 0.875rem;
 }
 
@@ -1704,7 +1704,7 @@
 
 .curve-bar-wrapper .curve-bar {
   width: 32px;
-  background: linear-gradient(to top, var(--accent-color), var(--vault-indigo-light));
+  background: linear-gradient(to top, var(--accent), var(--vault-indigo-light));
   border-radius: 4px 4px 0 0;
   display: flex;
   align-items: flex-start;
@@ -1721,7 +1721,7 @@
 }
 
 .curve-cmc {
-  color: var(--text-secondary);
+  color: var(--fg-secondary);
   font-size: 0.75rem;
   font-weight: 600;
 }
@@ -1742,10 +1742,10 @@
 
 .deck-list-section h4 {
   margin: 0 0 12px 0;
-  color: var(--text-secondary);
+  color: var(--fg-secondary);
   font-size: 0.875rem;
   padding-bottom: 8px;
-  border-bottom: 1px solid var(--border-color);
+  border-bottom: 1px solid var(--border);
 }
 
 .deck-card-list {
@@ -1766,19 +1766,19 @@
 }
 
 .deck-list-card .card-quantity {
-  color: var(--accent-color);
+  color: var(--accent);
   font-weight: 600;
   min-width: 24px;
 }
 
 .deck-list-card .card-name {
   flex: 1;
-  color: var(--text-primary);
+  color: var(--fg);
   font-size: 0.85rem;
 }
 
 .deck-list-card .card-mana {
-  color: var(--text-secondary);
+  color: var(--fg-secondary);
   font-size: 0.75rem;
   font-family: monospace;
 }
@@ -1790,8 +1790,8 @@
 /* Secondary and Tertiary Button Styles */
 .action-btn.secondary-btn {
   background: rgba(99, 102, 241, 0.15);
-  color: var(--accent-color);
-  border: 1px solid var(--accent-color);
+  color: var(--accent);
+  border: 1px solid var(--accent);
 }
 
 .action-btn.secondary-btn:hover:not(:disabled) {
@@ -1800,19 +1800,19 @@
 
 .build-button.tertiary {
   background: rgba(255, 255, 255, 0.05);
-  border: 1px solid var(--border-color);
-  color: var(--text-secondary);
+  border: 1px solid var(--border);
+  color: var(--fg-secondary);
 }
 
 .build-button.tertiary:hover:not(:disabled) {
   background: rgba(255, 255, 255, 0.1);
-  color: var(--text-primary);
+  color: var(--fg);
 }
 
 /* Iterative Loading Container - Issue #805 */
 .iterative-loading-container {
   padding: 16px;
-  background: var(--bg-secondary);
+  background: var(--bg-raised);
   border-radius: 8px;
   margin: 16px 0;
 }
@@ -1831,7 +1831,7 @@
 
 .deck-summary-section h3 {
   margin: 0 0 12px 0;
-  color: var(--text-primary);
+  color: var(--fg);
   font-size: 1.1rem;
 }
 
@@ -1851,13 +1851,13 @@
   border: 1px solid rgba(99, 102, 241, 0.3);
   border-radius: 12px;
   font-size: 0.8rem;
-  color: var(--text-primary);
+  color: var(--fg);
 }
 
 .deck-card-chip.more {
   background: rgba(255, 255, 255, 0.05);
   border-color: rgba(255, 255, 255, 0.1);
-  color: var(--text-secondary);
+  color: var(--fg-secondary);
 }
 
 .mode-selection-options {
@@ -1866,7 +1866,7 @@
 
 .mode-instructions {
   margin: 0 0 16px 0;
-  color: var(--text-secondary);
+  color: var(--fg-secondary);
   font-size: 0.95rem;
 }
 
@@ -1882,7 +1882,7 @@
   gap: 16px;
   padding: 16px 20px;
   background: rgba(255, 255, 255, 0.03);
-  border: 1px solid var(--border-color);
+  border: 1px solid var(--border);
   border-radius: 10px;
   cursor: pointer;
   transition: all 0.2s;
@@ -1891,7 +1891,7 @@
 
 .mode-btn:hover {
   background: rgba(255, 255, 255, 0.06);
-  border-color: var(--accent-color);
+  border-color: var(--accent);
 }
 
 .mode-btn.quick-generate:hover {
@@ -1909,13 +1909,13 @@
 
 .mode-info h4 {
   margin: 0 0 6px 0;
-  color: var(--text-primary);
+  color: var(--fg);
   font-size: 1rem;
 }
 
 .mode-info p {
   margin: 0;
-  color: var(--text-secondary);
+  color: var(--fg-secondary);
   font-size: 0.85rem;
   line-height: 1.4;
 }
@@ -1923,5 +1923,5 @@
 .mode-options-footer {
   margin-top: 20px;
   padding-top: 16px;
-  border-top: 1px solid var(--border-color);
+  border-top: 1px solid var(--border);
 }

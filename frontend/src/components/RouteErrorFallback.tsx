@@ -27,7 +27,7 @@ export function RouteErrorFallback() {
         textAlign: 'center',
       }}
     >
-      <p style={{ fontSize: '1rem', color: 'var(--color-text-secondary, #9ca3af)' }}>
+      <p style={{ fontSize: '1rem', color: 'var(--fg-secondary, #9ca3af)' }}>
         This page encountered an error.
       </p>
       <button
@@ -35,9 +35,9 @@ export function RouteErrorFallback() {
         style={{
           padding: '0.5rem 1.25rem',
           borderRadius: '6px',
-          border: '1px solid var(--color-border, #374151)',
-          background: 'var(--color-surface, #1f2937)',
-          color: 'var(--color-text, #f9fafb)',
+          border: '1px solid var(--border, #374151)',
+          background: 'var(--bg-raised, #1f2937)',
+          color: 'var(--fg, #f9fafb)',
           cursor: 'pointer',
           fontSize: '0.875rem',
         }}

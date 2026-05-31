@@ -97,7 +97,7 @@
 .tab.active {
   color: var(--accent);
   border-bottom-color: var(--accent);
-  background-color: rgba(var(--accent-rgb), 0.1);
+  background-color: var(--accent-dim);
   font-weight: 600;
 }
 

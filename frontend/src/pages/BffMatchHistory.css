@@ -17,12 +17,12 @@
 .bff-match-history-table-wrapper td {
   padding: 0.6rem 0.75rem;
   text-align: left;
-  border-bottom: 1px solid var(--border-color);
+  border-bottom: 1px solid var(--border);
 }
 
 .bff-match-history-table-wrapper th {
   font-weight: 600;
-  color: var(--text-secondary);
+  color: var(--fg-secondary);
   text-transform: uppercase;
   font-size: 0.75rem;
   letter-spacing: 0.05em;
@@ -61,6 +61,6 @@
 
 .error-state {
   padding: 2rem 1.5rem;
-  color: var(--color-error);
+  color: var(--danger);
   text-align: center;
 }

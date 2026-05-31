@@ -12,7 +12,7 @@
 }
 
 .match-notes-modal {
-  background: var(--card-bg);
+  background: var(--bg-raised);
   border-radius: 12px;
   width: 100%;
   max-width: 500px;
@@ -35,13 +35,13 @@
   margin: 0;
   font-size: 1.1rem;
   font-weight: 600;
-  color: var(--text-primary);
+  color: var(--fg);
 }
 
 .modal-header .close-button {
   background: transparent;
   border: none;
-  color: var(--text-secondary);
+  color: var(--fg-secondary);
   font-size: 1.25rem;
   cursor: pointer;
   padding: 4px 8px;
@@ -49,7 +49,7 @@
 }
 
 .modal-header .close-button:hover {
-  color: var(--text-primary);
+  color: var(--fg);
   background: rgba(255, 255, 255, 0.1);
 }
 
@@ -60,7 +60,7 @@
   justify-content: center;
   padding: 48px;
   gap: 12px;
-  color: var(--text-secondary);
+  color: var(--fg-secondary);
 }
 
 .modal-loading .loading-spinner {
@@ -101,7 +101,7 @@
   display: block;
   font-size: 0.875rem;
   font-weight: 500;
-  color: var(--text-secondary);
+  color: var(--fg-secondary);
   margin-bottom: 8px;
 }
 
@@ -140,7 +140,7 @@
 
 .rating-hint {
   font-size: 0.75rem;
-  color: var(--text-secondary);
+  color: var(--fg-secondary);
   font-style: italic;
 }
 
@@ -152,7 +152,7 @@
   display: block;
   font-size: 0.875rem;
   font-weight: 500;
-  color: var(--text-secondary);
+  color: var(--fg-secondary);
   margin-bottom: 8px;
 }
 
@@ -167,7 +167,7 @@
   border: 1px solid rgba(255, 255, 255, 0.1);
   border-radius: 16px;
   padding: 4px 12px;
-  color: var(--text-primary);
+  color: var(--fg);
   font-size: 0.75rem;
   cursor: pointer;
   transition: all 0.15s ease;
@@ -187,7 +187,7 @@
   display: block;
   font-size: 0.875rem;
   font-weight: 500;
-  color: var(--text-secondary);
+  color: var(--fg-secondary);
   margin-bottom: 8px;
 }
 
@@ -197,7 +197,7 @@
   border: 1px solid rgba(255, 255, 255, 0.1);
   border-radius: 6px;
   padding: 12px;
-  color: var(--text-primary);
+  color: var(--fg);
   font-size: 0.875rem;
   resize: vertical;
   min-height: 120px;
@@ -225,7 +225,7 @@
 .modal-actions .cancel-btn {
   background: transparent;
   border: 1px solid rgba(255, 255, 255, 0.2);
-  color: var(--text-secondary);
+  color: var(--fg-secondary);
   padding: 8px 20px;
   border-radius: 6px;
   cursor: pointer;
