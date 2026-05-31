@@ -11,6 +11,7 @@ import {
   ApiKeySection,
   UserProfileSection,
   ConnectedDevicesSection,
+  CopyDiagnosticsSection,
 } from '../components/settings/sections';
 import { SettingsAccordion } from '../components/settings/SettingsAccordion';
 import type { SettingsAccordionItem } from '../components/settings/SettingsAccordion';
@@ -229,6 +230,12 @@ const Settings = () => {
             }}
           />
         ),
+      },
+      {
+        id: 'copy-diagnostics',
+        label: 'Copy Diagnostics',
+        icon: '📋',
+        content: <CopyDiagnosticsSection />,
       },
       {
         id: 'ml-recommendations',

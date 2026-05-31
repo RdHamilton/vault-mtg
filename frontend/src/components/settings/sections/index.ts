@@ -32,3 +32,6 @@ export { UserProfileSection } from './UserProfileSection';
 export type { UserProfileSectionProps, UserProfileData } from './UserProfileSection';
 
 export { ConnectedDevicesSection } from './ConnectedDevicesSection';
+
+export { CopyDiagnosticsSection } from './CopyDiagnosticsSection';
+export type { CopyDiagnosticsSectionProps } from './CopyDiagnosticsSection';
