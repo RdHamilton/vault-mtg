@@ -489,6 +489,72 @@ func (s *Service) RefreshAll(ctx context.Context, format string) (*AggregatedMet
 	return meta, nil
 }
 
+// ArchetypeCardList pairs an archetype's natural key (Name + Format) with the
+// mainboard/sideboard card list scraped for it. #177's Lambda handler consumes
+// this to wire store.UpsertArchetypeCards: it looks up the archetype id via
+// store.ArchetypeIDByKey(Name, Format) and upserts the Cards under that id.
+//
+// This is the card-list seam that #176/#175 deferred to #177. The Service owns
+// the scrape-to-card mapping (it has the *MetaDeck data); the handler owns the
+// id-lookup + child-table write (it has the concrete *store.MetaStore).
+type ArchetypeCardList struct {
+	Name   string
+	Format string
+	Cards  []store.ArchetypeCard
+}
+
+// CardListsFromMeta derives the per-archetype card lists from an already
+// aggregated meta result. It maps each MTGGoldfish top deck's mainboard and
+// sideboard entries to store.ArchetypeCard rows, keyed by the deck's archetype
+// name and the format. Decks with no card list are skipped (an empty card list
+// is never written — control FH-1, mirrors UpsertArchetypeCards' no-op guard).
+//
+// Role is "mainboard" or "sideboard"; Copies is the scraped quantity. Importance
+// and Notes are not available from the scrape and are left nil (SQL NULL).
+func (s *Service) CardListsFromMeta(meta *AggregatedMeta) []ArchetypeCardList {
+	if meta == nil || len(meta.TopDecks) == 0 {
+		return nil
+	}
+
+	lists := make([]ArchetypeCardList, 0, len(meta.TopDecks))
+	for _, deck := range meta.TopDecks {
+		if deck == nil {
+			continue
+		}
+		cards := make([]store.ArchetypeCard, 0, len(deck.MainboardCards)+len(deck.SideboardCards))
+		for _, c := range deck.MainboardCards {
+			if c.Name == "" {
+				continue
+			}
+			cards = append(cards, store.ArchetypeCard{
+				CardName: c.Name,
+				Role:     "mainboard",
+				Copies:   c.Quantity,
+			})
+		}
+		for _, c := range deck.SideboardCards {
+			if c.Name == "" {
+				continue
+			}
+			cards = append(cards, store.ArchetypeCard{
+				CardName: c.Name,
+				Role:     "sideboard",
+				Copies:   c.Quantity,
+			})
+		}
+		if len(cards) == 0 {
+			continue
+		}
+		lists = append(lists, ArchetypeCardList{
+			Name:   deck.Name,
+			Format: meta.Format,
+			Cards:  cards,
+		})
+	}
+
+	return lists
+}
+
 // GetSupportedFormats returns the list of supported formats.
 func (s *Service) GetSupportedFormats() []string {
 	return []string{

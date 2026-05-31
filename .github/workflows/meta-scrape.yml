@@ -1,0 +1,66 @@
+name: Meta-Scrape Service CI
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'services/meta-scrape/**'
+      - '.github/workflows/meta-scrape.yml'
+  pull_request:
+    paths:
+      - 'services/meta-scrape/**'
+      - '.github/workflows/meta-scrape.yml'
+
+# NOTE: This workflow does NOT deploy the meta-scrape Lambda. The canonical
+# deploy path is `mtga-companion-infra/.github/workflows/deploy-meta-scrape-lambda.yml`,
+# which builds arm64 (matching the Lambda runtime) and holds a concurrency lock.
+
+jobs:
+  build-and-test:
+    name: Build & Test
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: services/meta-scrape
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: services/meta-scrape/go.mod
+
+      - name: Download dependencies
+        env:
+          GONOSUMDB: github.com/RdHamilton/vault-mtg
+          GOPRIVATE: github.com/RdHamilton/vault-mtg
+          GOFLAGS: -mod=mod
+        run: go mod download
+
+      - name: Build
+        env:
+          GONOSUMDB: github.com/RdHamilton/vault-mtg
+          GOPRIVATE: github.com/RdHamilton/vault-mtg
+        run: go build ./...
+
+      - name: Build Lambda binary (smoke check, arm64 — no deploy)
+        env:
+          GOOS: linux
+          GOARCH: arm64
+          CGO_ENABLED: "0"
+          GONOSUMDB: github.com/RdHamilton/vault-mtg
+          GOPRIVATE: github.com/RdHamilton/vault-mtg
+        run: |
+          go build -tags lambda.norpc -trimpath -o /tmp/bootstrap ./cmd/lambda
+          echo "Smoke-built Lambda bootstrap: $(ls -lh /tmp/bootstrap)"
+
+      - name: Test
+        env:
+          GONOSUMDB: github.com/RdHamilton/vault-mtg
+          GOPRIVATE: github.com/RdHamilton/vault-mtg
+        run: go test -race ./...
+
+      - name: Vet
+        env:
+          GONOSUMDB: github.com/RdHamilton/vault-mtg
+          GOPRIVATE: github.com/RdHamilton/vault-mtg
+        run: go vet ./...

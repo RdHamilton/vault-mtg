@@ -91,6 +91,7 @@ jobs:
       bff: ${{ steps.filter.outputs.bff }}
       frontend: ${{ steps.filter.outputs.frontend }}
       sync: ${{ steps.filter.outputs.sync }}
+      meta_scrape: ${{ steps.filter.outputs.meta_scrape }}
       logparse: ${{ steps.filter.outputs.logparse }}
     steps:
     - name: Checkout code
@@ -111,6 +112,9 @@ jobs:
             - '.github/workflows/ci.yml'
           sync:
             - 'services/sync/**'
+            - '.github/workflows/ci.yml'
+          meta_scrape:
+            - 'services/meta-scrape/**'
             - '.github/workflows/ci.yml'
           logparse:
             - 'pkg/logparse/**'
@@ -256,7 +260,7 @@ jobs:
   go-lint:
     name: Go Lint
     needs: detect-changes
-    if: needs.detect-changes.outputs.bff == 'true' || needs.detect-changes.outputs.logparse == 'true'
+    if: needs.detect-changes.outputs.bff == 'true' || needs.detect-changes.outputs.logparse == 'true' || needs.detect-changes.outputs.meta_scrape == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 8
     steps:
@@ -271,6 +275,7 @@ jobs:
           services/bff/go.sum
           services/daemon/go.sum
           services/sync/go.sum
+          services/meta-scrape/go.sum
           services/contract/go.sum
           pkg/logparse/go.sum
 
@@ -279,7 +284,7 @@ jobs:
         GONOSUMDB: github.com/RdHamilton/vault-mtg
         GOPRIVATE: github.com/RdHamilton/vault-mtg
       run: |
-        for mod in services/bff services/sync services/contract pkg/logparse; do
+        for mod in services/bff services/sync services/meta-scrape services/contract pkg/logparse; do
           echo "=== go vet $mod ==="
           (cd "$mod" && go vet ./...)
         done
@@ -297,7 +302,7 @@ jobs:
 
     - name: gofumpt check — all modules
       run: |
-        OUT=$(gofumpt -l services/bff services/sync services/contract pkg/logparse)
+        OUT=$(gofumpt -l services/bff services/sync services/meta-scrape services/contract pkg/logparse)
         if [ -n "$OUT" ]; then
           echo "gofumpt formatting violations:"
           echo "$OUT"
@@ -348,6 +353,51 @@ jobs:
       with:
         files: ./services/sync/coverage.out
         flags: sync-unit
+        fail_ci_if_error: false
+
+  meta-scrape-unit-tests:
+    name: Meta-Scrape Unit Tests
+    needs: detect-changes
+    if: needs.detect-changes.outputs.meta_scrape == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v6
+
+    - name: Set up Go
+      uses: actions/setup-go@v6
+      with:
+        go-version: '1.25'
+        cache-dependency-path: services/meta-scrape/go.sum
+
+    - name: Configure private module access
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      run: |
+        git config --global url."https://${GITHUB_TOKEN}@github.com/".insteadOf "https://github.com/"
+
+    - name: Download dependencies
+      working-directory: services/meta-scrape
+      env:
+        GONOSUMDB: github.com/RdHamilton/vault-mtg
+        GOPRIVATE: github.com/RdHamilton/vault-mtg
+        GOFLAGS: -mod=mod
+      run: go mod download
+
+    - name: Run Meta-Scrape unit tests
+      working-directory: services/meta-scrape
+      env:
+        GONOSUMDB: github.com/RdHamilton/vault-mtg
+        GOPRIVATE: github.com/RdHamilton/vault-mtg
+      run: go test -race -v -short -coverprofile=coverage.out -covermode=atomic ./...
+
+    - name: Upload coverage to Codecov
+      uses: codecov/codecov-action@v6
+      with:
+        files: ./services/meta-scrape/coverage.out
+        flags: meta-scrape-unit
         fail_ci_if_error: false
 
   logparse-unit-tests:
