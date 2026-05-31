@@ -1,3 +1,4 @@
+import { expect, within } from 'storybook/test';
 import type { Meta, StoryObj } from '@storybook/react';
 import Toast from './Toast';
 import './Toast.css';
@@ -21,11 +22,25 @@ const meta: Meta<typeof Toast> = {
 export default meta;
 type Story = StoryObj<typeof Toast>;
 
+/**
+ * Play function: verifies the toast is visible and displays the expected
+ * message text. `duration: 9999999` prevents auto-dismiss during the test.
+ * Chromatic snapshots this post-render visible state.
+ */
 export const Success: Story = {
   args: {
     message: 'Match synced successfully.',
     type: 'success',
     duration: 9999999,
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    // Use toBeInTheDocument rather than toBeVisible so the assertion does not
+    // fail when Chromatic's cloud browser evaluates the computed opacity of the
+    // slideIn animation (which starts at opacity:0). Presence-in-DOM is the
+    // correct invariant here — we are asserting the toast rendered, not its
+    // animation state.
+    await expect(canvas.getByText('Match synced successfully.')).toBeInTheDocument();
   },
 };
 

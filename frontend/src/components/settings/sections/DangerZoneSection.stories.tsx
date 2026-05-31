@@ -1,3 +1,4 @@
+import { expect, userEvent, within } from 'storybook/test';
 import type { Meta, StoryObj } from '@storybook/react';
 import { DangerZoneSection } from './DangerZoneSection';
 
@@ -45,6 +46,34 @@ export const Connected: Story = {
           1500,
         ),
       ),
+  },
+};
+
+/**
+ * Play function: clicks "Uninstall VaultMTG Daemon" and verifies the
+ * confirmation panel (checkbox + Confirm Uninstall button) is rendered.
+ * Chromatic will snapshot this post-interaction state.
+ */
+export const ConfirmationOpen: Story = {
+  args: {
+    isConnected: true,
+    // Never resolves — keeps the story in the confirmation state so Chromatic
+    // can snapshot the confirmation panel without a race against the success panel.
+    onUninstallDaemon: () => new Promise(() => {}),
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+
+    // Click the initial "Uninstall VaultMTG Daemon" danger button.
+    const uninstallBtn = canvas.getByTestId('danger-zone-uninstall-button');
+    await userEvent.click(uninstallBtn);
+
+    // Use findByRole (async) rather than getByRole (sync) for the post-click
+    // assertions. After userEvent.click, React schedules a re-render; findByRole
+    // polls the DOM until the element appears (or a timeout), making the check
+    // resilient to any async flush delay in Chromatic's cloud browser.
+    await expect(await canvas.findByRole('button', { name: /confirm uninstall/i })).toBeInTheDocument();
+    await expect(await canvas.findByRole('checkbox')).toBeInTheDocument();
   },
 };
 
