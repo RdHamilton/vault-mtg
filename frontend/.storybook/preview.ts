@@ -32,6 +32,17 @@ const preview: Preview = {
         date: /Date$/i,
       },
     },
+    // Canonical responsive breakpoints for VaultMTG. These drive the Storybook
+    // viewport toolbar and will be wired to Chromatic multi-viewport builds once
+    // TurboSnap (A-1) is confirmed merged (quota guard — see ticket #287).
+    viewport: {
+      viewports: {
+        desktop: { name: 'Desktop', styles: { width: '1280px', height: '800px' } },
+        tablet: { name: 'Tablet', styles: { width: '768px', height: '1024px' } },
+        mobile: { name: 'Mobile', styles: { width: '375px', height: '812px' } },
+      },
+      defaultViewport: 'desktop',
+    },
   },
 };
 
