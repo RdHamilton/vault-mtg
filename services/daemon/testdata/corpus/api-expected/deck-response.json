@@ -1,22 +1,75 @@
 {
-  "deck_id": "33333333-0000-4000-8000-000000000001",
-  "name": "Test Deck A",
+  "deck_id": "11111111-0000-4000-8000-000000000007",
+  "name": "(Standard) Antiquities on the Loose",
   "format": "Standard",
   "cards": [
-    {"arena_id": 67108, "quantity": 4},
-    {"arena_id": 67128, "quantity": 4},
-    {"arena_id": 67272, "quantity": 4},
-    {"arena_id": 67440, "quantity": 4},
-    {"arena_id": 67588, "quantity": 4},
-    {"arena_id": 73778, "quantity": 4},
-    {"arena_id": 73780, "quantity": 4},
-    {"arena_id": 73782, "quantity": 4},
-    {"arena_id": 73784, "quantity": 4},
-    {"arena_id": 73786, "quantity": 4},
-    {"arena_id": 77460, "quantity": 4},
-    {"arena_id": 77461, "quantity": 4},
-    {"arena_id": 77462, "quantity": 4},
-    {"arena_id": 77463, "quantity": 4},
-    {"arena_id": 77464, "quantity": 2}
+    {
+      "arena_id": 87301,
+      "quantity": 4
+    },
+    {
+      "arena_id": 102466,
+      "quantity": 4
+    },
+    {
+      "arena_id": 87325,
+      "quantity": 4
+    },
+    {
+      "arena_id": 87300,
+      "quantity": 4
+    },
+    {
+      "arena_id": 86722,
+      "quantity": 4
+    },
+    {
+      "arena_id": 87400,
+      "quantity": 3
+    },
+    {
+      "arena_id": 96589,
+      "quantity": 2
+    },
+    {
+      "arena_id": 92230,
+      "quantity": 3
+    },
+    {
+      "arena_id": 95083,
+      "quantity": 7
+    },
+    {
+      "arena_id": 81179,
+      "quantity": 7
+    },
+    {
+      "arena_id": 96611,
+      "quantity": 4
+    },
+    {
+      "arena_id": 68735,
+      "quantity": 3
+    },
+    {
+      "arena_id": 96830,
+      "quantity": 1
+    },
+    {
+      "arena_id": 95066,
+      "quantity": 4
+    },
+    {
+      "arena_id": 97544,
+      "quantity": 1
+    },
+    {
+      "arena_id": 95780,
+      "quantity": 1
+    },
+    {
+      "arena_id": 86860,
+      "quantity": 4
+    }
   ]
 }

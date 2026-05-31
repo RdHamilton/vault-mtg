@@ -33,8 +33,10 @@ func isRecognized(entry *LogEntry) bool {
 		IsMatchCompletedEntry(entry) ||
 		IsCollectionEntry(entry) ||
 		isAuthenticateEntry(entry) ||
-		isDraftPackEntry(entry) ||
-		isDraftPickEntry(entry)
+		isBotDraftPackEntry(entry) ||
+		isBotDraftPickEntry(entry) ||
+		isPremierDraftNotifyEntry(entry) ||
+		isPremierDraftMakePickEntry(entry)
 }
 
 // isAuthenticateEntry returns true when the entry carries an
@@ -47,22 +49,52 @@ func isAuthenticateEntry(entry *LogEntry) bool {
 	return ok
 }
 
-// isDraftPackEntry returns true when the entry carries a "draftPack" key.
-func isDraftPackEntry(entry *LogEntry) bool {
+// isBotDraftPackEntry returns true for a BotDraft (QuickDraft) pack line —
+// CurrentModule="BotDraft" with a stringified Payload envelope (#337).
+func isBotDraftPackEntry(entry *LogEntry) bool {
 	if entry == nil || !entry.IsJSON {
 		return false
 	}
-	_, ok := entry.JSON["draftPack"]
-	return ok
+	mod, ok := entry.JSON["CurrentModule"].(string)
+	if !ok || mod != "BotDraft" {
+		return false
+	}
+	_, hasPayload := entry.JSON["Payload"].(string)
+	return hasPayload
 }
 
-// isDraftPickEntry returns true when the entry carries a "pickedCards" key.
-func isDraftPickEntry(entry *LogEntry) bool {
+// isBotDraftPickEntry returns true for a BotDraftDraftPick line — a "request"
+// JSON string carrying a PickInfo block (#337).
+func isBotDraftPickEntry(entry *LogEntry) bool {
 	if entry == nil || !entry.IsJSON {
 		return false
 	}
-	_, ok := entry.JSON["pickedCards"]
-	return ok
+	req, ok := entry.JSON["request"].(string)
+	return ok && strings.Contains(req, `"PickInfo"`)
+}
+
+// isPremierDraftNotifyEntry returns true for a Premier Draft.Notify line
+// (draftId + PackCards), the #338 wire format.
+func isPremierDraftNotifyEntry(entry *LogEntry) bool {
+	if entry == nil || !entry.IsJSON {
+		return false
+	}
+	_, hasDraftID := entry.JSON["draftId"]
+	_, hasPackCards := entry.JSON["PackCards"]
+	return hasDraftID && hasPackCards
+}
+
+// isPremierDraftMakePickEntry returns true for a Premier
+// EventPlayerDraftMakePick line (id + request string carrying DraftId).
+func isPremierDraftMakePickEntry(entry *LogEntry) bool {
+	if entry == nil || !entry.IsJSON {
+		return false
+	}
+	if _, ok := entry.JSON["id"]; !ok {
+		return false
+	}
+	req, ok := entry.JSON["request"].(string)
+	return ok && strings.Contains(req, `"DraftId"`)
 }
 
 // TestParserDriftCanary_RealFixture_2026_59_20 parses every fixture file in

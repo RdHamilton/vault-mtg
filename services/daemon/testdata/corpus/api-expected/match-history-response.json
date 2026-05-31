@@ -1,11 +1,11 @@
 {
   "Matches": [
     {
-      "ID": "00000000-0000-4000-8000-000000000001",
-      "Format": "Ladder",
+      "ID": "11111111-0000-4000-8000-000000000003",
+      "Format": "Play",
       "Result": "win",
       "PlayerWins": 1,
-      "OpponentWins": 1
+      "OpponentWins": 0
     }
   ],
   "HasMore": false,

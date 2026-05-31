@@ -1,0 +1,1 @@
+{"transactionId":"11111111-0000-4000-8000-000000000848","requestId":0,"timestamp":"2026-01-01T00:00:00Z","greToClientEvent":{"greToClientMessages":[{"type":"GREMessageType_UIMessage","systemSeatIds":[1],"uiMessage":{"seatIds":[2],"onHover":{}}}]}}

@@ -90,6 +90,15 @@ jobs:
         # cannot produce PE (Windows) object files.  vault-mtg-tickets#199.
         run: sudo apt-get update -qq && sudo apt-get install -y nsis libayatana-appindicator3-dev gcc-mingw-w64-x86-64
 
+      - name: Install goversioninfo (Windows .exe icon embed, #307)
+        # Pure-Go tool consumed by the .goreleaser.yml builds[].hooks.pre step.
+        # Generates resource.syso from versioninfo.json + vaultmtg.ico so the
+        # Windows binary carries the VaultMTG app icon. No CGO; runs on the
+        # ubuntu goreleaser runner. Installed onto PATH via GOPATH/bin.
+        run: |
+          go install github.com/josephspurrier/goversioninfo/cmd/goversioninfo@v1.4.1
+          echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"
+
       - name: Download Go dependencies
         working-directory: services/daemon
         env:
@@ -823,6 +832,15 @@ jobs:
           cp services/daemon/install/macos/pkg/app-launcher \
             "${APP_MACOS}/vaultmtg-launcher"
           chmod 755 "${APP_MACOS}/vaultmtg-launcher"
+
+          # App icon (#307) — Contents/Resources/vaultmtg.icns paired with the
+          # CFBundleIconFile=vaultmtg key in app-Info.plist. This is what gives
+          # VaultMTG.app its Finder/Dock icon. (pkgbuild has no --icon flag; the
+          # icon ships inside the embedded .app bundle, not on the .pkg itself.)
+          APP_RESOURCES="${APP_BUNDLE}/Contents/Resources"
+          mkdir -p "${APP_RESOURCES}"
+          cp services/daemon/install/icons/vaultmtg.icns \
+            "${APP_RESOURCES}/vaultmtg.icns"
 
           # Sign the .app bundle with Developer ID Application before pkgbuild
           # embeds it. pkgbuild wraps the already-signed bundle; the outer .pkg

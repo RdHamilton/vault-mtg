@@ -188,6 +188,74 @@ func TestManifestExists(t *testing.T) {
 	}
 }
 
+// catalogEntry mirrors one row of catalog/catalog.json emitted by
+// tools/fixture-extractor/extract.py --catalog (#262).
+type catalogEntry struct {
+	Axis       string `json:"axis"`
+	Event      string `json:"event"`
+	Count      int    `json:"count"`
+	SampleFile string `json:"sample_file"`
+}
+
+// TestCatalogIntegrity verifies the event-discovery catalog (#262) is valid
+// JSON, non-empty, and that every referenced sample file exists on disk.
+func TestCatalogIntegrity(t *testing.T) {
+	data := mustRead(t, "catalog/catalog.json")
+	var entries []catalogEntry
+	if err := json.Unmarshal(data, &entries); err != nil {
+		t.Fatalf("catalog/catalog.json: invalid JSON: %v", err)
+	}
+	if len(entries) == 0 {
+		t.Fatal("catalog/catalog.json: must contain at least one event type")
+	}
+	mustRead(t, "catalog/catalog.md")
+
+	for _, e := range entries {
+		if e.Axis == "" || e.Event == "" {
+			t.Errorf("catalog entry missing axis/event: %+v", e)
+		}
+		if e.Count <= 0 {
+			t.Errorf("catalog entry %s/%s: count must be > 0, got %d", e.Axis, e.Event, e.Count)
+		}
+		if e.SampleFile == "" {
+			continue // sample-less entries are permitted (no parseable body)
+		}
+		rel := filepath.Join("catalog", e.SampleFile)
+		if _, err := os.ReadFile(filepath.Join(corpusDir, rel)); err != nil {
+			t.Errorf("catalog entry %s/%s references missing sample %q: %v",
+				e.Axis, e.Event, e.SampleFile, err)
+		}
+	}
+}
+
+// TestPlayerAuthenticatedShape pins the corrected player-authenticated fixture
+// (#262 / Ray change #2): the real authenticateResponse is {clientId, sessionId,
+// screenName} only — it must NOT reintroduce a userId/accountId key, and its
+// clientId is the local player's account token (== reservedPlayers[].userId).
+func TestPlayerAuthenticatedShape(t *testing.T) {
+	data := mustRead(t, "player-log/player-authenticated.log")
+	var wrapper struct {
+		AuthenticateResponse map[string]json.RawMessage `json:"authenticateResponse"`
+	}
+	if err := json.Unmarshal(data, &wrapper); err != nil {
+		t.Fatalf("player-authenticated.log: invalid JSON: %v", err)
+	}
+	ar := wrapper.AuthenticateResponse
+	if ar == nil {
+		t.Fatal("player-authenticated.log: missing authenticateResponse")
+	}
+	for _, forbidden := range []string{"userId", "accountId"} {
+		if _, ok := ar[forbidden]; ok {
+			t.Errorf("authenticateResponse must not contain %q key (real shape is clientId-only)", forbidden)
+		}
+	}
+	for _, required := range []string{"clientId", "sessionId", "screenName"} {
+		if _, ok := ar[required]; !ok {
+			t.Errorf("authenticateResponse missing required key %q", required)
+		}
+	}
+}
+
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------

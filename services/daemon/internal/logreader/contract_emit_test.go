@@ -37,10 +37,12 @@ const corpusDir = "../../testdata/corpus"
 const (
 	testAccountID = "test-account-001"
 	testSessionID = "22222222-0000-0000-0000-000000000001"
-	// localPlayerID is the stable fake MTGA userId in the match-completed corpus
-	// fixture. ParseMatchCompletedEntry requires it to derive win/loss and
-	// identify the opponent.
-	localPlayerID = "00000000-0000-4000-8000-000000000010"
+	// localPlayerID is the stable fake MTGA userId of the local player in the
+	// match-completed corpus fixture (#262 promotion: the fixture is now REAL,
+	// and the local player's account token is keyed to the same stable fake as
+	// the corrected player-authenticated fixture's clientId == reservedPlayers[].userId).
+	// ParseMatchCompletedEntry requires it to derive win/loss and identify the opponent.
+	localPlayerID = "TESTACCOUNT000000000000003"
 )
 
 // ---------------------------------------------------------------------------
@@ -270,15 +272,16 @@ func TestContractEmit_DeckUpdated(t *testing.T) {
 	}
 }
 
-// TestContractEmit_DraftPack round-trips the draft-pack corpus player-log
-// fixture through ParseDraftPack + BuildEvent and asserts semantic properties
-// on the emitted payload.
-func TestContractEmit_DraftPack(t *testing.T) {
+// TestContractEmit_BotDraftPack round-trips the BotDraft (QuickDraft) draft-pack
+// corpus player-log fixture through ParseBotDraftStatusPack + BuildEvent and
+// asserts semantic properties on the emitted payload (#337). The corpus fixture
+// is the real CurrentModule=BotDraft + stringified Payload wire format.
+func TestContractEmit_BotDraftPack(t *testing.T) {
 	entry := loadCorpusLogEntry(t, "player-log/draft-pack.log")
 
-	p, err := logreader.ParseDraftPack(entry)
+	p, err := logreader.ParseBotDraftStatusPack(entry)
 	require.NoErrorf(t, err,
-		"[contract-gate] ParseDraftPack failed for corpus player-log/draft-pack.log")
+		"[contract-gate] ParseBotDraftStatusPack failed for corpus player-log/draft-pack.log")
 
 	evt, err := dispatch.BuildEvent("draft.pack", testAccountID, testSessionID, p)
 	require.NoErrorf(t, err,
@@ -286,38 +289,39 @@ func TestContractEmit_DraftPack(t *testing.T) {
 
 	assertEnvelopeFields(t, evt, "draft.pack")
 
-	// The daemon currently serialises DraftPackPayload (logreader type) into the
-	// payload. Assert the fields that the logreader type produces.
+	// The daemon serialises DraftPackPayload (logreader type) into the payload.
+	// Assert the fields that the logreader type produces.
 	var rawPayload map[string]interface{}
 	require.NoErrorf(t, json.Unmarshal(evt.Payload, &rawPayload),
 		"[contract-gate] unmarshal draft.pack payload")
 
 	courseName, _ := rawPayload["CourseName"].(string)
 	assert.NotEmptyf(t, courseName,
-		"[contract-gate] draft.pack CourseName must be non-empty; corpus fixture: daemon-emit/draft-pack.json; parser source: draft_pick.go; "+
+		"[contract-gate] BotDraft draft.pack CourseName must be non-empty; corpus fixture: player-log/draft-pack.log; parser source: botdraft.go; "+
 			"If the MTGA log format changed: update the corpus (see ADR-042 Layer 2 refresh protocol). "+
 			"If the daemon assembly changed: fix the parser to match the corpus OR update the corpus with a new MTGA version.")
 
 	draftPack, _ := rawPayload["draftPack"].(map[string]interface{})
 	assert.NotNilf(t, draftPack,
-		"[contract-gate] draft.pack payload must contain draftPack object; corpus fixture: daemon-emit/draft-pack.json; parser source: draft_pick.go")
+		"[contract-gate] BotDraft draft.pack payload must contain draftPack object; corpus fixture: player-log/draft-pack.log; parser source: botdraft.go")
 
 	if draftPack != nil {
 		packCards, _ := draftPack["PackCards"].([]interface{})
 		assert.GreaterOrEqualf(t, len(packCards), 1,
-			"[contract-gate] draft.pack draftPack.PackCards must have at least 1 card; corpus fixture: daemon-emit/draft-pack.json; parser source: draft_pick.go")
+			"[contract-gate] BotDraft draft.pack draftPack.PackCards must have at least 1 card; corpus fixture: player-log/draft-pack.log; parser source: botdraft.go")
 	}
 }
 
-// TestContractEmit_DraftPick round-trips the draft-pick corpus player-log
-// fixture through ParseDraftPick + BuildEvent and asserts semantic properties
-// on the emitted payload.
-func TestContractEmit_DraftPick(t *testing.T) {
+// TestContractEmit_BotDraftPick round-trips the BotDraft (QuickDraft) draft-pick
+// corpus player-log fixture through ParseBotDraftPick + BuildEvent and asserts
+// semantic properties on the emitted payload (#337). The corpus fixture is the
+// real BotDraftDraftPick request (stringified request carrying PickInfo).
+func TestContractEmit_BotDraftPick(t *testing.T) {
 	entry := loadCorpusLogEntry(t, "player-log/draft-pick.log")
 
-	p, err := logreader.ParseDraftPick(entry)
+	p, err := logreader.ParseBotDraftPick(entry)
 	require.NoErrorf(t, err,
-		"[contract-gate] ParseDraftPick failed for corpus player-log/draft-pick.log")
+		"[contract-gate] ParseBotDraftPick failed for corpus player-log/draft-pick.log")
 
 	evt, err := dispatch.BuildEvent("draft.pick", testAccountID, testSessionID, p)
 	require.NoErrorf(t, err,
@@ -325,21 +329,84 @@ func TestContractEmit_DraftPick(t *testing.T) {
 
 	assertEnvelopeFields(t, evt, "draft.pick")
 
-	// The daemon currently serialises DraftPickPayload (logreader type) into the
-	// payload. Assert the fields that the logreader type produces.
+	// The daemon serialises DraftPickPayload (logreader type) into the payload.
+	// Assert the fields that the logreader type produces.
 	var rawPayload map[string]interface{}
 	require.NoErrorf(t, json.Unmarshal(evt.Payload, &rawPayload),
 		"[contract-gate] unmarshal draft.pick payload")
 
 	courseName, _ := rawPayload["CourseName"].(string)
 	assert.NotEmptyf(t, courseName,
-		"[contract-gate] draft.pick CourseName must be non-empty; corpus fixture: daemon-emit/draft-pick.json; parser source: draft_pick.go; "+
+		"[contract-gate] BotDraft draft.pick CourseName must be non-empty; corpus fixture: player-log/draft-pick.log; parser source: botdraft.go; "+
 			"If the MTGA log format changed: update the corpus (see ADR-042 Layer 2 refresh protocol). "+
 			"If the daemon assembly changed: fix the parser to match the corpus OR update the corpus with a new MTGA version.")
 
 	pickedCards, _ := rawPayload["pickedCards"].([]interface{})
 	assert.GreaterOrEqualf(t, len(pickedCards), 1,
-		"[contract-gate] draft.pick pickedCards must have at least 1 entry; corpus fixture: daemon-emit/draft-pick.json; parser source: draft_pick.go")
+		"[contract-gate] BotDraft draft.pick pickedCards must have at least 1 entry; corpus fixture: player-log/draft-pick.log; parser source: botdraft.go")
+}
+
+// TestContractEmit_DraftPack_Premier round-trips the Premier draft-pack corpus
+// fixture (Draft.Notify wire format, #338) through ParsePremierDraftNotify +
+// BuildEvent and asserts the emitted payload carries the DraftID and a non-empty
+// PackCards slice. CourseName is intentionally empty for Premier.
+func TestContractEmit_DraftPack_Premier(t *testing.T) {
+	entry := loadCorpusLogEntry(t, "player-log/premier-draft-pack.log")
+
+	p, err := logreader.ParsePremierDraftNotify(entry)
+	require.NoErrorf(t, err,
+		"[contract-gate] ParsePremierDraftNotify failed for corpus player-log/premier-draft-pack.log")
+
+	evt, err := dispatch.BuildEvent("draft.pack", testAccountID, testSessionID, p)
+	require.NoErrorf(t, err,
+		"[contract-gate] dispatch.BuildEvent failed for draft.pack (Premier)")
+
+	assertEnvelopeFields(t, evt, "draft.pack")
+
+	var rawPayload map[string]interface{}
+	require.NoErrorf(t, json.Unmarshal(evt.Payload, &rawPayload),
+		"[contract-gate] unmarshal Premier draft.pack payload")
+
+	draftID, _ := rawPayload["draft_id"].(string)
+	assert.NotEmptyf(t, draftID,
+		"[contract-gate] Premier draft.pack draft_id must be non-empty; corpus fixture: player-log/premier-draft-pack.log; parser source: draft_pick.go")
+
+	draftPack, _ := rawPayload["draftPack"].(map[string]interface{})
+	require.NotNilf(t, draftPack,
+		"[contract-gate] Premier draft.pack payload must contain draftPack object; corpus fixture: player-log/premier-draft-pack.log; parser source: draft_pick.go")
+	packCards, _ := draftPack["PackCards"].([]interface{})
+	assert.GreaterOrEqualf(t, len(packCards), 1,
+		"[contract-gate] Premier draft.pack draftPack.PackCards must have at least 1 card; corpus fixture: player-log/premier-draft-pack.log; parser source: draft_pick.go")
+}
+
+// TestContractEmit_DraftPick_Premier round-trips the Premier draft-pick corpus
+// fixture (EventPlayerDraftMakePick wire format, #338) through
+// ParsePremierDraftMakePick + BuildEvent and asserts the emitted payload carries
+// the DraftID and a non-empty pickedCards slice.
+func TestContractEmit_DraftPick_Premier(t *testing.T) {
+	entry := loadCorpusLogEntry(t, "player-log/premier-draft-pick.log")
+
+	p, err := logreader.ParsePremierDraftMakePick(entry)
+	require.NoErrorf(t, err,
+		"[contract-gate] ParsePremierDraftMakePick failed for corpus player-log/premier-draft-pick.log")
+
+	evt, err := dispatch.BuildEvent("draft.pick", testAccountID, testSessionID, p)
+	require.NoErrorf(t, err,
+		"[contract-gate] dispatch.BuildEvent failed for draft.pick (Premier)")
+
+	assertEnvelopeFields(t, evt, "draft.pick")
+
+	var rawPayload map[string]interface{}
+	require.NoErrorf(t, json.Unmarshal(evt.Payload, &rawPayload),
+		"[contract-gate] unmarshal Premier draft.pick payload")
+
+	draftID, _ := rawPayload["draft_id"].(string)
+	assert.NotEmptyf(t, draftID,
+		"[contract-gate] Premier draft.pick draft_id must be non-empty; corpus fixture: player-log/premier-draft-pick.log; parser source: draft_pick.go")
+
+	pickedCards, _ := rawPayload["pickedCards"].([]interface{})
+	assert.GreaterOrEqualf(t, len(pickedCards), 1,
+		"[contract-gate] Premier draft.pick pickedCards must have at least 1 entry; corpus fixture: player-log/premier-draft-pick.log; parser source: draft_pick.go")
 }
 
 // TestContractEmit_CollectionUpdated round-trips the collection-updated corpus

@@ -1,12 +1,12 @@
 {
-  "ID": "00000000-0000-4000-8000-000000000001",
+  "ID": "11111111-0000-4000-8000-000000000003",
   "AccountID": 1,
   "EventID": "11111111-0000-0000-0000-000000000001",
-  "EventName": "Ladder",
-  "Format": "Ladder",
+  "EventName": "Play",
+  "Format": "Play",
   "Result": "win",
   "PlayerWins": 1,
-  "OpponentWins": 1,
-  "OpponentName": "Opponent#00002",
+  "OpponentWins": 0,
+  "OpponentName": "TestPlayer#00002",
   "PlayerTeamID": 1
 }

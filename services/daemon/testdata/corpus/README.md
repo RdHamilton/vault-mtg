@@ -9,7 +9,7 @@ This corpus provides the canonical golden fixtures for the ADR-042 data-pipeline
 | Field | Value |
 |---|---|
 | MTGA Client Version | 2026.59.20 (build 2026.59.20.4846.1277160) |
-| Capture Date | 2026-05-30 |
+| Capture Date | 2026-05-31 (Premier-draft session: Player_capture_premier_20260531T072112Z) |
 | Refresh SLA | 24h after MTGA version bump triggers drift canary |
 
 The full build string is in `mtga-version.txt`.
@@ -36,21 +36,22 @@ Fixtures use one of three provenance tags (recorded in MANIFEST):
 - **FORMAT-CONFIRMED** — synthetic but validated against the 2026.59.20 wire protocol via working parser tests. Requires promotion to REAL on the next live-session capture.
 - **SYNTHETIC** — constructed test data for projection/API assertions; no MTGA origin.
 
-### Fixtures requiring promotion to REAL
+### Promotion status (#262 audit, 2026-05-31 Premier capture)
 
-The following fixtures are currently FORMAT-CONFIRMED and must be promoted to REAL on the next
-live MTGA session (match played + draft played). See follow-up issue for tracking:
+Promoted to REAL / REAL-DERIVED from the 2026-05-31 Premier-draft session capture:
 
-- `player-log/match-completed.log`
-- `player-log/draft-pack.log`
-- `player-log/draft-pick.log`
-- `player-log/collection-updated.log`
-- `player-log/player-authenticated.log`
-- `daemon-emit/match-completed.json`
-- `daemon-emit/match-completed-empty-format.json`
-- `daemon-emit/match-completed-missing-id.json`
-- `daemon-emit/draft-pack.json`
-- `daemon-emit/draft-pick.json`
+- `player-log/match-completed.log` → REAL
+- `player-log/player-authenticated.log` → REAL (CORRECTED `{clientId,sessionId,screenName}` shape; `clientId == reservedPlayers[].userId`; no invented `userId`/`accountId` key)
+- `player-log/deck-updated.log` → REAL
+- `daemon-emit/match-completed.json` (+ `-empty-format`, `-missing-id` variants) → REAL-DERIVED (run through `logreader.ParseMatchCompletedEntry`)
+- `daemon-emit/deck-updated.json` → REAL-DERIVED (run through `logreader.ParseDeckEntry`)
+
+Still FORMAT-CONFIRMED (could NOT be promoted from this capture):
+
+- `player-log/collection-updated.log` + `daemon-emit/collection-updated.json` — the capture contains **no** `PlayerInventoryGetPlayerCardsV3` collection snapshot (player did not open the collection screen). Awaits a capture exercising the collection surface.
+- `player-log/draft-pack.log` + `player-log/draft-pick.log` + `daemon-emit/draft-pack.json` + `daemon-emit/draft-pick.json` — **GATED on the Premier draft classifier/parser fix.** The Layer-2 contract gate parses the player-log draft fixtures through `ParseDraftPack`/`ParseDraftPick`, which require the top-level `draftPack`/`pickedCards` keys; the daemon classifier gates on those same keys. In the Premier capture those keys appear 0 times — the real Premier pack is `Draft.Notify {draftId,SelfPick,SelfPack,PackCards}` and the real pick is the `EventPlayerDraftMakePick` request — so neither the player-log nor the daemon-emit draft fixtures can be promoted without diverging from (or breaking) the current parser. They are intentionally left until the draft-parser fix (sibling of #336) lands. The real Premier draft shapes are captured under `catalog/samples/` and documented in the taxonomy report.
+
+Note: BotDraft (QuickDraft) draft support is a separate daemon gap tracked by #337 — its raw shapes are catalogued in `tools/fixture-extractor` catalog output (axes `api-request/api-response BotDraftDraftPick`, `json-key DraftPack`), not promoted here.
 
 ## PII Sanitisation
 
@@ -58,15 +59,18 @@ All fixtures follow ADR-041 G3 rules (applied programmatically by `tools/fixture
 
 | Data type | Treatment |
 |---|---|
-| Match IDs | Stable fake UUIDs: `00000000-0000-4000-8000-0000000000NN` |
-| Account / client / session IDs | `test-account-001`, stable fake UUIDs |
-| Player / screen names | `LocalPlayer#00001`, `Opponent#00002` |
-| Quest UUIDs | Stable fakes: `00000001-0000-4000-8000-0000000000NN` |
-| Deck IDs | Stable fakes: `33333333-0000-4000-8000-0000000000NN` |
-| Draft IDs | Stable fakes: `44444444-0000-0000-0000-0000000000NN` |
-| GRP IDs / Arena card IDs | Retained (non-PII per ADR-041 risk assessment) |
+| UUIDs (match / session / transaction / deck / draft IDs) | Stable fake UUIDs, deterministic by first sight |
+| Account tokens (`clientId` / `userId`, 26-char base32) | Stable fake `TESTACCOUNT…` tokens — the same real value maps to the same fake, so `clientId == reservedPlayers[].userId` is preserved |
+| Player / screen names (`playerName` / `screenName` / `displayName`) | Replaced by **field key**, not regex — MTGA handles may be bare (`SomeHandle`), classic (`Name#12345`), or malformed; all → `TestPlayer#0000N` |
+| `requestId` / timestamps / reward-reset timestamps | Zeroed / replaced with fixed epoch (`2026-01-01T00:00:00Z`) |
+| GRP IDs / Arena card IDs (incl. `PackCards`, `GrpIds`) | Retained (non-PII per ADR-041 risk assessment) |
 | Gem / Gold / WildCard counts | Retained (game resource values, not personally identifying) |
-| Cosmetic IDs | Stripped (excluded for minimal footprint) |
+| Cosmetic IDs (`PreferredCosmetics`, sleeves, avatars) | Stripped |
+
+PII is sanitised in two passes (catalog mode): a recursive key-walk that fixes
+PII values **after** stringified envelopes (`request` / `Payload`) are unwrapped,
+plus the legacy text-regex pass. This catches account tokens and handles nested
+inside formerly-stringified envelopes that a naive top-level scan would miss.
 
 Raw captures are never committed. Only sanitised output is committed.
 

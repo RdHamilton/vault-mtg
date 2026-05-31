@@ -55,6 +55,14 @@ InstallDir        "$LOCALAPPDATA\VaultMTG"
 !include MUI2.nsh
 !define MUI_ABORTWARNING
 
+; Installer / uninstaller icon (#307) — the VaultMTG app icon shown in the
+; wizard title bar, the taskbar, and on the generated setup .exe in Explorer.
+; Path is relative to this .nsi file (install/windows/nsis/ -> install/icons/).
+; MUI_ICON drives the installer; MUI_UNICON the uninstaller — both required so
+; Uninstall.exe carries the same brand icon.
+!define MUI_ICON   "..\..\icons\vaultmtg.ico"
+!define MUI_UNICON "..\..\icons\vaultmtg.ico"
+
 ;----------------------------------------------------------------------
 ; Pages
 ;----------------------------------------------------------------------

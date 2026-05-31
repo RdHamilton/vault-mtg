@@ -107,7 +107,7 @@ func (s *Store) HandlePack(p *logreader.DraftPackPayload) {
 	}
 	packIdx := pickIdx / 15 // 15 picks per pack in standard MTGA draft
 
-	session := s.findOrCreate(p.CourseName, pickIdx)
+	session := s.findOrCreate(sessionKey(p.CourseName, p.DraftID), pickIdx)
 	session.CurrentPack = packIdx
 	session.CurrentPick = pickIdx % 15
 	session.CurrentCards = append(session.CurrentCards[:0], p.DraftPack.PackCards...)
@@ -124,11 +124,12 @@ func (s *Store) HandlePick(p *logreader.DraftPickPayload) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	session, ok := s.findByCourse(p.CourseName)
+	key := sessionKey(p.CourseName, p.DraftID)
+	session, ok := s.findByCourse(key)
 	if !ok {
 		// Pick arrived before we saw any pack — synthesize a session
 		// keyed by the pick timestamp so the data isn't lost.
-		session = s.create(p.CourseName, p.PackNumber*15+p.PickNumber)
+		session = s.create(key, p.PackNumber*15+p.PickNumber)
 	}
 
 	pick := Pick{
@@ -238,6 +239,20 @@ func (s *Store) create(course string, _ int) *Session {
 	}
 	s.sessions[id] = sess
 	return sess
+}
+
+// sessionKey returns the stable per-draft session key.
+//
+// For BotDraft (#337) the CourseName is populated (e.g. "PremierDraft_BLB")
+// and is used directly. For Premier drafts (#338) the real Draft.Notify /
+// EventPlayerDraftMakePick wire lines carry NO CourseName — only a draftId —
+// so CourseName will be empty and the draftID becomes the key. #337's author
+// must not assume CourseName is always populated: this fallback is the seam.
+func sessionKey(courseName, draftID string) string {
+	if courseName != "" {
+		return courseName
+	}
+	return draftID
 }
 
 // splitCourse pulls the format prefix and set suffix out of an MTGA
