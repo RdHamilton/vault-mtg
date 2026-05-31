@@ -137,7 +137,8 @@
   --accent:       var(--vault-sapphire);
   --accent-hover: var(--vault-sapphire-light);
   --accent-press: var(--vault-sapphire-dark);
-  --accent-dim:   rgba(74, 144, 217, 0.1);    /* 10 % opacity accent — Vault Sapphire */
+  --accent-dim:         rgba(74, 144, 217, 0.1);    /* 10 % opacity accent — Vault Sapphire */
+  --accent-dim-hover:   rgba(74, 144, 217, 0.2);    /* 20 % opacity accent — hover state */
 
   --success:      var(--vault-success);
   --danger:       var(--vault-danger);

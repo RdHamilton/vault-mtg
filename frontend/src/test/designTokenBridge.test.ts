@@ -138,6 +138,7 @@ describe('#339 — bridge removed, canonical tokens only', () => {
       '--accent-hover',
       '--accent-press',
       '--accent-dim',
+      '--accent-dim-hover',
       '--success',
       '--danger',
       '--warning',

@@ -118,7 +118,7 @@ th[style*="cursor: pointer"]:hover {
   font-weight: 600;
   color: var(--accent);
   padding: 8px 12px;
-  background: rgba(var(--accent-rgb), 0.1);
+  background: var(--accent-dim);
   border-radius: 4px;
 }
 
@@ -134,7 +134,7 @@ th[style*="cursor: pointer"]:hover {
 }
 
 .notes-btn:hover {
-  background-color: rgba(var(--accent-rgb), 0.2);
+  background-color: var(--accent-dim-hover);
 }
 
 /* Deck Name Cell */
