@@ -125,8 +125,8 @@ jobs:
           CHROMATIC_PROJECT_TOKEN: ${{ secrets.CHROMATIC_PROJECT_TOKEN }}
         run: |
           if [ "${{ github.event_name }}" = "push" ]; then
-            npx chromatic --storybook-build-dir=storybook-static --auto-accept-changes
+            npx chromatic --storybook-build-dir=storybook-static --only-changed --auto-accept-changes
           else
-            npx chromatic --storybook-build-dir=storybook-static
+            npx chromatic --storybook-build-dir=storybook-static --only-changed
           fi
         working-directory: frontend
