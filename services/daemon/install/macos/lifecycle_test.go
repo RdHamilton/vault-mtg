@@ -324,7 +324,7 @@ func TestMacOSDaemonEvent(t *testing.T) {
 
 	logF, err := os.OpenFile(lp, os.O_APPEND|os.O_WRONLY, 0o644)
 	require.NoError(t, err, "failed to open stub Player.log for append")
-	draftPackLine := `{"draftPack":{"PackCards":[11001,22002,33003],"SelfPick":1},"CourseName":"PremierDraft_BLB"}` + "\n"
+	draftPackLine := `{"CurrentModule":"BotDraft","Payload":"{\"EventName\":\"QuickDraft_SOS_20260526\",\"PackNumber\":0,\"PickNumber\":0,\"DraftPack\":[\"11001\",\"22002\",\"33003\"]}"}` + "\n"
 	_, err = logF.WriteString(draftPackLine)
 	require.NoError(t, err)
 	require.NoError(t, logF.Close())
