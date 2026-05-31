@@ -290,3 +290,28 @@ body {
   margin: 0;
   padding: 0;
 }
+
+/* ==========================================================================
+   Typography — brand font wiring (#310)
+   Wires the design-system type tokens to element selectors. Body inherits
+   --font-body (Inter) via the :root rule above; headings use the VaultMTG
+   display face (Space Grotesk) and code/data use the mono face (JetBrains
+   Mono), per colors_and_type.css.
+   ========================================================================== */
+
+h1,
+h2,
+h3,
+h4,
+h5,
+h6 {
+  font-family: var(--font-display-vault);
+}
+
+code,
+kbd,
+samp,
+pre,
+.mono {
+  font-family: var(--font-mono);
+}

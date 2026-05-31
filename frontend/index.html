@@ -26,6 +26,16 @@
     <!-- VaultMTG Design System Fonts (Space Grotesk, Inter, JetBrains Mono) -->
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <!-- Critical-font preload: display face (Space Grotesk 700, latin subset) only.
+         URL pinned to the exact gstatic asset the css2 stylesheet below resolves to,
+         so this hint is consumed (no double-fetch / unused-preload warning). -->
+    <link
+      rel="preload"
+      as="font"
+      type="font/woff2"
+      href="https://fonts.gstatic.com/s/spacegrotesk/v22/V8mDoQDjQSkFtoMM3T6r8E7mPbF4Cw.woff2"
+      crossorigin
+    />
     <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" />
 
     <!-- Google Analytics 4 (injected only when VITE_GA4_MEASUREMENT_ID is set) -->
