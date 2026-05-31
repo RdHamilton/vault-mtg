@@ -18,9 +18,28 @@ package repository
 import (
 	"context"
 	"database/sql"
+	"fmt"
 	"strconv"
+	"strings"
 	"time"
 )
+
+// matchPairBatch is an in-memory accumulator for a single (card1, card2,
+// format) pair before being flushed to card_combination_stats.
+type matchPairBatch struct {
+	card1, card2  int
+	format        string
+	gamesTogether int
+	winsTogether  int
+}
+
+// ProcessHistoryResult is the structured result returned by
+// ComputeAndWritePairStats and surfaced in the handler response body.
+type ProcessHistoryResult struct {
+	PairsWritten     int
+	MatchesProcessed int
+	Truncated        bool
+}
 
 // CardCombinationStatsRow mirrors the card_combination_stats row.
 type CardCombinationStatsRow struct {
@@ -297,6 +316,241 @@ func (r *MLRepository) UpsertPlayPatternsStub(ctx context.Context, accountIDText
 		return nil, err
 	}
 	return r.PlayPatterns(ctx, accountIDText)
+}
+
+// ComputeAndWritePairStats reads unprocessed matches for accountID (within
+// the last `days` days), computes card-pair win-rate statistics, and upserts
+// them into card_combination_stats as global (deck_id = NULL) rows.
+//
+// At most matchCap matches are processed per call to prevent timeouts on
+// large accounts; callers should check ProcessHistoryResult.Truncated and
+// re-invoke until it is false.
+//
+// Formulas (locked in Ray architect review #191):
+//
+//	synergy_score    = wins_together / NULLIF(games_together, 0)
+//	confidence_score = 1.0 - 1.0 / (games_together + 1)
+//
+// games_card1_only / games_card2_only are left at 0. No current reader
+// consumes them, and computing them requires O(pairs²) NOT-EXISTS joins.
+// Future enhancement tracked in #191.
+//
+// Pair ordering is enforced (card_id_1 < card_id_2) at compute time to
+// satisfy the schema CHECK constraint.
+//
+// The partial unique index idx_combo_stats_global (migration 000098) on
+// (card_id_1, card_id_2, format) WHERE deck_id IS NULL is required for the
+// ON CONFLICT clause to correctly deduplicate global rows.
+func (r *MLRepository) ComputeAndWritePairStats(ctx context.Context, accountID int64, format string, days int, matchCap int) (*ProcessHistoryResult, error) {
+	if days <= 0 {
+		days = 30
+	}
+	if matchCap <= 0 {
+		matchCap = 1000
+	}
+
+	// 1. Fetch unprocessed matches for the account within the time window.
+	//    We include a LIMIT to enforce the hard cap per call.
+	const matchQ = `
+		SELECT m.id, m.format, m.deck_id, m.result
+		FROM matches m
+		WHERE m.account_id = $1
+		  AND m.processed_for_ml = FALSE
+		  AND m.timestamp >= NOW() - ($2 || ' days')::INTERVAL
+		  AND ($3 = '' OR m.format = $3)
+		ORDER BY m.timestamp DESC
+		LIMIT $4`
+	rows, err := r.db.QueryContext(ctx, matchQ, accountID, fmt.Sprintf("%d", days), format, matchCap+1)
+	if err != nil {
+		return nil, fmt.Errorf("query matches: %w", err)
+	}
+	defer func() { _ = rows.Close() }()
+
+	type matchRow struct {
+		id     string
+		format string
+		deckID string
+		result string
+	}
+	var matches []matchRow
+	for rows.Next() {
+		var mr matchRow
+		if err := rows.Scan(&mr.id, &mr.format, &mr.deckID, &mr.result); err != nil {
+			return nil, fmt.Errorf("scan match row: %w", err)
+		}
+		matches = append(matches, mr)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate matches: %w", err)
+	}
+	_ = rows.Close()
+
+	truncated := len(matches) > matchCap
+	if truncated {
+		matches = matches[:matchCap]
+	}
+
+	if len(matches) == 0 {
+		return &ProcessHistoryResult{}, nil
+	}
+
+	// 2. Collect match IDs and look up cards for each match's deck in bulk.
+	matchIDs := make([]string, len(matches))
+	deckIDs := make([]string, 0, len(matches))
+	deckIDSet := make(map[string]bool)
+	for i, m := range matches {
+		matchIDs[i] = m.id
+		if m.deckID != "" && !deckIDSet[m.deckID] {
+			deckIDSet[m.deckID] = true
+			deckIDs = append(deckIDs, m.deckID)
+		}
+	}
+
+	// Build ANY($1) placeholder list for deck IDs.
+	// deck_cards.deck_id is TEXT.
+	deckCardsByDeck := make(map[string][]int)
+	if len(deckIDs) > 0 {
+		placeholders := make([]string, len(deckIDs))
+		args := make([]any, len(deckIDs))
+		for i, d := range deckIDs {
+			placeholders[i] = fmt.Sprintf("$%d", i+1)
+			args[i] = d
+		}
+		deckCardsQ := fmt.Sprintf(
+			`SELECT deck_id, card_id FROM deck_cards WHERE deck_id IN (%s)`,
+			strings.Join(placeholders, ","),
+		)
+		dcRows, err := r.db.QueryContext(ctx, deckCardsQ, args...)
+		if err != nil {
+			return nil, fmt.Errorf("query deck_cards: %w", err)
+		}
+		defer func() { _ = dcRows.Close() }()
+		for dcRows.Next() {
+			var did string
+			var cid int
+			if err := dcRows.Scan(&did, &cid); err != nil {
+				return nil, fmt.Errorf("scan deck_cards: %w", err)
+			}
+			deckCardsByDeck[did] = append(deckCardsByDeck[did], cid)
+		}
+		if err := dcRows.Err(); err != nil {
+			return nil, fmt.Errorf("iterate deck_cards: %w", err)
+		}
+		_ = dcRows.Close()
+	}
+
+	// 3. Accumulate pair counts across matches.
+	//    Key: "card1:card2:format" (card1 < card2 enforced).
+	pairKey := func(c1, c2 int, fmt string) string {
+		return strconv.Itoa(c1) + ":" + strconv.Itoa(c2) + ":" + fmt
+	}
+	accum := make(map[string]*matchPairBatch)
+	for _, m := range matches {
+		cards := deckCardsByDeck[m.deckID]
+		if len(cards) < 2 {
+			continue
+		}
+		isWin := strings.EqualFold(m.result, "win")
+		// Enumerate all unique ordered pairs in this deck.
+		for i := 0; i < len(cards); i++ {
+			for j := i + 1; j < len(cards); j++ {
+				c1, c2 := cards[i], cards[j]
+				if c1 == c2 {
+					continue
+				}
+				if c1 > c2 {
+					c1, c2 = c2, c1
+				}
+				k := pairKey(c1, c2, m.format)
+				if accum[k] == nil {
+					accum[k] = &matchPairBatch{card1: c1, card2: c2, format: m.format}
+				}
+				accum[k].gamesTogether++
+				if isWin {
+					accum[k].winsTogether++
+				}
+			}
+		}
+	}
+
+	if len(accum) == 0 {
+		// No deck cards found for any match — still mark matches processed.
+		if err := r.markMatchesProcessed(ctx, matchIDs); err != nil {
+			return nil, err
+		}
+		return &ProcessHistoryResult{MatchesProcessed: len(matches), Truncated: truncated}, nil
+	}
+
+	// 4. Batch upsert into card_combination_stats.
+	//    Target the partial unique index idx_combo_stats_global
+	//    (card_id_1, card_id_2, format WHERE deck_id IS NULL) added in
+	//    migration 000098. The existing UNIQUE(card_id_1, card_id_2, deck_id,
+	//    format) constraint cannot be used here because Postgres treats NULL as
+	//    distinct, so it would never conflict on NULL deck_id rows.
+	const upsertQ = `
+		INSERT INTO card_combination_stats
+			(card_id_1, card_id_2, deck_id, format,
+			 games_together, wins_together,
+			 synergy_score, confidence_score,
+			 updated_at)
+		VALUES ($1, $2, NULL, $3, $4, $5,
+			CASE WHEN $4 > 0 THEN $5::REAL / $4::REAL ELSE 0.0 END,
+			1.0 - 1.0 / ($4::REAL + 1.0),
+			NOW())
+		ON CONFLICT (card_id_1, card_id_2, format) WHERE deck_id IS NULL
+		DO UPDATE SET
+			games_together   = card_combination_stats.games_together  + EXCLUDED.games_together,
+			wins_together    = card_combination_stats.wins_together   + EXCLUDED.wins_together,
+			synergy_score    = CASE
+				WHEN (card_combination_stats.games_together + EXCLUDED.games_together) > 0
+				THEN (card_combination_stats.wins_together + EXCLUDED.wins_together)::REAL
+				     / (card_combination_stats.games_together + EXCLUDED.games_together)::REAL
+				ELSE 0.0 END,
+			confidence_score = 1.0 - 1.0 / ((card_combination_stats.games_together + EXCLUDED.games_together)::REAL + 1.0),
+			updated_at       = NOW()`
+
+	pairsWritten := 0
+	for _, b := range accum {
+		if _, err := r.db.ExecContext(ctx, upsertQ,
+			b.card1, b.card2, b.format,
+			b.gamesTogether, b.winsTogether,
+		); err != nil {
+			return nil, fmt.Errorf("upsert pair (%d,%d,%s): %w", b.card1, b.card2, b.format, err)
+		}
+		pairsWritten++
+	}
+
+	// 5. Mark processed matches.
+	if err := r.markMatchesProcessed(ctx, matchIDs); err != nil {
+		return nil, err
+	}
+
+	return &ProcessHistoryResult{
+		PairsWritten:     pairsWritten,
+		MatchesProcessed: len(matches),
+		Truncated:        truncated,
+	}, nil
+}
+
+// markMatchesProcessed sets processed_for_ml = TRUE for the given match IDs.
+func (r *MLRepository) markMatchesProcessed(ctx context.Context, ids []string) error {
+	if len(ids) == 0 {
+		return nil
+	}
+	placeholders := make([]string, len(ids))
+	args := make([]any, len(ids))
+	for i, id := range ids {
+		placeholders[i] = fmt.Sprintf("$%d", i+1)
+		args[i] = id
+	}
+	q := fmt.Sprintf(
+		`UPDATE matches SET processed_for_ml = TRUE WHERE id IN (%s)`,
+		strings.Join(placeholders, ","),
+	)
+	if _, err := r.db.ExecContext(ctx, q, args...); err != nil {
+		return fmt.Errorf("mark matches processed: %w", err)
+	}
+	return nil
 }
 
 // ClearLearnedDataForAccount removes account-scoped learned data:

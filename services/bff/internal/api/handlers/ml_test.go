@@ -43,20 +43,24 @@ func (s *stubMLSuggestionsReader) DismissSuggestion(_ context.Context, _ int64, 
 }
 
 type stubMLReader struct {
-	applied             bool
-	appliedErr          error
-	synergyReport       *repository.SynergyReportRow
-	synergyReportErr    error
-	cardSynergies       []repository.CardCombinationStatsRow
-	cardSynergiesErr    error
-	cardSynergiesLimit  int
-	combinationStats    *repository.CardCombinationStatsRow
-	combinationStatsErr error
-	playPatterns        *repository.UserPlayPatternsRow
-	playPatternsErr     error
-	upsertPatterns      *repository.UserPlayPatternsRow
-	upsertPatternsErr   error
-	clearErr            error
+	applied                bool
+	appliedErr             error
+	synergyReport          *repository.SynergyReportRow
+	synergyReportErr       error
+	cardSynergies          []repository.CardCombinationStatsRow
+	cardSynergiesErr       error
+	cardSynergiesLimit     int
+	combinationStats       *repository.CardCombinationStatsRow
+	combinationStatsErr    error
+	processHistoryResult   *repository.ProcessHistoryResult
+	processHistoryErr      error
+	processHistoryDays     int
+	processHistoryCap      int
+	playPatterns           *repository.UserPlayPatternsRow
+	playPatternsErr        error
+	upsertPatterns         *repository.UserPlayPatternsRow
+	upsertPatternsErr      error
+	clearErr               error
 }
 
 func (s *stubMLReader) ApplySuggestion(_ context.Context, _, _ int64) (bool, error) {
@@ -74,6 +78,15 @@ func (s *stubMLReader) CardSynergies(_ context.Context, _ int, _ string, limit i
 
 func (s *stubMLReader) CombinationStats(_ context.Context, _, _ int, _ string) (*repository.CardCombinationStatsRow, error) {
 	return s.combinationStats, s.combinationStatsErr
+}
+
+func (s *stubMLReader) ComputeAndWritePairStats(_ context.Context, _ int64, _ string, days int, cap int) (*repository.ProcessHistoryResult, error) {
+	s.processHistoryDays = days
+	s.processHistoryCap = cap
+	if s.processHistoryResult == nil && s.processHistoryErr == nil {
+		return &repository.ProcessHistoryResult{}, nil
+	}
+	return s.processHistoryResult, s.processHistoryErr
 }
 
 func (s *stubMLReader) PlayPatterns(_ context.Context, _ string) (*repository.UserPlayPatternsRow, error) {
@@ -415,8 +428,15 @@ func TestMLCombinationStats_RejectsBadParams(t *testing.T) {
 
 // ─── ML management ───────────────────────────────────────────────────────────
 
-func TestMLProcessHistory_StubReturnsQueued(t *testing.T) {
-	h := newMLHandler(&stubMLSuggestionsReader{}, &stubMLReader{})
+func TestMLProcessHistory_HappyPath(t *testing.T) {
+	stub := &stubMLReader{
+		processHistoryResult: &repository.ProcessHistoryResult{
+			PairsWritten:     12,
+			MatchesProcessed: 50,
+			Truncated:        false,
+		},
+	}
+	h := newMLHandler(&stubMLSuggestionsReader{}, stub)
 	req := authedMLRequest(t, http.MethodPost, "/api/v1/ml/process-history?days=30", 168)
 	rr := httptest.NewRecorder()
 	h.ProcessMatchHistory(rr, req)
@@ -425,8 +445,75 @@ func TestMLProcessHistory_StubReturnsQueued(t *testing.T) {
 	}
 	var resp map[string]any
 	decodeMLEnvelope(t, rr.Body.Bytes(), &resp)
-	if resp["status"] != "queued" {
-		t.Errorf("status: %v", resp)
+	if resp["status"] != "ok" {
+		t.Errorf("status: got %v, want ok", resp["status"])
+	}
+	if resp["pairs_written"].(float64) != 12 {
+		t.Errorf("pairs_written: %v", resp["pairs_written"])
+	}
+	if resp["matches_processed"].(float64) != 50 {
+		t.Errorf("matches_processed: %v", resp["matches_processed"])
+	}
+	if resp["truncated"].(bool) != false {
+		t.Errorf("truncated: %v", resp["truncated"])
+	}
+	// days param must be propagated to the repository.
+	if stub.processHistoryDays != 30 {
+		t.Errorf("days propagated: got %d, want 30", stub.processHistoryDays)
+	}
+}
+
+func TestMLProcessHistory_TruncatedPath(t *testing.T) {
+	stub := &stubMLReader{
+		processHistoryResult: &repository.ProcessHistoryResult{
+			PairsWritten:     500,
+			MatchesProcessed: 1000,
+			Truncated:        true,
+		},
+	}
+	h := newMLHandler(&stubMLSuggestionsReader{}, stub)
+	req := authedMLRequest(t, http.MethodPost, "/api/v1/ml/process-history", 168)
+	rr := httptest.NewRecorder()
+	h.ProcessMatchHistory(rr, req)
+	if rr.Code != http.StatusOK {
+		t.Fatalf("status: %d body=%s", rr.Code, rr.Body.String())
+	}
+	var resp map[string]any
+	decodeMLEnvelope(t, rr.Body.Bytes(), &resp)
+	if resp["truncated"].(bool) != true {
+		t.Errorf("truncated: expected true, got %v", resp["truncated"])
+	}
+	if resp["matches_processed"].(float64) != 1000 {
+		t.Errorf("matches_processed: %v", resp["matches_processed"])
+	}
+	// Default days (30) should be used when not provided.
+	if stub.processHistoryDays != 30 {
+		t.Errorf("default days: got %d, want 30", stub.processHistoryDays)
+	}
+}
+
+func TestMLProcessHistory_RepositoryError(t *testing.T) {
+	stub := &stubMLReader{processHistoryErr: errors.New("db error")}
+	h := newMLHandler(&stubMLSuggestionsReader{}, stub)
+	req := authedMLRequest(t, http.MethodPost, "/api/v1/ml/process-history", 168)
+	rr := httptest.NewRecorder()
+	h.ProcessMatchHistory(rr, req)
+	if rr.Code != http.StatusInternalServerError {
+		t.Errorf("status: %d", rr.Code)
+	}
+}
+
+func TestMLProcessHistory_DefaultDays(t *testing.T) {
+	stub := &stubMLReader{}
+	h := newMLHandler(&stubMLSuggestionsReader{}, stub)
+	req := authedMLRequest(t, http.MethodPost, "/api/v1/ml/process-history", 168)
+	rr := httptest.NewRecorder()
+	h.ProcessMatchHistory(rr, req)
+	if rr.Code != http.StatusOK {
+		t.Fatalf("status: %d body=%s", rr.Code, rr.Body.String())
+	}
+	if stub.processHistoryDays != 30 {
+		t.Errorf("default days: got %d, want 30", stub.processHistoryDays)
 	}
 }
 
