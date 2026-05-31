@@ -1,3 +1,4 @@
+import { expect, within } from 'storybook/test';
 import type { Meta, StoryObj } from '@storybook/react';
 import Toast from './Toast';
 import './Toast.css';
@@ -21,11 +22,21 @@ const meta: Meta<typeof Toast> = {
 export default meta;
 type Story = StoryObj<typeof Toast>;
 
+/**
+ * Play function: verifies the toast is visible and displays the expected
+ * message text. `duration: 9999999` prevents auto-dismiss during the test.
+ * Chromatic snapshots this post-render visible state.
+ */
 export const Success: Story = {
   args: {
     message: 'Match synced successfully.',
     type: 'success',
     duration: 9999999,
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    const toast = canvas.getByText('Match synced successfully.');
+    await expect(toast).toBeVisible();
   },
 };
 
