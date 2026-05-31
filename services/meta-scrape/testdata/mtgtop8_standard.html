@@ -1,0 +1,37 @@
+<!--
+  Reference snapshot of the MTGTop8 Standard format page structure
+  (https://www.mtgtop8.com/format?f=ST) as the parseTournamentPage regex in
+  internal/scraper/mtgtop8.go was validated against: the archetype summary
+  table (archetype anchor + count cell) and the event_title divs.
+
+  Structural reference artifact only. The unit tests drive parsing through
+  inline httptest.Server HTML (zero live network in CI). If MTGTop8 changes
+  its markup, this snapshot is the ground truth used to update the patterns.
+-->
+<html>
+<head><title>MTGTOP8 - Standard</title></head>
+<body>
+<table class="Stable">
+<tr>
+  <td><a href="/archetype?f=ST&a=1001">Izzet Cauldron</a></td>
+  <td>37</td>
+</tr>
+<tr>
+  <td><a href="/archetype?f=ST&a=1002">Dimir Midrange</a></td>
+  <td>29</td>
+</tr>
+<tr>
+  <td><a href="/archetype?f=ST&a=1003">Mono Red Aggro</a></td>
+  <td>21</td>
+</tr>
+<tr>
+  <td><a href="/archetype?f=ST&a=1004">Azorius Omniscience</a></td>
+  <td>14</td>
+</tr>
+</table>
+
+<div class="event_title">Regional Championship - Standard</div>
+<div class="event_title">Standard Challenge 64</div>
+<div class="event_title">MTGO Standard League</div>
+</body>
+</html>
