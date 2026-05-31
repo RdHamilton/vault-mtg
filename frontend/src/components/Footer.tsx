@@ -112,35 +112,35 @@ const Footer = () => {
     <footer className="app-footer">
       <div className="footer-content">
         <span className="footer-label">All Time</span>
-        <span className="footer-separator">|</span>
+        <span className="footer-separator">·</span>
         <span className="footer-stat">
-          <strong>Matches:</strong> {stats.TotalMatches}
+          <strong>Matches:</strong> <span className="footer-num">{stats.TotalMatches}</span>
         </span>
-        <span className="footer-separator">|</span>
+        <span className="footer-separator">·</span>
         <span className="footer-stat">
-          <strong>Win Rate:</strong> {Math.round(stats.WinRate * 1000) / 10}% ({stats.MatchesWon}-{stats.MatchesLost})
+          <strong>Win Rate:</strong> <span className="footer-num">{Math.round(stats.WinRate * 1000) / 10}% ({stats.MatchesWon}-{stats.MatchesLost})</span>
         </span>
         {streak.count > 0 && (
           <>
-            <span className="footer-separator">|</span>
+            <span className="footer-separator">·</span>
             <span className={`footer-stat streak-${streak.type.toLowerCase()}`}>
-              <strong>Streak:</strong> {streak.type}{streak.count}
+              <strong>Streak:</strong> <span className="footer-num">{streak.type}{streak.count}</span>
             </span>
           </>
         )}
         {lastMatch && (
           <>
-            <span className="footer-separator">|</span>
+            <span className="footer-separator footer-separator-push">·</span>
             <span className="footer-stat footer-last-match">
-              <strong>Last Played:</strong> {lastMatch}
+              <strong>Last Played:</strong> <span className="footer-num">{lastMatch}</span>
             </span>
           </>
         )}
         {lastSynced && (
           <>
-            <span className="footer-separator">|</span>
+            <span className="footer-separator">·</span>
             <span className="footer-stat footer-last-synced">
-              <strong>Synced:</strong> {lastSynced}
+              <strong>Synced:</strong> <span className="footer-num">{lastSynced}</span>
             </span>
           </>
         )}

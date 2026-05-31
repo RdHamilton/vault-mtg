@@ -10,25 +10,53 @@
   display: flex;
   justify-content: space-between;
   align-items: center;
-  background-color: var(--bg-overlay);
+  background-color: var(--bg-raised);
   border-bottom: 1px solid var(--border);
   padding: 0;
 }
 
+.tab-bar-left {
+  display: flex;
+  align-items: center;
+}
+
+.nav-brand {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-3) var(--space-5);
+  border-right: 1px solid var(--border);
+  text-decoration: none;
+}
+
+.nav-brand-mark {
+  display: block;
+}
+
+.nav-brand-wordmark {
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: var(--text-base);
+  color: var(--accent);
+  letter-spacing: -0.01em;
+}
+
 .tab-links {
   display: flex;
+  overflow-x: auto;
 }
 
 .tab-bar-right {
   display: flex;
   align-items: center;
+  gap: var(--space-3);
+  padding: 0 var(--space-4);
 }
 
 .connection-status-indicator {
-  padding: 0 16px;
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: var(--space-2);
 }
 
 .status-badge-compact {
@@ -50,23 +78,27 @@
 }
 
 .tab {
-  padding: 12px 24px;
+  padding: var(--space-3) var(--space-4);
   text-decoration: none;
   color: var(--fg-secondary);
   border-bottom: 2px solid transparent;
-  transition: all 0.2s;
+  transition: var(--transition-fast);
+  font-family: var(--font-body);
+  font-size: var(--text-sm);
   font-weight: 500;
+  white-space: nowrap;
 }
 
 .tab:hover {
   color: var(--fg);
-  background-color: var(--border);
+  background-color: var(--bg-overlay);
 }
 
 .tab.active {
   color: var(--accent);
   border-bottom-color: var(--accent);
-  background-color: var(--bg-overlay);
+  background-color: rgba(var(--accent-rgb), 0.1);
+  font-weight: 600;
 }
 
 .sub-tab-bar {
@@ -74,21 +106,21 @@
   background-color: var(--bg-raised);
   border-bottom: 1px solid var(--border);
   padding: 0;
-  gap: 4px;
+  gap: var(--space-1);
 }
 
 .sub-tab {
-  padding: 8px 16px;
+  padding: var(--space-2) var(--space-4);
   text-decoration: none;
   color: var(--fg-secondary);
-  border-radius: 4px 4px 0 0;
-  transition: all 0.2s;
-  font-size: 14px;
+  border-radius: var(--radius-sm) var(--radius-sm) 0 0;
+  transition: var(--transition-fast);
+  font-size: var(--text-sm);
 }
 
 .sub-tab:hover {
   color: var(--fg);
-  background-color: var(--border);
+  background-color: var(--bg-overlay);
 }
 
 .sub-tab.active {

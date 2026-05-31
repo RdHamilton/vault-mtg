@@ -327,6 +327,19 @@ describe('Footer Component', () => {
       });
     });
 
+    it('should render numeric values with the mono treatment', async () => {
+      const stats = createMockStatistics({ TotalMatches: 100 });
+      mockMatches.getStats.mockResolvedValue(stats);
+      mockMatches.getMatches.mockResolvedValue([]);
+
+      render(<Footer />);
+
+      await waitFor(() => {
+        const matchesNum = screen.getByText('100');
+        expect(matchesNum).toHaveClass('footer-num');
+      });
+    });
+
     it('should apply correct CSS class for win streak', async () => {
       const stats = createMockStatistics();
       const matches = [createMockMatch({ Result: 'win' })];

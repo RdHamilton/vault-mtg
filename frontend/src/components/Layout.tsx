@@ -8,6 +8,7 @@ import { OnboardingModal } from './OnboardingModal';
 import { usePostHogIdentity } from '@/hooks/usePostHogIdentity';
 import { useDaemonOnboarding } from '@/hooks/useDaemonOnboarding';
 import ReportBugButton from './ReportBugButton';
+import vaultMark from '@/assets/logo-vaultmtg-mark.svg';
 import './Layout.css';
 
 interface LayoutProps {
@@ -67,7 +68,12 @@ const Layout = ({ children }: LayoutProps) => {
     <div className="app-container" data-testid="app-container">
       {/* Top Navigation Tabs */}
       <div className="tab-bar" data-testid="nav-tab-bar">
-        <div className="tab-links">
+        <div className="tab-bar-left">
+          <Link to="/home" className="nav-brand" data-testid="nav-brand" aria-label="VaultMTG home">
+            <img src={vaultMark} alt="" width={22} height={22} className="nav-brand-mark" />
+            <span className="nav-brand-wordmark">VaultMTG</span>
+          </Link>
+          <div className="tab-links">
           <Link
             to="/home"
             className={`tab ${activeTab === 'home' ? 'active' : ''}`}
@@ -145,6 +151,7 @@ const Layout = ({ children }: LayoutProps) => {
           >
             Settings
           </Link>
+          </div>
         </div>
         <div className="tab-bar-right">
           {isSignedIn && <ReportBugButton />}

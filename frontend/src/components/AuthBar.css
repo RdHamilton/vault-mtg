@@ -1,5 +1,4 @@
 .auth-bar {
-  padding: 0 12px;
   display: flex;
   align-items: center;
 }
@@ -7,7 +6,7 @@
 .auth-bar-signed-out {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: var(--space-3);
 }
 
 .auth-bar-signed-in {

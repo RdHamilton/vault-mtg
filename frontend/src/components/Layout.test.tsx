@@ -52,6 +52,34 @@ describe('Layout Component', () => {
       expect(screen.getByTestId('nav-tab-settings')).toBeInTheDocument();
     });
 
+    it('should render the VaultMTG brand lockup in the tab bar', () => {
+      render(
+        <Layout>
+          <div>Test Content</div>
+        </Layout>,
+        { initialRoute: '/' }
+      );
+
+      const brand = screen.getByTestId('nav-brand');
+      expect(brand).toBeInTheDocument();
+      expect(brand).toHaveTextContent('VaultMTG');
+      // Brand lockup links back to home
+      expect(brand).toHaveAttribute('href', '/home');
+    });
+
+    it('should apply active treatment class to the current tab', () => {
+      render(
+        <Layout>
+          <div>Test Content</div>
+        </Layout>,
+        { initialRoute: '/match-history' }
+      );
+
+      expect(screen.getByTestId('nav-tab-match-history')).toHaveClass('active');
+      // Inactive tabs should not carry the active treatment
+      expect(screen.getByTestId('nav-tab-quests')).not.toHaveClass('active');
+    });
+
     it('should highlight active tab based on current route', () => {
       render(
         <Layout>
