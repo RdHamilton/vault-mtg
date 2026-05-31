@@ -511,7 +511,8 @@ func (r *MLRepository) ComputeAndWritePairStats(ctx context.Context, accountID i
 
 	pairsWritten := 0
 	for _, b := range accum {
-		if _, err := r.db.ExecContext(ctx, upsertQ,
+		if _, err := r.db.ExecContext(
+			ctx, upsertQ,
 			b.card1, b.card2, b.format,
 			b.gamesTogether, b.winsTogether,
 		); err != nil {

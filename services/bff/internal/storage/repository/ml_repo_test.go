@@ -329,7 +329,8 @@ func TestMLRepository_ComputeAndWritePairStats_IdempotentUpsert(t *testing.T) {
 
 	// Assert exactly one row in card_combination_stats for this pair+format.
 	var count int
-	err := db.QueryRowContext(context.Background(),
+	err := db.QueryRowContext(
+		context.Background(),
 		`SELECT COUNT(*) FROM card_combination_stats
 		  WHERE card_id_1 = $1 AND card_id_2 = $2 AND format = $3 AND deck_id IS NULL`,
 		card1ID, card2ID, format,
@@ -385,7 +386,8 @@ func TestMLRepository_ComputeAndWritePairStats_CapTruncates(t *testing.T) {
 	// Insert 3 matches but cap at 2 — truncated must be true.
 	// Signature: (t, db, matchID, accountID, format, ts, deckID, result)
 	for i := 0; i < 3; i++ {
-		insertTestMatchWithDeck(t, db,
+		insertTestMatchWithDeck(
+			t, db,
 			fmt.Sprintf("ml-cap-%d-%d", accountID, i), accountID, format,
 			now.Add(-time.Duration(i)*time.Second), deckID, "win",
 		)

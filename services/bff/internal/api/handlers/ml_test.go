@@ -43,24 +43,24 @@ func (s *stubMLSuggestionsReader) DismissSuggestion(_ context.Context, _ int64, 
 }
 
 type stubMLReader struct {
-	applied                bool
-	appliedErr             error
-	synergyReport          *repository.SynergyReportRow
-	synergyReportErr       error
-	cardSynergies          []repository.CardCombinationStatsRow
-	cardSynergiesErr       error
-	cardSynergiesLimit     int
-	combinationStats       *repository.CardCombinationStatsRow
-	combinationStatsErr    error
-	processHistoryResult   *repository.ProcessHistoryResult
-	processHistoryErr      error
-	processHistoryDays     int
-	processHistoryCap      int
-	playPatterns           *repository.UserPlayPatternsRow
-	playPatternsErr        error
-	upsertPatterns         *repository.UserPlayPatternsRow
-	upsertPatternsErr      error
-	clearErr               error
+	applied              bool
+	appliedErr           error
+	synergyReport        *repository.SynergyReportRow
+	synergyReportErr     error
+	cardSynergies        []repository.CardCombinationStatsRow
+	cardSynergiesErr     error
+	cardSynergiesLimit   int
+	combinationStats     *repository.CardCombinationStatsRow
+	combinationStatsErr  error
+	processHistoryResult *repository.ProcessHistoryResult
+	processHistoryErr    error
+	processHistoryDays   int
+	processHistoryCap    int
+	playPatterns         *repository.UserPlayPatternsRow
+	playPatternsErr      error
+	upsertPatterns       *repository.UserPlayPatternsRow
+	upsertPatternsErr    error
+	clearErr             error
 }
 
 func (s *stubMLReader) ApplySuggestion(_ context.Context, _, _ int64) (bool, error) {
