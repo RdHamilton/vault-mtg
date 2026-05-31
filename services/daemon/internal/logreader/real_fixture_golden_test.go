@@ -245,6 +245,69 @@ func TestRealFixture_DraftPick_2026_59_20(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
+// botdraft_pack — BotDraft (QuickDraft) draft.pack (#337)
+// ---------------------------------------------------------------------------
+
+// TestRealFixture_BotDraftPack_2026_59_20 asserts that the BotDraft pack fixture
+// (CurrentModule=BotDraft + stringified Payload) parses correctly. Real
+// QuickDraft_SOS_20260526 pack 0 / pick 0, 14 real grpIds (non-PII per ADR-041).
+// There is no draftId on the BotDraft wire — the session is keyed by EventName.
+func TestRealFixture_BotDraftPack_2026_59_20(t *testing.T) {
+	entry := loadRealFixture(t, "botdraft_pack_2026.59.20.log")
+
+	mod, ok := entry.JSON["CurrentModule"].(string)
+	require.True(t, ok, "BotDraft pack fixture must contain CurrentModule key")
+	require.Equal(t, "BotDraft", mod)
+	_, hasPayload := entry.JSON["Payload"].(string)
+	require.True(t, hasPayload, "BotDraft pack fixture must contain a stringified Payload")
+
+	p, err := ParseBotDraftStatusPack(entry)
+	require.NoError(t, err)
+	require.NotNil(t, p)
+
+	assert.Equal(t, "QuickDraft_SOS_20260526", p.CourseName)
+	assert.Equal(t, "", p.DraftID)
+	// Pack 0 / Pick 0 → cumulative 1-based SelfPick = 1.
+	assert.Equal(t, 1, p.DraftPack.SelfPick)
+
+	require.Len(t, p.DraftPack.PackCards, 14)
+	packSet := make(map[int]bool, len(p.DraftPack.PackCards))
+	for _, id := range p.DraftPack.PackCards {
+		packSet[id] = true
+	}
+	assert.True(t, packSet[102470], "GRP 102470 must be present in pack")
+	assert.True(t, packSet[102704], "GRP 102704 must be present in pack")
+	assert.True(t, packSet[102715], "GRP 102715 must be present in pack")
+}
+
+// ---------------------------------------------------------------------------
+// botdraft_pick — BotDraft (QuickDraft) draft.pick (#337)
+// ---------------------------------------------------------------------------
+
+// TestRealFixture_BotDraftPick_2026_59_20 asserts that the BotDraftDraftPick
+// fixture parses correctly. Real QuickDraft_SOS_20260526 pack 0 / pick 0 — the
+// player picked GRP 102704. The outer correlation id is a sanitized stable fake;
+// grpIds are real (non-PII per ADR-041).
+func TestRealFixture_BotDraftPick_2026_59_20(t *testing.T) {
+	entry := loadRealFixture(t, "botdraft_pick_2026.59.20.log")
+
+	req, hasReq := entry.JSON["request"].(string)
+	require.True(t, hasReq, "BotDraft pick fixture must contain request string")
+	require.Contains(t, req, `"PickInfo"`, "request must carry a PickInfo block")
+
+	p, err := ParseBotDraftPick(entry)
+	require.NoError(t, err)
+	require.NotNil(t, p)
+
+	assert.Equal(t, "QuickDraft_SOS_20260526", p.CourseName)
+	assert.Equal(t, "", p.DraftID)
+	assert.Equal(t, 0, p.PackNumber)
+	assert.Equal(t, 0, p.PickNumber)
+	require.Len(t, p.PickedCards, 1)
+	assert.Equal(t, 102704, p.PickedCards[0])
+}
+
+// ---------------------------------------------------------------------------
 // collection_updated
 // ---------------------------------------------------------------------------
 

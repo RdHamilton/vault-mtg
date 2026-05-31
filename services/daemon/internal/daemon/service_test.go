@@ -29,20 +29,108 @@ func makeTestJWT(exp int64) string {
 	return header + "." + claims + ".fakesig"
 }
 
+// TestClassifyEntry_DraftPack classifies a BotDraft (QuickDraft) pack line
+// (CurrentModule=BotDraft + stringified Payload, #337) as draft.pack.
 func TestClassifyEntry_DraftPack(t *testing.T) {
 	entry := &logreader.LogEntry{
 		IsJSON: true,
-		JSON:   map[string]interface{}{"draftPack": []interface{}{"card1", "card2"}},
+		JSON: map[string]interface{}{
+			"CurrentModule": "BotDraft",
+			"Payload":       `{"PackNumber":0,"PickNumber":0,"DraftPack":["1"]}`,
+		},
 	}
 	assert.Equal(t, "draft.pack", classifyEntry(entry))
 }
 
+// TestClassifyEntry_DraftPick classifies a BotDraftDraftPick line (request
+// string carrying PickInfo, #337) as draft.pick.
 func TestClassifyEntry_DraftPick(t *testing.T) {
 	entry := &logreader.LogEntry{
 		IsJSON: true,
-		JSON:   map[string]interface{}{"pickedCards": []interface{}{"card1"}},
+		JSON: map[string]interface{}{
+			"id":      "abc",
+			"request": `{"PickInfo":{"CardIds":["1"],"PackNumber":0,"PickNumber":0}}`,
+		},
 	}
 	assert.Equal(t, "draft.pick", classifyEntry(entry))
+}
+
+// TestClassifyEntry_PremierDraftPack_NonRegression locks in that the Premier
+// (#338) Draft.Notify line (draftId + PackCards) still classifies as draft.pack
+// after #337 replaced the BotDraft probes. The Premier probe short-circuits
+// before the BotDraft probe.
+func TestClassifyEntry_PremierDraftPack_NonRegression(t *testing.T) {
+	entry := &logreader.LogEntry{
+		IsJSON: true,
+		JSON: map[string]interface{}{
+			"draftId":   "00000000-0000-4000-8000-0000000003a8",
+			"SelfPick":  float64(1),
+			"SelfPack":  float64(1),
+			"PackCards": "102614,102609,102714",
+		},
+	}
+	assert.Equal(t, "draft.pack", classifyEntry(entry))
+}
+
+// TestClassifyEntry_PremierDraftPick_NonRegression locks in that the Premier
+// (#338) EventPlayerDraftMakePick line (id + request carrying DraftId) still
+// classifies as draft.pick after #337. The Premier DraftId probe runs before
+// the BotDraft PickInfo probe.
+func TestClassifyEntry_PremierDraftPick_NonRegression(t *testing.T) {
+	entry := &logreader.LogEntry{
+		IsJSON: true,
+		JSON: map[string]interface{}{
+			"id":      "00000000-0000-4000-8000-0000000004b1",
+			"request": `{"DraftId":"00000000-0000-4000-8000-0000000003a8","GrpIds":[102647],"Pack":1,"Pick":1}`,
+		},
+	}
+	assert.Equal(t, "draft.pick", classifyEntry(entry))
+}
+
+// TestBotDraftClassifierDoesNotMatchPremierLines guards the probe ordering: a
+// Premier line must route through the Premier parser, never the BotDraft else
+// branch. handleEntry dispatches the Premier line and the emitted payload must
+// carry the Premier draft_id (proof ParsePremierDraftMakePick ran, not
+// ParseBotDraftPick).
+func TestBotDraftClassifierDoesNotMatchPremierLines(t *testing.T) {
+	var received contract.DaemonEvent
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		body, err := io.ReadAll(r.Body)
+		require.NoError(t, err)
+		require.NoError(t, json.Unmarshal(body, &received))
+		w.WriteHeader(http.StatusAccepted)
+	}))
+	defer srv.Close()
+
+	cfg := &config.Config{
+		CloudAPIURL: srv.URL,
+		IngestPath:  "/v1/ingest/events",
+		APIKey:      "test-key",
+		AccountID:   "acc-premier",
+	}
+	svc := New(cfg)
+
+	entry := &logreader.LogEntry{
+		IsJSON: true,
+		JSON: map[string]interface{}{
+			"id":      "00000000-0000-4000-8000-0000000004b1",
+			"request": `{"DraftId":"00000000-0000-4000-8000-0000000003a8","GrpIds":[102647],"Pack":1,"Pick":1}`,
+		},
+	}
+
+	require.NoError(t, svc.handleEntry(context.Background(), entry))
+	assert.Equal(t, "draft.pick", received.Type)
+
+	var payload logreader.DraftPickPayload
+	require.NoError(t, json.Unmarshal(received.Payload, &payload))
+	// Premier parser sets draft_id and converts 1-based Pack/Pick to 0-based.
+	assert.Equal(t, "00000000-0000-4000-8000-0000000003a8", payload.DraftID)
+	assert.Equal(t, []int{102647}, payload.PickedCards)
+	assert.Equal(t, 0, payload.PackNumber)
+	assert.Equal(t, 0, payload.PickNumber)
+	// CourseName stays empty for Premier — proof BotDraft (which sets EventName)
+	// did NOT run.
+	assert.Equal(t, "", payload.CourseName)
 }
 
 func TestClassifyEntry_MatchCompleted(t *testing.T) {
@@ -126,8 +214,9 @@ func TestClassifyEntry_NotJSON(t *testing.T) {
 }
 
 // TestHandleEntry_DraftPackDispatchesTypedPayload verifies that handleEntry
-// parses a draft.pack entry into a DraftPackPayload and sends it to the BFF
-// with the correct typed JSON keys (PackCards, SelfPick, CourseName).
+// parses a BotDraft (QuickDraft) draft.pack entry into a DraftPackPayload and
+// sends it to the BFF with the correct typed JSON keys (PackCards, SelfPick,
+// CourseName). The else-branch routes the CurrentModule=BotDraft wire line (#337).
 func TestHandleEntry_DraftPackDispatchesTypedPayload(t *testing.T) {
 	var received contract.DaemonEvent
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -146,15 +235,12 @@ func TestHandleEntry_DraftPackDispatchesTypedPayload(t *testing.T) {
 	}
 	svc := New(cfg)
 
-	// Construct the entry as the reader would after parsing the log line.
+	// Construct the entry as the reader would after parsing a BotDraft pack line.
 	entry := &logreader.LogEntry{
 		IsJSON: true,
 		JSON: map[string]interface{}{
-			"CourseName": "PremierDraft_BLB",
-			"draftPack": map[string]interface{}{
-				"PackCards": []interface{}{float64(12345), float64(67890)},
-				"SelfPick":  float64(1),
-			},
+			"CurrentModule": "BotDraft",
+			"Payload":       `{"EventName":"QuickDraft_SOS_20260526","PackNumber":0,"PickNumber":0,"DraftPack":["12345","67890"]}`,
 		},
 	}
 
@@ -164,14 +250,16 @@ func TestHandleEntry_DraftPackDispatchesTypedPayload(t *testing.T) {
 
 	var payload logreader.DraftPackPayload
 	require.NoError(t, json.Unmarshal(received.Payload, &payload))
-	assert.Equal(t, "PremierDraft_BLB", payload.CourseName)
+	assert.Equal(t, "QuickDraft_SOS_20260526", payload.CourseName)
 	assert.Equal(t, []int{12345, 67890}, payload.DraftPack.PackCards)
+	// pack 0 / pick 0 → cumulative 1-based SelfPick = 1.
 	assert.Equal(t, 1, payload.DraftPack.SelfPick)
 }
 
 // TestHandleEntry_DraftPickDispatchesTypedPayload verifies that handleEntry
-// parses a draft.pick entry into a DraftPickPayload and sends it to the BFF
-// with the correct typed JSON keys (pickedCards, PackNumber, PickNumber, CourseName).
+// parses a BotDraft (QuickDraft) draft.pick entry into a DraftPickPayload and
+// sends it to the BFF with the correct typed JSON keys (pickedCards, PackNumber,
+// PickNumber, CourseName). The else-branch routes the BotDraftDraftPick line (#337).
 func TestHandleEntry_DraftPickDispatchesTypedPayload(t *testing.T) {
 	var received contract.DaemonEvent
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -190,14 +278,12 @@ func TestHandleEntry_DraftPickDispatchesTypedPayload(t *testing.T) {
 	}
 	svc := New(cfg)
 
-	// Construct the entry as the reader would after parsing the log line.
+	// Construct the entry as the reader would after parsing a BotDraftDraftPick line.
 	entry := &logreader.LogEntry{
 		IsJSON: true,
 		JSON: map[string]interface{}{
-			"CourseName":  "PremierDraft_BLB",
-			"pickedCards": []interface{}{float64(12345)},
-			"PackNumber":  float64(0),
-			"PickNumber":  float64(3),
+			"id":      "abc",
+			"request": `{"EventName":"QuickDraft_SOS_20260526","PickInfo":{"EventName":"QuickDraft_SOS_20260526","CardIds":["12345"],"PackNumber":0,"PickNumber":3}}`,
 		},
 	}
 
@@ -207,7 +293,7 @@ func TestHandleEntry_DraftPickDispatchesTypedPayload(t *testing.T) {
 
 	var payload logreader.DraftPickPayload
 	require.NoError(t, json.Unmarshal(received.Payload, &payload))
-	assert.Equal(t, "PremierDraft_BLB", payload.CourseName)
+	assert.Equal(t, "QuickDraft_SOS_20260526", payload.CourseName)
 	assert.Equal(t, []int{12345}, payload.PickedCards)
 	assert.Equal(t, 0, payload.PackNumber)
 	assert.Equal(t, 3, payload.PickNumber)
@@ -782,7 +868,7 @@ func TestDispatcher_401InKeychainModeIsNotRetried(t *testing.T) {
 
 	entry := &logreader.LogEntry{
 		IsJSON: true,
-		JSON:   map[string]interface{}{"draftPack": []interface{}{"card1"}},
+		JSON:   map[string]interface{}{"CurrentModule": "BotDraft", "Payload": `{"EventName":"QuickDraft_SOS_20260526","PackNumber":0,"PickNumber":0,"DraftPack":["102704"]}`},
 	}
 
 	// handleEntry must return nil — ErrReauthRequired is suppressed to avoid
@@ -951,20 +1037,22 @@ func TestHandleEntry_ParseFailure_RecordsCounter(t *testing.T) {
 		raw       string
 	}{
 		{
-			// draftPack key present (classifies as draft.pack) but value is not
-			// the expected map shape (causes ParseDraftPack to return an error).
+			// BotDraft pack envelope (classifies as draft.pack) but the inner
+			// Payload string is not valid JSON (causes ParseBotDraftStatusPack
+			// to return an error).
 			name:      "draft.pack bad shape",
 			eventType: "draft.pack",
-			json:      map[string]interface{}{"draftPack": "not-a-map"},
-			raw:       `{"draftPack":"not-a-map"}`,
+			json:      map[string]interface{}{"CurrentModule": "BotDraft", "Payload": "not-json"},
+			raw:       `{"CurrentModule":"BotDraft","Payload":"not-json"}`,
 		},
 		{
-			// pickedCards key present (classifies as draft.pick) but value is a
-			// string (causes ParseDraftPick to return an error).
+			// BotDraftDraftPick line (classifies as draft.pick via PickInfo) but
+			// the inner request string is not valid JSON (causes ParseBotDraftPick
+			// to return an error).
 			name:      "draft.pick bad shape",
 			eventType: "draft.pick",
-			json:      map[string]interface{}{"pickedCards": "not-a-slice"},
-			raw:       `{"pickedCards":"not-a-slice"}`,
+			json:      map[string]interface{}{"request": `{"PickInfo": not-json`},
+			raw:       `{"request":"{\"PickInfo\": not-json"}`,
 		},
 		{
 			// InventoryInfo key present (classifies as inventory.updated) but
@@ -1076,7 +1164,7 @@ func TestService_BFFFailureCounterIncrements(t *testing.T) {
 	// and call onBFFFailure, which calls svc.recordBFFFailure.
 	entry := &logreader.LogEntry{
 		IsJSON: true,
-		JSON:   map[string]interface{}{"draftPack": []interface{}{"card1"}},
+		JSON:   map[string]interface{}{"CurrentModule": "BotDraft", "Payload": `{"EventName":"QuickDraft_SOS_20260526","PackNumber":0,"PickNumber":0,"DraftPack":["102704"]}`},
 	}
 	// handleEntry calls SendOrBuffer; on 503 x3, the onBFFFailure callback fires.
 	require.NoError(t, svc.handleEntry(context.Background(), entry))
@@ -1117,7 +1205,7 @@ func TestService_BFFFailureCounterResets(t *testing.T) {
 	// First entry: exhausts retries, increments counter.
 	entry := &logreader.LogEntry{
 		IsJSON: true,
-		JSON:   map[string]interface{}{"draftPack": []interface{}{"card1"}},
+		JSON:   map[string]interface{}{"CurrentModule": "BotDraft", "Payload": `{"EventName":"QuickDraft_SOS_20260526","PackNumber":0,"PickNumber":0,"DraftPack":["102704"]}`},
 	}
 	require.NoError(t, svc.handleEntry(context.Background(), entry))
 
@@ -1129,7 +1217,7 @@ func TestService_BFFFailureCounterResets(t *testing.T) {
 	// Second entry: succeeds. clearBFFFailureCounter must run.
 	entry2 := &logreader.LogEntry{
 		IsJSON: true,
-		JSON:   map[string]interface{}{"pickedCards": []interface{}{"card1"}},
+		JSON:   map[string]interface{}{"id": "abc", "request": `{"PickInfo":{"CardIds":["102704"],"PackNumber":0,"PickNumber":0}}`},
 	}
 	require.NoError(t, svc.handleEntry(context.Background(), entry2))
 
@@ -1193,8 +1281,8 @@ func TestService_HeartbeatPayload_IncludesFailureCount(t *testing.T) {
 	for i := 0; i < 3; i++ {
 		entry := &logreader.LogEntry{
 			IsJSON: true,
-			JSON:   map[string]interface{}{"draftPack": []interface{}{"card1"}},
-			Raw:    fmt.Sprintf(`{"draftPack":["card%d"]}`, i),
+			JSON:   map[string]interface{}{"CurrentModule": "BotDraft", "Payload": `{"EventName":"QuickDraft_SOS_20260526","PackNumber":0,"PickNumber":0,"DraftPack":["102704"]}`},
+			Raw:    fmt.Sprintf(`{"CurrentModule":"BotDraft","Payload":"pack-%d"}`, i),
 		}
 		require.NoError(t, svc.handleEntry(context.Background(), entry))
 	}
@@ -1259,7 +1347,7 @@ func TestErrReauthRequired_EmitsAuthFailed(t *testing.T) {
 
 	entry := &logreader.LogEntry{
 		IsJSON: true,
-		JSON:   map[string]interface{}{"draftPack": []interface{}{"card1"}},
+		JSON:   map[string]interface{}{"CurrentModule": "BotDraft", "Payload": `{"EventName":"QuickDraft_SOS_20260526","PackNumber":0,"PickNumber":0,"DraftPack":["102704"]}`},
 	}
 	require.NoError(t, svc.handleEntry(context.Background(), entry))
 
@@ -1497,7 +1585,7 @@ func TestReactiveReauth_SuccessClearsKeychainErr(t *testing.T) {
 
 	entry := &logreader.LogEntry{
 		IsJSON: true,
-		JSON:   map[string]interface{}{"draftPack": []interface{}{"card1"}},
+		JSON:   map[string]interface{}{"CurrentModule": "BotDraft", "Payload": `{"EventName":"QuickDraft_SOS_20260526","PackNumber":0,"PickNumber":0,"DraftPack":["102704"]}`},
 	}
 
 	err := svc.handleEntry(context.Background(), entry)
@@ -1542,7 +1630,7 @@ func TestReactiveReauth_FailureSetsKeychainErr(t *testing.T) {
 
 	entry := &logreader.LogEntry{
 		IsJSON: true,
-		JSON:   map[string]interface{}{"draftPack": []interface{}{"card1"}},
+		JSON:   map[string]interface{}{"CurrentModule": "BotDraft", "Payload": `{"EventName":"QuickDraft_SOS_20260526","PackNumber":0,"PickNumber":0,"DraftPack":["102704"]}`},
 	}
 
 	err := svc.handleEntry(context.Background(), entry)
@@ -1589,7 +1677,7 @@ func TestReactiveReauth_ConcurrentGate(t *testing.T) {
 
 	entry := &logreader.LogEntry{
 		IsJSON: true,
-		JSON:   map[string]interface{}{"draftPack": []interface{}{"card1"}},
+		JSON:   map[string]interface{}{"CurrentModule": "BotDraft", "Payload": `{"EventName":"QuickDraft_SOS_20260526","PackNumber":0,"PickNumber":0,"DraftPack":["102704"]}`},
 	}
 
 	// Fire two concurrent handleEntry calls so both hit 401 nearly simultaneously.
@@ -1639,7 +1727,7 @@ func TestReactiveReauth_NoFuncFallsBack(t *testing.T) {
 
 	entry := &logreader.LogEntry{
 		IsJSON: true,
-		JSON:   map[string]interface{}{"draftPack": []interface{}{"card1"}},
+		JSON:   map[string]interface{}{"CurrentModule": "BotDraft", "Payload": `{"EventName":"QuickDraft_SOS_20260526","PackNumber":0,"PickNumber":0,"DraftPack":["102704"]}`},
 	}
 
 	err := svc.handleEntry(context.Background(), entry)
@@ -1713,7 +1801,7 @@ func TestReactiveReauth_GoroutineUsesLongLivedContext(t *testing.T) {
 
 	entry := &logreader.LogEntry{
 		IsJSON: true,
-		JSON:   map[string]interface{}{"draftPack": []interface{}{"card1"}},
+		JSON:   map[string]interface{}{"CurrentModule": "BotDraft", "Payload": `{"EventName":"QuickDraft_SOS_20260526","PackNumber":0,"PickNumber":0,"DraftPack":["102704"]}`},
 	}
 
 	err := svc.handleEntry(context.Background(), entry)

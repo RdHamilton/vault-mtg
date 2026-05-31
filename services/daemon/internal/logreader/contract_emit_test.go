@@ -272,15 +272,16 @@ func TestContractEmit_DeckUpdated(t *testing.T) {
 	}
 }
 
-// TestContractEmit_DraftPack round-trips the draft-pack corpus player-log
-// fixture through ParseDraftPack + BuildEvent and asserts semantic properties
-// on the emitted payload.
-func TestContractEmit_DraftPack(t *testing.T) {
+// TestContractEmit_BotDraftPack round-trips the BotDraft (QuickDraft) draft-pack
+// corpus player-log fixture through ParseBotDraftStatusPack + BuildEvent and
+// asserts semantic properties on the emitted payload (#337). The corpus fixture
+// is the real CurrentModule=BotDraft + stringified Payload wire format.
+func TestContractEmit_BotDraftPack(t *testing.T) {
 	entry := loadCorpusLogEntry(t, "player-log/draft-pack.log")
 
-	p, err := logreader.ParseDraftPack(entry)
+	p, err := logreader.ParseBotDraftStatusPack(entry)
 	require.NoErrorf(t, err,
-		"[contract-gate] ParseDraftPack failed for corpus player-log/draft-pack.log")
+		"[contract-gate] ParseBotDraftStatusPack failed for corpus player-log/draft-pack.log")
 
 	evt, err := dispatch.BuildEvent("draft.pack", testAccountID, testSessionID, p)
 	require.NoErrorf(t, err,
@@ -288,38 +289,39 @@ func TestContractEmit_DraftPack(t *testing.T) {
 
 	assertEnvelopeFields(t, evt, "draft.pack")
 
-	// The daemon currently serialises DraftPackPayload (logreader type) into the
-	// payload. Assert the fields that the logreader type produces.
+	// The daemon serialises DraftPackPayload (logreader type) into the payload.
+	// Assert the fields that the logreader type produces.
 	var rawPayload map[string]interface{}
 	require.NoErrorf(t, json.Unmarshal(evt.Payload, &rawPayload),
 		"[contract-gate] unmarshal draft.pack payload")
 
 	courseName, _ := rawPayload["CourseName"].(string)
 	assert.NotEmptyf(t, courseName,
-		"[contract-gate] draft.pack CourseName must be non-empty; corpus fixture: daemon-emit/draft-pack.json; parser source: draft_pick.go; "+
+		"[contract-gate] BotDraft draft.pack CourseName must be non-empty; corpus fixture: player-log/draft-pack.log; parser source: botdraft.go; "+
 			"If the MTGA log format changed: update the corpus (see ADR-042 Layer 2 refresh protocol). "+
 			"If the daemon assembly changed: fix the parser to match the corpus OR update the corpus with a new MTGA version.")
 
 	draftPack, _ := rawPayload["draftPack"].(map[string]interface{})
 	assert.NotNilf(t, draftPack,
-		"[contract-gate] draft.pack payload must contain draftPack object; corpus fixture: daemon-emit/draft-pack.json; parser source: draft_pick.go")
+		"[contract-gate] BotDraft draft.pack payload must contain draftPack object; corpus fixture: player-log/draft-pack.log; parser source: botdraft.go")
 
 	if draftPack != nil {
 		packCards, _ := draftPack["PackCards"].([]interface{})
 		assert.GreaterOrEqualf(t, len(packCards), 1,
-			"[contract-gate] draft.pack draftPack.PackCards must have at least 1 card; corpus fixture: daemon-emit/draft-pack.json; parser source: draft_pick.go")
+			"[contract-gate] BotDraft draft.pack draftPack.PackCards must have at least 1 card; corpus fixture: player-log/draft-pack.log; parser source: botdraft.go")
 	}
 }
 
-// TestContractEmit_DraftPick round-trips the draft-pick corpus player-log
-// fixture through ParseDraftPick + BuildEvent and asserts semantic properties
-// on the emitted payload.
-func TestContractEmit_DraftPick(t *testing.T) {
+// TestContractEmit_BotDraftPick round-trips the BotDraft (QuickDraft) draft-pick
+// corpus player-log fixture through ParseBotDraftPick + BuildEvent and asserts
+// semantic properties on the emitted payload (#337). The corpus fixture is the
+// real BotDraftDraftPick request (stringified request carrying PickInfo).
+func TestContractEmit_BotDraftPick(t *testing.T) {
 	entry := loadCorpusLogEntry(t, "player-log/draft-pick.log")
 
-	p, err := logreader.ParseDraftPick(entry)
+	p, err := logreader.ParseBotDraftPick(entry)
 	require.NoErrorf(t, err,
-		"[contract-gate] ParseDraftPick failed for corpus player-log/draft-pick.log")
+		"[contract-gate] ParseBotDraftPick failed for corpus player-log/draft-pick.log")
 
 	evt, err := dispatch.BuildEvent("draft.pick", testAccountID, testSessionID, p)
 	require.NoErrorf(t, err,
@@ -327,21 +329,21 @@ func TestContractEmit_DraftPick(t *testing.T) {
 
 	assertEnvelopeFields(t, evt, "draft.pick")
 
-	// The daemon currently serialises DraftPickPayload (logreader type) into the
-	// payload. Assert the fields that the logreader type produces.
+	// The daemon serialises DraftPickPayload (logreader type) into the payload.
+	// Assert the fields that the logreader type produces.
 	var rawPayload map[string]interface{}
 	require.NoErrorf(t, json.Unmarshal(evt.Payload, &rawPayload),
 		"[contract-gate] unmarshal draft.pick payload")
 
 	courseName, _ := rawPayload["CourseName"].(string)
 	assert.NotEmptyf(t, courseName,
-		"[contract-gate] draft.pick CourseName must be non-empty; corpus fixture: daemon-emit/draft-pick.json; parser source: draft_pick.go; "+
+		"[contract-gate] BotDraft draft.pick CourseName must be non-empty; corpus fixture: player-log/draft-pick.log; parser source: botdraft.go; "+
 			"If the MTGA log format changed: update the corpus (see ADR-042 Layer 2 refresh protocol). "+
 			"If the daemon assembly changed: fix the parser to match the corpus OR update the corpus with a new MTGA version.")
 
 	pickedCards, _ := rawPayload["pickedCards"].([]interface{})
 	assert.GreaterOrEqualf(t, len(pickedCards), 1,
-		"[contract-gate] draft.pick pickedCards must have at least 1 entry; corpus fixture: daemon-emit/draft-pick.json; parser source: draft_pick.go")
+		"[contract-gate] BotDraft draft.pick pickedCards must have at least 1 entry; corpus fixture: player-log/draft-pick.log; parser source: botdraft.go")
 }
 
 // TestContractEmit_DraftPack_Premier round-trips the Premier draft-pack corpus

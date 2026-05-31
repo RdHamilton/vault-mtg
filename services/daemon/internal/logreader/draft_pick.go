@@ -7,19 +7,17 @@ import (
 	"strings"
 )
 
-// DraftPackPayload is the parsed payload for a "draft.pack" log entry.
+// DraftPackPayload is the parsed/emitted payload for a "draft.pack" event.
 //
-// MTGA emits a BotDraft_DraftPack or HumanDraft_Notify message whose top-level
-// JSON contains a "draftPack" key.  The nested object holds the cards offered
-// to the player and which pick number this is.
+// It is the common output shape both draft formats normalise into: Premier
+// (ParsePremierDraftNotify, #338) and BotDraft / QuickDraft
+// (ParseBotDraftStatusPack, #337). The JSON tags below describe the daemon-emit
+// (BFF contract) serialisation, not the raw MTGA wire line — the two formats
+// have distinct wire shapes (see the parser sources).
 //
-// Example log line (bot draft):
+// Emitted shape:
 //
-//	{"draftPack":{"PackCards":[12345,67890,11111],"SelfPick":1},"CourseName":"PremierDraft_BLB"}
-//
-// Example log line (human draft):
-//
-//	{"draftPack":{"PackCards":[12345,67890],"SelfPick":2},"CourseName":"TradDraft_BLB"}
+//	{"CourseName":"QuickDraft_SOS_20260526","draftPack":{"PackCards":[102470,102645],"SelfPick":1}}
 type DraftPackPayload struct {
 	// CourseName is the event identifier, e.g. "PremierDraft_BLB".
 	//
@@ -43,14 +41,16 @@ type DraftPackDetail struct {
 	SelfPick int `json:"SelfPick"`
 }
 
-// DraftPickPayload is the parsed payload for a "draft.pick" log entry.
+// DraftPickPayload is the parsed/emitted payload for a "draft.pick" event.
 //
-// MTGA emits a BotDraft_DraftPickResp message whose top-level JSON contains
-// a "pickedCards" key listing the grpIds the player selected.
+// It is the common output shape both draft formats normalise into: Premier
+// (ParsePremierDraftMakePick, #338) and BotDraft / QuickDraft
+// (ParseBotDraftPick, #337). The JSON tags below describe the daemon-emit (BFF
+// contract) serialisation, not the raw MTGA wire line.
 //
-// Example log line:
+// Emitted shape:
 //
-//	{"pickedCards":[12345],"PackNumber":0,"PickNumber":0,"CourseName":"PremierDraft_BLB"}
+//	{"CourseName":"QuickDraft_SOS_20260526","pickedCards":[102704],"PackNumber":0,"PickNumber":0}
 type DraftPickPayload struct {
 	// CourseName is the event identifier, e.g. "PremierDraft_BLB".
 	//
@@ -66,50 +66,6 @@ type DraftPickPayload struct {
 	// DraftID is the stable per-draft UUID. Premier drafts set it; BotDraft
 	// (#337) leaves it empty. Additive, non-breaking BFF field.
 	DraftID string `json:"draft_id,omitempty"`
-}
-
-// ParseDraftPack parses a draft.pack log entry into a DraftPackPayload.
-// Returns an error if the entry is not a valid draft pack event.
-func ParseDraftPack(entry *LogEntry) (*DraftPackPayload, error) {
-	if entry == nil || !entry.IsJSON {
-		return nil, fmt.Errorf("entry is not JSON")
-	}
-	if _, ok := entry.JSON["draftPack"]; !ok {
-		return nil, fmt.Errorf("entry does not contain draftPack key")
-	}
-
-	raw, err := json.Marshal(entry.JSON)
-	if err != nil {
-		return nil, fmt.Errorf("re-marshal entry JSON: %w", err)
-	}
-
-	var p DraftPackPayload
-	if err := json.Unmarshal(raw, &p); err != nil {
-		return nil, fmt.Errorf("unmarshal DraftPackPayload: %w", err)
-	}
-	return &p, nil
-}
-
-// ParseDraftPick parses a draft.pick log entry into a DraftPickPayload.
-// Returns an error if the entry is not a valid draft pick event.
-func ParseDraftPick(entry *LogEntry) (*DraftPickPayload, error) {
-	if entry == nil || !entry.IsJSON {
-		return nil, fmt.Errorf("entry is not JSON")
-	}
-	if _, ok := entry.JSON["pickedCards"]; !ok {
-		return nil, fmt.Errorf("entry does not contain pickedCards key")
-	}
-
-	raw, err := json.Marshal(entry.JSON)
-	if err != nil {
-		return nil, fmt.Errorf("re-marshal entry JSON: %w", err)
-	}
-
-	var p DraftPickPayload
-	if err := json.Unmarshal(raw, &p); err != nil {
-		return nil, fmt.Errorf("unmarshal DraftPickPayload: %w", err)
-	}
-	return &p, nil
 }
 
 // ---------------------------------------------------------------------------
