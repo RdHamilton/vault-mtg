@@ -1,1 +1,1 @@
-{"authenticateResponse":{"screenName":"LocalPlayer#00001","userId":"00000000-0000-4000-8000-000000000010","clientId":"00000000-0000-4000-8000-000000000020","sessionId":"00000000-0000-4000-8000-000000000030"}}
+{"authenticateResponse":{"clientId":"TESTACCOUNT000000000000003","sessionId":"11111111-0000-4000-8000-000000000004","screenName":"TestPlayer#00001"}}

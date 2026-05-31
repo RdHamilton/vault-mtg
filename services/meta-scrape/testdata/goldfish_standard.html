@@ -1,0 +1,87 @@
+<!--
+  Reference snapshot of the MTGGoldfish Standard metagame page structure
+  (https://www.mtggoldfish.com/metagame/standard/full) as the parseMetaPage
+  archetype-tile regex in internal/scraper/goldfish.go was validated against.
+
+  This file is a structural reference artifact only. The unit tests drive
+  parsing through inline httptest.Server HTML (zero live network in CI). If
+  MTGGoldfish changes its tile markup, this snapshot is the ground truth used
+  to update the regex patterns.
+-->
+<html>
+<head><title>Standard Metagame - MTGGoldfish</title></head>
+<body>
+<div class='metagame-list'>
+
+<div class='archetype-tile' id='34201'>
+<div class='archetype-tile-image'>
+<div aria-label='Image of Cori-Steel Cutter' class='card-tile' role='img'></div>
+</div>
+<div class='archetype-tile-description-wrapper'>
+<div class='archetype-tile-description'>
+<div class='archetype-tile-title'>
+<span class='deck-price-online'>
+<a href="/archetype/standard-izzet-cauldron#online">Izzet Cauldron</a>
+</span>
+</div>
+</div>
+<div class='archetype-tile-statistics'>
+<div class='archetype-tile-statistics-left'>
+<div class='archetype-tile-statistic metagame-percentage'>
+<div class='archetype-tile-statistic-name'>META%</div>
+<div class='archetype-tile-statistic-value'>
+18.2%
+<span class='archetype-tile-statistic-value-extra-data'>(412)</span>
+</div>
+</div>
+</div>
+</div>
+</div>
+</div>
+
+<div class='archetype-tile' id='34188'>
+<div class='archetype-tile-description-wrapper'>
+<div class='archetype-tile-description'>
+<div class='archetype-tile-title'>
+<span class='deck-price-online'>
+<a href="/archetype/standard-dimir-midrange#online">Dimir Midrange</a>
+</span>
+</div>
+</div>
+<div class='archetype-tile-statistics'>
+<div class='archetype-tile-statistics-left'>
+<div class='archetype-tile-statistic metagame-percentage'>
+<div class='archetype-tile-statistic-name'>META%</div>
+<div class='archetype-tile-statistic-value'>
+14.7%
+</div>
+</div>
+</div>
+</div>
+</div>
+</div>
+
+<div class='archetype-tile' id='34155'>
+<div class='archetype-tile-description-wrapper'>
+<div class='archetype-tile-description'>
+<div class='archetype-tile-title'>
+<span class='deck-price-online'>
+<a href="/archetype/standard-mono-red-aggro#online">Mono Red Aggro</a>
+</span>
+</div>
+</div>
+<div class='archetype-tile-statistics'>
+<div class='archetype-tile-statistics-left'>
+<div class='archetype-tile-statistic metagame-percentage'>
+<div class='archetype-tile-statistic-value'>
+9.3%
+</div>
+</div>
+</div>
+</div>
+</div>
+</div>
+
+</div>
+</body>
+</html>

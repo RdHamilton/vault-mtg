@@ -1,0 +1,638 @@
+[
+  {
+    "axis": "api-request",
+    "event": "BotDraftDraftPick",
+    "count": 42,
+    "sample_file": "samples/api-request__BotDraftDraftPick.json"
+  },
+  {
+    "axis": "api-request",
+    "event": "BotDraftDraftStatus",
+    "count": 1,
+    "sample_file": "samples/api-request__BotDraftDraftStatus.json"
+  },
+  {
+    "axis": "api-request",
+    "event": "DeckGetAllPreconDecksV3",
+    "count": 1,
+    "sample_file": "samples/api-request__DeckGetAllPreconDecksV3.json"
+  },
+  {
+    "axis": "api-request",
+    "event": "DeckGetDeckSummariesV3",
+    "count": 2,
+    "sample_file": "samples/api-request__DeckGetDeckSummariesV3.json"
+  },
+  {
+    "axis": "api-request",
+    "event": "DeckUpsertDeckV3",
+    "count": 3,
+    "sample_file": "samples/api-request__DeckUpsertDeckV3.json"
+  },
+  {
+    "axis": "api-request",
+    "event": "DraftCompleteDraft",
+    "count": 1,
+    "sample_file": "samples/api-request__DraftCompleteDraft.json"
+  },
+  {
+    "axis": "api-request",
+    "event": "EventEnterPairing",
+    "count": 5,
+    "sample_file": "samples/api-request__EventEnterPairing.json"
+  },
+  {
+    "axis": "api-request",
+    "event": "EventGetActiveMatches",
+    "count": 6,
+    "sample_file": "samples/api-request__EventGetActiveMatches.json"
+  },
+  {
+    "axis": "api-request",
+    "event": "EventGetCoursesV2",
+    "count": 14,
+    "sample_file": "samples/api-request__EventGetCoursesV2.json"
+  },
+  {
+    "axis": "api-request",
+    "event": "EventJoin",
+    "count": 5,
+    "sample_file": "samples/api-request__EventJoin.json"
+  },
+  {
+    "axis": "api-request",
+    "event": "EventPlayerDraftMakePick",
+    "count": 42,
+    "sample_file": "samples/api-request__EventPlayerDraftMakePick.json"
+  },
+  {
+    "axis": "api-request",
+    "event": "EventSetDeckV3",
+    "count": 5,
+    "sample_file": "samples/api-request__EventSetDeckV3.json"
+  },
+  {
+    "axis": "api-request",
+    "event": "GetFormats",
+    "count": 1,
+    "sample_file": "samples/api-request__GetFormats.json"
+  },
+  {
+    "axis": "api-request",
+    "event": "GraphGetGraphState",
+    "count": 17,
+    "sample_file": "samples/api-request__GraphGetGraphState.json"
+  },
+  {
+    "axis": "api-request",
+    "event": "PeriodicRewardsGetStatus",
+    "count": 10,
+    "sample_file": "samples/api-request__PeriodicRewardsGetStatus.json"
+  },
+  {
+    "axis": "api-request",
+    "event": "QuestGetQuests",
+    "count": 6,
+    "sample_file": "samples/api-request__QuestGetQuests.json"
+  },
+  {
+    "axis": "api-request",
+    "event": "RankGetCombinedRankInfo",
+    "count": 6,
+    "sample_file": "samples/api-request__RankGetCombinedRankInfo.json"
+  },
+  {
+    "axis": "api-request",
+    "event": "RankGetSeasonAndRankDetails",
+    "count": 6,
+    "sample_file": "samples/api-request__RankGetSeasonAndRankDetails.json"
+  },
+  {
+    "axis": "api-request",
+    "event": "StartHook",
+    "count": 6,
+    "sample_file": "samples/api-request__StartHook.json"
+  },
+  {
+    "axis": "api-response",
+    "event": "BotDraftDraftPick",
+    "count": 42,
+    "sample_file": "samples/api-response__BotDraftDraftPick.json"
+  },
+  {
+    "axis": "api-response",
+    "event": "BotDraftDraftStatus",
+    "count": 1,
+    "sample_file": "samples/api-response__BotDraftDraftStatus.json"
+  },
+  {
+    "axis": "api-response",
+    "event": "DeckGetAllPreconDecksV3",
+    "count": 1,
+    "sample_file": "samples/api-response__DeckGetAllPreconDecksV3.json"
+  },
+  {
+    "axis": "api-response",
+    "event": "DeckGetDeckSummariesV3",
+    "count": 2,
+    "sample_file": "samples/api-response__DeckGetDeckSummariesV3.json"
+  },
+  {
+    "axis": "api-response",
+    "event": "DeckUpsertDeckV3",
+    "count": 3,
+    "sample_file": "samples/api-response__DeckUpsertDeckV3.json"
+  },
+  {
+    "axis": "api-response",
+    "event": "DraftCompleteDraft",
+    "count": 1,
+    "sample_file": "samples/api-response__DraftCompleteDraft.json"
+  },
+  {
+    "axis": "api-response",
+    "event": "EventEnterPairing",
+    "count": 5,
+    "sample_file": "samples/api-response__EventEnterPairing.json"
+  },
+  {
+    "axis": "api-response",
+    "event": "EventGetActiveMatches",
+    "count": 6,
+    "sample_file": "samples/api-response__EventGetActiveMatches.json"
+  },
+  {
+    "axis": "api-response",
+    "event": "EventGetCoursesV2",
+    "count": 14,
+    "sample_file": "samples/api-response__EventGetCoursesV2.json"
+  },
+  {
+    "axis": "api-response",
+    "event": "EventJoin",
+    "count": 5,
+    "sample_file": "samples/api-response__EventJoin.json"
+  },
+  {
+    "axis": "api-response",
+    "event": "EventPlayerDraftMakePick",
+    "count": 42,
+    "sample_file": "samples/api-response__EventPlayerDraftMakePick.json"
+  },
+  {
+    "axis": "api-response",
+    "event": "EventSetDeckV3",
+    "count": 5,
+    "sample_file": "samples/api-response__EventSetDeckV3.json"
+  },
+  {
+    "axis": "api-response",
+    "event": "GetFormats",
+    "count": 1,
+    "sample_file": "samples/api-response__GetFormats.json"
+  },
+  {
+    "axis": "api-response",
+    "event": "GraphGetGraphState",
+    "count": 17,
+    "sample_file": "samples/api-response__GraphGetGraphState.json"
+  },
+  {
+    "axis": "api-response",
+    "event": "PeriodicRewardsGetStatus",
+    "count": 10,
+    "sample_file": "samples/api-response__PeriodicRewardsGetStatus.json"
+  },
+  {
+    "axis": "api-response",
+    "event": "QuestGetQuests",
+    "count": 6,
+    "sample_file": "samples/api-response__QuestGetQuests.json"
+  },
+  {
+    "axis": "api-response",
+    "event": "RankGetCombinedRankInfo",
+    "count": 6,
+    "sample_file": "samples/api-response__RankGetCombinedRankInfo.json"
+  },
+  {
+    "axis": "api-response",
+    "event": "RankGetSeasonAndRankDetails",
+    "count": 6,
+    "sample_file": "samples/api-response__RankGetSeasonAndRankDetails.json"
+  },
+  {
+    "axis": "api-response",
+    "event": "StartHook",
+    "count": 6,
+    "sample_file": "samples/api-response__StartHook.json"
+  },
+  {
+    "axis": "client-message",
+    "event": "CastingTimeOptionsResp",
+    "count": 1,
+    "sample_file": null
+  },
+  {
+    "axis": "client-message",
+    "event": "ChooseStartingPlayerResp",
+    "count": 8,
+    "sample_file": "samples/client-message__ChooseStartingPlayerResp.json"
+  },
+  {
+    "axis": "client-message",
+    "event": "ConcedeReq",
+    "count": 2,
+    "sample_file": null
+  },
+  {
+    "axis": "client-message",
+    "event": "DeclareAttackersResp",
+    "count": 8,
+    "sample_file": null
+  },
+  {
+    "axis": "client-message",
+    "event": "DrawCardResp",
+    "count": 5,
+    "sample_file": "samples/client-message__DrawCardResp.json"
+  },
+  {
+    "axis": "client-message",
+    "event": "EffectCostResp",
+    "count": 2,
+    "sample_file": null
+  },
+  {
+    "axis": "client-message",
+    "event": "GroupResp",
+    "count": 1,
+    "sample_file": null
+  },
+  {
+    "axis": "client-message",
+    "event": "MulliganResp",
+    "count": 13,
+    "sample_file": "samples/client-message__MulliganResp.json"
+  },
+  {
+    "axis": "client-message",
+    "event": "OptionalActionResp",
+    "count": 1,
+    "sample_file": null
+  },
+  {
+    "axis": "client-message",
+    "event": "PerformActionResp",
+    "count": 119,
+    "sample_file": null
+  },
+  {
+    "axis": "client-message",
+    "event": "RevealHandResp",
+    "count": 5,
+    "sample_file": "samples/client-message__RevealHandResp.json"
+  },
+  {
+    "axis": "client-message",
+    "event": "SearchFromGroupsResp",
+    "count": 3,
+    "sample_file": null
+  },
+  {
+    "axis": "client-message",
+    "event": "SearchResp",
+    "count": 1,
+    "sample_file": null
+  },
+  {
+    "axis": "client-message",
+    "event": "SelectNResp",
+    "count": 3,
+    "sample_file": null
+  },
+  {
+    "axis": "client-message",
+    "event": "SelectTargetsResp",
+    "count": 22,
+    "sample_file": null
+  },
+  {
+    "axis": "client-message",
+    "event": "SetSettingsReq",
+    "count": 10,
+    "sample_file": null
+  },
+  {
+    "axis": "client-message",
+    "event": "SubmitAttackersReq",
+    "count": 12,
+    "sample_file": null
+  },
+  {
+    "axis": "client-message",
+    "event": "SubmitBlockersReq",
+    "count": 1,
+    "sample_file": null
+  },
+  {
+    "axis": "client-message",
+    "event": "SubmitTargetsReq",
+    "count": 21,
+    "sample_file": null
+  },
+  {
+    "axis": "client-message",
+    "event": "UIMessage",
+    "count": 1186,
+    "sample_file": null
+  },
+  {
+    "axis": "gre-message",
+    "event": "ActionsAvailableReq",
+    "count": 119,
+    "sample_file": "samples/gre-message__ActionsAvailableReq.json"
+  },
+  {
+    "axis": "gre-message",
+    "event": "CastingTimeOptionsReq",
+    "count": 1,
+    "sample_file": "samples/gre-message__CastingTimeOptionsReq.json"
+  },
+  {
+    "axis": "gre-message",
+    "event": "ChooseStartingPlayerReq",
+    "count": 3,
+    "sample_file": "samples/gre-message__ChooseStartingPlayerReq.json"
+  },
+  {
+    "axis": "gre-message",
+    "event": "ConnectResp",
+    "count": 5,
+    "sample_file": "samples/gre-message__ConnectResp.json"
+  },
+  {
+    "axis": "gre-message",
+    "event": "DeclareAttackersReq",
+    "count": 20,
+    "sample_file": "samples/gre-message__DeclareAttackersReq.json"
+  },
+  {
+    "axis": "gre-message",
+    "event": "DeclareBlockersReq",
+    "count": 1,
+    "sample_file": "samples/gre-message__DeclareBlockersReq.json"
+  },
+  {
+    "axis": "gre-message",
+    "event": "DieRollResultsResp",
+    "count": 5,
+    "sample_file": "samples/gre-message__DieRollResultsResp.json"
+  },
+  {
+    "axis": "gre-message",
+    "event": "GameStateMessage",
+    "count": 416,
+    "sample_file": "samples/gre-message__GameStateMessage.json"
+  },
+  {
+    "axis": "gre-message",
+    "event": "GroupReq",
+    "count": 1,
+    "sample_file": "samples/gre-message__GroupReq.json"
+  },
+  {
+    "axis": "gre-message",
+    "event": "IntermissionReq",
+    "count": 5,
+    "sample_file": "samples/gre-message__IntermissionReq.json"
+  },
+  {
+    "axis": "gre-message",
+    "event": "MulliganReq",
+    "count": 6,
+    "sample_file": "samples/gre-message__MulliganReq.json"
+  },
+  {
+    "axis": "gre-message",
+    "event": "OptionalActionMessage",
+    "count": 1,
+    "sample_file": "samples/gre-message__OptionalActionMessage.json"
+  },
+  {
+    "axis": "gre-message",
+    "event": "PayCostsReq",
+    "count": 2,
+    "sample_file": "samples/gre-message__PayCostsReq.json"
+  },
+  {
+    "axis": "gre-message",
+    "event": "PromptReq",
+    "count": 12,
+    "sample_file": "samples/gre-message__PromptReq.json"
+  },
+  {
+    "axis": "gre-message",
+    "event": "QueuedGameStateMessage",
+    "count": 10,
+    "sample_file": "samples/gre-message__QueuedGameStateMessage.json"
+  },
+  {
+    "axis": "gre-message",
+    "event": "SearchReq",
+    "count": 1,
+    "sample_file": "samples/gre-message__SearchReq.json"
+  },
+  {
+    "axis": "gre-message",
+    "event": "SelectNReq",
+    "count": 3,
+    "sample_file": "samples/gre-message__SelectNReq.json"
+  },
+  {
+    "axis": "gre-message",
+    "event": "SelectTargetsReq",
+    "count": 43,
+    "sample_file": "samples/gre-message__SelectTargetsReq.json"
+  },
+  {
+    "axis": "gre-message",
+    "event": "SetSettingsResp",
+    "count": 20,
+    "sample_file": "samples/gre-message__SetSettingsResp.json"
+  },
+  {
+    "axis": "gre-message",
+    "event": "TimeoutMessage",
+    "count": 1,
+    "sample_file": "samples/gre-message__TimeoutMessage.json"
+  },
+  {
+    "axis": "gre-message",
+    "event": "TimerStateMessage",
+    "count": 230,
+    "sample_file": "samples/gre-message__TimerStateMessage.json"
+  },
+  {
+    "axis": "gre-message",
+    "event": "UIMessage",
+    "count": 994,
+    "sample_file": "samples/gre-message__UIMessage.json"
+  },
+  {
+    "axis": "json-key",
+    "event": "CacheVersion",
+    "count": 1,
+    "sample_file": "samples/json-key__CacheVersion.json"
+  },
+  {
+    "axis": "json-key",
+    "event": "Course",
+    "count": 5,
+    "sample_file": "samples/json-key__Course.json"
+  },
+  {
+    "axis": "json-key",
+    "event": "CourseId",
+    "count": 6,
+    "sample_file": "samples/json-key__CourseId.json"
+  },
+  {
+    "axis": "json-key",
+    "event": "Courses",
+    "count": 14,
+    "sample_file": "samples/json-key__Courses.json"
+  },
+  {
+    "axis": "json-key",
+    "event": "CurrentModule",
+    "count": 48,
+    "sample_file": "samples/json-key__CurrentModule.json"
+  },
+  {
+    "axis": "json-key",
+    "event": "DeckId",
+    "count": 3,
+    "sample_file": "samples/json-key__DeckId.json"
+  },
+  {
+    "axis": "json-key",
+    "event": "Formats",
+    "count": 1,
+    "sample_file": "samples/json-key__Formats.json"
+  },
+  {
+    "axis": "json-key",
+    "event": "InventoryInfo",
+    "count": 6,
+    "sample_file": "samples/json-key__InventoryInfo.json"
+  },
+  {
+    "axis": "json-key",
+    "event": "IsPickSuccessful",
+    "count": 41,
+    "sample_file": "samples/json-key__IsPickSuccessful.json"
+  },
+  {
+    "axis": "json-key",
+    "event": "IsPickingCompleted",
+    "count": 1,
+    "sample_file": "samples/json-key__IsPickingCompleted.json"
+  },
+  {
+    "axis": "json-key",
+    "event": "MatchesV3",
+    "count": 6,
+    "sample_file": "samples/json-key__MatchesV3.json"
+  },
+  {
+    "axis": "json-key",
+    "event": "NodeStates",
+    "count": 17,
+    "sample_file": "samples/json-key__NodeStates.json"
+  },
+  {
+    "axis": "json-key",
+    "event": "Summaries",
+    "count": 2,
+    "sample_file": "samples/json-key__Summaries.json"
+  },
+  {
+    "axis": "json-key",
+    "event": "_dailyRewardResetTimestamp",
+    "count": 1,
+    "sample_file": "samples/json-key___dailyRewardResetTimestamp.json"
+  },
+  {
+    "axis": "json-key",
+    "event": "_dailyRewardSequenceId",
+    "count": 9,
+    "sample_file": "samples/json-key___dailyRewardSequenceId.json"
+  },
+  {
+    "axis": "json-key",
+    "event": "authenticateResponse",
+    "count": 5,
+    "sample_file": "samples/json-key__authenticateResponse.json"
+  },
+  {
+    "axis": "json-key",
+    "event": "canSwap",
+    "count": 6,
+    "sample_file": "samples/json-key__canSwap.json"
+  },
+  {
+    "axis": "json-key",
+    "event": "constructedSeasonOrdinal",
+    "count": 6,
+    "sample_file": "samples/json-key__constructedSeasonOrdinal.json"
+  },
+  {
+    "axis": "json-key",
+    "event": "currentSeason",
+    "count": 6,
+    "sample_file": "samples/json-key__currentSeason.json"
+  },
+  {
+    "axis": "match-room-state",
+    "event": "MatchCompleted",
+    "count": 5,
+    "sample_file": "samples/match-room-state__MatchCompleted.json"
+  },
+  {
+    "axis": "match-room-state",
+    "event": "Playing",
+    "count": 5,
+    "sample_file": "samples/match-room-state__Playing.json"
+  },
+  {
+    "axis": "prefix-message",
+    "event": "Client.SceneChange",
+    "count": 19,
+    "sample_file": "samples/prefix-message__Client.SceneChange.json"
+  },
+  {
+    "axis": "prefix-message",
+    "event": "Client.TcpConnection.Close",
+    "count": 11,
+    "sample_file": "samples/prefix-message__Client.TcpConnection.Close.json"
+  },
+  {
+    "axis": "prefix-message",
+    "event": "Draft.Notify",
+    "count": 42,
+    "sample_file": "samples/prefix-message__Draft.Notify.json"
+  },
+  {
+    "axis": "prefix-message",
+    "event": "FrontDoorConnectionAWS.Open",
+    "count": 1,
+    "sample_file": "samples/prefix-message__FrontDoorConnectionAWS.Open.json"
+  },
+  {
+    "axis": "prefix-message",
+    "event": "GREConnection.HandleWebSocketClosed",
+    "count": 3,
+    "sample_file": "samples/prefix-message__GREConnection.HandleWebSocketClosed.json"
+  }
+]
