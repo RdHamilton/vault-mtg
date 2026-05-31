@@ -371,14 +371,19 @@ EOF
 }
 
 # ---------------------------------------------------------------------------
-# Health-check tests (issue #2131) — verify poll_daemon_health behaviour.
+# Liveness-check tests (vault-mtg-tickets#334 — health gate fix).
+#
+# Gate is now: binary-present + daemon-process-responding (HTTP 200), NOT
+# account_id.  First-run installs have no account_id until async PKCE pairing
+# completes; requiring it caused PackageKit Code=112 on every fresh install.
 #
 # Strategy: add a curl stub to STUB_DIR that echoes a configurable JSON body
 # or simulates a timeout.  We override STUB_DIR's curl for each test.
 # ---------------------------------------------------------------------------
 
-# 10. Health-check passes when daemon responds with a non-empty account_id.
-@test "health check: exits 0 when daemon responds with non-empty account_id" {
+# 10. Liveness check passes when daemon responds with a non-empty account_id
+#     (already-paired reinstall path).
+@test "liveness check: exits 0 when daemon responds with non-empty account_id" {
   # curl stub returns a healthy JSON body immediately.
   cat > "${STUB_DIR}/curl" <<'EOF'
 #!/usr/bin/env bash
@@ -396,11 +401,38 @@ EOF
   echo "output: ${output}"
   [ "${status}" -eq 0 ]
   [[ "${output}" == *"daemon healthy"* ]]
-  [[ "${output}" == *"post-install health check passed"* ]]
+  [[ "${output}" == *"post-install liveness check passed"* ]]
 }
 
-# 11. Health-check fails when daemon never responds (curl always fails).
-@test "health check: exits 1 when daemon never responds within retry limit" {
+# 11. First-run install: daemon responds but has no account_id (not yet paired).
+#     This is the normal state for every fresh install — must exit 0.
+#     (vault-mtg-tickets#334 regression guard)
+@test "liveness check: exits 0 when daemon responds without account_id (first-run / not yet paired)" {
+  # curl stub returns setup_required state — daemon is running but unpaired.
+  cat > "${STUB_DIR}/curl" <<'EOF'
+#!/usr/bin/env bash
+echo '{"status":"ok","auth_status":"setup_required"}'
+EOF
+  chmod +x "${STUB_DIR}/curl"
+
+  run env \
+    PATH="${STUB_DIR}:${PATH}" \
+    SUDO_USER="${REAL_USER}" \
+    BATS_TEST_TMPDIR="${BATS_TEST_TMPDIR}" \
+    bash "${TMP_SCRIPT}"
+
+  echo "status: ${status}"
+  echo "output: ${output}"
+  # Must succeed — pairing is async, missing account_id is not a fatal error.
+  [ "${status}" -eq 0 ]
+  [[ "${output}" == *"not yet paired"* ]]
+  [[ "${output}" == *"post-install liveness check passed"* ]]
+}
+
+# 12. Liveness check: daemon never responds — WARNING logged but exits 0.
+#     Binary and LaunchAgent are correctly installed; daemon starts at next login.
+#     (vault-mtg-tickets#334 — liveness timeout must NOT fail the .pkg)
+@test "liveness check: exits 0 with warning when daemon never responds within retry limit" {
   # curl stub always exits non-zero (connection refused simulation).
   # Also stub sleep so the test does not actually wait 15 s.
   cat > "${STUB_DIR}/curl" <<'EOF'
@@ -423,39 +455,14 @@ EOF
 
   echo "status: ${status}"
   echo "output: ${output}"
-  [ "${status}" -eq 1 ]
-  [[ "${output}" == *"daemon did not respond"* ]]
+  # Non-fatal: binary + LaunchAgent installed correctly.
+  [ "${status}" -eq 0 ]
+  [[ "${output}" == *"WARNING"* ]]
+  [[ "${output}" == *"daemon will start automatically at next login"* ]]
 }
 
-# 12. Health-check fails when daemon responds but account_id is empty.
-@test "health check: exits 1 when daemon responds but account_id is empty" {
-  # curl stub returns a JSON body without account_id (setup_required state).
-  cat > "${STUB_DIR}/curl" <<'EOF'
-#!/usr/bin/env bash
-echo '{"status":"ok","auth_status":"setup_required"}'
-EOF
-  chmod +x "${STUB_DIR}/curl"
-
-  cat > "${STUB_DIR}/sleep" <<'EOF'
-#!/usr/bin/env bash
-exit 0
-EOF
-  chmod +x "${STUB_DIR}/sleep"
-
-  run env \
-    PATH="${STUB_DIR}:${PATH}" \
-    SUDO_USER="${REAL_USER}" \
-    BATS_TEST_TMPDIR="${BATS_TEST_TMPDIR}" \
-    bash "${TMP_SCRIPT}"
-
-  echo "status: ${status}"
-  echo "output: ${output}"
-  [ "${status}" -eq 1 ]
-  [[ "${output}" == *"daemon did not respond"* ]]
-}
-
-# 13. Health-check retries the correct number of times before giving up.
-@test "health check: makes exactly HEALTH_MAX_ATTEMPTS curl calls before failing" {
+# 13. Liveness check retries the correct number of times before giving up.
+@test "liveness check: makes exactly HEALTH_MAX_ATTEMPTS curl calls before warning" {
   local call_count_file="${BATS_TEST_TMPDIR}/curl_calls"
 
   cat > "${STUB_DIR}/curl" <<EOF
@@ -479,7 +486,8 @@ EOF
     BATS_TEST_TMPDIR="${BATS_TEST_TMPDIR}" \
     bash "${TMP_SCRIPT}"
 
-  [ "${status}" -eq 1 ]
+  # Non-fatal even after all attempts.
+  [ "${status}" -eq 0 ]
   local calls
   calls=$(cat "${call_count_file}")
   echo "curl call count: ${calls}"
