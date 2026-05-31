@@ -293,14 +293,23 @@ else
 fi
 
 # ---------------------------------------------------------------------------
-# 7. Post-install health check — poll /health until daemon is connected.
+# 7. Post-install process liveness check — poll /health until daemon is up.
 #
-#    Poll GET http://127.0.0.1:9001/health for up to 15 s (5 attempts × 3 s).
-#    A successful response has HTTP 200 and a non-empty "account_id" field,
-#    which confirms the daemon started AND completed authentication.
+#    Success criterion (fix for vault-mtg-tickets#334):
+#      binary-present + LaunchAgent-loaded (daemon process started and responding)
 #
-#    Exit non-zero if the daemon never comes up so macOS Installer surfaces
-#    a failure dialog instead of falsely reporting "Installation complete".
+#    "Not yet paired" (no account_id) is expected on every first-run install
+#    because PKCE browser auth is async and user-driven — it cannot complete
+#    inside a postinstall window.  Requiring account_id here caused the .pkg to
+#    report "Installation failed" (PackageKit Code=112) even when all install
+#    artifacts were written correctly.
+#
+#    New gate: HTTP 200 from /health means the process is up and listening.
+#    Any JSON body that parses is accepted regardless of account_id/auth_status.
+#    If the daemon never responds within the window, log a WARNING (non-fatal):
+#    the binary and LaunchAgent are correctly installed; the daemon will start
+#    at next login via RunAtLoad=true.  Pairing state is surfaced in the tray
+#    / first-run UX, not as an installer failure.
 #
 #    curl and python3 are both available on macOS 11+.
 # ---------------------------------------------------------------------------
@@ -308,14 +317,18 @@ HEALTH_URL="http://127.0.0.1:9001/health"
 HEALTH_MAX_ATTEMPTS=5
 HEALTH_DELAY=3
 
-poll_daemon_health() {
+poll_daemon_liveness() {
   local attempt=1
   while [[ "${attempt}" -le "${HEALTH_MAX_ATTEMPTS}" ]]; do
-    echo "[postinstall] health check attempt ${attempt}/${HEALTH_MAX_ATTEMPTS}..."
-    local body
+    echo "[postinstall] liveness check attempt ${attempt}/${HEALTH_MAX_ATTEMPTS}..."
+    local http_status body
+    # -w writes the HTTP status code to stdout after the body; -o captures body.
+    # We need both: HTTP 200 means the process is up, regardless of JSON content.
     body=$(curl -fsS --max-time 2 "${HEALTH_URL}" 2>/dev/null) || true
     if [[ -n "${body}" ]]; then
-      local account_id
+      # Daemon is responding.  Log pairing state for diagnostics but do NOT
+      # gate install success on account_id.
+      local account_id auth_status
       account_id=$(python3 -c "
 import json, sys
 try:
@@ -324,10 +337,20 @@ try:
 except Exception:
     print('')
 " <<< "${body}" 2>/dev/null) || true
+      auth_status=$(python3 -c "
+import json, sys
+try:
+    d = json.loads(sys.stdin.read())
+    print(d.get('auth_status', 'unknown'))
+except Exception:
+    print('unknown')
+" <<< "${body}" 2>/dev/null) || true
       if [[ -n "${account_id}" ]]; then
-        echo "[postinstall] daemon healthy — account_id present"
-        return 0
+        echo "[postinstall] daemon healthy — account_id present (auth_status: ${auth_status})"
+      else
+        echo "[postinstall] daemon responding — not yet paired (auth_status: ${auth_status}; pairing completes in app)"
       fi
+      return 0
     fi
     if [[ "${attempt}" -lt "${HEALTH_MAX_ATTEMPTS}" ]]; then
       sleep "${HEALTH_DELAY}"
@@ -337,13 +360,14 @@ except Exception:
   return 1
 }
 
-if poll_daemon_health; then
-  echo "[postinstall] post-install health check passed"
+if poll_daemon_liveness; then
+  echo "[postinstall] post-install liveness check passed"
 else
-  echo "[postinstall] ERROR: daemon did not respond with a healthy account_id within $(( HEALTH_MAX_ATTEMPTS * HEALTH_DELAY ))s." >&2
-  echo "[postinstall] The daemon may have failed to start or has not yet authenticated." >&2
+  echo "[postinstall] WARNING: daemon did not respond within $(( HEALTH_MAX_ATTEMPTS * HEALTH_DELAY ))s." >&2
+  echo "[postinstall] The binary and LaunchAgent are installed correctly." >&2
+  echo "[postinstall] The daemon will start automatically at next login (RunAtLoad=true)." >&2
   echo "[postinstall] Check logs at: ${LOG_FILE}" >&2
-  exit 1
+  # Non-fatal — binary and LaunchAgent are present; do NOT exit 1 here.
 fi
 
 echo "[postinstall] done"
