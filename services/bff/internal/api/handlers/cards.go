@@ -654,8 +654,11 @@ func setCardRowToResponse(row repository.SetCardRow) setCardResponse {
 		Types:  typesFromTypeLine(row.TypeLine),
 		Colors: parseStringArray(row.Colors),
 		Rarity: row.Rarity, Text: "",
-		Power: derefOr(row.Power, ""), Toughness: derefOr(row.Toughness, ""),
-		ImageURL: extractImageURI(row.ImageURIs),
+		Power:         derefOr(row.Power, ""),
+		Toughness:     derefOr(row.Toughness, ""),
+		ImageURL:      row.ImageURL,
+		ImageURLSmall: row.ImageURLSmall,
+		ImageURLArt:   row.ImageURLArt,
 	}
 	return resp
 }

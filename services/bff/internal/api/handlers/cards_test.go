@@ -422,6 +422,80 @@ func TestCardsCFBDelete_HappyPath(t *testing.T) {
 	}
 }
 
+// ─── Image URL propagation ────────────────────────────────────────────────
+
+// TestCardsSearch_ImageURLsPropagate verifies that the 3 discrete image URL
+// fields (ImageURL, ImageURLSmall, ImageURLArt) flow from the repo row through
+// to the JSON response.
+func TestCardsSearch_ImageURLsPropagate(t *testing.T) {
+	reader := &stubCardsReader{search: []repository.SetCardRow{{
+		ArenaID:       100,
+		Name:          "Bolt",
+		SetCode:       "M21",
+		TypeLine:      "Instant",
+		ImageURL:      "https://img.scryfall.com/normal.jpg",
+		ImageURLSmall: "https://img.scryfall.com/small.jpg",
+		ImageURLArt:   "https://img.scryfall.com/art_crop.jpg",
+	}}}
+	h := handlers.NewCardsHandler(reader, &cardsAccountLookup{accountID: 7, found: true})
+	req := authedCardsRequest(t, http.MethodGet, "/api/v1/cards?q=bolt", nil, 168)
+	rr := httptest.NewRecorder()
+	h.Search(rr, req)
+	if rr.Code != http.StatusOK {
+		t.Fatalf("status: %d body=%s", rr.Code, rr.Body.String())
+	}
+	var arr []map[string]any
+	decodeCardsEnvelope(t, rr.Body.Bytes(), &arr)
+	if len(arr) != 1 {
+		t.Fatalf("expected 1 result, got %d", len(arr))
+	}
+	card := arr[0]
+	if card["ImageURL"] != "https://img.scryfall.com/normal.jpg" {
+		t.Errorf("ImageURL: got %v", card["ImageURL"])
+	}
+	if card["ImageURLSmall"] != "https://img.scryfall.com/small.jpg" {
+		t.Errorf("ImageURLSmall: got %v", card["ImageURLSmall"])
+	}
+	if card["ImageURLArt"] != "https://img.scryfall.com/art_crop.jpg" {
+		t.Errorf("ImageURLArt: got %v", card["ImageURLArt"])
+	}
+}
+
+// TestCardsGetByArenaID_ImageURLsPropagate verifies image fields on the single-
+// card GET endpoint.
+func TestCardsGetByArenaID_ImageURLsPropagate(t *testing.T) {
+	row := &repository.SetCardRow{
+		ArenaID:       200,
+		Name:          "Counter",
+		SetCode:       "M21",
+		ImageURL:      "https://img.scryfall.com/n.jpg",
+		ImageURLSmall: "https://img.scryfall.com/s.jpg",
+		ImageURLArt:   "https://img.scryfall.com/a.jpg",
+	}
+	h := handlers.NewCardsHandler(
+		&stubCardsReader{byArenaID: row},
+		&cardsAccountLookup{accountID: 7, found: true},
+	)
+	req := authedCardsRequest(t, http.MethodGet, "/api/v1/cards/200", nil, 168)
+	req = chiCardsContext(req, "arenaId", "200")
+	rr := httptest.NewRecorder()
+	h.GetByArenaID(rr, req)
+	if rr.Code != http.StatusOK {
+		t.Fatalf("status: %d body=%s", rr.Code, rr.Body.String())
+	}
+	var card map[string]any
+	decodeCardsEnvelope(t, rr.Body.Bytes(), &card)
+	if card["ImageURL"] != "https://img.scryfall.com/n.jpg" {
+		t.Errorf("ImageURL: got %v", card["ImageURL"])
+	}
+	if card["ImageURLSmall"] != "https://img.scryfall.com/s.jpg" {
+		t.Errorf("ImageURLSmall: got %v", card["ImageURLSmall"])
+	}
+	if card["ImageURLArt"] != "https://img.scryfall.com/a.jpg" {
+		t.Errorf("ImageURLArt: got %v", card["ImageURLArt"])
+	}
+}
+
 // ─── Auth ──────────────────────────────────────────────────────────────────
 
 func TestCardsAllSets_Unauthorized(t *testing.T) {
