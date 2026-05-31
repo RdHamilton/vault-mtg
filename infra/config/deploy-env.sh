@@ -158,6 +158,13 @@ SSM_PROD_SENTRY_DSN_SPA="/vaultmtg/app/production/sentry-dsn-spa"
 SSM_PROD_POSTHOG_API_KEY="/vaultmtg/app/production/posthog-api-key"
 SSM_PROD_POSTHOG_HOST="/vaultmtg/app/production/posthog-host"
 
+# Daemon version metadata — read by BFF at startup to serve GET /api/v1/daemon/version.
+#   BFF_DAEMON_LATEST_VERSION — semver of the latest published daemon release (e.g. 0.3.5)
+#   BFF_DAEMON_RELEASED_AT    — RFC3339 publish timestamp (e.g. 2026-05-30T17:51:09Z)
+#   Both are plain String params (no encryption needed; not secrets).
+SSM_PROD_BFF_DAEMON_LATEST_VERSION="/vaultmtg/app/production/BFF_DAEMON_LATEST_VERSION"
+SSM_PROD_BFF_DAEMON_RELEASED_AT="/vaultmtg/app/production/BFF_DAEMON_RELEASED_AT"
+
 # ───────────────────────────────────────────────────────────────────────────
 # SSM PARAMETER PATHS — STAGING
 # ───────────────────────────────────────────────────────────────────────────
@@ -171,6 +178,10 @@ SSM_STAGING_CLERK_SECRET_KEY="/vaultmtg/app/staging/CLERK_SECRET_KEY"
 SSM_STAGING_CLERK_PUBLISHABLE_KEY="/vaultmtg/app/staging/CLERK_PUBLISHABLE_KEY"
 SSM_STAGING_CLERK_FRONTEND_API="/vaultmtg/app/staging/CLERK_FRONTEND_API"
 SSM_STAGING_PORT="/vaultmtg/app/staging/PORT"
+
+# Daemon version metadata — staging mirror (see production block above).
+SSM_STAGING_BFF_DAEMON_LATEST_VERSION="/vaultmtg/app/staging/BFF_DAEMON_LATEST_VERSION"
+SSM_STAGING_BFF_DAEMON_RELEASED_AT="/vaultmtg/app/staging/BFF_DAEMON_RELEASED_AT"
 
 # ───────────────────────────────────────────────────────────────────────────
 # SSM PARAMETER PATHS — VAULTMTG SHARED SERVICES
