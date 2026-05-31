@@ -113,6 +113,129 @@
 }
 
 /* ==========================================================================
+   Semantic Layer (canonical vocabulary)
+   Ported verbatim from colors_and_type.css "SEMANTIC LAYER — default =
+   VaultMTG". These are the canonical app-facing tokens (--fg, --bg, --accent,
+   --border, ...). Each is a thin pointer at a --vault-* primitive above — no
+   duplicated literal values (AC2). Components should reference THESE, not the
+   primitives directly. The VaultMTG product brand is the default; the RHE
+   umbrella palette can be activated with <html data-brand="rhe">.
+   ========================================================================== */
+
+:root,
+:root[data-brand="vault"] {
+  --bg:           var(--vault-bg);
+  --bg-raised:    var(--vault-bg-raised);
+  --bg-overlay:   var(--vault-bg-overlay);
+  --border:       var(--vault-border);
+
+  --fg:           var(--vault-fg);
+  --fg-secondary: var(--vault-fg-secondary);
+  --fg-muted:     var(--vault-fg-muted);
+  --fg-inverse:   var(--vault-fg-inverse);
+
+  --accent:       var(--vault-sapphire);
+  --accent-hover: var(--vault-sapphire-light);
+  --accent-press: var(--vault-sapphire-dark);
+
+  --success:      var(--vault-success);
+  --danger:       var(--vault-danger);
+  --warning:      var(--vault-warning);
+  --info:         var(--vault-info);
+
+  --font-display: var(--font-display-vault);
+  --shadow-sm:    var(--shadow-sm-vault);
+  --shadow-md:    var(--shadow-md-vault);
+}
+
+/* ==========================================================================
+   Legacy-Alias Bridge (TEMPORARY — #309 Pass A)
+   ========================================================================== */
+/*
+   The SPA's component CSS references a legacy semantic-token vocabulary
+   (--text-primary, --border-color, --accent-color, ...) that was never
+   defined anywhere in the app, so each reference currently renders via its
+   own hardcoded `var(--legacy, #hexfallback)` — pinning ~600 sites to the
+   pre-#298 palette. This block maps every in-use legacy name onto the
+   canonical semantic layer above, so those references now resolve to the new
+   sapphire palette WITHOUT touching the call-sites.
+
+   These are thin pointers (no duplicated literal values), so AC2 holds. This
+   is a COMPATIBILITY BRIDGE, not a permanent vocabulary: a follow-up ticket
+   migrates the call-sites onto the canonical --fg/--bg/--accent/--border names
+   and deletes this block. Per Ray's APPROVE-WITH-CHANGES (#309), call-site
+   rewrites are deliberately NOT in this PR.
+
+   Out of scope (Ray ruling #2, Option B): genuinely categorical / data-viz
+   accents (RecommendationCard's --ml-*/--meta-*/--personal-*/--bar-bg) keep
+   their distinct hues and are intentionally NOT bridged.
+*/
+
+:root {
+  /* — Text — */
+  --text-primary:            var(--fg);
+  --color-text-primary:      var(--fg);
+  --color-text:              var(--fg);
+  --text-secondary:          var(--fg-secondary);
+  --color-text-secondary:    var(--fg-secondary);
+  --text-muted:              var(--fg-muted);
+  --text-tertiary:           var(--fg-muted);
+  --color-text-muted:        var(--fg-muted);
+
+  /* — Surfaces — */
+  --bg-primary:              var(--bg);
+  --background-color:        var(--bg);
+  --bg-secondary:            var(--bg-raised);
+  --card-bg:                 var(--bg-raised);
+  --card-bg-dark:            var(--bg-raised);
+  --surface-color:           var(--bg-raised);
+  --color-surface:           var(--bg-raised);
+  --bg-tertiary:             var(--bg-overlay);
+  --color-surface-elevated:  var(--bg-overlay);
+  --bg-hover:                var(--bg-overlay);
+  --bg-sunken:               var(--vault-bg-sunken);
+
+  /* — Borders — */
+  --border-color:            var(--border);
+  --color-border:            var(--border);
+  --border-hover:            var(--vault-sapphire-dark);
+  --focus-ring:              var(--vault-sapphire-dark);
+
+  /* — Accent — */
+  --accent-color:            var(--accent);
+  --color-accent:            var(--accent);
+  --color-primary:           var(--accent);
+  --accent-rgb:              74, 144, 217;   /* RGB triplet for rgba(var(--accent-rgb), a) — Vault Sapphire #4A90D9 */
+  --secondary-bg:            var(--bg-overlay);
+  --secondary-hover:         var(--bg-overlay);
+
+  /* — Danger / error — */
+  --error-color:             var(--danger);
+  --color-error:             var(--danger);
+  --loss-color:              var(--danger);
+  --error-bg:                var(--vault-danger-dim);
+
+  /* — Success / win — */
+  --success-color:           var(--success);
+  --color-success:           var(--success);
+  --win-color:               var(--success);
+  --success-bg:              var(--vault-success-dim);
+
+  /* — Warning — */
+  --warning-color:           var(--warning);
+
+  /* — Info — */
+  --info-color:              var(--info);
+  --info-bg:                 var(--vault-info-dim);
+
+  /* — Tier rating badges — */
+  --tier-1-color:            var(--vault-tier-a);
+  --tier-2-color:            var(--vault-tier-b);
+  --tier-3-color:            var(--vault-tier-c);
+  --tier-4-color:            var(--vault-tier-d);
+}
+
+/* ==========================================================================
    Global Reset
    ========================================================================== */
 
